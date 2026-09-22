@@ -11,6 +11,7 @@
 import { HttpResponse, http } from 'msw';
 
 import {
+  APPROVAL_DECISIONS,
   DOCUMENT_ERROR_CODES,
   DOCUMENT_KINDS,
   DOCUMENT_STATUSES,
@@ -18,10 +19,15 @@ import {
   JOB_KINDS,
   JOB_STATUSES,
   JOB_STEP_STATUSES,
+  POST_STATUSES,
+  VERSION_SOURCES,
   type AcceptedResponse,
   type ApiErrorBody,
+  type ApprovalRequest,
   type DocumentUpload,
   type Job,
+  type PostVersion,
+  type PostVersionList,
   type SessionResponse,
 } from '@agentic/contracts';
 
@@ -37,6 +43,7 @@ import {
   demoMembers,
   demoOnboarding,
   demoPosts,
+  demoPostVersions,
   demoUploadLimits,
   demoUsers,
   demoWorkspaces,
@@ -465,6 +472,15 @@ export const handlers = [
   }),
 
   // ----- Chiến dịch & nội dung (dữ liệu cho các lát cắt sau) -----
+  http.get('*/api/v1/workspaces/:workspaceId/campaigns/:campaignId', ({ params }) => {
+    const session = currentSession();
+    if (!session) return unauthenticated();
+    const campaign = (demoCampaigns[params.workspaceId as string] ?? []).find(
+      (item) => item.id === params.campaignId,
+    );
+    return campaign ? HttpResponse.json(campaign) : notFound('chiến dịch');
+  }),
+
   http.get('*/api/v1/workspaces/:workspaceId/campaigns', ({ params }) => {
     const session = currentSession();
     if (!session) return unauthenticated();
@@ -479,6 +495,203 @@ export const handlers = [
     let items = demoPosts[params.workspaceId as string] ?? [];
     if (campaignId) items = items.filter((post) => post.campaign_id === campaignId);
     return HttpResponse.json({ items, total: items.length, page: 1, page_size: 100 });
+  }),
+
+  http.get('*/api/v1/workspaces/:workspaceId/posts/:postId', ({ params }) => {
+    const session = currentSession();
+    if (!session) return unauthenticated();
+    const post = (demoPosts[params.workspaceId as string] ?? []).find(
+      (item) => item.id === params.postId,
+    );
+    return post ? HttpResponse.json(post) : notFound('bài viết');
+  }),
+
+  http.get('*/api/v1/workspaces/:workspaceId/posts/:postId/versions', ({ params }) => {
+    const session = currentSession();
+    if (!session) return unauthenticated();
+    const post = (demoPosts[params.workspaceId as string] ?? []).find(
+      (item) => item.id === params.postId,
+    );
+    if (!post) return notFound('bài viết');
+    const existing = demoPostVersions[post.id];
+    if (existing) return HttpResponse.json(existing);
+    const versions: PostVersionList = {
+      post_id: post.id,
+      current_version: post.version,
+      versions: [post.current],
+    };
+    demoPostVersions[post.id] = versions;
+    return HttpResponse.json(versions);
+  }),
+
+  http.patch('*/api/v1/workspaces/:workspaceId/posts/:postId', async ({ params, request }) => {
+    const session = currentSession();
+    if (!session) return unauthenticated();
+    const post = (demoPosts[params.workspaceId as string] ?? []).find(
+      (item) => item.id === params.postId,
+    );
+    if (!post) return notFound('bài viết');
+    const body = (await request.json()) as {
+      version?: number;
+      caption?: string;
+      hashtags?: string[];
+      note?: string;
+    };
+    if (body.version !== post.version) {
+      return fail(
+        409,
+        ERROR_CODES.VERSION_CONFLICT,
+        'Bài viết vừa được người khác cập nhật. Bạn đang sửa một bản cũ.',
+        { current_version: post.version, your_version: body.version ?? 0 },
+      );
+    }
+    const nextVersion = post.version + 1;
+    const next: PostVersion = {
+      ...post.current,
+      version: nextVersion,
+      caption: body.caption ?? post.current.caption,
+      hashtags: body.hashtags ?? post.current.hashtags,
+      source: VERSION_SOURCES.HUMAN,
+      created_by: session.user.id,
+      created_by_name: session.user.full_name,
+      created_at: nowIso(),
+      note: body.note,
+      approved_at: undefined,
+      approved_by: undefined,
+    };
+    const previousStatus = post.status;
+    post.current = next;
+    post.version = nextVersion;
+    post.updated_at = nowIso();
+    if (previousStatus === POST_STATUSES.APPROVED || post.requires_reapproval) {
+      post.status = POST_STATUSES.DRAFT;
+      post.requires_reapproval = true;
+    }
+    const history = demoPostVersions[post.id] ?? {
+      post_id: post.id,
+      current_version: nextVersion,
+      versions: [],
+    };
+    history.current_version = nextVersion;
+    history.versions = [next, ...history.versions];
+    history.pending_approval_version = undefined;
+    demoPostVersions[post.id] = history;
+    return HttpResponse.json(post);
+  }),
+
+  http.post(
+    '*/api/v1/workspaces/:workspaceId/posts/:postId/submit-approval',
+    async ({ params, request }) => {
+      const session = currentSession();
+      if (!session) return unauthenticated();
+      const post = (demoPosts[params.workspaceId as string] ?? []).find(
+        (item) => item.id === params.postId,
+      );
+      if (!post) return notFound('bài viết');
+      const body = (await request.json()) as { version?: number };
+      if (body.version !== post.version) {
+        return fail(
+          409,
+          ERROR_CODES.VERSION_CONFLICT,
+          'Bài viết vừa được cập nhật. Hãy tải bản mới nhất trước khi gửi duyệt.',
+          { current_version: post.version, your_version: body.version ?? 0 },
+        );
+      }
+      post.status = POST_STATUSES.NEEDS_REVIEW;
+      post.requires_reapproval = false;
+      const history = demoPostVersions[post.id];
+      if (history) history.pending_approval_version = post.version;
+      return HttpResponse.json(post);
+    },
+  ),
+
+  http.post(
+    '*/api/v1/workspaces/:workspaceId/posts/:postId/approval',
+    async ({ params, request }) => {
+      const session = currentSession();
+      if (!session) return unauthenticated();
+      const post = (demoPosts[params.workspaceId as string] ?? []).find(
+        (item) => item.id === params.postId,
+      );
+      if (!post) return notFound('bài viết');
+      const body = (await request.json()) as ApprovalRequest;
+      if (body.version !== post.version) {
+        return fail(
+          409,
+          ERROR_CODES.VERSION_CONFLICT,
+          'Bài viết đã đổi phiên bản. Hãy tải lại trước khi quyết định.',
+          { current_version: post.version, your_version: body.version ?? 0 },
+        );
+      }
+      if (body.decision === APPROVAL_DECISIONS.APPROVED) {
+        post.status = POST_STATUSES.APPROVED;
+        post.rejection_reason = undefined;
+        post.current.approved_at = nowIso();
+        post.current.approved_by = session.user.id;
+      } else {
+        post.status = POST_STATUSES.REJECTED;
+        post.rejection_reason = body.reason ?? 'Chưa có lý do từ chối.';
+        post.current.approved_at = undefined;
+        post.current.approved_by = undefined;
+      }
+      const history = demoPostVersions[post.id];
+      if (history) history.pending_approval_version = undefined;
+      return HttpResponse.json(post);
+    },
+  ),
+
+  http.post('*/api/v1/workspaces/:workspaceId/posts/generate', async ({ request }) => {
+    const session = currentSession();
+    if (!session) return unauthenticated();
+    const body = (await request.json()) as { count?: number; campaign_id?: string };
+    const count = body.count;
+    if (!body.campaign_id || typeof count !== 'number' || !Number.isInteger(count) || count < 1 || count > 10) {
+      return fail(400, ERROR_CODES.VALIDATION_ERROR, 'Số bài phải nằm trong khoảng từ 1 đến 10.');
+    }
+    const id = nextId('job_content_generate');
+    const job: Job = {
+      id,
+      kind: JOB_KINDS.CONTENT_GENERATE,
+      status: JOB_STATUSES.QUEUED,
+      title: `Đang tạo ${count} bài viết nháp`,
+      progress: 0,
+      steps: [
+        { key: 'prepare', label: 'Chuẩn bị brief và hồ sơ thương hiệu', status: JOB_STEP_STATUSES.PENDING },
+        { key: 'generate', label: 'AI tạo nội dung', status: JOB_STEP_STATUSES.PENDING },
+        { key: 'review', label: 'Kiểm tra nội dung', status: JOB_STEP_STATUSES.PENDING },
+      ],
+      created_at: nowIso(),
+      cancellable: true,
+    };
+    demoJobs[id] = job;
+    const accepted: AcceptedResponse = { job_id: id, job };
+    return HttpResponse.json(accepted, { status: 202 });
+  }),
+
+  http.post('*/api/v1/workspaces/:workspaceId/exports', async ({ request }) => {
+    const session = currentSession();
+    if (!session) return unauthenticated();
+    const body = (await request.json()) as { campaign_id?: string; format?: string };
+    if (!body.campaign_id || (body.format !== 'csv' && body.format !== 'xlsx')) {
+      return fail(400, ERROR_CODES.VALIDATION_ERROR, 'Hãy chọn chiến dịch và định dạng tệp cần xuất.');
+    }
+    const id = nextId('job_export');
+    const job: Job = {
+      id,
+      kind: JOB_KINDS.EXPORT_BUILD,
+      status: JOB_STATUSES.QUEUED,
+      title: `Đang dựng tệp ${body.format.toUpperCase()}`,
+      progress: 0,
+      steps: [
+        { key: 'collect', label: 'Tập hợp nội dung đã chọn', status: JOB_STEP_STATUSES.PENDING },
+        { key: 'build', label: 'Dựng tệp xuất', status: JOB_STEP_STATUSES.PENDING },
+      ],
+      created_at: nowIso(),
+      cancellable: true,
+    };
+    demoJobs[id] = job;
+    const accepted: AcceptedResponse = { job_id: id, job };
+    return HttpResponse.json(accepted, { status: 202 });
   }),
 
   // ----- Xuất bản (chưa có gì để demo ở lát cắt này) -----

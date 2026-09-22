@@ -14,8 +14,6 @@ venv/
 
 # node
 node_modules/
-.data/
-*.egg-info/
 .next/
 out/
 dist/
@@ -44,3 +42,4 @@ next-env.d.ts
 .openapi-cache.json
 .openapi.generated-input.json
 *.tsbuildinfo
+

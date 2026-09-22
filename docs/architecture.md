@@ -2,12 +2,7 @@
 
 ## Tổng quan
 
-```text
-web → api → PostgreSQL (source of truth)
-             ├── commit job/domain update
-             ├── dispatcher → Redis/Celery → worker / agent-worker
-             └── MinIO/S3-compatible object storage
-```
+<!-- Sơ đồ tổng thể: web → api → agents → worker → integrations -->
 
 ## Thành phần
 
@@ -19,16 +14,10 @@ web → api → PostgreSQL (source of truth)
 | `services/agents` | Agentic workflow | LangGraph |
 | `services/worker` | Job nền: publish, monitor, schedule | Queue worker |
 
-`services/agents` và `services/ingestion` là Python modules được worker gọi; không
-có Agent HTTP Service riêng trong MVP. Redis chỉ làm queue/cache, không là nơi duy
-nhất giữ lịch hoặc trạng thái job.
-
 ## Luồng dữ liệu
 
 <!-- ingestion → knowledge base → agents → nội dung nháp → approval → publish → analytics -->
 
 ## Quyết định thiết kế
 
-- Modular monolith giữ transaction nghiệp vụ, job ledger và tenant isolation ở cùng
-  một boundary; Redis/Celery chỉ nhận job sau khi transaction DB đã commit.
-- PostgreSQL dùng pgvector-capable image; MinIO là storage local tương thích S3.
+<!-- ADR ngắn gọn: lý do chọn monorepo, LangGraph, queue, storage -->
