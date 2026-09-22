@@ -671,7 +671,7 @@ export default function TrangTaiLieu() {
             <p className="text-xs text-slate-500">
               Cần xem lại tiến độ một tác vụ?{' '}
               <Link className="underline" href={`/w/${workspaceId}`}>
-                Về trang Tổng quan
+                Về màn hình chính
               </Link>
               .
             </p>

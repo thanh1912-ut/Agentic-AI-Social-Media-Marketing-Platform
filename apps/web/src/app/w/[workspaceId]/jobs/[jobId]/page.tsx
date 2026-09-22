@@ -115,9 +115,9 @@ function resultHref(workspaceId: string, result: Record<string, unknown>): {
     (typeof documentId === 'string' && documentId !== '') ||
     (Array.isArray(documentIds) && documentIds.length > 0)
   ) {
-    return { href: `/w/${workspaceId}/documents`, label: 'Mở danh sách tài liệu' };
+    return { href: `/w/${workspaceId}/documents`, label: 'Xem danh sách đã tải lên' };
   }
-  return { href: `/w/${workspaceId}`, label: 'Về trang Tổng quan' };
+  return { href: `/w/${workspaceId}`, label: 'Về màn hình chính' };
 }
 
 function JobSteps({ steps }: { steps: JobStep[] }) {
@@ -192,7 +192,7 @@ export default function TrangTienDoTacVu() {
         description="Đường dẫn không kèm mã tác vụ nên không có gì để theo dõi. Hãy mở lại tác vụ từ danh sách tài liệu."
         action={
           <Link className="text-sm font-medium text-slate-900 underline" href={`/w/${workspaceId}/documents`}>
-            Mở danh sách tài liệu
+            Xem danh sách đã tải lên
           </Link>
         }
       />
@@ -215,7 +215,7 @@ export default function TrangTienDoTacVu() {
             description="Tác vụ không tồn tại, đã bị xoá khỏi lịch sử hoặc không thuộc doanh nghiệp bạn đang mở. Lịch sử tác vụ chỉ được lưu một thời gian ngắn sau khi kết thúc."
             action={
               <Link className="text-sm font-medium text-slate-900 underline" href={`/w/${workspaceId}/documents`}>
-                Mở danh sách tài liệu
+                Xem danh sách đã tải lên
               </Link>
             }
           />
@@ -372,7 +372,7 @@ export default function TrangTienDoTacVu() {
               description="Máy chủ báo tác vụ đã hoàn tất nhưng không gửi dữ liệu kết quả. Hãy kiểm tra lại danh sách tài liệu hoặc hồ sơ thương hiệu để xem thay đổi."
               action={
                 <Link className="text-sm font-medium text-slate-900 underline" href={`/w/${workspaceId}`}>
-                  Về trang Tổng quan
+                  Về màn hình chính
                 </Link>
               }
             />

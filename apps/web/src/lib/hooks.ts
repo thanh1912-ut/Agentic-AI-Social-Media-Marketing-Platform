@@ -19,9 +19,13 @@ import type {
   AcceptedResponse,
   AnalyticsQuery,
   AnalyticsResponse,
+  ApprovalRequest,
   BrandProfile,
   Campaign,
+  CreateExportRequest,
   DocumentUpload,
+  GenerateContentRequest,
+  GenerateContentResponse,
   Job,
   Member,
   OnboardingState,
@@ -33,6 +37,7 @@ import type {
   SessionResponse,
   SocialConnection,
   UpdateBrandProfileRequest,
+  UpdatePostRequest,
   UploadLimits,
   Workspace,
 } from '@agentic/contracts';
@@ -288,6 +293,52 @@ export function usePostVersions(
     queryKey: queryKeys.postVersions(workspaceId, postId),
     queryFn: () => api.post.versions(workspaceId, postId),
     enabled: workspaceId !== '' && postId !== '',
+  });
+}
+
+export function useUpdatePost(workspaceId: string, postId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (body: UpdatePostRequest) => api.post.update(workspaceId, postId, body),
+    onSuccess: (post) => {
+      queryClient.setQueryData(queryKeys.post(workspaceId, postId), post);
+      void queryClient.invalidateQueries({ queryKey: queryKeys.postVersions(workspaceId, postId) });
+      void queryClient.invalidateQueries({ queryKey: queryKeys.posts(workspaceId, post.campaign_id) });
+    },
+  });
+}
+
+export function useGenerateContent(workspaceId: string) {
+  return useMutation<GenerateContentResponse, Error, GenerateContentRequest>({
+    mutationFn: (body) => api.post.generate(workspaceId, body),
+  });
+}
+
+export function useSubmitApproval(workspaceId: string, postId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (version: number) => api.approval.submit(workspaceId, postId, version),
+    onSuccess: (post) => {
+      queryClient.setQueryData(queryKeys.post(workspaceId, postId), post);
+      void queryClient.invalidateQueries({ queryKey: queryKeys.posts(workspaceId, post.campaign_id) });
+    },
+  });
+}
+
+export function useDecideApproval(workspaceId: string, postId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (body: ApprovalRequest) => api.approval.decide(workspaceId, postId, body),
+    onSuccess: (post) => {
+      queryClient.setQueryData(queryKeys.post(workspaceId, postId), post);
+      void queryClient.invalidateQueries({ queryKey: queryKeys.posts(workspaceId, post.campaign_id) });
+    },
+  });
+}
+
+export function useCreateExport(workspaceId: string) {
+  return useMutation({
+    mutationFn: (body: CreateExportRequest) => api.export.create(workspaceId, body),
   });
 }
 

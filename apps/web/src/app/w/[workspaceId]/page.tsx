@@ -266,7 +266,7 @@ export default function TrangTongQuan() {
             description="Hệ thống chưa trả về bước nhập thông tin nào cho doanh nghiệp này. Hãy tải tài liệu lên trước, hoặc liên hệ đội kỹ thuật nếu tình trạng này vẫn tiếp diễn."
             action={
               <Link className="text-sm font-medium text-slate-900 underline" href={`/w/${workspaceId}/documents`}>
-                Mở trang Tài liệu
+                Mở danh sách đã tải lên
               </Link>
             }
           />
@@ -287,6 +287,7 @@ export default function TrangTongQuan() {
               {onboarding.data.steps.map((step, index) => {
                 const meta = ONBOARDING_STEP_STATUS[step.status];
                 const target = resolveStepTarget(workspaceId, step.href);
+                const blockedReason = (step.blocked_reason ?? '').trim();
                 return (
                   <li key={step.key} className="flex gap-3">
                     <span
@@ -302,11 +303,20 @@ export default function TrangTongQuan() {
                         <p className="text-sm font-medium text-slate-900">{step.label}</p>
                         <StatusBadge label={meta.label} tone={meta.tone} />
                       </div>
-                      {step.status === 'blocked' ? (
+                      {/*
+                        Máy chủ có thể gửi `blocked_reason` cho bước đang bị chặn, và cả
+                        cho bước đang làm dở (lý do chưa xong). Có lý do thì phải hiện —
+                        giấu đi là bắt người dùng đoán.
+                      */}
+                      {step.status === 'blocked' || blockedReason !== '' ? (
                         <p className="mt-1 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
-                          <strong className="font-semibold">Vì sao chưa làm được: </strong>
-                          {step.blocked_reason && step.blocked_reason.trim() !== ''
-                            ? step.blocked_reason
+                          <strong className="font-semibold">
+                            {step.status === 'blocked'
+                              ? 'Vì sao chưa làm được: '
+                              : 'Lưu ý từ hệ thống: '}
+                          </strong>
+                          {blockedReason !== ''
+                            ? blockedReason
                             : 'Hệ thống chưa nêu lý do cụ thể cho bước này. Hãy thử tải lại trang hoặc liên hệ đội kỹ thuật.'}
                         </p>
                       ) : null}
@@ -342,7 +352,7 @@ export default function TrangTongQuan() {
             Hồ sơ thương hiệu
           </h2>
           <Link className="text-sm font-medium text-slate-900 underline" href={`/w/${workspaceId}/brand`}>
-            Mở hồ sơ thương hiệu
+            Xem chi tiết hồ sơ
           </Link>
         </div>
 
@@ -404,7 +414,7 @@ export default function TrangTongQuan() {
         description="Tình trạng xử lý từng tài liệu và các tài liệu cần bạn xử lý lại."
         actions={
           <Link className="text-sm font-medium text-slate-900 underline" href={`/w/${workspaceId}/documents`}>
-            Quản lý tài liệu
+            Xem danh sách đã tải lên
           </Link>
         }
       >
@@ -422,7 +432,7 @@ export default function TrangTongQuan() {
             description="Doanh nghiệp chưa tải lên tài liệu nào. Hãy tải hồ sơ năng lực, bảng giá hoặc mô tả sản phẩm để hệ thống đọc và gợi ý thông tin thương hiệu."
             action={
               <Link className="text-sm font-medium text-slate-900 underline" href={`/w/${workspaceId}/documents`}>
-                Tải tài liệu lên
+                Mở trang tải lên
               </Link>
             }
           />
@@ -476,7 +486,7 @@ export default function TrangTongQuan() {
                 </ul>
                 <div className="mt-3">
                   <Link className="text-sm font-medium text-rose-900 underline" href={`/w/${workspaceId}/documents`}>
-                    Mở trang Tài liệu để đọc lại
+                    Xem và đọc lại tệp lỗi
                   </Link>
                 </div>
               </div>

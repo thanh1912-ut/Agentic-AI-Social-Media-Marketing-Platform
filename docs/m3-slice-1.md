@@ -17,6 +17,9 @@ Trạng thái: hoàn thành phần nền tảng chạy độc lập với backen
   Brand Profile luôn chờ human confirmation, Content luôn trả version mới.
 - `services/agents/orchestrator/`: finite LangGraph wiring, checkpoint-friendly
   state, node tracking và tối đa hai automatic revisions; không có publish node.
+- `services/worker/ai_tasks.py`: task boundary cho worker M2, trả payload,
+  input snapshot, repair count và generation metadata; không sở hữu queue/job
+  status/retry/persistence.
 - `services/agents/analytics/metrics.py`: metric/rate/report functions có
   coverage, sample size, measurement period và evidence IDs.
 - `tests/fixtures/briefs_vi.py`: 50 brief tiếng Việt F&B/bán lẻ, gồm missing
@@ -44,7 +47,7 @@ recommendation phải tham chiếu các `evidence_id` này. Thiếu mẫu số t
 ## Verification
 
 ```text
-21 passed in 0.05s
+24 passed in 0.21s (LangGraph smoke test included)
 ```
 
 ## Cần M2 cung cấp

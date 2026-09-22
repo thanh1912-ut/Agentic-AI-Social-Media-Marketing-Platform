@@ -691,7 +691,7 @@ export default function TrangHoSoThuongHieu() {
           description="Chưa trường nào có giá trị: tài liệu tải lên chưa được đọc xong hoặc chưa có tài liệu. Hãy tải tài liệu doanh nghiệp lên để hệ thống trích xuất, hoặc tự nhập tay ở từng trường bên dưới rồi bấm “Lưu thay đổi”."
           action={
             <Link className="text-sm font-medium text-slate-900 underline" href={`/w/${workspaceId}/documents`}>
-              Mở trang Tài liệu
+              Mở danh sách đã tải lên
             </Link>
           }
         />

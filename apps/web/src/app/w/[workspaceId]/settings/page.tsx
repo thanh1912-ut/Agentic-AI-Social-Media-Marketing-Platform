@@ -298,7 +298,7 @@ export default function TrangCaiDat() {
       <p className="text-xs text-slate-500">
         Cần xem lại tiến độ nhập thông tin doanh nghiệp?{' '}
         <Link className="underline" href={`/w/${workspaceId}`}>
-          Về trang Tổng quan
+          Về màn hình chính
         </Link>
         .
       </p>
