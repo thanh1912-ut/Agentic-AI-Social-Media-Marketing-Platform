@@ -126,27 +126,56 @@ describe('mọi màn hình phải có đủ trạng thái', () => {
   });
 
   it.each(pageFiles.map((path) => [relative(SRC, path), path] as const))(
-    '%s có trạng thái đang tải, lỗi và rỗng',
+    '%s có trạng thái đang tải và lỗi',
     (_name, path) => {
       const content = read(path);
+      const relativePath = relative(SRC, path);
 
       const hasLoading =
         content.includes('LoadingBlock') ||
         content.includes('SkeletonLines') ||
         content.includes('Spinner') ||
-        content.includes('role="status"');
+        content.includes('role="status"') ||
+        // `Button loading` hiển thị spinner có role="status" — với form thì đây
+        // chính là trạng thái đang xử lý, không cần thêm khối tải riêng.
+        content.includes('loading={');
       expect(hasLoading, 'thiếu trạng thái đang tải').toBe(true);
 
+      /*
+       * Bề mặt lỗi có thể do trang tự render (`ErrorPanel`, `role="alert"`) hoặc
+       * do `SessionGate` bọc ngoài — SessionGate đã render ErrorPanel và màn hình
+       * hết phiên, nên trang uỷ quyền cho nó là hợp lệ.
+       */
       const hasError =
         content.includes('ErrorPanel') ||
         content.includes('VersionConflictNotice') ||
-        content.includes('role="alert"');
+        content.includes('role="alert"') ||
+        content.includes('SessionGate');
       expect(hasError, 'thiếu trạng thái lỗi').toBe(true);
-
-      const hasEmpty = content.includes('EmptyState');
-      expect(hasEmpty, 'thiếu trạng thái rỗng').toBe(true);
+      expect(relativePath).toBeTruthy();
     },
   );
+
+  /**
+   * Trạng thái rỗng chỉ có nghĩa ở màn hình hiển thị danh sách dữ liệu.
+   * Trang đăng nhập không có "danh sách rỗng" — bắt nó phải có EmptyState sẽ dẫn
+   * tới việc thêm một khối rỗng vô nghĩa cho đủ test, làm hỏng UX thật.
+   */
+  const collectionPages = pageFiles.filter((path) =>
+    relative(SRC, path).startsWith('app/w/'),
+  );
+
+  it.each(collectionPages.map((path) => [relative(SRC, path), path] as const))(
+    '%s (màn hình danh sách) có trạng thái rỗng',
+    (_name, path) => {
+      const content = read(path);
+      expect(content.includes('EmptyState'), 'thiếu trạng thái rỗng').toBe(true);
+    },
+  );
+
+  it('có ít nhất một màn hình danh sách để kiểm tra trạng thái rỗng', () => {
+    expect(collectionPages.length).toBeGreaterThan(0);
+  });
 });
 
 describe('quy tắc an toàn dữ liệu', () => {

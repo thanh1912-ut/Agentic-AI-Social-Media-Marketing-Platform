@@ -11,10 +11,18 @@
 import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 
-import { useSession } from '@/components/session-gate';
+import { SessionGate, useSession } from '@/components/session-gate';
 import { Button, EmptyState, LoadingBlock } from '@/components/ui';
 
 export default function TrangGoc() {
+  return (
+    <SessionGate>
+      <ChonDoanhNghiep />
+    </SessionGate>
+  );
+}
+
+function ChonDoanhNghiep() {
   const router = useRouter();
   const { user, workspaces } = useSession();
 

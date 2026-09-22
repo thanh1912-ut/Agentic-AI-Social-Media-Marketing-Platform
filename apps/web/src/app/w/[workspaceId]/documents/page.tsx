@@ -9,7 +9,7 @@
  * - Kiểm tra ở trình duyệt chỉ là tiện ích; máy chủ vẫn kiểm tra lại.
  */
 
-import { Fragment, useRef, useState, type ChangeEvent, type DragEvent } from 'react';
+import { Fragment, useState, type ChangeEvent, type DragEvent } from 'react';
 import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
 
@@ -235,7 +235,6 @@ export default function TrangTaiLieu() {
   const reprocess = useReprocessDocument(activeId);
   const remove = useDeleteDocument(activeId);
 
-  const inputRef = useRef<HTMLInputElement | null>(null);
   const [isDragging, setIsDragging] = useState(false);
   const [rejected, setRejected] = useState<RejectedFile[]>([]);
   const [lastBatch, setLastBatch] = useState<File[]>([]);
@@ -384,7 +383,6 @@ export default function TrangTaiLieu() {
               </p>
               <div className="mt-3">
                 <input
-                  ref={inputRef}
                   id="document-files"
                   name="files"
                   type="file"

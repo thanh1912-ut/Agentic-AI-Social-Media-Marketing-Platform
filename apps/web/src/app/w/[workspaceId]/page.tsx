@@ -103,6 +103,37 @@ function documentError(error: NonNullable<DocumentUpload['error']>): {
   };
 }
 
+/**
+ * Màn hình đã có trong bản dựng này, tính theo đoạn đường dẫn sau `/w/{id}`.
+ * `OnboardingState.steps[].href` do máy chủ trả về có thể trỏ tới màn hình của
+ * lát cắt sau (vd `/campaigns`); khi đó hiện ghi chú thay vì một liên kết chết.
+ */
+const AVAILABLE_SCREEN_SEGMENTS: readonly string[] = ['', 'brand', 'documents', 'settings'];
+
+/**
+ * Chuẩn hoá `href` của bước nhập liệu. Máy chủ có thể trả đường dẫn tương đối
+ * (`/brand`) hoặc đã kèm doanh nghiệp (`/w/{id}/brand`) — cả hai đều phải ra đúng
+ * địa chỉ trong ứng dụng.
+ */
+function resolveStepTarget(
+  workspaceId: string,
+  href: string,
+): { href: string } | { unavailable: string } | null {
+  const trimmed = href.trim();
+  if (trimmed === '') return null;
+  if (/^https?:\/\//i.test(trimmed)) return { href: trimmed };
+
+  const withoutLeadingSlash = trimmed.replace(/^\/+/, '');
+  const workspacePrefix = `w/${workspaceId}/`;
+  const segment = withoutLeadingSlash.startsWith(workspacePrefix)
+    ? withoutLeadingSlash.slice(workspacePrefix.length)
+    : withoutLeadingSlash;
+  const head = segment.split('/')[0] ?? '';
+
+  if (!AVAILABLE_SCREEN_SEGMENTS.includes(head)) return { unavailable: segment };
+  return { href: `/w/${workspaceId}${segment === '' ? '' : `/${segment}`}` };
+}
+
 function countBrandFields(profile: BrandProfile) {
   let awaiting = 0;
   let missing = 0;
@@ -244,12 +275,7 @@ export default function TrangTongQuan() {
             <ol className="space-y-3">
               {onboarding.data.steps.map((step, index) => {
                 const meta = ONBOARDING_STEP_STATUS[step.status];
-                const href =
-                  step.href === ''
-                    ? null
-                    : step.href.startsWith('/')
-                      ? step.href
-                      : `/w/${workspaceId}/${step.href}`;
+                const target = resolveStepTarget(workspaceId, step.href);
                 return (
                   <li key={step.key} className="flex gap-3">
                     <span
@@ -273,11 +299,18 @@ export default function TrangTongQuan() {
                             : 'Hệ thống chưa nêu lý do cụ thể cho bước này. Hãy thử tải lại trang hoặc liên hệ đội kỹ thuật.'}
                         </p>
                       ) : null}
-                      {href ? (
+                      {target && 'href' in target ? (
                         <p className="mt-1 text-sm">
-                          <Link className="font-medium text-slate-900 underline" href={href}>
+                          <Link className="font-medium text-slate-900 underline" href={target.href}>
                             {step.status === 'done' ? 'Xem lại bước này' : 'Làm bước này'}
                           </Link>
+                        </p>
+                      ) : null}
+                      {target && 'unavailable' in target ? (
+                        <p className="mt-1 text-xs text-slate-500">
+                          Bước này thuộc màn hình{' '}
+                          <code className="font-mono">{target.unavailable}</code> — màn hình đó chưa
+                          có trong bản dựng này nên chưa mở được.
                         </p>
                       ) : null}
                     </div>

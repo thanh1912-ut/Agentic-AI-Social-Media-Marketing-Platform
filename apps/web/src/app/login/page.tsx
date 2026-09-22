@@ -24,8 +24,8 @@ import { Button, Card, DemoBadge, DisabledReason } from '@/components/ui';
  * Tài khoản mẫu cho chế độ mock.
  *
  * ĐÂY LÀ LỐI TẮT CỦA BẢN DEMO, KHÔNG PHẢI TÍNH NĂNG THẬT: chỉ hiển thị khi
- * `useMocks()` bật. Danh sách này phải khớp với tài khoản do tầng mock trả về
- * (xem báo cáo — hiện chưa có nhánh mock trong repo để đối chiếu).
+ * `useMocks()` bật. Danh sách này khớp với `DEMO_ACCOUNTS` trong
+ * `src/lib/mocks/seed.ts` — sửa một bên thì phải sửa cả hai.
  */
 const DEMO_ACCOUNTS: Array<{
   role: string;
@@ -35,19 +35,19 @@ const DEMO_ACCOUNTS: Array<{
 }> = [
   {
     role: 'Chủ sở hữu (owner)',
-    email: 'owner@demo.agentic.vn',
+    email: 'chu.quan@phobac.vn',
     password: 'demo1234',
     note: 'Toàn quyền: xác nhận hồ sơ, tải tài liệu, duyệt và đăng bài.',
   },
   {
     role: 'Biên tập viên (editor)',
-    email: 'editor@demo.agentic.vn',
+    email: 'bientap@phobac.vn',
     password: 'demo1234',
-    note: 'Sửa hồ sơ và tải tài liệu; không duyệt, không đăng bài.',
+    note: 'Sửa hồ sơ và tải tài liệu; không xác nhận hồ sơ, không duyệt bài.',
   },
   {
     role: 'Người xem (viewer)',
-    email: 'viewer@demo.agentic.vn',
+    email: 'xem@phobac.vn',
     password: 'demo1234',
     note: 'Chỉ xem — dùng để thấy giao diện khi bị khoá quyền.',
   },

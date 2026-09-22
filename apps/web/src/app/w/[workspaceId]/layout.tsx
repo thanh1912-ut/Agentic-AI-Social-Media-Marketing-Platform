@@ -3,19 +3,31 @@
 /**
  * Khung khu vực làm việc của một doanh nghiệp.
  *
- * Việc duy nhất của layout này: bảo đảm `workspaceId` trên URL thật sự nằm trong
- * danh sách doanh nghiệp mà người dùng được cấp quyền. Nếu không, người dùng phải
- * đọc được lý do — tuyệt đối không render một khung trống.
+ * Layout này bọc `SessionGate` vì MỌI trang bên trong đều cần phiên đăng nhập.
+ * Cố ý KHÔNG bọc ở `app/layout.tsx`: nếu bọc ở gốc thì trang `/login` cũng bị
+ * chặn, và người chưa đăng nhập sẽ không bao giờ mở được form đăng nhập.
+ *
+ * Sau khi có phiên, việc còn lại là bảo đảm `workspaceId` trên URL thật sự nằm
+ * trong danh sách doanh nghiệp mà người dùng được cấp quyền. Nếu không, người
+ * dùng phải đọc được lý do — tuyệt đối không render một khung trống.
  */
 
 import type { ReactNode } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 
 import { AppShell } from '@/components/app-shell';
-import { useSession } from '@/components/session-gate';
+import { SessionGate, useSession } from '@/components/session-gate';
 import { Button, PermissionNotice } from '@/components/ui';
 
 export default function WorkspaceLayout({ children }: { children: ReactNode }) {
+  return (
+    <SessionGate>
+      <WorkspaceShell>{children}</WorkspaceShell>
+    </SessionGate>
+  );
+}
+
+function WorkspaceShell({ children }: { children: ReactNode }) {
   const params = useParams<{ workspaceId?: string }>();
   const workspaceId = params?.workspaceId ?? '';
   const router = useRouter();

@@ -436,10 +436,23 @@ export default function TrangHoSoThuongHieu() {
     return draft === original ? null : draft;
   }
 
+  // Thứ tự xét phải GIỐNG `buildSaveFields`: lựa chọn radio trước, bản nháp gõ tay sau —
+  // nếu không, danh sách "sẽ gửi lên" và dữ liệu thật gửi đi sẽ lệch nhau.
   const pendingChanges = fields
     .map((field) => {
       const draft = draftTextFor(field);
       const choice = choiceDrafts[field.key];
+      if (typeof choice === 'number') {
+        const alternative = field.alternatives[choice];
+        return {
+          key: field.key,
+          label: field.label,
+          text:
+            alternative === undefined
+              ? '(lựa chọn không còn tồn tại trong bản mới)'
+              : `Chọn giá trị từ tài liệu: ${JSON.stringify(alternative.value)}`,
+        };
+      }
       if (draft !== null) {
         const parsed = parseDraftText(field.key, draft);
         return {
@@ -456,17 +469,6 @@ export default function TrangHoSoThuongHieu() {
                     .join('; ')
                 : String(parsed.value)
             : '(chưa đúng định dạng)',
-        };
-      }
-      if (typeof choice === 'number') {
-        const alternative = field.alternatives[choice];
-        return {
-          key: field.key,
-          label: field.label,
-          text:
-            alternative === undefined
-              ? '(lựa chọn không còn tồn tại trong bản mới)'
-              : `Chọn giá trị từ tài liệu: ${JSON.stringify(alternative.value)}`,
         };
       }
       return null;
@@ -750,12 +752,18 @@ export default function TrangHoSoThuongHieu() {
                             type="radio"
                             name={`brand-choice-${field.key}`}
                             checked={chosen === undefined || chosen === 'current'}
-                            onChange={() =>
+                            onChange={() => {
+                              // Chọn radio thì bỏ bản nháp gõ tay của trường này.
+                              setTextDrafts((previousDrafts) => {
+                                const nextDrafts = { ...previousDrafts };
+                                delete nextDrafts[field.key];
+                                return nextDrafts;
+                              });
                               setChoiceDrafts((previous) => ({
                                 ...previous,
                                 [field.key]: 'current',
-                              }))
-                            }
+                              }));
+                            }}
                             className="mt-0.5"
                           />
                           <span>
@@ -774,12 +782,18 @@ export default function TrangHoSoThuongHieu() {
                               type="radio"
                               name={`brand-choice-${field.key}`}
                               checked={chosen === index}
-                              onChange={() =>
+                              onChange={() => {
+                                // Chọn radio thì bỏ bản nháp gõ tay của trường này.
+                                setTextDrafts((previousDrafts) => {
+                                  const nextDrafts = { ...previousDrafts };
+                                  delete nextDrafts[field.key];
+                                  return nextDrafts;
+                                });
                                 setChoiceDrafts((previous) => ({
                                   ...previous,
                                   [field.key]: index,
-                                }))
-                              }
+                                }));
+                              }}
                               className="mt-0.5"
                             />
                             <span>
@@ -821,12 +835,19 @@ export default function TrangHoSoThuongHieu() {
                           rows={4}
                           value={currentValue}
                           aria-describedby={hintId}
-                          onChange={(event) =>
+                          onChange={(event) => {
+                            // Gõ tay thì bỏ lựa chọn radio của trường này để chỉ còn
+                            // MỘT ý định lưu, tránh việc bản nháp và giá trị gửi lên lệch nhau.
+                            setChoiceDrafts((previousChoices) => {
+                              const nextChoices = { ...previousChoices };
+                              delete nextChoices[field.key];
+                              return nextChoices;
+                            });
                             setTextDrafts((previous) => ({
                               ...previous,
                               [field.key]: event.target.value,
-                            }))
-                          }
+                            }));
+                          }}
                           className="prose-caption mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900"
                         />
                       ) : control === 'lines' || control === 'contact' ? (
@@ -835,12 +856,19 @@ export default function TrangHoSoThuongHieu() {
                           rows={4}
                           value={currentValue}
                           aria-describedby={hintId}
-                          onChange={(event) =>
+                          onChange={(event) => {
+                            // Gõ tay thì bỏ lựa chọn radio của trường này để chỉ còn
+                            // MỘT ý định lưu, tránh việc bản nháp và giá trị gửi lên lệch nhau.
+                            setChoiceDrafts((previousChoices) => {
+                              const nextChoices = { ...previousChoices };
+                              delete nextChoices[field.key];
+                              return nextChoices;
+                            });
                             setTextDrafts((previous) => ({
                               ...previous,
                               [field.key]: event.target.value,
-                            }))
-                          }
+                            }));
+                          }}
                           className="prose-caption mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900"
                         />
                       ) : (
@@ -849,12 +877,19 @@ export default function TrangHoSoThuongHieu() {
                           type="text"
                           value={currentValue}
                           aria-describedby={hintId}
-                          onChange={(event) =>
+                          onChange={(event) => {
+                            // Gõ tay thì bỏ lựa chọn radio của trường này để chỉ còn
+                            // MỘT ý định lưu, tránh việc bản nháp và giá trị gửi lên lệch nhau.
+                            setChoiceDrafts((previousChoices) => {
+                              const nextChoices = { ...previousChoices };
+                              delete nextChoices[field.key];
+                              return nextChoices;
+                            });
                             setTextDrafts((previous) => ({
                               ...previous,
                               [field.key]: event.target.value,
-                            }))
-                          }
+                            }));
+                          }}
                           className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900"
                         />
                       )}

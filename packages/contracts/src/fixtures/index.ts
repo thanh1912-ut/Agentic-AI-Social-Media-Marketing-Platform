@@ -1,0 +1,28 @@
+/**
+ * DEMO FIXTURE — Điểm vào duy nhất cho toàn bộ dữ liệu demo của frontend.
+ *
+ * Cách dùng trong app:
+ * ```ts
+ * import { demoPosts, demoAnalytics, DEMO_NOW } from '@agentic/contracts/fixtures';
+ * ```
+ *
+ * NGUYÊN TẮC:
+ * - Toàn bộ dữ liệu ở đây là DỮ LIỆU DEMO. Nơi nào type cho phép `origin` thì
+ *   luôn là `'demo'`; UI phải hiện nhãn “Dữ liệu demo” (xem `DEMO_DATA_NOTICE`
+ *   trong `labels.ts`) — không được để người dùng tưởng là số liệu thật.
+ * - Dữ liệu là TĨNH và XÁC ĐỊNH: mọi mốc thời gian suy ra từ `DEMO_NOW`
+ *   (2026-03-15T09:00:00Z), không dùng `Date.now()` / `Math.random()`.
+ * - Mọi giá trị đều khớp với type trong `packages/contracts/src/*.ts`. Fixture
+ *   KHÔNG được tự thêm trường mà contract không có.
+ */
+
+export * from './ids.js';
+export * from './workspace.js';
+export * from './documents.js';
+export * from './brand.js';
+export * from './jobs.js';
+export * from './campaigns.js';
+export * from './approvals.js';
+export * from './publishing.js';
+export * from './analytics.js';
+export * from './recommendations.js';

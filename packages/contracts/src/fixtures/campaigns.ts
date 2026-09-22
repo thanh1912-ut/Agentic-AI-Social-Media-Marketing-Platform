@@ -57,8 +57,7 @@ import {
   PROD_PHO_BO_TAI_NAM,
   PROD_PHO_CHAY_NAM,
   PROD_PHO_CUON,
-  REC_CAROUSEL,
-  REC_GIO_DANG,
+  REC_PHU_HUYNH_SANG,
   USR_EDITOR_MINH,
   USR_OWNER_HUONG,
   WS_FB,
@@ -1170,7 +1169,7 @@ export const demoBriefRevisionDrafts: BriefRevisionDraft[] = [
         rationale: 'Bình luận của khách hỏi về chỗ để xe nhiều nhất trong tháng 2.',
       },
     ],
-    source_recommendation_id: REC_GIO_DANG,
+    source_recommendation_id: REC_PHU_HUYNH_SANG,
     status: 'pending_review',
     created_at: demoAgo({ hours: 6 }),
   },
@@ -1190,7 +1189,8 @@ export const demoBriefRevisionDrafts: BriefRevisionDraft[] = [
           'Giá đã thay đổi từ 20/3 nên thông điệp không nên gắn cứng vào con số giá.',
       },
     ],
-    source_recommendation_id: REC_CAROUSEL,
+    // Bản nháp này do người dùng tự tạo từ màn hình brief (không từ khuyến nghị nào)
+    // rồi bỏ sau khi xem lại — nên không có `source_recommendation_id`.
     status: 'discarded',
     created_at: demoAgo({ days: 1, hours: 5 }),
   },

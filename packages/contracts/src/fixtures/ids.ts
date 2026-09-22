@@ -275,9 +275,9 @@ export const PUB_P06_OUTCOME_UNKNOWN = 'pub_p06_chua_ro_ket_qua_lan_2';
 // Khuyến nghị
 // ---------------------------------------------------------------------------
 
-export const REC_CAROUSEL = 'rec_uu_tien_bai_nhieu_anh';
+export const REC_PHU_HUYNH_SANG = 'rec_them_nhom_phu_huynh_buoi_sang';
 export const REC_GIO_DANG = 'rec_doi_gio_dang_sang_bua_trua';
-export const REC_REEL = 'rec_reel_chua_du_du_lieu';
+export const REC_REEL_15S = 'rec_thu_reel_15_giay_chua_du_du_lieu';
 export const REC_DISMISSED = 'rec_giam_gia_sau_20h_da_bo_qua';
 
 /** Bản nháp điều chỉnh brief do "Áp dụng khuyến nghị" tạo ra. */

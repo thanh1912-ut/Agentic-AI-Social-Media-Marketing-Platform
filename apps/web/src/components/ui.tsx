@@ -507,7 +507,8 @@ export function Button({
     >
       {loading ? (
         <span
-          aria-hidden="true"
+          role="status"
+          aria-label="Đang xử lý"
           className="size-3.5 animate-spin rounded-full border-2 border-current border-t-transparent"
         />
       ) : null}

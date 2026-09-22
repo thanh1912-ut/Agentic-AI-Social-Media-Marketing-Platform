@@ -3,7 +3,6 @@ import type { ReactNode } from 'react';
 
 import { AppProviders } from '@/components/providers';
 import { MockingProvider } from '@/components/mocking-provider';
-import { SessionGate } from '@/components/session-gate';
 import type { RuntimeConfig } from '@/lib/api/config';
 
 import './globals.css';
@@ -51,9 +50,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
       <body className="min-h-screen antialiased">
         <AppProviders>
           {/* Bật mock TRƯỚC khi bất kỳ request nào chạy. */}
-          <MockingProvider>
-            <SessionGate>{children}</SessionGate>
-          </MockingProvider>
+          <MockingProvider>{children}</MockingProvider>
         </AppProviders>
       </body>
     </html>
