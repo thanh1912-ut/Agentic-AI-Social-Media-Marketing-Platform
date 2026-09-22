@@ -31,6 +31,8 @@ approvals (approved) → services/worker/publishing → kênh social
 
 | Job | Tần suất | Mô tả |
 | --- | --- | --- |
-| Đồng bộ metrics | mỗi giờ | Kéo số liệu từ các kênh |
-| Quét lịch đăng | mỗi 5 phút | Publish post đến hạn |
+| Đồng bộ metrics | theo mốc +1h,+6h,+12h,+24h,+3d,+7d rồi hằng ngày đến ngày 30 | Kéo số liệu từ các kênh khi capability cho phép; đây là lịch fetch, không cam kết realtime |
+| Quét lịch đăng | mỗi phút | Publish post đến hạn sau khi worker kiểm lại approval/version/Page |
 | Tổng hợp tuần | hằng tuần | Báo cáo hiệu suất |
+
+Scheduler quét PostgreSQL để khôi phục job quá lease; Redis restart không xoá lịch.
