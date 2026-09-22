@@ -1,0 +1,30 @@
+# env
+.env
+.env.local
+.env.*.local
+
+# python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# node
+node_modules/
+.next/
+out/
+dist/
+.turbo/
+
+# os / editor
+.DS_Store
+.idea/
+.vscode/
+
+# logs / data
+*.log
+data/
+uploads/
