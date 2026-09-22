@@ -1,0 +1,23 @@
+{
+  "name": "agentic-marketing",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Agentic AI Social Media Marketing Platform — monorepo root (npm workspaces)",
+  "workspaces": [
+    "apps/web",
+    "packages/contracts"
+  ],
+  "scripts": {
+    "dev": "npm --workspace @agentic/web run dev",
+    "build": "npm --workspace @agentic/web run build",
+    "start": "npm --workspace @agentic/web run start",
+    "lint": "npm --workspace @agentic/web run lint",
+    "typecheck": "npm --workspace @agentic/web run typecheck",
+    "test": "npm --workspace @agentic/web run test",
+    "test:e2e": "npm --workspace @agentic/web run test:e2e",
+    "gen:api": "npm --workspace @agentic/web run gen:api"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}

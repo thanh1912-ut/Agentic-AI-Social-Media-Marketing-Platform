@@ -1,0 +1,37 @@
+@import 'tailwindcss';
+
+/*
+ * Tailwind CSS v4 — cấu hình CSS-first, KHÔNG có tailwind.config.ts.
+ * Token khai báo ở đây là nguồn duy nhất cho font và màu nền.
+ */
+@theme {
+  --font-sans:
+    'Inter', 'Segoe UI', system-ui, -apple-system, 'Noto Sans', sans-serif;
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  background-color: var(--color-slate-50);
+  color: var(--color-slate-900);
+}
+
+/* Bảng rộng cuộn ngang trên điện thoại thay vì bóp chữ lại. */
+.table-scroll {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* Vùng nội dung dài (caption, trích dẫn tài liệu) giữ xuống dòng tự nhiên. */
+.prose-caption {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+@media print {
+  .no-print {
+    display: none !important;
+  }
+}

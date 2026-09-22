@@ -28,3 +28,18 @@ dist/
 *.log
 data/
 uploads/
+
+# npm cache cục bộ (dùng khi cache ~/.npm bị lỗi quyền)
+.npm-cache/
+
+# test artifacts
+playwright-report/
+test-results/
+coverage/
+
+# next.js
+next-env.d.ts
+.openapi-cache.json
+.openapi.generated-input.json
+*.tsbuildinfo
+
