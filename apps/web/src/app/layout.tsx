@@ -41,7 +41,6 @@ export default function RootLayout({ children }: { children: ReactNode }) {
     <html lang="vi">
       <head>
         <script
-          // eslint-disable-next-line react/no-danger
           dangerouslySetInnerHTML={{
             __html: `window.__AGENTIC_RUNTIME_CONFIG__=${JSON.stringify(runtimeConfig)};`,
           }}

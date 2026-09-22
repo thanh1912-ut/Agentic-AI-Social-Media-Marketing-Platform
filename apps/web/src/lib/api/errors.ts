@@ -11,7 +11,7 @@
 import {
   ERROR_CODES,
   RETRYABLE_ERROR_CODES,
-  type ApiErrorBody,
+
   type ErrorCode,
   type FieldError,
 } from '@agentic/contracts';

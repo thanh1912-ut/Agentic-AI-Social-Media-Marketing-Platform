@@ -37,7 +37,7 @@ export function hasAnyPermission(
  */
 export function permissionDeniedReason(
   workspace: Workspace | null | undefined,
-  permission: Permission,
+  _permission: Permission,
 ): string {
   const roleLabel = workspace ? ROLE_LABELS[workspace.role] : 'khách';
   return `Vai trò ${roleLabel} không có quyền thực hiện việc này. Hãy nhờ chủ sở hữu doanh nghiệp thực hiện hoặc cấp quyền cho bạn.`;

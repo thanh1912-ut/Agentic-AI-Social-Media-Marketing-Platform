@@ -23,7 +23,6 @@ import {
   type DocumentUpload,
   type Job,
   type SessionResponse,
-  type Workspace,
 } from '@agentic/contracts';
 
 import {
@@ -44,8 +43,36 @@ import {
   getUserById,
 } from './seed';
 
-/** Trạng thái phiên của bản demo. */
-let signedInUserId: string | null = null;
+/**
+ * Trạng thái phiên của bản demo.
+ *
+ * Lưu vào `sessionStorage` chứ không chỉ giữ trong biến: nếu chỉ giữ trong bộ nhớ
+ * thì mỗi lần tải lại trang (F5, hoặc điều hướng bằng `page.goto` trong E2E) phiên
+ * sẽ mất và người dùng bị đá về màn hình "chưa đăng nhập" — trong khi backend thật
+ * dùng cookie nên phiên vẫn còn. Mock phải mô phỏng đúng hành vi đó.
+ */
+const SESSION_USER_KEY = 'agentic_demo_session_user';
+
+function readStoredUserId(): string | null {
+  if (typeof sessionStorage === 'undefined') return null;
+  try {
+    return sessionStorage.getItem(SESSION_USER_KEY);
+  } catch {
+    return null;
+  }
+}
+
+function writeStoredUserId(userId: string | null): void {
+  if (typeof sessionStorage === 'undefined') return;
+  try {
+    if (userId === null) sessionStorage.removeItem(SESSION_USER_KEY);
+    else sessionStorage.setItem(SESSION_USER_KEY, userId);
+  } catch {
+    // Chế độ riêng tư có thể chặn sessionStorage — phiên chỉ còn trong bộ nhớ.
+  }
+}
+
+let signedInUserId: string | null = readStoredUserId();
 let activeWorkspaceId: string = WS_FB;
 
 /** Bộ đếm để id sinh ra không trùng giữa các lần gọi. */
@@ -123,6 +150,7 @@ export const handlers = [
     }
 
     signedInUserId = user.id;
+    writeStoredUserId(user.id);
     // Vai trò suy ra từ tài khoản demo để màn hình đổi theo đúng vai.
     if (user.id === 'usr_owner') applyDemoRole('owner');
     else if (user.id === 'usr_editor') applyDemoRole('editor');
@@ -135,6 +163,7 @@ export const handlers = [
 
   http.post('*/api/v1/auth/logout', () => {
     signedInUserId = null;
+    writeStoredUserId(null);
     return new HttpResponse(null, { status: 204 });
   }),
 

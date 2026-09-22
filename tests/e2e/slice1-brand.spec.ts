@@ -29,7 +29,9 @@ test.describe('lát cắt 1 — hồ sơ thương hiệu', () => {
     await page.getByLabel('Mật khẩu').fill('sai-mat-khau');
     await page.getByRole('button', { name: 'Đăng nhập' }).click();
 
-    const alert = page.getByRole('alert');
+    // Dùng đúng id của khối lỗi: `getByRole('alert')` khớp cả
+    // `#__next-route-announcer__` do Next.js tự chèn.
+    const alert = page.locator('#login-error');
     await expect(alert).toBeVisible();
     await expect(alert).toContainText('không đúng');
     await expect(page).toHaveURL(/\/login/);
@@ -76,7 +78,9 @@ test.describe('lát cắt 1 — hồ sơ thương hiệu', () => {
     await login(page);
     await page.goto(page.url().replace(/\/$/, '') + '/documents');
 
-    await page.getByRole('link', { name: /Đọc lại tài liệu/ }).first().click();
+    // "Đọc lại tài liệu" là BUTTON (gọi POST reprocess rồi mới chuyển trang),
+    // không phải link.
+    await page.getByRole('button', { name: /Đọc lại tài liệu/ }).first().click();
     await page.waitForURL(/\/jobs\//);
 
     // Hoặc có phần trăm thật (có aria-valuenow), hoặc thanh không xác định.
