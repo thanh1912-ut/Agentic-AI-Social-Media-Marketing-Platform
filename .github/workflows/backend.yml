@@ -1,0 +1,31 @@
+name: backend
+
+on:
+  push:
+    paths:
+      - "services/**"
+      - "database/**"
+      - "packages/contracts/*.py"
+      - "pyproject.toml"
+      - "alembic.ini"
+      - "scripts/export_openapi.py"
+  pull_request:
+    paths:
+      - "services/**"
+      - "database/**"
+      - "packages/contracts/*.py"
+      - "pyproject.toml"
+      - "alembic.ini"
+      - "scripts/export_openapi.py"
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -e ".[dev]"
+      - run: pytest
+      - run: python scripts/export_openapi.py --check
