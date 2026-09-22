@@ -215,3 +215,34 @@ backend sẵn sàng, chỉ cần tắt `NEXT_PUBLIC_USE_MOCKS`.
 Sửa trực tiếp `packages/contracts/src/**` rồi báo mình, hoặc ghi comment vào tài
 liệu này. Mình sẽ cập nhật tầng UI theo. **Mình sẽ không tự đổi contract khi chưa
 thống nhất.**
+
+---
+
+## 6. Khoảng trống phát hiện khi viết fixtures (cần chốt)
+
+10 điểm dưới đây lộ ra khi dựng dữ liệu demo phủ **hết** mọi trạng thái. Mỗi điểm
+đều là chỗ frontend buộc phải **đoán** — mà đoán thì backend và frontend sẽ lệch.
+
+| # | Vấn đề | Mình đang tạm làm | Cần chốt |
+| --- | --- | --- | --- |
+| 1 | `Publication` không có `events` dù `PublicationEvent` tồn tại | Export riêng `demoPublicationEvents` khoá theo publication id | Thêm `events?` vào payload hay tách endpoint `GET /publications/{id}/events`? |
+| 2 | `Publication` thiếu `note`/`recorded_by`/`recorded_at` | Không lưu được | `ManualPublicationRequest.note` gửi lên rồi **không đọc lại được**. Cần chỗ lưu + hiển thị ai đã đối soát |
+| 3 | `PerformanceRow` không có `level`; response không echo `level` của query | Suy diễn từ dữ liệu | Thêm `level` vào row **hoặc** tách `rows` theo cấp. Không suy diễn được thì UI không phân biệt post/pillar/format |
+| 4 | `totals`/`timeseries` không nói phạm vi | Chọn **cấp Page** | `totals` = tổng các row hay tổng cấp Page? Sai chỗ này là sai số liệu |
+| 5 | `AnalyticsMeta.source` dùng literal `'mixed'` không có trong `METRIC_SOURCES` | Dùng literal | Thêm `METRIC_SOURCES.MIXED`. `AnalyticsQuery.source` cũng chưa lọc được `'mixed'` |
+| 6 | `not_permitted` không nói thiếu quyền **nào** | Hiểu là quyền của **kết nối**, ghi vào `state_reason` | Là quyền của vai trò workspace hay của kết nối Facebook? Câu chữ hiển thị khác hẳn nhau |
+| 7 | `POST_STATUSES` không có trạng thái "đang gửi", `PUBLICATION_STATUSES` thì có `sending` | Bài đang gửi vẫn hiện `approved` | Người dùng nhìn bảng sẽ tưởng chưa gửi. Cần nói rõ ở UI hoặc thêm trạng thái |
+| 8 | `Member.status='invited'` nhưng `Member.user` bắt buộc `User` đầy đủ | Phải bịa hồ sơ người chưa tham gia | Thiếu entity `Invitation`. Người được mời chưa có `full_name` |
+| 9 | `Job.error.code`, `ExportJob.error.code`, `Publication.error.code` là `string` tự do | Không map được sang nhãn tiếng Việt | Dùng `ERROR_CODES`/`DOCUMENT_ERROR_CODES` để UI dịch được thành câu có nghĩa |
+| 10 | `Job.result: Record<string, unknown>` không có shape | UI phải cast | Cần shape theo `kind`, ví dụ `{ document_ids?: Id[]; post_ids?: Id[] }` |
+
+**Ghi chú kỹ thuật (không phải contract, nhưng ảnh hưởng cả team):**
+
+- Import trong `packages/contracts` **không được có đuôi `.js`**. Next.js webpack
+  không resolve `'../brand.js'` khi file thật là `brand.ts`. Lỗi này **không** làm
+  build đỏ cho tới khi có code import fixtures — nó nổ chậm. Đã kiểm chứng bằng
+  cách ép fixtures vào graph thật.
+- Chạy typecheck cho package contract:
+  `cd /Users/lethanh/agent/packages/contracts && ../../apps/web/node_modules/.bin/tsc --noEmit`
+  (root **không** có `node_modules/.bin/tsc`; tsc nằm trong `apps/web`).
+
