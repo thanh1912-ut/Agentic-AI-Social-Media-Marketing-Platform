@@ -250,14 +250,14 @@ export const CONN_FB_OK = 'conn_fb_pho_bac_dang_hoat_dong';
 /** Kết nối Facebook hỏng token — cần kết nối lại. */
 export const CONN_FB_RECONNECT = 'conn_fb_pho_bac_can_ket_noi_lai';
 
-/** Page chính của quán — đăng được. */
-export const PAGE_PHO_CHINH = 'page_pho_bac_co_huong';
+/** Page chính của quán — đăng được. Id theo dạng số của Meta. */
+export const PAGE_PHO_CHINH = '108452319776401';
 
 /** Page chi nhánh 2 — chưa có quyền đăng. */
-export const PAGE_PHO_CHI_NHANH_2 = 'page_pho_bac_chi_nhanh_2';
+export const PAGE_PHO_CHI_NHANH_2 = '108452319776402';
 
 /** Page của workspace bán lẻ — đã chọn nhưng thuộc workspace khác. */
-export const PAGE_AN_NHIEN = 'page_tap_hoa_an_nhien';
+export const PAGE_AN_NHIEN = '223987410556231';
 
 // ---------------------------------------------------------------------------
 // Xuất bản (Publication)
