@@ -23,7 +23,7 @@ import type {
   PostMedia,
   PostVersion,
   PostVersionList,
-} from '../campaign.js';
+} from '../campaign';
 import {
   CAMPAIGN_OBJECTIVES,
   CAMPAIGN_STATUSES,
@@ -33,7 +33,7 @@ import {
   POST_FORMATS,
   POST_STATUSES,
   VERSION_SOURCES,
-} from '../enums.js';
+} from '../enums';
 import {
   BRIEF_DRAFT_CS2,
   BRIEF_DRAFT_TRUA,
@@ -64,7 +64,7 @@ import {
   demoAgo,
   demoAhead,
   type DemoPostId,
-} from './ids.js';
+} from './ids';
 
 /** Lấy version mới nhất — fixture luôn có ít nhất 1 version nên `!` là an toàn. */
 function lastVersion(versions: PostVersion[]): PostVersion {
@@ -254,7 +254,9 @@ export const demoCampaigns: Campaign[] = [
     channels: [CHANNELS.FACEBOOK_PAGE],
     version: 4,
     post_count: 8,
-    approved_count: 3,
+    // Đếm theo trạng thái HIỆN TẠI: approved (2) + scheduled (1) + published (2).
+    // Bài p06 đang ở trạng thái `failed` nên không nằm trong nhóm này.
+    approved_count: 5,
     published_count: 2,
     created_by: USR_OWNER_HUONG,
     created_at: demoAgo({ days: 27 }),
@@ -405,11 +407,12 @@ const versionsP02: PostVersion[] = [
       'Nhân ngày Quốc tế Phụ nữ 8/3, quán Phở Bắc Cô Hương tặng trà đá và quẩy cho khách nữ ghé quán trong ngày hôm nay. Hẹn gặp các chị em tại 18 phố Cửa Bắc! #PhoBacCoHuong #83',
     hashtags: ['#PhoBacCoHuong', '#83'],
     media: mediaKhuyenMai83,
-    source: VERSION_SOURCES.HUMAN,
+    // IMPORTED: Minh nhập lại bài 8/3 năm ngoái rồi sửa ngày — nguồn `imported`.
+    source: VERSION_SOURCES.IMPORTED,
     created_by: USR_EDITOR_MINH,
     created_by_name: 'Trần Văn Minh',
     created_at: demoAgo({ days: 8, hours: 5 }),
-    note: 'Minh viết vội buổi sáng, chưa có giờ mở cửa.',
+    note: 'Nhập lại từ bài 8/3 năm 2025 rồi sửa ngày, chưa thêm giờ mở cửa.',
   },
   {
     // Version hiện tại = bản đã duyệt & đã đăng (người dùng tự đăng rồi nhập URL).

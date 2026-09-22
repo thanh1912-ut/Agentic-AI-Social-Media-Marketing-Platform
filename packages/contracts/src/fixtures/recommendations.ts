@@ -14,15 +14,15 @@
  * Mọi khuyến nghị đều `origin: 'demo'` — UI phải hiện nhãn “Dữ liệu demo”.
  */
 
-import type { MeasurementWindow } from '../common.js';
-import type { Recommendation, RecommendationEvidence } from '../recommendation.js';
+import type { MeasurementWindow } from '../common';
+import type { Recommendation, RecommendationEvidence } from '../recommendation';
 import {
   EVIDENCE_STRENGTHS,
   METRIC_KEYS,
   RECOMMENDATION_ACTIONS,
   RECOMMENDATION_FEEDBACK,
   RECOMMENDATION_STATUSES,
-} from '../enums.js';
+} from '../enums';
 import {
   CMP_PHO_CHI_NHANH_2,
   CMP_PHO_TRUA,
@@ -35,7 +35,7 @@ import {
   WS_FB,
   demoAgo,
   demoAhead,
-} from './ids.js';
+} from './ids';
 
 /** Cửa sổ 60 ngày dùng để phân tích cho khuyến nghị (15/01–14/03/2026). */
 const ANALYSIS_WINDOW: MeasurementWindow = {
@@ -290,6 +290,7 @@ export const demoDismissedRecommendation: Recommendation = {
       strength: EVIDENCE_STRENGTHS.INSUFFICIENT,
       strength_reason:
         'Chỉ dựa trên một lần thay đổi giá của nhà cung cấp, chưa đủ để tính lại bài toán lợi nhuận.',
+      drilldown_href: `/workspaces/${WS_FB}/brand#products`,
     },
   ],
   origin: 'demo',

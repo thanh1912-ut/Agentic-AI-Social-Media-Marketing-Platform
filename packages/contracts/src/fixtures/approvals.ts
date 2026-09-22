@@ -11,8 +11,8 @@
  * - Bài p07 (`needs_review`) chưa có bản ghi nào — đây là trạng thái “chờ duyệt”.
  */
 
-import type { ApprovalRecord } from '../campaign.js';
-import { APPROVAL_DECISIONS } from '../enums.js';
+import type { ApprovalRecord } from '../campaign';
+import { APPROVAL_DECISIONS } from '../enums';
 import {
   APR_P01_APPROVED,
   APR_P02_APPROVED,
@@ -30,7 +30,7 @@ import {
   POST_SCHEDULED,
   USR_OWNER_HUONG,
   demoAgo,
-} from './ids.js';
+} from './ids';
 
 /**
  * 7 quyết định duyệt: 6 lần DUYỆT và 1 lần TỪ CHỐI (có lý do tiếng Việt).

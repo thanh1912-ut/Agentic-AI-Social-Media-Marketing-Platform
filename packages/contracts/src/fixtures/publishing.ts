@@ -13,19 +13,19 @@
  *   người dùng đối soát được (contract chưa gắn mảng này vào `Publication`).
  */
 
-import type { Capability, Id } from '../common.js';
+import type { Capability, Id } from '../common';
 import type {
   FacebookPage,
   Publication,
   PublicationEvent,
   SocialConnection,
-} from '../publishing.js';
+} from '../publishing';
 import {
   CAPABILITY_KEYS,
   CONNECTION_STATUSES,
   PUBLICATION_SOURCES,
   PUBLICATION_STATUSES,
-} from '../enums.js';
+} from '../enums';
 import {
   CONN_FB_OK,
   CONN_FB_RECONNECT,
@@ -49,7 +49,7 @@ import {
   WS_RETAIL,
   demoAgo,
   demoAhead,
-} from './ids.js';
+} from './ids';
 
 // ---------------------------------------------------------------------------
 // Kết nối

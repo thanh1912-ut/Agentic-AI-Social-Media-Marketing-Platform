@@ -10,7 +10,7 @@
  * 3. Lưu kèm `version`; nếu xung đột phiên bản thì KHÔNG tự ghi đè, không tự thử lại.
  */
 
-import { useState } from 'react';
+import { useId, useState } from 'react';
 import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
 
@@ -223,16 +223,31 @@ function provenanceLocation(ref: ProvenanceRef): string {
 // Khối hiển thị
 // ---------------------------------------------------------------------------
 
-/** Danh sách nguồn — bắt buộc mở được, không giấu sau thao tác phụ. */
+/**
+ * Danh sách nguồn — bắt buộc mở được, không giấu sau thao tác phụ.
+ *
+ * Dùng nút + vùng mở rộng (mẫu disclosure của WAI-ARIA) thay vì `<details>`:
+ * nút có `aria-expanded`/`aria-controls` rõ ràng, và trình đọc màn hình luôn đọc
+ * được đây là nút mở nguồn.
+ */
 function ProvenanceList({ refs }: { refs: ProvenanceRef[] }) {
+  const [open, setOpen] = useState(false);
+  const regionId = useId();
+
   if (refs.length === 0) return null;
 
   return (
-    <details className="mt-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
-      <summary className="cursor-pointer text-sm font-medium text-slate-800">
-        Xem nguồn ({formatNumber(refs.length)})
-      </summary>
-      <ul className="mt-2 space-y-3">
+    <div className="mt-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
+      <button
+        type="button"
+        aria-expanded={open}
+        aria-controls={regionId}
+        onClick={() => setOpen((previous) => !previous)}
+        className="rounded text-sm font-medium text-slate-800 underline"
+      >
+        {open ? 'Ẩn nguồn' : `Xem nguồn (${formatNumber(refs.length)})`}
+      </button>
+      <ul id={regionId} hidden={!open} className="mt-2 space-y-3">
         {refs.map((ref, index) => (
           <li key={`${ref.document_id}-${index}`} className="text-sm text-slate-700">
             <p className="font-medium text-slate-900">{ref.document_name}</p>
@@ -243,7 +258,7 @@ function ProvenanceList({ refs }: { refs: ProvenanceRef[] }) {
           </li>
         ))}
       </ul>
-    </details>
+    </div>
   );
 }
 

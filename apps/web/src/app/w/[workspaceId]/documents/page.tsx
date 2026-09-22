@@ -546,6 +546,15 @@ export default function TrangTaiLieu() {
                           </td>
                           <td className="px-3 py-3">
                             <div className="flex flex-wrap gap-2">
+                              {doc.job_id ? (
+                                <Link
+                                  className="inline-flex items-center rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm font-medium text-slate-800 hover:bg-slate-50"
+                                  href={`/w/${workspaceId}/jobs/${doc.job_id}`}
+                                >
+                                  Xem tiến độ
+                                </Link>
+                              ) : null}
+
                               {doc.status === DOCUMENT_STATUSES.FAILED ? (
                                 <Button
                                   variant="secondary"

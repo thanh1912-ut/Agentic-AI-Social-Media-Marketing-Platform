@@ -16,13 +16,13 @@
  *   KHÔNG được tự thêm trường mà contract không có.
  */
 
-export * from './ids.js';
-export * from './workspace.js';
-export * from './documents.js';
-export * from './brand.js';
-export * from './jobs.js';
-export * from './campaigns.js';
-export * from './approvals.js';
-export * from './publishing.js';
-export * from './analytics.js';
-export * from './recommendations.js';
+export * from './ids';
+export * from './workspace';
+export * from './documents';
+export * from './brand';
+export * from './jobs';
+export * from './campaigns';
+export * from './approvals';
+export * from './publishing';
+export * from './analytics';
+export * from './recommendations';

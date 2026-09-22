@@ -25,15 +25,15 @@ import type {
   MetricCell,
   MetricImportPreview,
   PerformanceRow,
-} from '../analytics.js';
-import type { MeasurementWindow } from '../common.js';
-import type { MetricKey, MetricState } from '../enums.js';
+} from '../analytics';
+import type { MeasurementWindow } from '../common';
+import type { MetricKey, MetricState } from '../enums';
 import {
   AGGREGATION_LEVELS,
   METRIC_KEYS,
   METRIC_SOURCES,
   METRIC_STATES,
-} from '../enums.js';
+} from '../enums';
 import {
   CMP_PHO_CHI_NHANH_2,
   CMP_PHO_TRUA,
@@ -44,7 +44,7 @@ import {
   PUB_P01_PUBLISHED,
   WS_FB,
   demoAgo,
-} from './ids.js';
+} from './ids';
 
 /** Cửa sổ đo của bộ demo: 14 ngày, cắt ngày theo giờ Việt Nam. */
 const WINDOW: MeasurementWindow = {

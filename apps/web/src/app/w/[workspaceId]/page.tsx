@@ -8,6 +8,7 @@
  * cả trang.
  */
 
+import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
 
@@ -26,11 +27,13 @@ import {
 
 import { useSession } from '@/components/session-gate';
 import { ApiError } from '@/lib/api';
+import { useMocks } from '@/lib/api/config';
 import { formatNumber, formatPercent, formatRelative } from '@/lib/format';
 import { useBrandProfile, useDocuments, useOnboarding } from '@/lib/hooks';
 import {
   Button,
   Card,
+  DemoNotice,
   EmptyState,
   ErrorPanel,
   LoadingBlock,
@@ -203,6 +206,12 @@ export default function TrangTongQuan() {
   const brand = useBrandProfile(activeId);
   const documents = useDocuments(activeId);
 
+  // Nhãn dữ liệu demo: `useMocks()` chỉ đọc được trong trình duyệt nên phải chờ
+  // mount, nếu không bản render ở server và ở client sẽ lệch nhau.
+  const mocksEnabled = useMocks();
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
+
   if (!workspace) {
     return (
       <div className="space-y-4">
@@ -233,6 +242,8 @@ export default function TrangTongQuan() {
           Tiến độ nhập thông tin doanh nghiệp và những việc đang chờ bạn xử lý.
         </p>
       </header>
+
+      {mounted && mocksEnabled ? <DemoNotice /> : null}
 
       {/* ---------------------------------------------------------------- */}
       {/* Tiến độ nhập liệu                                                */}

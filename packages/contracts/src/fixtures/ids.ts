@@ -73,6 +73,7 @@ export const WS_RETAIL = 'ws_tap_hoa_an_nhien';
 /** Workspace mới tạo, chưa có gì — để demo mọi màn hình rỗng. */
 export const WS_EMPTY = 'ws_moi_thanh_lap';
 
+/** Danh sách workspace demo — dùng để lặp và kiểm tra tính đầy đủ của fixture. */
 export const WORKSPACE_IDS = [WS_FB, WS_RETAIL, WS_EMPTY] as const;
 export type DemoWorkspaceId = (typeof WORKSPACE_IDS)[number];
 
@@ -95,6 +96,7 @@ export const USR_INVITED_HA = 'usr_pham_thu_ha';
 /** Nhân viên cũ đã bị tạm ngưng (Member.status = 'suspended'). */
 export const USR_SUSPENDED_TUAN = 'usr_do_anh_tuan';
 
+/** Id thành viên — mỗi workspace một bộ, khớp với `demoMembers` trong workspace.ts. */
 export const MEM_FB_OWNER = 'mem_fb_huong_owner';
 export const MEM_FB_EDITOR = 'mem_fb_minh_editor';
 export const MEM_FB_VIEWER = 'mem_fb_trang_viewer';
@@ -168,6 +170,7 @@ export const JOB_DOC_INGEST_CANCELLED = 'job_doc_ingest_da_huy';
 // Sản phẩm & campaign
 // ---------------------------------------------------------------------------
 
+/** Id sản phẩm — nguồn cho trường `products` và `brief.product_ids` của campaign. */
 export const PROD_PHO_BO_TAI_NAM = 'prod_pho_bo_tai_nam';
 export const PROD_PHO_GA_TA = 'prod_pho_ga_ta';
 export const PROD_COMBO_TRUA = 'prod_combo_trua_van_phong';
@@ -215,6 +218,7 @@ export const POST_REJECTED = 'post_p08_khuyen_mai_sai_gia_bi_tu_choi';
 /** `draft` — bản nháp trong campaign khai trương chi nhánh 2. */
 export const POST_DRAFT = 'post_p09_nhap_khai_truong_chi_nhanh_2';
 
+/** Toàn bộ id bài viết — dùng làm khoá cho `demoPostVersions` và để lặp trong UI. */
 export const POST_IDS = [
   POST_PUBLISHED_API,
   POST_PUBLISHED_MANUAL,
@@ -232,6 +236,7 @@ export type DemoPostId = (typeof POST_IDS)[number];
 // Duyệt bài
 // ---------------------------------------------------------------------------
 
+/** Id bản ghi duyệt — tên nói rõ duyệt/từ chối BẢN NÀO của bài nào. */
 export const APR_P01_APPROVED = 'apr_p01_duyet_ban_3';
 export const APR_P02_APPROVED = 'apr_p02_duyet_ban_2';
 export const APR_P03_APPROVED = 'apr_p03_duyet_ban_4';
@@ -263,6 +268,7 @@ export const PAGE_AN_NHIEN = '223987410556231';
 // Xuất bản (Publication)
 // ---------------------------------------------------------------------------
 
+/** Id lần xuất bản — mỗi lần gửi là một bản ghi, kể cả các lần thử lại. */
 export const PUB_P01_PUBLISHED = 'pub_p01_da_dang_qua_api';
 export const PUB_P02_MANUAL = 'pub_p02_ghi_nhan_dang_thu_cong';
 export const PUB_P03_SENDING = 'pub_p03_dang_gui';
@@ -275,6 +281,7 @@ export const PUB_P06_OUTCOME_UNKNOWN = 'pub_p06_chua_ro_ket_qua_lan_2';
 // Khuyến nghị
 // ---------------------------------------------------------------------------
 
+/** Id khuyến nghị — 3 khuyến nghị chính + 1 khuyến nghị đã bỏ qua. */
 export const REC_PHU_HUYNH_SANG = 'rec_them_nhom_phu_huynh_buoi_sang';
 export const REC_GIO_DANG = 'rec_doi_gio_dang_sang_bua_trua';
 export const REC_REEL_15S = 'rec_thu_reel_15_giay_chua_du_du_lieu';
@@ -284,7 +291,7 @@ export const REC_DISMISSED = 'rec_giam_gia_sau_20h_da_bo_qua';
 export const BRIEF_DRAFT_CS2 = 'brief_draft_khai_truong_doi_khan_gia';
 export const BRIEF_DRAFT_TRUA = 'brief_draft_combo_trua_them_cta';
 
-/** Tệp export đã dựng xong. */
+/** Id tệp export: một tệp đã xong, một tệp đang chờ, một tệp lỗi. */
 export const EXPORT_READY = 'export_combo_trua_thang_3_xlsx';
 export const EXPORT_QUEUED = 'export_khai_truong_chi_nhanh_2_csv';
 export const EXPORT_FAILED = 'export_bao_cao_hieu_suat_csv';
