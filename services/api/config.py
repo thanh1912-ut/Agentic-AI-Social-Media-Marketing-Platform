@@ -55,7 +55,10 @@ class Settings:
     deepseek_api_key: str = field(default_factory=lambda: os.getenv("DEEPSEEK_API_KEY", ""), repr=False)
     deepseek_base_url: str = os.getenv("DEEPSEEK_BASE_URL", "https://api.deepseek.com").strip()
     llm_default_model: str = os.getenv("LLM_DEFAULT_MODEL", "deepseek-flash").strip()
+    llm_max_tokens: int = int(os.getenv("DEEPSEEK_MAX_TOKENS", "8192"))
+    llm_max_input_chars: int = int(os.getenv("LLM_MAX_INPUT_CHARS", "24000"))
     embedding_provider: str = os.getenv("EMBEDDING_PROVIDER", "none").strip().casefold()
+    embedding_data_flow_approved: bool = _bool("EMBEDDING_DATA_FLOW_APPROVED", False)
     embedding_api_key: str = field(default_factory=lambda: os.getenv("EMBEDDING_API_KEY", ""), repr=False)
     embedding_model: str = os.getenv("EMBEDDING_MODEL", "").strip()
     embedding_dimensions: int = int(os.getenv("EMBEDDING_DIMENSIONS", "1536"))
@@ -90,12 +93,18 @@ if settings.embedding_provider == "none" and settings.retrieval_mode != "lexical
     raise ValueError("RETRIEVAL_MODE=semantic_vector requires an embedding provider")
 if settings.embedding_provider != "none" and settings.retrieval_mode != "semantic_vector":
     raise ValueError("A configured embedding provider requires RETRIEVAL_MODE=semantic_vector")
+if settings.embedding_provider != "none" and not settings.embedding_data_flow_approved:
+    raise ValueError(
+        "External embeddings send workspace document text to another provider; set EMBEDDING_DATA_FLOW_APPROVED=1 only after separate approval"
+    )
 if settings.embedding_dimensions != 1536:
     raise ValueError(
         "EMBEDDING_DIMENSIONS currently must be 1536; another dimension requires a database migration and full reindex"
     )
 if not 0 <= settings.minimum_relevance_score <= 1 or not 0 <= settings.minimum_semantic_score <= 1:
     raise ValueError("Relevance thresholds must be between 0 and 1")
+if settings.llm_max_tokens < 1 or settings.llm_max_input_chars < 1 or settings.ai_request_timeout_seconds < 1:
+    raise ValueError("LLM token, input, and request-timeout limits must be positive")
 if not settings.llm_default_model:
     raise ValueError("LLM_DEFAULT_MODEL must name a DeepSeek model")
 if not settings.deepseek_base_url.startswith(("https://", "http://")):

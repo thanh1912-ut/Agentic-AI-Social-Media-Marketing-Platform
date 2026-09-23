@@ -14,14 +14,18 @@ from fastapi.responses import Response
 from openpyxl import Workbook
 from openpyxl.styles import Font, PatternFill
 from sqlalchemy import func, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from database.models import (
     AuditEvent,
+    Brand,
+    BrandProfileRevision,
     Campaign,
     CampaignPost,
     ExportArtifact,
     Job,
+    JobStep,
     Membership,
     PostApproval,
     PostVersion,
@@ -50,7 +54,7 @@ from .campaign_schemas import (
 from .db import get_db
 from .dependencies import current_user, membership_for, require_csrf, require_permission
 from .errors import ApiProblem
-from .job_service import accepted_response
+from .job_service import accepted_response, append_job_event, dispatch_content_generation_job
 from .permissions import has_permission
 from .rate_limits import rate_limit
 from .storage import S3ObjectStorage, storage
@@ -706,7 +710,7 @@ async def download_export(
 @router.post(
     "/workspaces/{company_id}/posts/generate",
     response_model=GenerateContentResponse,
-    status_code=503,
+    status_code=202,
     dependencies=[
         Depends(require_csrf),
         Depends(rate_limit("content_generation", max_requests=20, window_seconds=3600)),
@@ -715,15 +719,100 @@ async def download_export(
 async def generate_content(
     company_id: str,
     request: GenerateContentRequest,
+    idempotency_key: str | None = Header(default=None, alias="Idempotency-Key", min_length=8, max_length=200),
     user: User = Depends(current_user),
     membership: Membership = Depends(require_permission("post:generate")),
     db: AsyncSession = Depends(get_db),
 ):
-    # This endpoint stays fail-closed until the workspace owner approves
-    # sending brand-profile and retrieved source text to DeepSeek.
-    raise ApiProblem(
-        503,
-        "provider_approval_required",
-        "Sinh nội dung đang tạm dừng. Cần xác nhận rằng Brand Profile và nguồn tài liệu sẽ được gửi tới DeepSeek để xử lý.",
-        retryable=False,
+    if not idempotency_key:
+        raise ApiProblem(400, "idempotency_key_required", "Thiếu Idempotency-Key cho yêu cầu sinh nội dung.")
+    campaign = await db.scalar(select(Campaign).where(Campaign.company_id == company_id, Campaign.id == request.campaign_id))
+    if campaign is None:
+        raise ApiProblem(404, "not_found", "Không tìm thấy chiến dịch.")
+    pillars = request.pillars or campaign.pillars_json or ["product"]
+    if (
+        any(pillar not in ALLOWED_PILLARS for pillar in pillars)
+        or any(campaign.pillars_json and pillar not in campaign.pillars_json for pillar in pillars)
+    ):
+        raise ApiProblem(422, "validation_error", "Trụ nội dung phải thuộc chiến dịch hiện tại.")
+    brand = await db.scalar(select(Brand).where(Brand.company_id == company_id))
+    if brand is None:
+        raise ApiProblem(404, "not_found", "Không tìm thấy hồ sơ thương hiệu.")
+    revision = await db.scalar(select(BrandProfileRevision).where(
+        BrandProfileRevision.brand_id == brand.id,
+        BrandProfileRevision.company_id == company_id,
+        BrandProfileRevision.revision == brand.version,
+    ))
+    profile = brand.profile if isinstance(brand.profile, dict) else {}
+    if revision is None or revision.confirmed_at is None or not profile.get("confirmed_at"):
+        raise ApiProblem(
+            409,
+            "brand_profile_not_confirmed",
+            "Hãy xác nhận phiên bản Brand Profile hiện tại trước khi sinh nội dung.",
+        )
+    request_payload = request.model_dump(mode="json")
+    request_payload["pillars"] = pillars
+    fingerprint_payload = {
+        "request": request_payload,
+        "campaign_id": campaign.id,
+        "campaign_version": campaign.version,
+        "brand_id": brand.id,
+        "brand_version": brand.version,
+    }
+    fingerprint = hashlib.sha256(json.dumps(fingerprint_payload, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+    existing = await db.scalar(select(Job).where(Job.company_id == company_id, Job.idempotency_key == idempotency_key))
+    if existing:
+        if existing.kind != "content_generation" or (existing.result or {}).get("request_fingerprint") != fingerprint:
+            raise ApiProblem(409, "idempotency_conflict", "Idempotency-Key này đã được dùng cho yêu cầu khác.")
+        return GenerateContentResponse(job_id=existing.id)
+    now = utcnow()
+    job_id = new_id()
+    title = f"Sinh {request.count} bản nháp: {campaign.name}"
+    job_payload = {
+        "campaign_id": campaign.id,
+        "campaign_version": campaign.version,
+        "brand_id": brand.id,
+        "brand_version": brand.version,
+        "request": request_payload,
+        "request_fingerprint": fingerprint,
+    }
+    job = Job(
+        id=job_id,
+        company_id=company_id,
+        created_by=user.id,
+        kind="content_generation",
+        title=title,
+        status="queued",
+        progress=0,
+        result=job_payload,
+        idempotency_key=idempotency_key,
+        created_at=now,
+        updated_at=now,
     )
+    db.add(job)
+    for key, label in (
+        ("prepare_context", "Xác minh hồ sơ và tìm nguồn phù hợp"),
+        ("generate_posts", "Sinh bản nháp bằng DeepSeek"),
+        ("save_posts", "Lưu phiên bản và thông tin kiểm duyệt"),
+    ):
+        db.add(JobStep(id=new_id(), job_id=job_id, step_key=key, label=label, status="pending", created_at=now, updated_at=now))
+    db.add(AuditEvent(
+        company_id=company_id,
+        actor_user_id=user.id,
+        action="content.generate.requested",
+        entity_type="campaign",
+        entity_id=campaign.id,
+        metadata_json={"job_id": job_id, "count": request.count, "provider": "deepseek", "brand_version": brand.version},
+    ))
+    await append_job_event(db, job, "queued", "Đã nhận yêu cầu sinh nội dung.", 0)
+    try:
+        await db.commit()
+    except IntegrityError:
+        await db.rollback()
+        duplicate = await db.scalar(select(Job).where(Job.company_id == company_id, Job.idempotency_key == idempotency_key))
+        if duplicate is None or duplicate.kind != "content_generation" or (duplicate.result or {}).get("request_fingerprint") != fingerprint:
+            raise ApiProblem(409, "idempotency_conflict", "Idempotency-Key này đã được dùng cho yêu cầu khác.")
+        await dispatch_content_generation_job(duplicate.id)
+        return GenerateContentResponse(job_id=duplicate.id)
+    await dispatch_content_generation_job(job_id)
+    return GenerateContentResponse(job_id=job_id)

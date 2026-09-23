@@ -9,7 +9,7 @@ celery_app = Celery(
     "agentic_marketing",
     broker=settings.redis_url,
     backend=settings.redis_url,
-    include=["services.worker.tasks", "services.worker.scheduled_jobs"],
+    include=["services.worker.tasks", "services.worker.content_tasks", "services.worker.scheduled_jobs"],
 )
 celery_app.conf.update(
     task_serializer="json",
@@ -28,4 +28,3 @@ celery_app.conf.update(
         },
     },
 )
-

@@ -24,6 +24,8 @@ def test_live_deepseek_structured_generation():
         pytest.skip("DEEPSEEK_API_KEY is unavailable in this secured environment")
 
     adapter = configured_structured_model()
+    available_models = {item.id for item in adapter.client.models.list().data}
+    assert adapter.model_name in available_models, "configured model is not listed for this DeepSeek API account"
     result, metadata = adapter.generate(
         system_prompt="Return a valid JSON object. Do not include any other text.",
         input_payload={"ok": True, "provider": "deepseek"},

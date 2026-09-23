@@ -56,13 +56,13 @@ Ngày tạo: 2026-09-23. Trạng thái dưới đây được ghi từ audit đ�
 - Ảnh hưởng: Meta connector trạng thái BLOCKED_EXTERNAL cho tới khi có credentials, quyền và live evidence; user vẫn phân biệt export với publish.
 - Trạng thái: cần kiểm tra tài liệu Meta hiện hành và app thực trước khi thiết kế connector.
 
-## DEC-007 — Tạm khóa gửi dữ liệu tenant tới DeepSeek
+## DEC-007 — DeepSeek xử lý trích đoạn tài liệu và Brand Profile sau chấp thuận
 
 - Vấn đề: Brand Profile extraction và content generation cần gửi đoạn trích tài liệu/Brand Profile tới nhà cung cấp LLM bên ngoài.
-- Quyết định: upload-driven extraction worker fail-closed trước khi tạo provider; generation API trả `503 provider_approval_required`, không tạo job. Không gọi DeepSeek cho tới khi chủ dự án chấp thuận rõ data flow.
-- Lý do: auto-review chặn worker định gửi nội dung workspace nhạy cảm tới dịch vụ ngoài và hướng dẫn không tìm đường vòng qua worker hoặc thực thi gián tiếp.
-- Ảnh hưởng: local parsing/indexing và fake-agent tests vẫn có thể chạy; live Brand Profile extraction, content generation, latency, token/cost và acceptance flow chưa được nghiệm thu.
-- Trạng thái: BLOCKED chờ chấp thuận user; DeepSeek API key cũng chưa được provision trong môi trường test.
+- Quyết định: chủ dự án chấp thuận ngày 2026-09-24 gửi đoạn trích tài liệu và Brand Profile tới DeepSeek. Worker Brand Profile dùng adapter DeepSeek server-side; API tạo durable/idempotent content job, chỉ dùng hồ sơ đã xác nhận và nguồn tenant đang hoạt động, rồi lưu bài ở trạng thái draft để người dùng duyệt.
+- Lý do: đây là data flow cốt lõi cho sản phẩm. Provider chỉ nhận nội dung cần cho tác vụ; mã tenant và mã thương hiệu không được đưa vào prompt, liên hệ/đối thủ không được gửi trong profile content-generation. Tenant/source authorization, revision checks và citations được xác minh trong backend.
+- Ảnh hưởng: AI endpoint giờ trả `202` cùng job ID; thiếu key tạo lỗi cấu hình bền vững trên job thay vì trả `503` tại API. Retrieval mặc định lexical. Embedding provider bên ngoài vẫn yêu cầu cờ chấp thuận riêng và mặc định tắt. DeepSeek cost metadata được lưu `null` khi chưa có giá được xác minh.
+- Trạng thái: IMPLEMENTED + fixture-tested; live DeepSeek/model-account verification chưa chạy vì môi trường chưa có `DEEPSEEK_API_KEY`.
 
 ## DEC-008 — Cấu hình bảo mật production và PostCSS
 

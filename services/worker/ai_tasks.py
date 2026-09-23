@@ -61,6 +61,8 @@ def run_content_task(
     base_version: str,
     next_version: int,
     context: Sequence[Mapping[str, str]],
+    content_requirements: Mapping[str, Any] | None = None,
+    channel: str | None = None,
     repair=None,
 ) -> AiTaskResult:
     post, metadata, repairs = agent.generate(
@@ -69,6 +71,8 @@ def run_content_task(
         base_version=base_version,
         next_version=next_version,
         context=context,
+        content_requirements=content_requirements,
+        channel=channel,
         repair=repair,
     )
     return AiTaskResult(

@@ -104,7 +104,9 @@ class BrandAgent:
         raw, metadata = self.model.generate(
             system_prompt=BRAND_PROFILE_SYSTEM_PROMPT,
             input_payload={
-                "brand_id": brand_id,
+                # Never disclose the database brand identifier to a provider.
+                # The backend restores the identifier after validating output.
+                "brand_id": "brand-profile",
                 "business_hint": business_hint,
                 "sources": context_payload(list(context)),
                 "source_text_is_untrusted_data": True,
@@ -113,8 +115,7 @@ class BrandAgent:
         )
         profile, repairs = parse_with_one_repair(raw, BrandProfile, repair)
         repairs += int(getattr(self.model, "last_repair_attempts", 0) or 0)
-        if profile.brand_id != brand_id:
-            raise ValueError("model returned a profile for a different brand_id")
+        profile = profile.model_copy(update={"brand_id": brand_id})
         contexts = {
             (item["source_id"], item["locator"]): item
             for item in context

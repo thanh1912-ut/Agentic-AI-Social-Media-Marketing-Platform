@@ -48,17 +48,15 @@ def test_worker_task_returns_snapshot_and_versioned_payload() -> None:
     assert content_result.payload["version"] == 2
 
 
-def test_production_worker_requires_approved_provider_data_flow(monkeypatch) -> None:
-    provider_calls = 0
+def test_runtime_brand_profile_uses_configured_deepseek_adapter(monkeypatch) -> None:
+    class FactoryObserved(RuntimeError):
+        pass
 
-    def forbidden_provider_factory():
-        nonlocal provider_calls
-        provider_calls += 1
-        raise AssertionError("provider factory must not run before approval")
+    def observe_factory():
+        raise FactoryObserved("deepseek adapter factory reached")
 
-    monkeypatch.setattr(tasks, "configured_embedding_provider", forbidden_provider_factory)
-    monkeypatch.setattr(tasks, "embedding_identity", forbidden_provider_factory)
-    with pytest.raises(tasks.ProviderApprovalRequired, match="explicitly approved"):
+    monkeypatch.setattr(tasks, "configured_structured_model", observe_factory)
+    with pytest.raises(FactoryObserved, match="factory reached"):
         asyncio.run(
             tasks._run_brand_profile(
                 job_id="job-1",
@@ -73,4 +71,3 @@ def test_production_worker_requires_approved_provider_data_flow(monkeypatch) -> 
                 agent=None,
             )
         )
-    assert provider_calls == 0

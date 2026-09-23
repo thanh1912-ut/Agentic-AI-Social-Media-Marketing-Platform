@@ -17,6 +17,7 @@ def test_settings_default_to_deepseek_and_explicit_lexical_mode(monkeypatch):
     monkeypatch.setenv("LLM_PROVIDER", "deepseek")
     monkeypatch.setenv("LLM_DEFAULT_MODEL", "deepseek-flash")
     monkeypatch.setenv("EMBEDDING_PROVIDER", "none")
+    monkeypatch.setenv("EMBEDDING_DATA_FLOW_APPROVED", "0")
     monkeypatch.setenv("RETRIEVAL_MODE", "lexical")
     monkeypatch.delenv("OPENAI_API_KEY", raising=False)
     monkeypatch.delenv("DEEPSEEK_API_KEY", raising=False)
@@ -26,6 +27,7 @@ def test_settings_default_to_deepseek_and_explicit_lexical_mode(monkeypatch):
     assert config.llm_default_model == "deepseek-flash"
     assert config.embedding_provider == "none"
     assert config.retrieval_mode == "lexical"
+    assert config.embedding_data_flow_approved is False
     assert "DEEPSEEK_API_KEY" not in repr(config)
     assert "OPENAI_API_KEY" not in repr(config)
 
@@ -47,6 +49,8 @@ def test_only_deepseek_configuration_constructs_m3_adapter(monkeypatch):
             deepseek_base_url="https://api.deepseek.com",
             llm_default_model="deepseek-flash",
             ai_request_timeout_seconds=17,
+            llm_max_tokens=321,
+            llm_max_input_chars=6543,
         ),
     )
 
@@ -57,6 +61,8 @@ def test_only_deepseek_configuration_constructs_m3_adapter(monkeypatch):
         "base_url": "https://api.deepseek.com",
         "model": "deepseek-flash",
         "timeout_seconds": 17,
+        "max_tokens": 321,
+        "max_input_chars": 6543,
     }
 
 
@@ -69,6 +75,16 @@ def test_missing_deepseek_key_has_provider_specific_configuration_error(monkeypa
 
     with pytest.raises(model_provider.AIConfigurationError, match="DEEPSEEK_API_KEY"):
         model_provider.configured_structured_model()
+
+
+def test_external_embedding_provider_requires_separate_data_flow_approval(monkeypatch):
+    monkeypatch.setattr(
+        model_provider,
+        "settings",
+        SimpleNamespace(embedding_provider="openai", embedding_data_flow_approved=False),
+    )
+    with pytest.raises(model_provider.AIConfigurationError, match="data flow is not approved"):
+        model_provider.configured_embedding_provider()
 
 
 class _SmokeResponse(BaseModel):

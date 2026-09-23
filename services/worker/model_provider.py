@@ -27,16 +27,22 @@ def configured_structured_model():
         base_url=settings.deepseek_base_url,
         model=settings.llm_default_model,
         timeout_seconds=settings.ai_request_timeout_seconds,
+        max_tokens=settings.llm_max_tokens,
+        max_input_chars=settings.llm_max_input_chars,
     )
 
 
 def configured_embedding_provider():
-    """Embeddings are independent of the LLM and default to explicit lexical mode."""
+    """Embeddings require their own explicit data-flow approval."""
 
     if settings.embedding_provider == "none":
         return None
     if settings.embedding_provider != "openai":
         raise AIConfigurationError(f"Unsupported EMBEDDING_PROVIDER: {settings.embedding_provider}")
+    if not settings.embedding_data_flow_approved:
+        raise AIConfigurationError(
+            "External embedding data flow is not approved; use EMBEDDING_PROVIDER=none and lexical retrieval"
+        )
     if not settings.embedding_api_key or not settings.embedding_model:
         raise AIConfigurationError(
             "EMBEDDING_API_KEY and EMBEDDING_MODEL are required when EMBEDDING_PROVIDER=openai"

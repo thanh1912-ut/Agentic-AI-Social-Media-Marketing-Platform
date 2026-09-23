@@ -354,7 +354,7 @@ export const postApi = {
   generate: (workspaceId: string, body: GenerateContentRequest) =>
     apiRequest<GenerateContentResponse>(
       v1(`/workspaces/${workspaceId}/posts/generate`),
-      { method: 'POST', body },
+      { method: 'POST', body, headers: { 'Idempotency-Key': newIdempotencyKey('generate') } },
     ),
 
   remove: (workspaceId: string, postId: string) =>

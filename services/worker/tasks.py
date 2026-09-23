@@ -38,7 +38,7 @@ from services.ingestion.knowledge_store import PostgresKnowledgeIndex
 from services.ingestion.parsers import ParseError, parse_document
 from .celery_app import celery_app
 from services.ingestion.knowledge_store import embedding_identity
-from .model_provider import AIConfigurationError, configured_embedding_provider
+from .model_provider import AIConfigurationError, configured_embedding_provider, configured_structured_model
 
 
 PROFILE_STEP = "create_brand_profile"
@@ -50,18 +50,6 @@ class BrandProfileJobError(RuntimeError):
         super().__init__(message)
         self.code = code
         self.retryable = retryable
-
-
-class ProviderApprovalRequired(RuntimeError):
-    """Raised before any tenant text is sent to an external LLM provider."""
-
-
-def _require_injected_brand_agent(agent: BrandAgent | None) -> BrandAgent:
-    if agent is None:
-        raise ProviderApprovalRequired(
-            "Brand Profile AI is paused until the workspace data flow to DeepSeek is explicitly approved."
-        )
-    return agent
 
 
 async def _set_step(
@@ -374,10 +362,9 @@ async def _run_brand_profile(
     agent: BrandAgent | None,
     embedder=None,
 ) -> tuple[int, dict[str, Any], list[str]]:
-    # Production worker calls do not receive an injected model. Keep this path
-    # fail-closed until the workspace owner approves sending source text to an
-    # external provider. Tests may inject an in-process fake agent.
-    agent = _require_injected_brand_agent(agent)
+    # Tests may inject a deterministic fake. Runtime calls use the configured
+    # DeepSeek adapter; external embeddings remain independently gated.
+    agent = agent or BrandAgent(configured_structured_model())
     _embedding_provider, embedding_model_version = embedding_identity(embedder)
     async with SessionLocal() as db:
         company = await db.get(Company, company_id)
@@ -765,11 +752,6 @@ async def ingest_document_task_batch_async(
             )
             warnings.extend(profile_warnings)
             return
-        except ProviderApprovalRequired as exc:
-            retryable = False
-            code = "provider_approval_required"
-            message = str(exc)
-            hint = "Chờ chủ workspace xác nhận rõ data flow trước khi bật xử lý AI; không chỉ thêm API key."
         except AIConfigurationError as exc:
             retryable = False
             code = "ai_not_configured"

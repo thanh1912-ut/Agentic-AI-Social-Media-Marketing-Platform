@@ -1,6 +1,6 @@
 # Báo cáo kiểm thử
 
-Cập nhật: 2026-09-24 01:11 (Asia/Ho_Chi_Minh). Security fixes `d9cb6a8`, `1e1589f` và rate limits `004020e` trên branch `codex/product-v1-completion` đã được push; base `origin/main` là `07938bd`. Real-mode analytics smoke lịch sử chạy trên backend source `628efcb`; publishing route fix `c77720d` và contract-test adjustment `73ff4f7` là các commits trước đó.
+Cập nhật: 2026-09-24 01:59 (Asia/Ho_Chi_Minh). Branch `codex/product-v1-completion` có security fixes `d9cb6a8`, `1e1589f`, rate limits `004020e` và AI integration. Project owner đã chấp thuận data flow đoạn trích tài liệu + Brand Profile tới DeepSeek. Real-mode analytics smoke lịch sử chạy trên backend source `628efcb`; publishing route fix `c77720d` và contract-test adjustment `73ff4f7` là các commits trước đó.
 
 Môi trường: Python 3.11.16, Node.js 26.7.0, SQLite tạm, Chromium desktop/mobile. Bộ Playwright tự động dùng Next.js local và MSW; ngoài ra có một browser smoke thủ công qua Codex browser với Next.js + FastAPI real mode và DB SQLite hoàn toàn mới.
 
@@ -33,18 +33,24 @@ Môi trường: Python 3.11.16, Node.js 26.7.0, SQLite tạm, Chromium desktop/m
 | Runtime-config/CORS security regressions | PASS | Inline config test blocks `</script>` termination; API preflight test rejects unlisted request headers. |
 | Cookie refresh/logout CSRF regressions | PASS | API yêu cầu token khi refresh cookie còn nhưng access cookie mất; frontend refresh client gửi token; logout revoke refresh session. |
 | `git diff --check` | PASS | Kiểm tra working diff sạch sau rate-limit implementation. |
+| Focused content API/worker, provider, Brand Profile and agent tests | **30 passed** | SQLite fixture verifies confirmed-profile gate, idempotency, exact citation provenance, durable draft/version/run persistence and configured DeepSeek worker path. No live provider call. |
+| Full Python suite (`PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -p no:cacheprovider -q`) | **101 passed, 1 skipped** | Skip is live DeepSeek smoke: no `DEEPSEEK_API_KEY`; adapter/client tests use fakes. LangGraph emitted one pending-deprecation warning. |
+| OpenAPI export + `--check`; generated TypeScript schema | PASS | Content generation now documents `202` and `Idempotency-Key`; backend OpenAPI and frontend generated schema updated. |
+| Frontend unit tests | **43 passed** | Vitest 4 files. |
+| Frontend typecheck | PASS | `npx tsc --noEmit --incremental false`; default project command could not write its protected `tsconfig.tsbuildinfo` cache. |
+| Frontend lint and production build | PASS | ESLint and Next.js production build completed. |
 
 ## Chưa nghiệm thu
 
 - PostgreSQL migration/integration: PostgreSQL local chấp nhận kết nối, nhưng chưa xác nhận DB riêng an toàn; không ghi vào DB chưa xác minh.
 - Docker Compose, worker/scheduler restart, MinIO/S3: Docker/Podman và MinIO không sẵn có.
-- DeepSeek live: không có `DEEPSEEK_API_KEY`; live smoke đã skip. Chưa đo latency/token/chi phí.
+- DeepSeek live: user đã chấp thuận đoạn trích tài liệu và Brand Profile data flow, nhưng không có `DEEPSEEK_API_KEY`; live smoke đã skip. Chưa xác minh model list của tài khoản, latency/token/chi phí.
 - Meta publish/metrics: chưa có app/page/token/quyền/App Review.
-- Real-mode browser E2E đầy đủ: analytics/recommendation và manual campaign → post → approval → export đã qua browser/API thật trên SQLite. Upload-driven Brand Profile extraction và AI content generation chưa đi qua browser vì đang fail-closed theo AI-001; PostgreSQL/MinIO cũng chưa nghiệm thu.
+- Real-mode browser E2E đầy đủ: analytics/recommendation và manual campaign → post → approval → export đã qua browser/API thật trên SQLite. AI content path được kiểm tra qua API+worker fixture integration, chưa gọi DeepSeek hoặc chạy browser path với model thật; PostgreSQL/MinIO cũng chưa nghiệm thu.
 
 ## Phạm vi bằng chứng
 
-Campaign, manual post/version, approval và CSV/XLSX export có API tests SQLite và một real-mode browser flow riêng; không đại diện cho PostgreSQL hoặc triển khai production. Manual metrics, recommendation feedback, Apply draft, accept/version conflict và REC-002 outcome persistence được kiểm tra bằng SQLite API tests; UI outcome flow có MSW E2E và không tạo bằng chứng về hiệu suất thật. Real-mode smoke cũ xác minh analytics/recommendation; test mới xác minh manual campaign → post → approval → export/download. Tenant tests không phải full security audit. Security review tái hiện lỗi traversal bằng `LocalObjectStorage.put('../outside.txt')` trong thư mục tạm; focused tests và full Python suite pass. Rate-limit behavior hiện có fake-Redis unit tests, chưa xác minh Redis thật, reverse proxy hoặc edge. Chi tiết còn thiếu ở [security-review.md](security-review.md). Upload-driven profile extraction worker fail-closed trước khi khởi tạo provider; generation route trả `503 provider_approval_required`, nên không test nào gửi brand/document content tới DeepSeek.
+Campaign, manual post/version, approval, export and content generation have SQLite API/worker fixture tests; only manual post/export has a real-mode browser flow. These tests do not represent PostgreSQL or production deployment. Content-generation integration validates versioned workspace context, threshold-filtered active sources, exact citation metadata and an unapproved draft; the fake model never sends data to DeepSeek. User approved sending Brand Profile and document excerpts, and production workers now use the configured DeepSeek adapter; the API key is still absent. Backend-only company/brand database IDs are excluded from model prompts, and external embeddings remain separately gated. Manual metrics, recommendation feedback, Apply draft, accept/version conflict and REC-002 outcome persistence are checked by SQLite API tests; UI outcome flow uses MSW and is not performance evidence. Tenant tests are not a full security audit. Security review reproduced traversal through `LocalObjectStorage.put('../outside.txt')`; rate limits have fake-Redis unit tests but real Redis, reverse proxy and edge controls remain unverified. See [security-review.md](security-review.md).
 
 ## Lệnh tái kiểm tra
 
@@ -52,8 +58,8 @@ Campaign, manual post/version, approval và CSV/XLSX export có API tests SQLite
 .venv/bin/python -m pytest -q
 .venv/bin/python scripts/export_openapi.py --check
 .venv/bin/python -m compileall -q database services packages
-(cd apps/web && npm run typecheck && npm test && npm run lint && npm run build)
+(cd apps/web && npx tsc --noEmit --incremental false && npm test && npm run lint && npm run build)
 npm audit --audit-level=high
 ```
 
-Chỉ chạy live DeepSeek, real browser E2E, PostgreSQL migration hoặc Meta checks sau khi secret/service riêng được provision và data flow cần thiết đã được cho phép. Không ghi secrets vào repo hoặc test report.
+Run live DeepSeek smoke only in a secured server environment after the approved API key is provisioned. PostgreSQL migration and Meta checks still require isolated services/credentials. Never write secrets into the repository or test report.

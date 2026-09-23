@@ -65,7 +65,7 @@ class GenerateContentRequest(StrictModel):
     campaign_id: str
     count: int = Field(ge=1, le=10)
     pillars: list[str] = Field(default_factory=list, max_length=8)
-    formats: list[Literal["text", "image", "carousel", "video", "reel", "story"]] = Field(default_factory=lambda: ["text"], max_length=6)
+    formats: list[Literal["text", "image", "carousel", "video", "reel", "story"]] = Field(default_factory=lambda: ["text"], min_length=1, max_length=6)
     start_date: date | None = None
     end_date: date | None = None
     instruction: str | None = Field(default=None, max_length=2000)

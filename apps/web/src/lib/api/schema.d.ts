@@ -4122,6 +4122,7 @@ export interface operations {
         readonly parameters: {
             readonly query?: never;
             readonly header?: {
+                readonly "Idempotency-Key"?: string | null;
                 readonly authorization?: string | null;
             };
             readonly path: {
@@ -4135,6 +4136,15 @@ export interface operations {
             };
         };
         readonly responses: {
+            /** @description Successful Response */
+            readonly 202: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["GenerateContentResponse"];
+                };
+            };
             /** @description Validation Error */
             readonly 422: {
                 headers: {
@@ -4142,15 +4152,6 @@ export interface operations {
                 };
                 content: {
                     readonly "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-            /** @description Successful Response */
-            readonly 503: {
-                headers: {
-                    readonly [name: string]: unknown;
-                };
-                content: {
-                    readonly "application/json": components["schemas"]["GenerateContentResponse"];
                 };
             };
         };
