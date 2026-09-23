@@ -1,6 +1,6 @@
 # Báo cáo kiểm thử
 
-Cập nhật: 2026-09-24 05:04 (Asia/Ho_Chi_Minh). Kết quả mới nhất kiểm tra code snapshot trên branch `codex/product-v1-completion`, dựa trên commit `7d603e4` cộng với thay đổi MEDIA-001 trước commit. Project owner đã chấp thuận gửi đoạn trích tài liệu, Brand Profile và strategy/topic/date của slot đã chọn tới DeepSeek.
+Cập nhật: 2026-09-24 05:05 (Asia/Ho_Chi_Minh). Kết quả mới nhất chạy trên commit `43ab2d3` của branch `codex/product-v1-completion`. Project owner đã chấp thuận gửi đoạn trích tài liệu, Brand Profile và strategy/topic/date của slot đã chọn tới DeepSeek.
 
 Môi trường: Python 3.11.16, Node.js 26.7.0, SQLite tạm, Chromium desktop/mobile. Bộ Playwright tự động dùng Next.js local và MSW; ngoài ra có một browser smoke thủ công qua Codex browser với Next.js + FastAPI real mode và DB SQLite hoàn toàn mới.
 
