@@ -1,6 +1,6 @@
 # Báo cáo kiểm thử
 
-Cập nhật: 2026-09-24 02:40 (Asia/Ho_Chi_Minh). Bộ kiểm tra mới nhất chạy trên implementation commit `6f2f67c` của branch `codex/product-v1-completion`. Branch đã có security fixes `d9cb6a8`, `1e1589f`, rate limits `004020e` và DeepSeek integration. Project owner đã chấp thuận data flow đoạn trích tài liệu + Brand Profile tới DeepSeek. Real-mode analytics smoke lịch sử chạy trên backend source `628efcb`; publishing route fix `c77720d` và contract-test adjustment `73ff4f7` là các commits trước đó.
+Cập nhật: 2026-09-24 03:26 (Asia/Ho_Chi_Minh). Các kiểm tra mới nhất chạy trên working tree của branch `codex/product-v1-completion`; thay đổi campaign edit và PostgreSQL Alembic bootstrap đã được kiểm tra trước khi push. Project owner đã chấp thuận data flow đoạn trích tài liệu + Brand Profile tới DeepSeek.
 
 Môi trường: Python 3.11.16, Node.js 26.7.0, SQLite tạm, Chromium desktop/mobile. Bộ Playwright tự động dùng Next.js local và MSW; ngoài ra có một browser smoke thủ công qua Codex browser với Next.js + FastAPI real mode và DB SQLite hoàn toàn mới.
 
@@ -45,10 +45,16 @@ Môi trường: Python 3.11.16, Node.js 26.7.0, SQLite tạm, Chromium desktop/m
 | `npx tsc --noEmit --incremental false`; `npx vitest run`; focused ESLint | PASS; **43 tests passed** | Frontend checks use the updated generated API schema. |
 | `npm run test:e2e -- slice2-campaign.spec.ts` | **8 passed** | Production Next.js + MSW demo; 4 desktop and 4 mobile tests, including AI revise UI/status/version. It does not call DeepSeek. |
 | Python `compileall` for database/services/packages/tests | PASS | Bytecode cache is written under `/private/tmp`; no test DB or provider used. |
+| PostgreSQL 18.3 migration trên disposable cluster `agentic_v1_test` | PASS | Alembic clean upgrade 0001→0007 và rerun `upgrade head`; pgvector 0.8.2; 27 public base tables; revision `0007_recommendation_experiment_outcomes` dài 39 ký tự. Cluster và role test riêng; PostgreSQL 15 dùng chung không bị sửa. |
+| Campaign brief update API | **7 passed** trong `tests/test_campaign_workflows.py` | SQLite fixture; sửa brief tăng version, gửi lại version cũ trả `409 version_conflict`; không gọi LLM. |
+| `npm run test:e2e -- slice2-campaign.spec.ts` | **10 passed** | 5 desktop + 5 mobile Chromium trên MSW; thêm sửa brief, hiển thị nội dung mới và tăng version. Không gọi DeepSeek. |
+| `npm run typecheck -- --incremental false`, `npm test`, `npm run lint`, `npm run build` | PASS; **43 unit tests** | Next production build gồm campaign detail editor. |
+| `.venv/bin/pytest -q` | **103 passed, 1 skipped** | Skip là live DeepSeek smoke vì chưa provision `DEEPSEEK_API_KEY`; suite dùng SQLite/fake provider. |
+| `.venv/bin/python scripts/export_openapi.py --check`; `PYTHONPYCACHEPREFIX=/private/tmp/agentic-v1-pycache-20260924 .venv/bin/python -m compileall -q database services packages tests`; `git diff --check` | PASS | OpenAPI/generated TypeScript synchronized; bytecode output isolated under `/private/tmp`. |
 
 ## Chưa nghiệm thu
 
-- PostgreSQL migration/integration: PostgreSQL local chấp nhận kết nối, nhưng chưa xác nhận DB riêng an toàn; không ghi vào DB chưa xác minh.
+- PostgreSQL migration: clean migration path is verified on a disposable PostgreSQL 18/pgvector cluster; full API/worker integration against PostgreSQL and the shared PostgreSQL 15 service remain unverified.
 - Docker Compose, worker/scheduler restart, MinIO/S3: Docker/Podman và MinIO không sẵn có.
 - DeepSeek live: user đã chấp thuận đoạn trích tài liệu và Brand Profile data flow, nhưng không có `DEEPSEEK_API_KEY`; live smoke đã skip. Chưa xác minh model list của tài khoản, latency/token/chi phí.
 - Meta publish/metrics: chưa có app/page/token/quyền/App Review.
@@ -68,4 +74,4 @@ Campaign, manual post/version, approval, export, content generation and AI revis
 npm audit --audit-level=high
 ```
 
-Run live DeepSeek smoke only in a secured server environment after the approved API key is provisioned. PostgreSQL migration and Meta checks still require isolated services/credentials. Never write secrets into the repository or test report.
+Run live DeepSeek smoke only in a secured server environment after the approved API key is provisioned. Full PostgreSQL/Redis/MinIO runtime and Meta checks still require isolated services/credentials. Never write secrets into the repository or test report.

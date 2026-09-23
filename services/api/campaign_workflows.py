@@ -38,6 +38,7 @@ from .campaign_schemas import (
     ApprovalRequest,
     CampaignCreateRequest,
     CampaignOut,
+    CampaignUpdateRequest,
     CreateManualPostRequest,
     CreateExportRequest,
     ExportOut,
@@ -281,6 +282,59 @@ async def get_campaign(
     row = await db.scalar(select(Campaign).where(Campaign.company_id == company_id, Campaign.id == campaign_id))
     if row is None:
         raise ApiProblem(404, "not_found", "Không tìm thấy chiến dịch.")
+    return await _campaign_out(db, row)
+
+
+@router.patch(
+    "/workspaces/{company_id}/campaigns/{campaign_id}",
+    response_model=CampaignOut,
+    dependencies=[Depends(require_csrf)],
+)
+async def update_campaign(
+    company_id: str,
+    campaign_id: str,
+    request: CampaignUpdateRequest,
+    user: User = Depends(current_user),
+    membership: Membership = Depends(require_permission("campaign:edit")),
+    db: AsyncSession = Depends(get_db),
+):
+    row = await db.scalar(
+        select(Campaign)
+        .where(Campaign.company_id == company_id, Campaign.id == campaign_id)
+        .with_for_update()
+    )
+    if row is None:
+        raise ApiProblem(404, "not_found", "Không tìm thấy chiến dịch.")
+    if row.version != request.version:
+        raise ApiProblem(
+            409,
+            "version_conflict",
+            "Chiến dịch đã được cập nhật. Hãy tải phiên bản mới nhất trước khi sửa tiếp.",
+            details={"current_version": row.version, "your_version": request.version},
+        )
+    if not request.pillars or any(pillar not in ALLOWED_PILLARS for pillar in request.pillars):
+        raise ApiProblem(422, "validation_error", "Chiến dịch cần ít nhất một trụ nội dung hợp lệ.")
+
+    previous_version = row.version
+    row.name = request.name
+    row.brief_json = request.brief.model_dump(mode="json")
+    row.pillars_json = request.pillars
+    row.channels_json = request.channels
+    row.version += 1
+    row.updated_at = utcnow()
+    db.add(AuditEvent(
+        company_id=company_id,
+        actor_user_id=user.id,
+        action="campaign.update",
+        entity_type="campaign",
+        entity_id=row.id,
+        metadata_json={
+            "previous_version": previous_version,
+            "version": row.version,
+            "fields": ["name", "brief", "pillars", "channels"],
+        },
+    ))
+    await db.commit()
     return await _campaign_out(db, row)
 
 

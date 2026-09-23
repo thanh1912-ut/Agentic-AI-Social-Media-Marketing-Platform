@@ -531,7 +531,8 @@ export interface paths {
         readonly delete?: never;
         readonly options?: never;
         readonly head?: never;
-        readonly patch?: never;
+        /** Update Campaign */
+        readonly patch: operations["update_campaign_api_v1_workspaces__company_id__campaigns__campaign_id__patch"];
         readonly trace?: never;
     };
     readonly "/api/v1/workspaces/{company_id}/campaigns/{campaign_id}/posts": {
@@ -1216,7 +1217,7 @@ export interface components {
             /** Name */
             readonly name: string;
             /** Pillars */
-            readonly pillars?: readonly string[];
+            readonly pillars?: readonly ("education" | "entertainment" | "inspiration" | "promotion" | "community" | "behind_the_scenes" | "product" | "testimonial")[];
         };
         /** CampaignOut */
         readonly CampaignOut: {
@@ -1240,7 +1241,7 @@ export interface components {
             /** Name */
             readonly name: string;
             /** Pillars */
-            readonly pillars: readonly string[];
+            readonly pillars: readonly ("education" | "entertainment" | "inspiration" | "promotion" | "community" | "behind_the_scenes" | "product" | "testimonial")[];
             /** Post Count */
             readonly post_count: number;
             /** Published Count */
@@ -1259,6 +1260,18 @@ export interface components {
             readonly version: number;
             /** Workspace Id */
             readonly workspace_id: string;
+        };
+        /** CampaignUpdateRequest */
+        readonly CampaignUpdateRequest: {
+            readonly brief: components["schemas"]["CampaignBriefIn"];
+            /** Channels */
+            readonly channels?: readonly "facebook_page"[];
+            /** Name */
+            readonly name: string;
+            /** Pillars */
+            readonly pillars?: readonly ("education" | "entertainment" | "inspiration" | "promotion" | "community" | "behind_the_scenes" | "product" | "testimonial")[];
+            /** Version */
+            readonly version: number;
         };
         /** ConfirmBrandProfileRequest */
         readonly ConfirmBrandProfileRequest: {
@@ -1487,7 +1500,7 @@ export interface components {
             /** Instruction */
             readonly instruction?: string | null;
             /** Pillars */
-            readonly pillars?: readonly string[];
+            readonly pillars?: readonly ("education" | "entertainment" | "inspiration" | "promotion" | "community" | "behind_the_scenes" | "product" | "testimonial")[];
             /** Start Date */
             readonly start_date?: string | null;
         };
@@ -2188,6 +2201,7 @@ export type SchemaCampaignBriefIn = components['schemas']['CampaignBriefIn'];
 export type SchemaCampaignBriefRevisionDraftOut = components['schemas']['CampaignBriefRevisionDraftOut'];
 export type SchemaCampaignCreateRequest = components['schemas']['CampaignCreateRequest'];
 export type SchemaCampaignOut = components['schemas']['CampaignOut'];
+export type SchemaCampaignUpdateRequest = components['schemas']['CampaignUpdateRequest'];
 export type SchemaConfirmBrandProfileRequest = components['schemas']['ConfirmBrandProfileRequest'];
 export type SchemaCreateExportRequest = components['schemas']['CreateExportRequest'];
 export type SchemaCreateManualPostRequest = components['schemas']['CreateManualPostRequest'];
@@ -3573,6 +3587,44 @@ export interface operations {
             readonly cookie?: never;
         };
         readonly requestBody?: never;
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["CampaignOut"];
+                };
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    readonly update_campaign_api_v1_workspaces__company_id__campaigns__campaign_id__patch: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: {
+                readonly authorization?: string | null;
+            };
+            readonly path: {
+                readonly company_id: string;
+                readonly campaign_id: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": components["schemas"]["CampaignUpdateRequest"];
+            };
+        };
         readonly responses: {
             /** @description Successful Response */
             readonly 200: {

@@ -27,6 +27,23 @@ test.describe('lát cắt 2 — campaign và nội dung', () => {
     await expect(page.getByText('Dữ liệu demo').first()).toBeVisible();
   });
 
+  test('sửa brief bằng optimistic version và hiển thị bản mới', async ({ page }) => {
+    await login(page);
+    await page.goto('/w/ws_pho_bac/campaigns/cmp_khai_truong');
+    const versionLabel = page.locator('header').getByText(/phiên bản \d+/);
+    const initialVersionText = await versionLabel.textContent();
+    const initialVersion = Number(initialVersionText?.match(/phiên bản (\d+)/)?.[1]);
+    expect(Number.isInteger(initialVersion)).toBeTruthy();
+
+    await page.getByRole('button', { name: 'Chỉnh sửa brief' }).click();
+    await page.getByLabel('Thông điệp chính').fill('Bữa trưa gọn ngon, đủ vị cho ngày bận rộn.');
+    await page.getByRole('button', { name: /Lưu brief/ }).click();
+
+    await expect(page.getByText('Bữa trưa gọn ngon, đủ vị cho ngày bận rộn.')).toBeVisible();
+    await expect(versionLabel).toHaveText(new RegExp(`phiên bản ${initialVersion + 1}`));
+    await expect(page.getByRole('button', { name: 'Chỉnh sửa brief' })).toBeVisible();
+  });
+
   test('sửa bài tạo version mới rồi gửi duyệt đúng version', async ({ page }) => {
     await login(page);
     await page.goto('/w/ws_pho_bac/campaigns/cmp_khai_truong/posts/post_3');

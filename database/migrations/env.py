@@ -7,7 +7,7 @@ import os
 from logging.config import fileConfig
 
 from alembic import context
-from sqlalchemy import pool
+from sqlalchemy import inspect, pool
 from sqlalchemy.engine import Connection
 from sqlalchemy.ext.asyncio import async_engine_from_config
 
@@ -30,6 +30,31 @@ def run_migrations_offline() -> None:
 
 
 def do_run_migrations(connection: Connection) -> None:
+    if connection.dialect.name == "postgresql":
+        # Alembic's default version table uses VARCHAR(32), but this project's
+        # descriptive revision IDs exceed that limit. Create or widen its
+        # bookkeeping column before Alembic records any revision.
+        # Commit this bootstrap before configuring Alembic. Otherwise SQLAlchemy
+        # treats the implicit transaction as externally managed and migration
+        # DDL can be rolled back when the connection closes.
+        with connection.begin():
+            connection.exec_driver_sql(
+                "CREATE TABLE IF NOT EXISTS alembic_version ("
+                "version_num VARCHAR(128) NOT NULL, "
+                "CONSTRAINT alembic_version_pkc PRIMARY KEY (version_num)"
+                ")"
+            )
+            version_column = next(
+                column
+                for column in inspect(connection).get_columns("alembic_version")
+                if column["name"] == "version_num"
+            )
+            length = getattr(version_column["type"], "length", None)
+            if length is not None and length < 128:
+                connection.exec_driver_sql(
+                    "ALTER TABLE alembic_version "
+                    "ALTER COLUMN version_num TYPE VARCHAR(128)"
+                )
     context.configure(connection=connection, target_metadata=target_metadata, compare_type=True)
     with context.begin_transaction():
         context.run_migrations()
@@ -50,4 +75,3 @@ if context.is_offline_mode():
     run_migrations_offline()
 else:
     run_migrations_online()
-

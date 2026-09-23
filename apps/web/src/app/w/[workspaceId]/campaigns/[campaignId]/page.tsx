@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
-import { useState, type FormEvent } from 'react';
+import { useEffect, useState, type FormEvent } from 'react';
 
 import {
   CAMPAIGN_OBJECTIVE_LABELS,
@@ -13,6 +13,7 @@ import {
   POST_FORMAT_LABELS,
   POST_STATUS_LABELS,
   PERMISSIONS,
+  type CampaignBrief,
   type ContentPillar,
   type PostFormat,
 } from '@agentic/contracts';
@@ -36,6 +37,7 @@ import {
   useCreatePost,
   useGenerateContent,
   usePosts,
+  useUpdateCampaign,
 } from '@/lib/hooks';
 import { useMocks } from '@/lib/api/config';
 import { formatDate, formatDateTime } from '@/lib/format';
@@ -52,6 +54,7 @@ export default function CampaignDetailPage() {
   const generate = useGenerateContent(workspaceId);
   const createPost = useCreatePost(workspaceId, campaignId);
   const createExport = useCreateExport(workspaceId);
+  const updateCampaign = useUpdateCampaign(workspaceId, campaignId);
   const mocksEnabled = useMocks();
   const [count, setCount] = useState('3');
   const [format, setFormat] = useState<'csv' | 'xlsx'>(EXPORT_FORMATS.XLSX);
@@ -59,6 +62,28 @@ export default function CampaignDetailPage() {
   const [manualHashtags, setManualHashtags] = useState('');
   const [manualPillar, setManualPillar] = useState<ContentPillar>('product');
   const [manualFormat, setManualFormat] = useState<PostFormat>(POST_FORMATS.TEXT);
+  const [editingBrief, setEditingBrief] = useState(false);
+  const [briefName, setBriefName] = useState('');
+  const [briefObjective, setBriefObjective] = useState<CampaignBrief['objective']>('awareness');
+  const [briefAudience, setBriefAudience] = useState('');
+  const [briefMessage, setBriefMessage] = useState('');
+  const [briefMustInclude, setBriefMustInclude] = useState('');
+  const [briefMustAvoid, setBriefMustAvoid] = useState('');
+  const [briefStartDate, setBriefStartDate] = useState('');
+  const [briefEndDate, setBriefEndDate] = useState('');
+
+  useEffect(() => {
+    const current = campaign.data;
+    if (!current || editingBrief) return;
+    setBriefName(current.name);
+    setBriefObjective(current.brief.objective);
+    setBriefAudience(current.brief.audience.join('\n'));
+    setBriefMessage(current.brief.key_message);
+    setBriefMustInclude((current.brief.must_include ?? []).join('\n'));
+    setBriefMustAvoid((current.brief.must_avoid ?? []).join('\n'));
+    setBriefStartDate(current.brief.start_date);
+    setBriefEndDate(current.brief.end_date);
+  }, [campaign.data, editingBrief]);
 
   if (campaign.isPending || posts.isPending) {
     return <LoadingBlock label="Đang tải chiến dịch và lịch nội dung…" />;
@@ -82,6 +107,7 @@ export default function CampaignDetailPage() {
   const canGenerate = hasPermission(workspace, PERMISSIONS.POST_GENERATE);
   const canEditPosts = hasPermission(workspace, PERMISSIONS.POST_EDIT);
   const canExport = hasPermission(workspace, PERMISSIONS.EXPORT_CREATE);
+  const canEditBrief = hasPermission(workspace, PERMISSIONS.CAMPAIGN_EDIT);
 
   function submitGenerate(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -111,6 +137,33 @@ export default function CampaignDetailPage() {
     );
   }
 
+  function submitBrief(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const splitLines = (value: string) => value.split(/[\n;,]/).map((item) => item.trim()).filter(Boolean);
+    const audience = splitLines(briefAudience);
+    if (audience.length === 0 || !briefName.trim() || !briefMessage.trim()) return;
+    updateCampaign.mutate(
+      {
+        version: data.version,
+        name: briefName.trim(),
+        brief: {
+          objective: briefObjective,
+          objective_note: data.brief.objective_note,
+          audience,
+          product_ids: [...data.brief.product_ids],
+          key_message: briefMessage.trim(),
+          must_include: splitLines(briefMustInclude),
+          must_avoid: splitLines(briefMustAvoid),
+          start_date: briefStartDate,
+          end_date: briefEndDate,
+        },
+        pillars: [...data.pillars],
+        channels: [...data.channels],
+      },
+      { onSuccess: () => setEditingBrief(false) },
+    );
+  }
+
   return (
     <div className="space-y-6">
       <header className="flex flex-wrap items-start justify-between gap-3">
@@ -129,14 +182,75 @@ export default function CampaignDetailPage() {
       {mocksEnabled ? <DemoNotice /> : null}
 
       <Card title="Brief chiến dịch" description="Thông tin đầu vào để AI tạo nội dung — chưa tự động thay đổi campaign.">
-        <dl className="grid gap-x-6 gap-y-4 text-sm sm:grid-cols-2">
-          <div><dt className="font-medium text-slate-600">Mục tiêu</dt><dd className="mt-1">{CAMPAIGN_OBJECTIVE_LABELS[data.brief.objective]}</dd></div>
-          <div><dt className="font-medium text-slate-600">Kênh</dt><dd className="mt-1">Facebook Page</dd></div>
-          <div className="sm:col-span-2"><dt className="font-medium text-slate-600">Khán giả</dt><dd className="mt-1">{data.brief.audience.join(' · ')}</dd></div>
-          <div className="sm:col-span-2"><dt className="font-medium text-slate-600">Thông điệp chính</dt><dd className="mt-1">{data.brief.key_message}</dd></div>
-          <div><dt className="font-medium text-slate-600">Bắt buộc có</dt><dd className="mt-1">{data.brief.must_include?.join(' · ') || '—'}</dd></div>
-          <div><dt className="font-medium text-slate-600">Cần tránh</dt><dd className="mt-1">{data.brief.must_avoid?.join(' · ') || '—'}</dd></div>
-        </dl>
+        {editingBrief ? (
+          <form onSubmit={submitBrief} className="space-y-4">
+            <div className="grid gap-4 md:grid-cols-2">
+              <div>
+                <label htmlFor="edit-campaign-name" className="block text-sm font-medium text-slate-700">Tên chiến dịch</label>
+                <input id="edit-campaign-name" required maxLength={200} value={briefName} onChange={(event) => setBriefName(event.target.value)} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" />
+              </div>
+              <div>
+                <label htmlFor="edit-campaign-objective" className="block text-sm font-medium text-slate-700">Mục tiêu</label>
+                <select id="edit-campaign-objective" value={briefObjective} onChange={(event) => setBriefObjective(event.target.value as CampaignBrief['objective'])} className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm">
+                  {Object.entries(CAMPAIGN_OBJECTIVE_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+                </select>
+              </div>
+              <div className="md:col-span-2">
+                <label htmlFor="edit-campaign-audience" className="block text-sm font-medium text-slate-700">Khán giả mục tiêu</label>
+                <textarea id="edit-campaign-audience" required rows={2} value={briefAudience} onChange={(event) => setBriefAudience(event.target.value)} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" />
+                <p className="mt-1 text-xs text-slate-500">Mỗi dòng một nhóm khách hàng.</p>
+              </div>
+              <div className="md:col-span-2">
+                <label htmlFor="edit-campaign-message" className="block text-sm font-medium text-slate-700">Thông điệp chính</label>
+                <textarea id="edit-campaign-message" required maxLength={2000} rows={3} value={briefMessage} onChange={(event) => setBriefMessage(event.target.value)} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" />
+              </div>
+              <div>
+                <label htmlFor="edit-campaign-includes" className="block text-sm font-medium text-slate-700">Bắt buộc có</label>
+                <textarea id="edit-campaign-includes" rows={2} value={briefMustInclude} onChange={(event) => setBriefMustInclude(event.target.value)} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" />
+              </div>
+              <div>
+                <label htmlFor="edit-campaign-avoids" className="block text-sm font-medium text-slate-700">Cần tránh</label>
+                <textarea id="edit-campaign-avoids" rows={2} value={briefMustAvoid} onChange={(event) => setBriefMustAvoid(event.target.value)} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" />
+              </div>
+              <div>
+                <label htmlFor="edit-campaign-start" className="block text-sm font-medium text-slate-700">Ngày bắt đầu</label>
+                <input id="edit-campaign-start" type="date" required value={briefStartDate} onChange={(event) => setBriefStartDate(event.target.value)} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" />
+              </div>
+              <div>
+                <label htmlFor="edit-campaign-end" className="block text-sm font-medium text-slate-700">Ngày kết thúc</label>
+                <input id="edit-campaign-end" type="date" required min={briefStartDate} value={briefEndDate} onChange={(event) => setBriefEndDate(event.target.value)} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" />
+              </div>
+            </div>
+            {updateCampaign.error ? (
+              <div role="alert" className="rounded-lg border border-rose-200 bg-rose-50 p-3 text-sm text-rose-800">
+                <p>{updateCampaign.error instanceof ApiError && updateCampaign.error.isVersionConflict ? 'Brief đã được người khác cập nhật. Không có thay đổi nào của bạn bị ghi đè.' : updateCampaign.error instanceof ApiError ? updateCampaign.error.message : 'Không lưu được brief.'}</p>
+                {updateCampaign.error instanceof ApiError && updateCampaign.error.isVersionConflict ? (
+                  <div className="mt-2"><Button variant="secondary" onClick={() => { setEditingBrief(false); void campaign.refetch(); }}>Tải phiên bản mới nhất</Button></div>
+                ) : null}
+              </div>
+            ) : null}
+            <div className="flex flex-wrap gap-2">
+              <Button type="submit" loading={updateCampaign.isPending} disabled={!briefName.trim() || !briefMessage.trim() || !briefAudience.trim()}>Lưu brief · v{data.version + 1}</Button>
+              <Button type="button" variant="secondary" disabled={updateCampaign.isPending} onClick={() => { updateCampaign.reset(); setEditingBrief(false); }}>Hủy</Button>
+            </div>
+          </form>
+        ) : (
+          <>
+            <dl className="grid gap-x-6 gap-y-4 text-sm sm:grid-cols-2">
+              <div><dt className="font-medium text-slate-600">Mục tiêu</dt><dd className="mt-1">{CAMPAIGN_OBJECTIVE_LABELS[data.brief.objective]}</dd></div>
+              <div><dt className="font-medium text-slate-600">Kênh</dt><dd className="mt-1">Facebook Page</dd></div>
+              <div className="sm:col-span-2"><dt className="font-medium text-slate-600">Khán giả</dt><dd className="mt-1">{data.brief.audience.join(' · ')}</dd></div>
+              <div className="sm:col-span-2"><dt className="font-medium text-slate-600">Thông điệp chính</dt><dd className="mt-1">{data.brief.key_message}</dd></div>
+              <div><dt className="font-medium text-slate-600">Bắt buộc có</dt><dd className="mt-1">{data.brief.must_include?.join(' · ') || '—'}</dd></div>
+              <div><dt className="font-medium text-slate-600">Cần tránh</dt><dd className="mt-1">{data.brief.must_avoid?.join(' · ') || '—'}</dd></div>
+            </dl>
+            {canEditBrief ? (
+              <div className="mt-4"><Button variant="secondary" onClick={() => { updateCampaign.reset(); setEditingBrief(true); }}>Chỉnh sửa brief</Button></div>
+            ) : (
+              <PermissionNotice message={permissionDeniedReason(workspace, PERMISSIONS.CAMPAIGN_EDIT)} requiredPermission={PERMISSIONS.CAMPAIGN_EDIT} />
+            )}
+          </>
+        )}
       </Card>
 
       <div className="grid gap-4 lg:grid-cols-3">

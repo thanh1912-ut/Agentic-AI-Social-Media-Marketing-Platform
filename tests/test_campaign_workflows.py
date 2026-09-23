@@ -194,6 +194,33 @@ def test_campaign_api_has_tenant_scoping_and_versioned_approval(workflow_api) ->
     assert created.status_code == 201, created.text
     campaign = created.json()
     assert campaign["post_count"] == 0
+    campaign_url = f"/api/v1/workspaces/{workspace_id}/campaigns/{campaign['id']}"
+    update_body = {
+        "version": campaign["version"],
+        "name": "Bếp Mộc mùa thu",
+        "brief": {
+            **campaign["brief"],
+            "key_message": "Bữa cơm Việt ấm áp cho ngày mưa.",
+        },
+        "pillars": campaign["pillars"],
+        "channels": campaign["channels"],
+    }
+    updated_campaign = client.patch(
+        campaign_url,
+        headers={"X-CSRF-Token": client.cookies.get("agentic_csrf")},
+        json=update_body,
+    )
+    assert updated_campaign.status_code == 200, updated_campaign.text
+    assert updated_campaign.json()["version"] == campaign["version"] + 1
+    assert updated_campaign.json()["name"] == "Bếp Mộc mùa thu"
+    assert updated_campaign.json()["brief"]["key_message"] == "Bữa cơm Việt ấm áp cho ngày mưa."
+    stale_campaign = client.patch(
+        campaign_url,
+        headers={"X-CSRF-Token": client.cookies.get("agentic_csrf")},
+        json=update_body,
+    )
+    assert stale_campaign.status_code == 409
+    assert stale_campaign.json()["error"]["code"] == "version_conflict"
 
     other = TestClient(app)
     with other:

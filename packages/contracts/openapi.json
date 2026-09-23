@@ -975,6 +975,16 @@
           },
           "pillars": {
             "items": {
+              "enum": [
+                "education",
+                "entertainment",
+                "inspiration",
+                "promotion",
+                "community",
+                "behind_the_scenes",
+                "product",
+                "testimonial"
+              ],
               "type": "string"
             },
             "maxItems": 8,
@@ -1027,6 +1037,16 @@
           },
           "pillars": {
             "items": {
+              "enum": [
+                "education",
+                "entertainment",
+                "inspiration",
+                "promotion",
+                "community",
+                "behind_the_scenes",
+                "product",
+                "testimonial"
+              ],
               "type": "string"
             },
             "title": "Pillars",
@@ -1081,6 +1101,59 @@
           "updated_at"
         ],
         "title": "CampaignOut",
+        "type": "object"
+      },
+      "CampaignUpdateRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "brief": {
+            "$ref": "#/components/schemas/CampaignBriefIn"
+          },
+          "channels": {
+            "items": {
+              "const": "facebook_page",
+              "type": "string"
+            },
+            "minItems": 1,
+            "title": "Channels",
+            "type": "array"
+          },
+          "name": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          },
+          "pillars": {
+            "items": {
+              "enum": [
+                "education",
+                "entertainment",
+                "inspiration",
+                "promotion",
+                "community",
+                "behind_the_scenes",
+                "product",
+                "testimonial"
+              ],
+              "type": "string"
+            },
+            "maxItems": 8,
+            "title": "Pillars",
+            "type": "array"
+          },
+          "version": {
+            "minimum": 1.0,
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "name",
+          "brief",
+          "version"
+        ],
+        "title": "CampaignUpdateRequest",
         "type": "object"
       },
       "ConfirmBrandProfileRequest": {
@@ -1689,6 +1762,16 @@
           },
           "pillars": {
             "items": {
+              "enum": [
+                "education",
+                "entertainment",
+                "inspiration",
+                "promotion",
+                "community",
+                "behind_the_scenes",
+                "product",
+                "testimonial"
+              ],
               "type": "string"
             },
             "maxItems": 8,
@@ -6045,6 +6128,81 @@
           }
         },
         "summary": "Get Campaign",
+        "tags": [
+          "campaigns-content-approvals"
+        ]
+      },
+      "patch": {
+        "operationId": "update_campaign_api_v1_workspaces__company_id__campaigns__campaign_id__patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "company_id",
+            "required": true,
+            "schema": {
+              "title": "Company Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "campaign_id",
+            "required": true,
+            "schema": {
+              "title": "Campaign Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CampaignUpdateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CampaignOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Update Campaign",
         "tags": [
           "campaigns-content-approvals"
         ]

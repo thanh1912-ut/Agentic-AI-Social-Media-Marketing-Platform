@@ -48,6 +48,7 @@ import type {
 import type {
   ApiAcceptInvitationRequest,
   ApiAcceptedResponse,
+  ApiCampaignUpdateRequest,
   ApiBrandProfile,
   ApiConfirmBrandProfileRequest,
   ApiDocument,
@@ -297,7 +298,7 @@ export const campaignApi = {
       body,
     }),
 
-  update: (workspaceId: string, campaignId: string, body: Partial<Campaign>) =>
+  update: (workspaceId: string, campaignId: string, body: ApiCampaignUpdateRequest) =>
     apiRequest<Campaign>(v1(`/workspaces/${workspaceId}/campaigns/${campaignId}`), {
       method: 'PATCH',
       body,

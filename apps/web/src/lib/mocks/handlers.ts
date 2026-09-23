@@ -36,6 +36,7 @@ import type { ApiDocument } from '@/lib/api/types';
 import type {
   ApiAnalyticsRecommendationRecord,
   ApiApplyRecommendationRequest,
+  ApiCampaignUpdateRequest,
   ApiCampaignBriefRevisionDraft,
   ApiExperimentOutcome,
   ApiMetricImportRequest,
@@ -605,6 +606,44 @@ export const handlers = [
       (item) => item.id === params.campaignId,
     );
     return campaign ? HttpResponse.json(campaign) : notFound('chiến dịch');
+  }),
+
+  http.patch('*/api/v1/workspaces/:workspaceId/campaigns/:campaignId', async ({ params, request }) => {
+    const session = currentSession();
+    if (!session) return unauthenticated();
+    const workspaceId = params.workspaceId as string;
+    const campaigns = demoCampaigns[workspaceId] ?? [];
+    const index = campaigns.findIndex((item) => item.id === params.campaignId);
+    if (index === -1) return notFound('chiến dịch');
+    const body = (await request.json()) as ApiCampaignUpdateRequest;
+    const current = campaigns[index];
+    if (!current) return notFound('chiến dịch');
+    if (body.version !== current.version) {
+      return fail(
+        409,
+        ERROR_CODES.VERSION_CONFLICT,
+        'Chiến dịch đã được cập nhật. Hãy tải phiên bản mới nhất trước khi sửa tiếp.',
+        { current_version: current.version, your_version: body.version },
+      );
+    }
+    const updated = {
+      ...current,
+      name: body.name,
+      brief: {
+        ...body.brief,
+        objective_note: body.brief.objective_note ?? undefined,
+        audience: [...body.brief.audience],
+        product_ids: [...(body.brief.product_ids ?? current.brief.product_ids)],
+        must_include: body.brief.must_include ? [...body.brief.must_include] : undefined,
+        must_avoid: body.brief.must_avoid ? [...body.brief.must_avoid] : undefined,
+      },
+      pillars: [...(body.pillars ?? current.pillars)],
+      channels: [...(body.channels ?? current.channels)],
+      version: current.version + 1,
+      updated_at: nowIso(),
+    };
+    campaigns[index] = updated;
+    return HttpResponse.json(updated);
   }),
 
   http.get('*/api/v1/workspaces/:workspaceId/campaigns', ({ params }) => {

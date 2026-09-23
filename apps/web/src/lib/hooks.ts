@@ -42,6 +42,7 @@ import type {
   ApiAcceptedRecommendationDraftList,
   ApiAnalyticsDashboard,
   ApiApplyRecommendationRequest,
+  ApiCampaignUpdateRequest,
   ApiRecommendationDraftDecisionRequest,
   ApiRecommendationFeedbackRequest,
   ApiSaveRecommendationRequest,
@@ -359,6 +360,17 @@ export function useCampaign(
     queryKey: queryKeys.campaign(workspaceId, campaignId),
     queryFn: () => api.campaign.get(workspaceId, campaignId),
     enabled: workspaceId !== '' && campaignId !== '',
+  });
+}
+
+export function useUpdateCampaign(workspaceId: string, campaignId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (body: ApiCampaignUpdateRequest) => api.campaign.update(workspaceId, campaignId, body),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.campaign(workspaceId, campaignId) });
+      void queryClient.invalidateQueries({ queryKey: queryKeys.campaigns(workspaceId) });
+    },
   });
 }
 

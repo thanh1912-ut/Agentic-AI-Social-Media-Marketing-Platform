@@ -11,6 +11,10 @@
 - Embedding bên ngoài là data flow riêng; `EMBEDDING_DATA_FLOW_APPROVED=0` mặc định chặn cấu hình provider embedding ngoài. Giữ `EMBEDDING_PROVIDER=none` và lexical mode cho tới khi có chấp thuận riêng.
 - Facebook Page/app/token/App Review chỉ cần khi bật connector tương ứng.
 
+## PostgreSQL migrations
+
+`alembic upgrade head` đã được xác minh từ migration 0001 đến 0007 trên PostgreSQL 18.3 cô lập, có pgvector 0.8.2. Có thể chạy lại lệnh để kiểm tra trạng thái up-to-date. Migration environment tự tạo/nâng `alembic_version.version_num` lên `VARCHAR(128)` trên PostgreSQL vì revision IDs của repo dài hơn giới hạn mặc định 32 ký tự. Bằng chứng hiện có chỉ xác nhận migration và extension trên database test; chưa xác nhận toàn bộ API/worker/Redis/MinIO stack với PostgreSQL.
+
 ## Cài local
 
 ```bash
@@ -63,7 +67,7 @@ Cookie-authenticated refresh/logout yêu cầu header `X-CSRF-Token` khớp cook
 
 - Demo UI: `NEXT_PUBLIC_USE_MOCKS=1`; dữ liệu do MSW cung cấp, không phải API evidence.
 - Real mode: `NEXT_PUBLIC_USE_MOCKS=0`; UI gọi API, hiển thị lỗi khi backend lỗi, không dùng dữ liệu mock thay thế.
-- Campaign supports tenant-scoped create/list/detail, manual post creation/edit with immutable versions, approval decisions tied to the exact version, and CSV/XLSX export. Exported content still needs a human to publish it on Meta.
+- Campaign supports tenant-scoped create/list/detail and brief editing. Brief update includes the latest `version`; stale updates return `409 version_conflict` and must reload before editing again. Strategy/content-slot planning and image asset attachment are not implemented yet; generated posts currently accept count/date range/pillars. Manual post creation/edit retains immutable versions, approval decisions stay tied to the exact version, and CSV/XLSX export still requires a human to publish on Meta.
 - Analytics supports manual snapshots: choose a source ID and measurement timestamp, add one or more workspace posts, and enter age-at-measurement plus available metrics. Counts must be integers; cost/revenue may be decimal. Leave unavailable values blank. Duplicate `(workspace, post, source, measured_at)` snapshots return conflict. Only mark attribution valid when its method/window is verified.
 - Dashboard uses latest per-post snapshots for the selected source and reports freshness, coverage, pillar/format groups and missing-value notes. Recommendations are deterministic test suggestions with evidence IDs; they abstain on small samples and do not establish causality. Save a proposal to persist its evidence fingerprint, then record useful/not useful/already done feedback. An owner can choose a campaign and Apply to create a pending brief revision; inspect before/after values, then accept or discard. Campaign changes only on accept; a stale base version returns `409` and needs a new revision.
 - After an accepted revision has run, choose that campaign and the recommendation's same source on Analytics. Record baseline and follow-up measurement windows, one metric, and a shared post-age range. Windows must not overlap and both cohorts need usable snapshots. The API persists computed values, coverage/sample size, outcome-specific evidence IDs, snapshot IDs and limitations; repeated identical submissions are idempotent. The comparison is observational and must not be presented as causal proof. Apply migration 0007 before using this feature on an existing database.

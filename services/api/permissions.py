@@ -11,6 +11,7 @@ ROLE_PERMISSIONS: dict[str, frozenset[str]] = {
             "brand:confirm",
             "document:upload",
             "campaign:create",
+            "campaign:edit",
             "post:edit",
             "post:generate",
             "post:approve",
@@ -27,6 +28,7 @@ ROLE_PERMISSIONS: dict[str, frozenset[str]] = {
             "brand:edit",
             "document:upload",
             "campaign:create",
+            "campaign:edit",
             "post:edit",
             "post:generate",
             "export:create",
@@ -43,4 +45,3 @@ def permissions_for(role: str) -> list[str]:
 
 def has_permission(role: str, permission: str) -> bool:
     return permission in ROLE_PERMISSIONS.get(role, frozenset())
-

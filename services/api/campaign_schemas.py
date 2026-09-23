@@ -30,11 +30,21 @@ class CampaignBriefIn(StrictModel):
         return self
 
 
+ContentPillarValue = Literal[
+    "education", "entertainment", "inspiration", "promotion", "community",
+    "behind_the_scenes", "product", "testimonial",
+]
+
+
 class CampaignCreateRequest(StrictModel):
     name: str = Field(min_length=1, max_length=200)
     brief: CampaignBriefIn
-    pillars: list[str] = Field(default_factory=lambda: ["product", "education"], max_length=8)
+    pillars: list[ContentPillarValue] = Field(default_factory=lambda: ["product", "education"], max_length=8)
     channels: list[Literal["facebook_page"]] = Field(default_factory=lambda: ["facebook_page"], min_length=1)
+
+
+class CampaignUpdateRequest(CampaignCreateRequest):
+    version: int = Field(ge=1)
 
 
 class CampaignOut(StrictModel):
@@ -43,7 +53,7 @@ class CampaignOut(StrictModel):
     name: str
     status: Literal["draft", "active", "completed", "archived"]
     brief: dict[str, Any]
-    pillars: list[str]
+    pillars: list[ContentPillarValue]
     channels: list[str]
     version: int
     post_count: int
@@ -64,7 +74,7 @@ class PaginatedCampaigns(StrictModel):
 class GenerateContentRequest(StrictModel):
     campaign_id: str
     count: int = Field(ge=1, le=10)
-    pillars: list[str] = Field(default_factory=list, max_length=8)
+    pillars: list[ContentPillarValue] = Field(default_factory=list, max_length=8)
     formats: list[Literal["text", "image", "carousel", "video", "reel", "story"]] = Field(default_factory=lambda: ["text"], min_length=1, max_length=6)
     start_date: date | None = None
     end_date: date | None = None

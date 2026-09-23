@@ -131,3 +131,17 @@ Ngày tạo: 2026-09-23. Trạng thái dưới đây được ghi từ audit đ�
 - Không chọn: gọi DeepSeek đồng bộ từ API, thay thế lịch sử version, tự gửi duyệt/đăng, hoặc xem AI tạo mô tả ảnh là tạo media.
 - Ảnh hưởng: thêm DTO/OpenAPI/TS type, worker job recovery/retry và editor UI; scope `media` chỉ cập nhật `image_brief`. Không thêm migration mới vì dùng job ledger và PostVersion schema hiện có.
 - Trạng thái: IMPLEMENTED; SQLite API/worker fixture, retry/recovery, OpenAPI generation/check và Playwright mock desktop/mobile pass. Live DeepSeek request và real-provider browser flow NOT_VERIFIED do chưa provision key.
+
+## DEC-017 — PostgreSQL Alembic version table cần chứa revision IDs dài
+
+- Vấn đề: migration revision IDs mô tả đầy đủ tính năng dài hơn giới hạn `VARCHAR(32)` mà Alembic tạo mặc định; migration chạy được ở SQLite nhưng thất bại khi PostgreSQL lưu revision dài.
+- Quyết định: trên PostgreSQL, migration environment tạo `alembic_version.version_num VARCHAR(128)` trước khi chạy migration và nâng column cũ nếu đang ngắn hơn. SQLite giữ hành vi Alembic mặc định.
+- Ảnh hưởng: migration `0001→0007` chạy thành công trên PostgreSQL 18.3 với pgvector 0.8.2; chạy lại `upgrade head` không đổi schema. Kiểm thử dùng database/role trong disposable cluster ở `/private/tmp`, không chạm PostgreSQL 15 dùng chung.
+- Trạng thái: IMPLEMENTED; 27 public tables, current revision dài 39 ký tự.
+
+## DEC-018 — Campaign brief edit dùng optimistic concurrency
+
+- Vấn đề: campaign đã tạo chưa có luồng sửa brief; chỉnh sửa đồng thời có thể ghi đè nội dung mới của người khác.
+- Quyết định: thêm `PATCH /workspaces/{company_id}/campaigns/{campaign_id}` với quyền `campaign:edit` và expected `version`. Update thành công tăng version; request stale trả `409 version_conflict`. Giao diện cho phép sửa trường brief và yêu cầu người dùng tải lại bản mới nhất sau conflict.
+- Ảnh hưởng: OpenAPI và TypeScript client được sinh lại; MSW hỗ trợ version conflict; campaign edit E2E chạy trên desktop/mobile.
+- Trạng thái: IMPLEMENTED; API test xác nhận version bump và conflict, campaign slice có 10 E2E pass. Không tạo migration mới.

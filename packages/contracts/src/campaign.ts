@@ -29,7 +29,7 @@ export interface CampaignBrief {
   /** Mục tiêu chiến dịch. */
   objective: CampaignObjective;
   /** Mô tả mục tiêu bằng lời người dùng, hiển thị lại cho họ đọc. */
-  objective_note?: string;
+  objective_note?: string | null;
   /** Chân dung khán giả. */
   audience: string[];
   /** Sản phẩm/dịch vụ được quảng bá. */

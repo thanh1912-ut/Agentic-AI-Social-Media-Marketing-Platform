@@ -19,6 +19,7 @@ export type ApiInviteMemberResponse = Schemas['InviteMemberResponse'];
 export type ApiUploadLimits = Schemas['UploadLimits'];
 export type ApiDocumentError = Schemas['DocumentError'];
 export type ApiDocument = Schemas['DocumentOut'];
+export type ApiCampaignUpdateRequest = Schemas['CampaignUpdateRequest'];
 export type ApiJobStep = Schemas['JobStepOut'];
 export type ApiJobError = Schemas['JobErrorOut'];
 export type ApiJob = Schemas['JobOut'];
