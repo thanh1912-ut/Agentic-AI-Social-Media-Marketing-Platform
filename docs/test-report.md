@@ -1,6 +1,6 @@
 # Báo cáo kiểm thử
 
-Cập nhật: 2026-09-24 02:39 (Asia/Ho_Chi_Minh). Branch `codex/product-v1-completion` được test trên working-tree snapshot có parent `00507dd` và các thay đổi AI revise trước commit. Branch đã có security fixes `d9cb6a8`, `1e1589f`, rate limits `004020e` và DeepSeek integration. Project owner đã chấp thuận data flow đoạn trích tài liệu + Brand Profile tới DeepSeek. Real-mode analytics smoke lịch sử chạy trên backend source `628efcb`; publishing route fix `c77720d` và contract-test adjustment `73ff4f7` là các commits trước đó.
+Cập nhật: 2026-09-24 02:40 (Asia/Ho_Chi_Minh). Bộ kiểm tra mới nhất chạy trên implementation commit `6f2f67c` của branch `codex/product-v1-completion`. Branch đã có security fixes `d9cb6a8`, `1e1589f`, rate limits `004020e` và DeepSeek integration. Project owner đã chấp thuận data flow đoạn trích tài liệu + Brand Profile tới DeepSeek. Real-mode analytics smoke lịch sử chạy trên backend source `628efcb`; publishing route fix `c77720d` và contract-test adjustment `73ff4f7` là các commits trước đó.
 
 Môi trường: Python 3.11.16, Node.js 26.7.0, SQLite tạm, Chromium desktop/mobile. Bộ Playwright tự động dùng Next.js local và MSW; ngoài ra có một browser smoke thủ công qua Codex browser với Next.js + FastAPI real mode và DB SQLite hoàn toàn mới.
 
