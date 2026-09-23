@@ -286,6 +286,7 @@ class Campaign(Base, IdMixin, TimestampMixin):
     name: Mapped[str] = mapped_column(String(200), nullable=False)
     status: Mapped[str] = mapped_column(String(30), default="draft", nullable=False)
     brief_json: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
+    content_plan_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict, server_default="{}", nullable=False)
     pillars_json: Mapped[list[str]] = mapped_column(JSON, default=list, nullable=False)
     channels_json: Mapped[list[str]] = mapped_column(JSON, default=list, nullable=False)
     version: Mapped[int] = mapped_column(Integer, default=1, nullable=False)

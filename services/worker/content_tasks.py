@@ -143,6 +143,29 @@ async def _fail(job_id: str, failure: ContentGenerationFailure, *, attempts: int
         job = await db.get(Job, job_id)
         if job is None or job.status not in {"running", "queued"}:
             return
+        if not retry and job.kind == "content_generation":
+            result = dict(job.result or {})
+            request = result.get("request") or {}
+            slot_id = request.get("slot_id")
+            if slot_id:
+                campaign = await db.scalar(select(Campaign).where(
+                    Campaign.id == result.get("campaign_id"),
+                    Campaign.company_id == job.company_id,
+                ).with_for_update())
+                if campaign is not None:
+                    plan = campaign.content_plan_json or {"strategy_summary": "", "slots": []}
+                    updated_plan = {**plan, "slots": [dict(slot) for slot in plan.get("slots", [])]}
+                    slot = next((item for item in updated_plan["slots"] if item.get("id") == slot_id), None)
+                    if slot is not None and slot.get("generation_job_id") == job.id:
+                        slot.pop("generation_job_id", None)
+                        campaign.content_plan_json = updated_plan
+                        expected_campaign_version = result.get("campaign_version")
+                        context_is_current = campaign.version == expected_campaign_version
+                        campaign.version += 1
+                        campaign.updated_at = utcnow()
+                        if context_is_current:
+                            result["campaign_version"] = campaign.version
+                            job.result = result
         job.status = "queued" if retry else "failed"
         job.progress = 15 if retry else 100
         job.finished_at = None if retry else utcnow()
@@ -205,6 +228,7 @@ async def content_generation_task_async(
         embedder = embedder if embedder is not None else configured_embedding_provider()
         knowledge_index = index or PostgresKnowledgeIndex()
         target_post = None
+        plan_slot = None
         base_content: dict[str, Any] = {}
         async with SessionLocal() as db:
             campaign = await db.scalar(select(Campaign).where(Campaign.id == payload.get("campaign_id"), Campaign.company_id == company_id))
@@ -244,20 +268,34 @@ async def content_generation_task_async(
             profile = _confirmed_profile(brand, company, revision)
             request_data = payload["request"]
             brief_data = campaign.brief_json
+            if request_data.get("slot_id") and not target_post:
+                plan = campaign.content_plan_json or {}
+                plan_slot = next((slot for slot in plan.get("slots", []) if slot.get("id") == request_data["slot_id"]), None)
+                if plan_slot is None:
+                    raise ContentGenerationFailure("content_slot_not_found", "Không tìm thấy slot nội dung trong campaign hiện tại.")
+                if plan_slot.get("generated_post_id"):
+                    raise ContentGenerationFailure("content_slot_already_generated", "Slot này đã được dùng để sinh bài.")
+                if plan_slot.get("generation_job_id") != job_id:
+                    raise ContentGenerationFailure("content_slot_reservation_lost", "Slot không còn được giữ cho job hiện tại.")
+            strategy_summary = (campaign.content_plan_json or {}).get("strategy_summary", "") if not target_post else ""
             audience = brief_data.get("audience", [])
+            slot_date = plan_slot.get("scheduled_date") if plan_slot else None
+            requirements = (
+                [f"Bắt buộc: {item}" for item in brief_data.get("must_include", [])]
+                + [f"Tránh: {item}" for item in brief_data.get("must_avoid", [])]
+                + ([f"Chiến lược nội dung campaign: {strategy_summary}"] if strategy_summary else [])
+                + ([f"Chủ đề slot: {plan_slot['topic']}"] if plan_slot else [])
+                + ([request_data["instruction"]] if request_data.get("instruction") else [])
+            )
             brief = CampaignBrief(
                 objective=brief_data.get("objective_note") or brief_data.get("objective") or campaign.name,
                 audience="; ".join(_strings(audience)) or "Khách hàng mục tiêu của thương hiệu",
                 channel=(campaign.channels_json or ["facebook_page"])[0],
                 campaign_name=campaign.name,
                 offer=brief_data.get("key_message"),
-                start_date=request_data.get("start_date") or brief_data.get("start_date"),
-                end_date=request_data.get("end_date") or brief_data.get("end_date"),
-                user_requirements=(
-                    [f"Bắt buộc: {item}" for item in brief_data.get("must_include", [])]
-                    + [f"Tránh: {item}" for item in brief_data.get("must_avoid", [])]
-                    + ([request_data["instruction"]] if request_data.get("instruction") else [])
-                ),
+                start_date=slot_date or request_data.get("start_date") or brief_data.get("start_date"),
+                end_date=slot_date or request_data.get("end_date") or brief_data.get("end_date"),
+                user_requirements=requirements,
             )
             documents = (await db.scalars(select(Document).where(
                 Document.company_id == company_id,
@@ -270,7 +308,7 @@ async def content_generation_task_async(
             source_ids = {item.source_id for item in documents}
             brand_version = brand.version
             campaign_version = campaign.version
-            query_parts = [campaign.name, brief.objective, brief.audience, brief.offer or "", *brief.user_requirements]
+            query_parts = [campaign.name, brief.objective, brief.audience, brief.offer or "", strategy_summary, *brief.user_requirements]
             if target_post:
                 query_parts.extend([str(base_content.get("caption", "")), *request_data.get("instruction", "").split()])
             query = " ".join(part for part in query_parts if part).strip()[:2000]
@@ -315,9 +353,9 @@ async def content_generation_task_async(
             await db.commit()
 
         generated: list[dict[str, Any]] = []
-        count = 1 if target_post else int(request_data["count"])
-        pillars = [target_post.pillar] if target_post else request_data["pillars"]
-        formats = [target_post.format] if target_post else request_data["formats"]
+        count = 1 if target_post or plan_slot else int(request_data["count"])
+        pillars = [target_post.pillar] if target_post else [plan_slot["pillar"]] if plan_slot else request_data["pillars"]
+        formats = [target_post.format] if target_post else [plan_slot["format"]] if plan_slot else request_data["formats"]
         for offset in range(count):
             pillar = pillars[offset % len(pillars)]
             content_format = formats[offset % len(formats)]
@@ -325,6 +363,8 @@ async def content_generation_task_async(
                 "pillar": pillar,
                 "format": content_format,
                 "instruction": request_data.get("instruction"),
+                "strategy_summary": strategy_summary if not target_post else "",
+                "slot_topic": plan_slot.get("topic") if plan_slot else None,
                 "start_date": brief.start_date.isoformat() if brief.start_date else None,
                 "end_date": brief.end_date.isoformat() if brief.end_date else None,
             }
@@ -357,7 +397,15 @@ async def content_generation_task_async(
                     "content_citations_missing",
                     "AI không trả nguồn xác minh cho caption đã sửa; phiên bản mới chưa được lưu.",
                 )
-            generated.append({"payload": task_result.payload, "metadata": task_result.metadata, "pillar": pillar, "format": content_format, "repairs": task_result.repair_attempts})
+            generated.append({
+                "payload": task_result.payload,
+                "metadata": task_result.metadata,
+                "pillar": pillar,
+                "format": content_format,
+                "repairs": task_result.repair_attempts,
+                "slot_id": plan_slot["id"] if plan_slot else None,
+                "planned_date": plan_slot["scheduled_date"] if plan_slot else None,
+            })
             async with SessionLocal() as db:
                 job = await db.get(Job, job_id)
                 if job is None or job.status != "running":
@@ -409,6 +457,9 @@ async def content_generation_task_async(
                     "evidence_ids": generated_post.get("evidence_ids", []),
                     "generation_metadata": metadata,
                 }
+                if item.get("slot_id"):
+                    content["content_slot_id"] = item["slot_id"]
+                    content["planned_date"] = item["planned_date"]
                 next_version = 1
                 version_source = "ai_generated"
                 if target_post:
@@ -478,6 +529,25 @@ async def content_generation_task_async(
                     created_at=now,
                 ))
                 created_posts.append(post_id)
+            if plan_slot and created_posts:
+                current_plan = campaign.content_plan_json or {"strategy_summary": "", "slots": []}
+                updated_plan = {**current_plan, "slots": [dict(slot) for slot in current_plan.get("slots", [])]}
+                target_slot = next((slot for slot in updated_plan["slots"] if slot.get("id") == plan_slot["id"]), None)
+                if target_slot is None or target_slot.get("generated_post_id") or target_slot.get("generation_job_id") != job_id:
+                    raise ContentGenerationFailure("content_slot_conflict", "Slot đã thay đổi hoặc được dùng bởi job khác; không lưu trùng bài.")
+                target_slot["generated_post_id"] = created_posts[0]
+                target_slot.pop("generation_job_id", None)
+                campaign.content_plan_json = updated_plan
+                campaign.version += 1
+                campaign.updated_at = utcnow()
+                db.add(AuditEvent(
+                    company_id=company_id,
+                    actor_user_id=created_by,
+                    action="campaign.content_slot.generate",
+                    entity_type="campaign",
+                    entity_id=campaign.id,
+                    metadata_json={"slot_id": plan_slot["id"], "post_id": created_posts[0], "version": campaign.version},
+                ))
             db.add(ContentGenerationRun(
                 id=new_id(),
                 company_id=company_id,

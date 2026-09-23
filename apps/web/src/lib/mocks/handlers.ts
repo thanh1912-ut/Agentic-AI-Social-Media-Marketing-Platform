@@ -637,6 +637,17 @@ export const handlers = [
         must_include: body.brief.must_include ? [...body.brief.must_include] : undefined,
         must_avoid: body.brief.must_avoid ? [...body.brief.must_avoid] : undefined,
       },
+      content_plan: {
+        strategy_summary: body.content_plan.strategy_summary,
+        slots: (body.content_plan.slots ?? []).map((slot) => {
+          const previous = current.content_plan.slots.find((item) => item.id === slot.id);
+          return {
+            ...slot,
+            ...(previous?.generated_post_id ? { generated_post_id: previous.generated_post_id } : {}),
+            ...(previous?.generation_job_id ? { generation_job_id: previous.generation_job_id } : {}),
+          };
+        }),
+      },
       pillars: [...(body.pillars ?? current.pillars)],
       channels: [...(body.channels ?? current.channels)],
       version: current.version + 1,
@@ -883,20 +894,26 @@ export const handlers = [
     },
   ),
 
-  http.post('*/api/v1/workspaces/:workspaceId/posts/generate', async ({ request }) => {
+  http.post('*/api/v1/workspaces/:workspaceId/posts/generate', async ({ params, request }) => {
     const session = currentSession();
     if (!session) return unauthenticated();
-    const body = (await request.json()) as { count?: number; campaign_id?: string };
+    const body = (await request.json()) as { count?: number; campaign_id?: string; slot_id?: string };
     const count = body.count;
     if (!body.campaign_id || typeof count !== 'number' || !Number.isInteger(count) || count < 1 || count > 10) {
       return fail(400, ERROR_CODES.VALIDATION_ERROR, 'Số bài phải nằm trong khoảng từ 1 đến 10.');
+    }
+    const campaign = (demoCampaigns[params.workspaceId as string] ?? []).find((item) => item.id === body.campaign_id);
+    const slot = body.slot_id ? campaign?.content_plan.slots.find((item) => item.id === body.slot_id) : undefined;
+    if (body.slot_id && !slot) return notFound('slot nội dung');
+    if (slot?.generated_post_id || slot?.generation_job_id) {
+      return fail(409, ERROR_CODES.STATE_CONFLICT, 'Slot này đã được dùng hoặc đang được xử lý.');
     }
     const id = nextId('job_content_generate');
     const job: Job = {
       id,
       kind: JOB_KINDS.CONTENT_GENERATE,
       status: JOB_STATUSES.QUEUED,
-      title: `Đang tạo ${count} bài viết nháp`,
+      title: slot ? `Đang tạo bản nháp: ${slot.topic}` : `Đang tạo ${count} bài viết nháp`,
       progress: 0,
       steps: [
         { key: 'prepare', label: 'Chuẩn bị brief và hồ sơ thương hiệu', status: JOB_STEP_STATUSES.PENDING },

@@ -43,12 +43,30 @@ export interface CampaignBrief {
   end_date: DateString;
 }
 
+export interface CampaignContentSlot {
+  id: Id;
+  scheduled_date: DateString;
+  pillar: ContentPillar;
+  format: PostFormat;
+  topic: string;
+  /** ID bài được sinh từ slot; chỉ backend tạo. */
+  generated_post_id?: Id | null;
+  /** ID job đang giữ slot; chỉ backend tạo. */
+  generation_job_id?: Id | null;
+}
+
+export interface CampaignContentPlan {
+  strategy_summary: string;
+  slots: CampaignContentSlot[];
+}
+
 export interface Campaign {
   id: Id;
   workspace_id: Id;
   name: string;
   status: CampaignStatus;
   brief: CampaignBrief;
+  content_plan: CampaignContentPlan;
   /** Trụ nội dung chiến dịch dùng. */
   pillars: ContentPillar[];
   /** Kênh phân phối. */
@@ -189,6 +207,8 @@ export interface GenerateContentRequest {
   campaign_id: Id;
   /** Số bài muốn sinh — backend từ chối nếu > 10. */
   count: number;
+  /** Sinh đúng một bản nháp theo slot đã lưu trong campaign. */
+  slot_id?: Id;
   pillars?: ContentPillar[];
   formats?: PostFormat[];
   /** Khoảng ngày muốn rải bài. */

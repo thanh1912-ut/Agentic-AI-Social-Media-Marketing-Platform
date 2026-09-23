@@ -1209,11 +1209,77 @@ export interface components {
              */
             readonly status: "pending_review" | "accepted" | "discarded";
         };
+        /** CampaignContentPlanIn */
+        readonly CampaignContentPlanIn: {
+            /** Slots */
+            readonly slots?: readonly components["schemas"]["CampaignContentSlotIn"][];
+            /**
+             * Strategy Summary
+             * @default
+             */
+            readonly strategy_summary: string;
+        };
+        /** CampaignContentPlanOut */
+        readonly CampaignContentPlanOut: {
+            /** Slots */
+            readonly slots: readonly components["schemas"]["CampaignContentSlotOut"][];
+            /** Strategy Summary */
+            readonly strategy_summary: string;
+        };
+        /** CampaignContentSlotIn */
+        readonly CampaignContentSlotIn: {
+            /**
+             * Format
+             * @enum {string}
+             */
+            readonly format: "text" | "image" | "carousel" | "video" | "reel" | "story";
+            /** Id */
+            readonly id: string;
+            /**
+             * Pillar
+             * @enum {string}
+             */
+            readonly pillar: "education" | "entertainment" | "inspiration" | "promotion" | "community" | "behind_the_scenes" | "product" | "testimonial";
+            /**
+             * Scheduled Date
+             * Format: date
+             */
+            readonly scheduled_date: string;
+            /** Topic */
+            readonly topic: string;
+        };
+        /** CampaignContentSlotOut */
+        readonly CampaignContentSlotOut: {
+            /**
+             * Format
+             * @enum {string}
+             */
+            readonly format: "text" | "image" | "carousel" | "video" | "reel" | "story";
+            /** Generated Post Id */
+            readonly generated_post_id?: string | null;
+            /** Generation Job Id */
+            readonly generation_job_id?: string | null;
+            /** Id */
+            readonly id: string;
+            /**
+             * Pillar
+             * @enum {string}
+             */
+            readonly pillar: "education" | "entertainment" | "inspiration" | "promotion" | "community" | "behind_the_scenes" | "product" | "testimonial";
+            /**
+             * Scheduled Date
+             * Format: date
+             */
+            readonly scheduled_date: string;
+            /** Topic */
+            readonly topic: string;
+        };
         /** CampaignCreateRequest */
         readonly CampaignCreateRequest: {
             readonly brief: components["schemas"]["CampaignBriefIn"];
             /** Channels */
             readonly channels?: readonly "facebook_page"[];
+            readonly content_plan?: components["schemas"]["CampaignContentPlanIn"];
             /** Name */
             readonly name: string;
             /** Pillars */
@@ -1229,6 +1295,7 @@ export interface components {
             };
             /** Channels */
             readonly channels: readonly string[];
+            readonly content_plan: components["schemas"]["CampaignContentPlanOut"];
             /**
              * Created At
              * Format: date-time
@@ -1266,6 +1333,7 @@ export interface components {
             readonly brief: components["schemas"]["CampaignBriefIn"];
             /** Channels */
             readonly channels?: readonly "facebook_page"[];
+            readonly content_plan: components["schemas"]["CampaignContentPlanIn"];
             /** Name */
             readonly name: string;
             /** Pillars */
@@ -1501,6 +1569,8 @@ export interface components {
             readonly instruction?: string | null;
             /** Pillars */
             readonly pillars?: readonly ("education" | "entertainment" | "inspiration" | "promotion" | "community" | "behind_the_scenes" | "product" | "testimonial")[];
+            /** Slot Id */
+            readonly slot_id?: string | null;
             /** Start Date */
             readonly start_date?: string | null;
         };
@@ -2199,6 +2269,10 @@ export type SchemaBrandProfileRevisionOut = components['schemas']['BrandProfileR
 export type SchemaCampaignBriefChangeOut = components['schemas']['CampaignBriefChangeOut'];
 export type SchemaCampaignBriefIn = components['schemas']['CampaignBriefIn'];
 export type SchemaCampaignBriefRevisionDraftOut = components['schemas']['CampaignBriefRevisionDraftOut'];
+export type SchemaCampaignContentPlanIn = components['schemas']['CampaignContentPlanIn'];
+export type SchemaCampaignContentPlanOut = components['schemas']['CampaignContentPlanOut'];
+export type SchemaCampaignContentSlotIn = components['schemas']['CampaignContentSlotIn'];
+export type SchemaCampaignContentSlotOut = components['schemas']['CampaignContentSlotOut'];
 export type SchemaCampaignCreateRequest = components['schemas']['CampaignCreateRequest'];
 export type SchemaCampaignOut = components['schemas']['CampaignOut'];
 export type SchemaCampaignUpdateRequest = components['schemas']['CampaignUpdateRequest'];

@@ -1,6 +1,6 @@
 # Báo cáo kiểm thử
 
-Cập nhật: 2026-09-24 03:26 (Asia/Ho_Chi_Minh). Các kiểm tra mới nhất chạy trên working tree của branch `codex/product-v1-completion`; thay đổi campaign edit và PostgreSQL Alembic bootstrap đã được kiểm tra trước khi push. Project owner đã chấp thuận data flow đoạn trích tài liệu + Brand Profile tới DeepSeek.
+Cập nhật: 2026-09-24 04:14 (Asia/Ho_Chi_Minh). Các kiểm tra mới nhất chạy trên working tree của branch `codex/product-v1-completion`; PLAN-001 strategy/content slots đã có API, worker, UI và migration 0008 trước khi push. Project owner đã chấp thuận data flow đoạn trích tài liệu + Brand Profile + strategy/chủ đề/ngày slot đã chọn tới DeepSeek.
 
 Môi trường: Python 3.11.16, Node.js 26.7.0, SQLite tạm, Chromium desktop/mobile. Bộ Playwright tự động dùng Next.js local và MSW; ngoài ra có một browser smoke thủ công qua Codex browser với Next.js + FastAPI real mode và DB SQLite hoàn toàn mới.
 
@@ -51,18 +51,25 @@ Môi trường: Python 3.11.16, Node.js 26.7.0, SQLite tạm, Chromium desktop/m
 | `npm run typecheck -- --incremental false`, `npm test`, `npm run lint`, `npm run build` | PASS; **43 unit tests** | Next production build gồm campaign detail editor. |
 | `.venv/bin/pytest -q` | **103 passed, 1 skipped** | Skip là live DeepSeek smoke vì chưa provision `DEEPSEEK_API_KEY`; suite dùng SQLite/fake provider. |
 | `.venv/bin/python scripts/export_openapi.py --check`; `PYTHONPYCACHEPREFIX=/private/tmp/agentic-v1-pycache-20260924 .venv/bin/python -m compileall -q database services packages tests`; `git diff --check` | PASS | OpenAPI/generated TypeScript synchronized; bytecode output isolated under `/private/tmp`. |
+| `.venv/bin/pytest -p no:cacheprovider -q` | **104 passed, 1 skipped** | Python 3.11.16; includes campaign slot reservation, duplicate/idempotency guard, strategy/topic/date model payload, slot→draft link, lock-after-generation, terminal failure release, retry reacquisition and cancellation release. Skip is the live DeepSeek smoke because no `DEEPSEEK_API_KEY` is provisioned. |
+| PostgreSQL 18.3 disposable cluster migration | PASS | Clean Alembic upgrade 0001→0008 and idempotent rerun; pgvector 0.8.2; 27 public tables; `campaigns.content_plan_json` is JSON NOT NULL with default `{}`. The shared PostgreSQL 15 service was not used. |
+| SQLite disposable migration | PASS | Clean Alembic upgrade 0001→0008 and idempotent rerun using a database under `/private/tmp`. |
+| OpenAPI export/check and generated TypeScript schema | PASS | Campaign content-plan DTOs and `slot_id` generation request match backend schemas. |
+| Frontend `npm run typecheck`, `npm test`, `npm run lint` | PASS; **43 unit tests** | Slot edit, management fields and MSW generation request types compile; Vitest has 4 passing files. |
+| `npm run test:e2e -- slice2-campaign.spec.ts` | **12 passed** | 6 desktop + 6 mobile Chromium tests; added edit strategy/topic and route generation by selected slot topic. MSW only; no DeepSeek request. The test run also completed the production build. |
+| Python `compileall` and `git diff --check` | PASS | Bytecode cache uses `/private/tmp`; whitespace check is clean. |
 
 ## Chưa nghiệm thu
 
 - PostgreSQL migration: clean migration path is verified on a disposable PostgreSQL 18/pgvector cluster; full API/worker integration against PostgreSQL and the shared PostgreSQL 15 service remain unverified.
 - Docker Compose, worker/scheduler restart, MinIO/S3: Docker/Podman và MinIO không sẵn có.
-- DeepSeek live: user đã chấp thuận đoạn trích tài liệu và Brand Profile data flow, nhưng không có `DEEPSEEK_API_KEY`; live smoke đã skip. Chưa xác minh model list của tài khoản, latency/token/chi phí.
+- DeepSeek live: user đã chấp thuận đoạn trích tài liệu, Brand Profile, campaign strategy và slot topic/date đã chọn, nhưng không có `DEEPSEEK_API_KEY`; live smoke đã skip. Chưa xác minh model list của tài khoản, latency/token/chi phí.
 - Meta publish/metrics: chưa có app/page/token/quyền/App Review.
 - Real-mode browser E2E đầy đủ: analytics/recommendation và manual campaign → post → approval → export đã qua browser/API thật trên SQLite. AI generation/revise path được kiểm tra qua API+worker fixtures và mock browser, chưa gọi DeepSeek hoặc chạy browser path với model thật; PostgreSQL/MinIO cũng chưa nghiệm thu.
 
 ## Phạm vi bằng chứng
 
-Campaign, manual post/version, approval, export, content generation and AI revise have SQLite API/worker fixture tests; only manual workflows have real-mode browser coverage. AI revise has mock browser coverage but no live-provider browser run. These tests do not represent PostgreSQL or production deployment. Content integration validates versioned workspace context, threshold-filtered active sources, exact citation metadata and unapproved draft/version behavior; fake models never send data to DeepSeek. User approved sending Brand Profile and document excerpts, and production workers use the configured DeepSeek adapter; the API key is still absent. Backend-only company/brand database IDs are excluded from model prompts, and external embeddings remain separately gated. Manual metrics, recommendation feedback, Apply draft, accept/version conflict and REC-002 outcome persistence are checked by SQLite API tests; UI outcome flow uses MSW and is not performance evidence. Tenant tests are not a full security audit. Security review reproduced traversal through `LocalObjectStorage.put('../outside.txt')`; rate limits have fake-Redis unit tests but real Redis, reverse proxy and edge controls remain unverified. See [security-review.md](security-review.md).
+Campaign, manual post/version, approval, export, content generation and AI revise have SQLite API/worker fixture tests; only manual workflows have real-mode browser coverage. Strategy/slot editing and click-through to a slot-specific job have desktop/mobile MSW coverage. AI revise and generation have mock browser coverage but no live-provider browser run. These tests do not represent full PostgreSQL or production deployment. Content integration validates versioned workspace context, threshold-filtered active sources, exact citation metadata, slot strategy/topic/date, and unapproved draft/version behavior; fake models never send data to DeepSeek. User approved sending Brand Profile, document excerpts and the selected slot strategy/topic/date; the API key is still absent. Backend-only company/brand/slot database IDs are excluded from model prompts, and external embeddings remain separately gated. Manual metrics, recommendation feedback, Apply draft, accept/version conflict and REC-002 outcome persistence are checked by SQLite API tests; UI outcome flow uses MSW and is not performance evidence. Tenant tests are not a full security audit. Security review reproduced traversal through `LocalObjectStorage.put('../outside.txt')`; rate limits have fake-Redis unit tests but real Redis, reverse proxy and edge controls remain unverified. See [security-review.md](security-review.md).
 
 ## Lệnh tái kiểm tra
 

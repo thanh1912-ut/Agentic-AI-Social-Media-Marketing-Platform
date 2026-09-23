@@ -439,8 +439,14 @@ export function useRevisePostWithAi(workspaceId: string, postId: string) {
 }
 
 export function useGenerateContent(workspaceId: string) {
+  const queryClient = useQueryClient();
   return useMutation<GenerateContentResponse, Error, GenerateContentRequest>({
     mutationFn: (body) => api.post.generate(workspaceId, body),
+    onSuccess: (_accepted, body) => {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.campaign(workspaceId, body.campaign_id) });
+      void queryClient.invalidateQueries({ queryKey: queryKeys.campaigns(workspaceId) });
+      void queryClient.invalidateQueries({ queryKey: queryKeys.posts(workspaceId, body.campaign_id) });
+    },
   });
 }
 

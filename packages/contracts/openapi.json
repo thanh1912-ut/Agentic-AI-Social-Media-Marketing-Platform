@@ -952,6 +952,185 @@
         "title": "CampaignBriefRevisionDraftOut",
         "type": "object"
       },
+      "CampaignContentPlanIn": {
+        "additionalProperties": false,
+        "properties": {
+          "slots": {
+            "items": {
+              "$ref": "#/components/schemas/CampaignContentSlotIn"
+            },
+            "maxItems": 60,
+            "title": "Slots",
+            "type": "array"
+          },
+          "strategy_summary": {
+            "default": "",
+            "maxLength": 2000,
+            "title": "Strategy Summary",
+            "type": "string"
+          }
+        },
+        "title": "CampaignContentPlanIn",
+        "type": "object"
+      },
+      "CampaignContentPlanOut": {
+        "additionalProperties": false,
+        "properties": {
+          "slots": {
+            "items": {
+              "$ref": "#/components/schemas/CampaignContentSlotOut"
+            },
+            "title": "Slots",
+            "type": "array"
+          },
+          "strategy_summary": {
+            "title": "Strategy Summary",
+            "type": "string"
+          }
+        },
+        "required": [
+          "strategy_summary",
+          "slots"
+        ],
+        "title": "CampaignContentPlanOut",
+        "type": "object"
+      },
+      "CampaignContentSlotIn": {
+        "additionalProperties": false,
+        "properties": {
+          "format": {
+            "enum": [
+              "text",
+              "image",
+              "carousel",
+              "video",
+              "reel",
+              "story"
+            ],
+            "title": "Format",
+            "type": "string"
+          },
+          "id": {
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Id",
+            "type": "string"
+          },
+          "pillar": {
+            "enum": [
+              "education",
+              "entertainment",
+              "inspiration",
+              "promotion",
+              "community",
+              "behind_the_scenes",
+              "product",
+              "testimonial"
+            ],
+            "title": "Pillar",
+            "type": "string"
+          },
+          "scheduled_date": {
+            "format": "date",
+            "title": "Scheduled Date",
+            "type": "string"
+          },
+          "topic": {
+            "maxLength": 500,
+            "minLength": 1,
+            "title": "Topic",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "scheduled_date",
+          "pillar",
+          "format",
+          "topic"
+        ],
+        "title": "CampaignContentSlotIn",
+        "type": "object"
+      },
+      "CampaignContentSlotOut": {
+        "additionalProperties": false,
+        "properties": {
+          "format": {
+            "enum": [
+              "text",
+              "image",
+              "carousel",
+              "video",
+              "reel",
+              "story"
+            ],
+            "title": "Format",
+            "type": "string"
+          },
+          "generated_post_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Generated Post Id"
+          },
+          "generation_job_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Generation Job Id"
+          },
+          "id": {
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Id",
+            "type": "string"
+          },
+          "pillar": {
+            "enum": [
+              "education",
+              "entertainment",
+              "inspiration",
+              "promotion",
+              "community",
+              "behind_the_scenes",
+              "product",
+              "testimonial"
+            ],
+            "title": "Pillar",
+            "type": "string"
+          },
+          "scheduled_date": {
+            "format": "date",
+            "title": "Scheduled Date",
+            "type": "string"
+          },
+          "topic": {
+            "maxLength": 500,
+            "minLength": 1,
+            "title": "Topic",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "scheduled_date",
+          "pillar",
+          "format",
+          "topic"
+        ],
+        "title": "CampaignContentSlotOut",
+        "type": "object"
+      },
       "CampaignCreateRequest": {
         "additionalProperties": false,
         "properties": {
@@ -966,6 +1145,9 @@
             "minItems": 1,
             "title": "Channels",
             "type": "array"
+          },
+          "content_plan": {
+            "$ref": "#/components/schemas/CampaignContentPlanIn"
           },
           "name": {
             "maxLength": 200,
@@ -1017,6 +1199,9 @@
             },
             "title": "Channels",
             "type": "array"
+          },
+          "content_plan": {
+            "$ref": "#/components/schemas/CampaignContentPlanOut"
           },
           "created_at": {
             "format": "date-time",
@@ -1090,6 +1275,7 @@
           "name",
           "status",
           "brief",
+          "content_plan",
           "pillars",
           "channels",
           "version",
@@ -1117,6 +1303,9 @@
             "minItems": 1,
             "title": "Channels",
             "type": "array"
+          },
+          "content_plan": {
+            "$ref": "#/components/schemas/CampaignContentPlanIn"
           },
           "name": {
             "maxLength": 200,
@@ -1151,6 +1340,7 @@
         "required": [
           "name",
           "brief",
+          "content_plan",
           "version"
         ],
         "title": "CampaignUpdateRequest",
@@ -1777,6 +1967,19 @@
             "maxItems": 8,
             "title": "Pillars",
             "type": "array"
+          },
+          "slot_id": {
+            "anyOf": [
+              {
+                "maxLength": 64,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Slot Id"
           },
           "start_date": {
             "anyOf": [

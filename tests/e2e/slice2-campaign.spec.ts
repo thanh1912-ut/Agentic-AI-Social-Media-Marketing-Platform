@@ -44,6 +44,23 @@ test.describe('lát cắt 2 — campaign và nội dung', () => {
     await expect(page.getByRole('button', { name: 'Chỉnh sửa brief' })).toBeVisible();
   });
 
+  test('sửa strategy và slot rồi sinh bài đúng chủ đề slot', async ({ page }) => {
+    await login(page);
+    await page.goto('/w/ws_pho_bac/campaigns/cmp_khai_truong');
+    await expect(page.getByText(/Nhấn vào bữa trưa nhanh gọn/)).toBeVisible();
+
+    await page.getByRole('button', { name: 'Chỉnh sửa brief' }).click();
+    await page.getByLabel('Chiến lược nội dung').fill('Ưu tiên bữa trưa văn phòng, nêu rõ giá và thời gian phục vụ.');
+    await page.locator('#slot-topic-slot-trua-1').fill('Combo phở nóng cho giờ nghỉ trưa');
+    await page.getByRole('button', { name: /Lưu brief/ }).click();
+
+    await expect(page.getByText('Ưu tiên bữa trưa văn phòng, nêu rõ giá và thời gian phục vụ.')).toBeVisible();
+    await expect(page.getByText('Combo phở nóng cho giờ nghỉ trưa')).toBeVisible();
+    await page.getByRole('button', { name: 'Sinh bài theo slot' }).first().click();
+    await page.waitForURL(/\/jobs\/job_content_generate_/);
+    await expect(page.getByRole('heading', { name: 'Đang tạo bản nháp: Combo phở nóng cho giờ nghỉ trưa' })).toBeVisible();
+  });
+
   test('sửa bài tạo version mới rồi gửi duyệt đúng version', async ({ page }) => {
     await login(page);
     await page.goto('/w/ws_pho_bac/campaigns/cmp_khai_truong/posts/post_3');

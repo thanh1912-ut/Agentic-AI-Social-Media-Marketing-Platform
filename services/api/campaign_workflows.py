@@ -137,6 +137,7 @@ async def _campaign_out(db: AsyncSession, row: Campaign) -> CampaignOut:
         name=row.name,
         status=row.status,
         brief=row.brief_json,
+        content_plan=row.content_plan_json or {"strategy_summary": "", "slots": []},
         pillars=row.pillars_json,
         channels=row.channels_json,
         version=row.version,
@@ -147,6 +148,16 @@ async def _campaign_out(db: AsyncSession, row: Campaign) -> CampaignOut:
         created_at=row.created_at,
         updated_at=row.updated_at,
     )
+
+
+def _validate_campaign_plan(request: CampaignCreateRequest | CampaignUpdateRequest) -> None:
+    if not request.pillars or any(pillar not in ALLOWED_PILLARS for pillar in request.pillars):
+        raise ApiProblem(422, "validation_error", "Chiến dịch cần ít nhất một trụ nội dung hợp lệ.")
+    for slot in request.content_plan.slots:
+        if not request.brief.start_date <= slot.scheduled_date <= request.brief.end_date:
+            raise ApiProblem(422, "invalid_content_slot_date", "Ngày của mỗi slot phải nằm trong thời gian chiến dịch.")
+        if slot.pillar not in request.pillars:
+            raise ApiProblem(422, "invalid_content_slot_pillar", "Trụ nội dung của slot phải thuộc chiến dịch.")
 
 
 async def _post_out(db: AsyncSession, row: CampaignPost) -> PostOut:
@@ -248,8 +259,7 @@ async def create_campaign(
     membership: Membership = Depends(require_permission("campaign:create")),
     db: AsyncSession = Depends(get_db),
 ):
-    if not all(pillar in ALLOWED_PILLARS for pillar in request.pillars):
-        raise ApiProblem(422, "validation_error", "Chiến dịch có trụ nội dung không được hỗ trợ.")
+    _validate_campaign_plan(request)
     now = utcnow()
     brief = request.brief.model_dump(mode="json")
     row = Campaign(
@@ -258,6 +268,7 @@ async def create_campaign(
         name=request.name,
         status="draft",
         brief_json=brief,
+        content_plan_json=request.content_plan.model_dump(mode="json"),
         pillars_json=request.pillars,
         channels_json=request.channels,
         version=1,
@@ -312,12 +323,34 @@ async def update_campaign(
             "Chiến dịch đã được cập nhật. Hãy tải phiên bản mới nhất trước khi sửa tiếp.",
             details={"current_version": row.version, "your_version": request.version},
         )
-    if not request.pillars or any(pillar not in ALLOWED_PILLARS for pillar in request.pillars):
-        raise ApiProblem(422, "validation_error", "Chiến dịch cần ít nhất một trụ nội dung hợp lệ.")
+    _validate_campaign_plan(request)
 
+    updated_plan = request.content_plan.model_dump(mode="json")
+    previous_plan = row.content_plan_json or {"strategy_summary": "", "slots": []}
+    previous_slots = {
+        slot["id"]: slot
+        for slot in previous_plan.get("slots", [])
+        if isinstance(slot, dict) and slot.get("id")
+    }
+    updated_slots = {slot["id"]: slot for slot in updated_plan["slots"]}
+    for slot_id, previous_slot in previous_slots.items():
+        if not previous_slot.get("generated_post_id") and not previous_slot.get("generation_job_id"):
+            continue
+        next_slot = updated_slots.get(slot_id)
+        if next_slot is None or any(
+            next_slot.get(field) != previous_slot.get(field)
+            for field in ("scheduled_date", "pillar", "format", "topic")
+        ):
+            reason = "đang được xử lý" if previous_slot.get("generation_job_id") else "đã có bài viết"
+            raise ApiProblem(409, "content_slot_locked", f"Slot {reason}; hãy tạo slot mới thay vì xóa hoặc đổi thông tin slot.")
+        if previous_slot.get("generated_post_id"):
+            next_slot["generated_post_id"] = previous_slot["generated_post_id"]
+        if previous_slot.get("generation_job_id"):
+            next_slot["generation_job_id"] = previous_slot["generation_job_id"]
     previous_version = row.version
     row.name = request.name
     row.brief_json = request.brief.model_dump(mode="json")
+    row.content_plan_json = updated_plan
     row.pillars_json = request.pillars
     row.channels_json = request.channels
     row.version += 1
@@ -331,7 +364,7 @@ async def update_campaign(
         metadata_json={
             "previous_version": previous_version,
             "version": row.version,
-            "fields": ["name", "brief", "pillars", "channels"],
+            "fields": ["name", "brief", "content_plan", "pillars", "channels"],
         },
     ))
     await db.commit()
@@ -888,15 +921,44 @@ async def generate_content(
 ):
     if not idempotency_key:
         raise ApiProblem(400, "idempotency_key_required", "Thiếu Idempotency-Key cho yêu cầu sinh nội dung.")
-    campaign = await db.scalar(select(Campaign).where(Campaign.company_id == company_id, Campaign.id == request.campaign_id))
+    campaign = await db.scalar(select(Campaign).where(Campaign.company_id == company_id, Campaign.id == request.campaign_id).with_for_update())
     if campaign is None:
         raise ApiProblem(404, "not_found", "Không tìm thấy chiến dịch.")
-    pillars = request.pillars or campaign.pillars_json or ["product"]
+    selected_slot = None
+    if request.slot_id:
+        plan = campaign.content_plan_json or {}
+        selected_slot = next((slot for slot in plan.get("slots", []) if slot.get("id") == request.slot_id), None)
+        if selected_slot is None:
+            raise ApiProblem(404, "content_slot_not_found", "Không tìm thấy slot trong chiến dịch.")
+        if selected_slot.get("pillar") not in campaign.pillars_json or selected_slot.get("format") not in {"text", "image", "carousel", "video", "reel", "story"}:
+            raise ApiProblem(409, "content_slot_invalid", "Slot không còn khớp với cấu hình chiến dịch.")
+    pillars = [selected_slot["pillar"]] if selected_slot else request.pillars or campaign.pillars_json or ["product"]
     if (
         any(pillar not in ALLOWED_PILLARS for pillar in pillars)
         or any(campaign.pillars_json and pillar not in campaign.pillars_json for pillar in pillars)
     ):
         raise ApiProblem(422, "validation_error", "Trụ nội dung phải thuộc chiến dịch hiện tại.")
+    request_payload = request.model_dump(mode="json")
+    request_payload["pillars"] = pillars
+    if selected_slot:
+        request_payload["count"] = 1
+        request_payload["formats"] = [selected_slot["format"]]
+        request_payload["start_date"] = selected_slot["scheduled_date"]
+        request_payload["end_date"] = selected_slot["scheduled_date"]
+    existing = await db.scalar(select(Job).where(Job.company_id == company_id, Job.idempotency_key == idempotency_key))
+    if existing:
+        existing_payload = existing.result or {}
+        if (
+            existing.kind != "content_generation"
+            or existing_payload.get("campaign_id") != campaign.id
+            or existing_payload.get("request") != request_payload
+        ):
+            raise ApiProblem(409, "idempotency_conflict", "Idempotency-Key này đã được dùng cho yêu cầu khác.")
+        return GenerateContentResponse(job_id=existing.id)
+    if selected_slot and selected_slot.get("generated_post_id"):
+        raise ApiProblem(409, "content_slot_already_generated", "Slot này đã có bài viết được sinh.")
+    if selected_slot and selected_slot.get("generation_job_id"):
+        raise ApiProblem(409, "content_slot_generation_pending", "Slot này đang được xử lý; hãy chờ job hiện tại hoàn tất.")
     brand = await db.scalar(select(Brand).where(Brand.company_id == company_id))
     if brand is None:
         raise ApiProblem(404, "not_found", "Không tìm thấy hồ sơ thương hiệu.")
@@ -912,8 +974,6 @@ async def generate_content(
             "brand_profile_not_confirmed",
             "Hãy xác nhận phiên bản Brand Profile hiện tại trước khi sinh nội dung.",
         )
-    request_payload = request.model_dump(mode="json")
-    request_payload["pillars"] = pillars
     fingerprint_payload = {
         "request": request_payload,
         "campaign_id": campaign.id,
@@ -922,14 +982,18 @@ async def generate_content(
         "brand_version": brand.version,
     }
     fingerprint = hashlib.sha256(json.dumps(fingerprint_payload, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
-    existing = await db.scalar(select(Job).where(Job.company_id == company_id, Job.idempotency_key == idempotency_key))
-    if existing:
-        if existing.kind != "content_generation" or (existing.result or {}).get("request_fingerprint") != fingerprint:
-            raise ApiProblem(409, "idempotency_conflict", "Idempotency-Key này đã được dùng cho yêu cầu khác.")
-        return GenerateContentResponse(job_id=existing.id)
     now = utcnow()
     job_id = new_id()
-    title = f"Sinh {request.count} bản nháp: {campaign.name}"
+    title = f"Sinh {request_payload['count']} bản nháp: {campaign.name}"
+    if selected_slot:
+        updated_plan = {**(campaign.content_plan_json or {}), "slots": [dict(slot) for slot in (campaign.content_plan_json or {}).get("slots", [])]}
+        reserved_slot = next((slot for slot in updated_plan["slots"] if slot.get("id") == request.slot_id), None)
+        if reserved_slot is None or reserved_slot.get("generated_post_id") or reserved_slot.get("generation_job_id"):
+            raise ApiProblem(409, "content_slot_generation_pending", "Slot đã được nhận để xử lý; hãy làm mới lịch nội dung.")
+        reserved_slot["generation_job_id"] = job_id
+        campaign.content_plan_json = updated_plan
+        campaign.version += 1
+        campaign.updated_at = now
     job_payload = {
         "campaign_id": campaign.id,
         "campaign_version": campaign.version,
@@ -964,8 +1028,17 @@ async def generate_content(
         action="content.generate.requested",
         entity_type="campaign",
         entity_id=campaign.id,
-        metadata_json={"job_id": job_id, "count": request.count, "provider": "deepseek", "brand_version": brand.version},
+        metadata_json={"job_id": job_id, "count": request_payload["count"], "slot_id": request.slot_id, "provider": "deepseek", "brand_version": brand.version},
     ))
+    if selected_slot:
+        db.add(AuditEvent(
+            company_id=company_id,
+            actor_user_id=user.id,
+            action="campaign.content_slot.generation_requested",
+            entity_type="campaign",
+            entity_id=campaign.id,
+            metadata_json={"job_id": job_id, "slot_id": request.slot_id, "version": campaign.version},
+        ))
     await append_job_event(db, job, "queued", "Đã nhận yêu cầu sinh nội dung.", 0)
     try:
         await db.commit()

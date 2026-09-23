@@ -36,15 +36,47 @@ ContentPillarValue = Literal[
 ]
 
 
+class CampaignContentSlotIn(StrictModel):
+    id: str = Field(min_length=1, max_length=64)
+    scheduled_date: date
+    pillar: ContentPillarValue
+    format: Literal["text", "image", "carousel", "video", "reel", "story"]
+    topic: str = Field(min_length=1, max_length=500)
+
+
+class CampaignContentPlanIn(StrictModel):
+    strategy_summary: str = Field(default="", max_length=2000)
+    slots: list[CampaignContentSlotIn] = Field(default_factory=list, max_length=60)
+
+    @model_validator(mode="after")
+    def slot_ids_are_unique(self) -> "CampaignContentPlanIn":
+        slot_ids = [slot.id for slot in self.slots]
+        if len(slot_ids) != len(set(slot_ids)):
+            raise ValueError("content plan slot IDs must be unique")
+        return self
+
+
+class CampaignContentSlotOut(CampaignContentSlotIn):
+    generated_post_id: str | None = None
+    generation_job_id: str | None = None
+
+
+class CampaignContentPlanOut(StrictModel):
+    strategy_summary: str
+    slots: list[CampaignContentSlotOut]
+
+
 class CampaignCreateRequest(StrictModel):
     name: str = Field(min_length=1, max_length=200)
     brief: CampaignBriefIn
+    content_plan: CampaignContentPlanIn = Field(default_factory=CampaignContentPlanIn)
     pillars: list[ContentPillarValue] = Field(default_factory=lambda: ["product", "education"], max_length=8)
     channels: list[Literal["facebook_page"]] = Field(default_factory=lambda: ["facebook_page"], min_length=1)
 
 
 class CampaignUpdateRequest(CampaignCreateRequest):
     version: int = Field(ge=1)
+    content_plan: CampaignContentPlanIn
 
 
 class CampaignOut(StrictModel):
@@ -53,6 +85,7 @@ class CampaignOut(StrictModel):
     name: str
     status: Literal["draft", "active", "completed", "archived"]
     brief: dict[str, Any]
+    content_plan: CampaignContentPlanOut
     pillars: list[ContentPillarValue]
     channels: list[str]
     version: int
@@ -74,6 +107,7 @@ class PaginatedCampaigns(StrictModel):
 class GenerateContentRequest(StrictModel):
     campaign_id: str
     count: int = Field(ge=1, le=10)
+    slot_id: str | None = Field(default=None, min_length=1, max_length=64)
     pillars: list[ContentPillarValue] = Field(default_factory=list, max_length=8)
     formats: list[Literal["text", "image", "carousel", "video", "reel", "story"]] = Field(default_factory=lambda: ["text"], min_length=1, max_length=6)
     start_date: date | None = None
@@ -84,6 +118,8 @@ class GenerateContentRequest(StrictModel):
     def date_range_is_valid(self) -> "GenerateContentRequest":
         if self.start_date and self.end_date and self.end_date < self.start_date:
             raise ValueError("end_date cannot be earlier than start_date")
+        if self.slot_id and self.count != 1:
+            raise ValueError("slot generation requires count=1")
         return self
 
 

@@ -145,3 +145,11 @@ Ngày tạo: 2026-09-23. Trạng thái dưới đây được ghi từ audit đ�
 - Quyết định: thêm `PATCH /workspaces/{company_id}/campaigns/{campaign_id}` với quyền `campaign:edit` và expected `version`. Update thành công tăng version; request stale trả `409 version_conflict`. Giao diện cho phép sửa trường brief và yêu cầu người dùng tải lại bản mới nhất sau conflict.
 - Ảnh hưởng: OpenAPI và TypeScript client được sinh lại; MSW hỗ trợ version conflict; campaign edit E2E chạy trên desktop/mobile.
 - Trạng thái: IMPLEMENTED; API test xác nhận version bump và conflict, campaign slice có 10 E2E pass. Không tạo migration mới.
+
+## DEC-019 — Lịch nội dung lưu trên Campaign và khóa slot trong lúc sinh
+
+- Vấn đề: chỉ lưu brief và sinh theo số lượng/ngày tổng quát không giúp người dùng vận hành lịch bài theo chủ đề đã chọn; hai request đồng thời còn có thể cùng lấy một slot.
+- Quyết định: lưu `strategy_summary` và tối đa 60 slot trong `Campaign.content_plan_json` bằng migration 0008. Mỗi slot có ID do client tạo, ngày, pillar, format và topic; backend quản lý liên kết draft và job đang giữ slot. Campaign version tăng khi reserve và khi gắn draft; optimistic updates bảo vệ sửa đồng thời. Retry/cancel/failure giải phóng slot đúng job, retry chỉ được nếu campaign context còn nguyên.
+- DeepSeek data flow: chủ dự án chấp thuận gửi campaign strategy, slot topic và ngày đã chọn cùng Brand Profile và đoạn trích nguồn phù hợp khi người dùng bấm sinh theo slot. ID database và slot nội bộ không nằm trong prompt.
+- Ảnh hưởng: draft lưu `content_slot_id` và `planned_date`; slot đã chạy/đã sinh không thể bị xóa hoặc sửa nội dung. Bài tạo ra vẫn là draft và cần người duyệt.
+- Trạng thái: IMPLEMENTED; SQLite API/worker fixtures và PostgreSQL migration 0001→0008 pass. Live DeepSeek và full runtime chưa được xác minh.

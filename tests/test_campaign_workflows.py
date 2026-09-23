@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import csv
 import io
+import json
 from datetime import datetime, timezone
 
 import pytest
@@ -17,6 +18,7 @@ from sqlalchemy.pool import StaticPool
 from database.models import (
     Base,
     Brand,
+    Campaign,
     CampaignPost,
     Document,
     Job,
@@ -188,6 +190,16 @@ def test_campaign_api_has_tenant_scoping_and_versioned_approval(workflow_api) ->
             "start_date": "2026-09-01",
             "end_date": "2026-09-30",
         },
+        "content_plan": {
+            "strategy_summary": "Tập trung món cơm gà, bữa cơm ấm áp cho gia đình.",
+            "slots": [{
+                "id": "slot-family-dinner",
+                "scheduled_date": "2026-09-15",
+                "pillar": "product",
+                "format": "text",
+                "topic": "Món cơm gà cho bữa tối cuối tuần",
+            }],
+        },
         "pillars": ["product"],
         "channels": ["facebook_page"],
     })
@@ -202,6 +214,10 @@ def test_campaign_api_has_tenant_scoping_and_versioned_approval(workflow_api) ->
             **campaign["brief"],
             "key_message": "Bữa cơm Việt ấm áp cho ngày mưa.",
         },
+        "content_plan": {
+            "strategy_summary": campaign["content_plan"]["strategy_summary"],
+            "slots": [{key: slot[key] for key in ("id", "scheduled_date", "pillar", "format", "topic")} for slot in campaign["content_plan"]["slots"]],
+        },
         "pillars": campaign["pillars"],
         "channels": campaign["channels"],
     }
@@ -214,6 +230,7 @@ def test_campaign_api_has_tenant_scoping_and_versioned_approval(workflow_api) ->
     assert updated_campaign.json()["version"] == campaign["version"] + 1
     assert updated_campaign.json()["name"] == "Bếp Mộc mùa thu"
     assert updated_campaign.json()["brief"]["key_message"] == "Bữa cơm Việt ấm áp cho ngày mưa."
+    assert updated_campaign.json()["content_plan"] == campaign["content_plan"]
     stale_campaign = client.patch(
         campaign_url,
         headers={"X-CSRF-Token": client.cookies.get("agentic_csrf")},
@@ -283,6 +300,16 @@ def test_content_generation_requires_current_confirmed_brand_profile(workflow_ap
             "start_date": "2026-09-01",
             "end_date": "2026-09-30",
         },
+        "content_plan": {
+            "strategy_summary": "Tập trung món cơm gà, bữa cơm ấm áp cho gia đình.",
+            "slots": [{
+                "id": "slot-family-dinner",
+                "scheduled_date": "2026-09-15",
+                "pillar": "product",
+                "format": "text",
+                "topic": "Món cơm gà cho bữa tối cuối tuần",
+            }],
+        },
         "pillars": ["product"],
         "channels": ["facebook_page"],
     })
@@ -297,6 +324,87 @@ def test_content_generation_requires_current_confirmed_brand_profile(workflow_ap
     )
     assert response.status_code == 409
     assert response.json()["error"]["code"] == "brand_profile_not_confirmed"
+
+
+def test_content_slot_reservation_releases_on_failure_and_cancel_and_reacquires_on_retry(workflow_api, monkeypatch) -> None:
+    client, session_factory = workflow_api
+    owner = _register(client, "content-slot-retry@example.com")
+    workspace_id = owner["active_workspace_id"]
+    csrf = client.cookies.get("agentic_csrf")
+    headers = {"X-CSRF-Token": csrf}
+    campaign_response = client.post(f"/api/v1/workspaces/{workspace_id}/campaigns", headers=headers, json={
+        "name": "Bếp Mộc",
+        "brief": {
+            "objective": "awareness", "audience": ["Gia đình"], "product_ids": [],
+            "key_message": "Cơm gà cho bữa cơm gia đình", "must_include": [], "must_avoid": [],
+            "start_date": "2026-09-01", "end_date": "2026-09-30",
+        },
+        "content_plan": {"strategy_summary": "Bữa cơm ấm áp", "slots": [{
+            "id": "slot-retry", "scheduled_date": "2026-09-15", "pillar": "product",
+            "format": "text", "topic": "Cơm gà cho gia đình",
+        }]},
+        "pillars": ["product"], "channels": ["facebook_page"],
+    })
+    assert campaign_response.status_code == 201, campaign_response.text
+    profile = client.get(f"/api/v1/workspaces/{workspace_id}/brand-profile").json()
+    confirmed = client.patch(f"/api/v1/workspaces/{workspace_id}/brand-profile", headers=headers, json={
+        "version": profile["version"],
+        "fields": [
+            {"key": "business_name", "value": "Bếp Mộc"},
+            {"key": "description", "value": "Quán món Việt cho gia đình"},
+            {"key": "products", "value": [{"name": "Cơm gà"}]},
+            {"key": "target_audience", "value": ["Gia đình"]},
+            {"key": "tone_keywords", "value": ["Thân thiện"]},
+        ],
+        "confirm": True,
+    })
+    assert confirmed.status_code == 200, confirmed.text
+
+    async def no_dispatch(_job_id):
+        return None
+
+    monkeypatch.setattr(campaign_workflows, "dispatch_content_generation_job", no_dispatch)
+    monkeypatch.setattr(job_routes, "dispatch_content_generation_job", no_dispatch)
+    accepted = client.post(
+        f"/api/v1/workspaces/{workspace_id}/posts/generate",
+        headers={**headers, "Idempotency-Key": "slot-retry-job-0001"},
+        json={"campaign_id": campaign_response.json()["id"], "count": 1, "slot_id": "slot-retry"},
+    )
+    assert accepted.status_code == 202, accepted.text
+    job_id = accepted.json()["job_id"]
+
+    async def read_state():
+        async with session_factory() as db:
+            return await db.get(Job, job_id), await db.get(Campaign, campaign_response.json()["id"])
+
+    queued_job, reserved_campaign = asyncio.run(read_state())
+    assert queued_job.result["campaign_version"] == reserved_campaign.version
+
+    monkeypatch.setattr(content_tasks, "SessionLocal", session_factory)
+    asyncio.run(content_tasks._fail(job_id, content_tasks.ContentGenerationFailure("deepseek_request_failed", "temporary error"), attempts=1))
+
+    failed_job, released_campaign = asyncio.run(read_state())
+    assert failed_job.status == "failed"
+    assert released_campaign.version == campaign_response.json()["version"] + 2
+    assert failed_job.result["campaign_version"] == released_campaign.version, (
+        f"job context version={failed_job.result['campaign_version']}, campaign version={released_campaign.version}"
+    )
+    assert "generation_job_id" not in released_campaign.content_plan_json["slots"][0]
+
+    retried = client.post(f"/api/v1/jobs/{job_id}/retry", headers=headers)
+    assert retried.status_code == 202, retried.text
+    queued_job, reserved_campaign = asyncio.run(read_state())
+    assert queued_job.status == "queued"
+    assert reserved_campaign.version == released_campaign.version + 1
+    assert reserved_campaign.content_plan_json["slots"][0]["generation_job_id"] == job_id
+    assert queued_job.result["campaign_version"] == reserved_campaign.version
+
+    cancelled = client.post(f"/api/v1/jobs/{job_id}/cancel", headers=headers)
+    assert cancelled.status_code == 200, cancelled.text
+    cancelled_job, cancelled_campaign = asyncio.run(read_state())
+    assert cancelled_job.status == "cancelled"
+    assert cancelled_campaign.version == reserved_campaign.version + 1
+    assert "generation_job_id" not in cancelled_campaign.content_plan_json["slots"][0]
 
 
 def test_content_generation_job_persists_cited_draft_and_is_idempotent(workflow_api, monkeypatch) -> None:
@@ -316,6 +424,16 @@ def test_content_generation_job_persists_cited_draft_and_is_idempotent(workflow_
             "must_avoid": [],
             "start_date": "2026-09-01",
             "end_date": "2026-09-30",
+        },
+        "content_plan": {
+            "strategy_summary": "Tập trung món cơm gà, bữa cơm ấm áp cho gia đình.",
+            "slots": [{
+                "id": "slot-family-dinner",
+                "scheduled_date": "2026-09-15",
+                "pillar": "product",
+                "format": "text",
+                "topic": "Món cơm gà cho bữa tối cuối tuần",
+            }],
         },
         "pillars": ["product"],
         "channels": ["facebook_page"],
@@ -367,13 +485,23 @@ def test_content_generation_job_persists_cited_draft_and_is_idempotent(workflow_
         return None
     monkeypatch.setattr(campaign_workflows, "dispatch_content_generation_job", no_dispatch)
     request_headers = {**headers, "Idempotency-Key": "generation-content-0001"}
-    body = {"campaign_id": campaign_id, "count": 1}
+    body = {"campaign_id": campaign_id, "count": 1, "slot_id": "slot-family-dinner"}
     accepted = client.post(f"/api/v1/workspaces/{workspace_id}/posts/generate", headers=request_headers, json=body)
     assert accepted.status_code == 202, accepted.text
     job_id = accepted.json()["job_id"]
+    queued_campaign = client.get(f"/api/v1/workspaces/{workspace_id}/campaigns/{campaign_id}").json()
+    assert queued_campaign["version"] == campaign_response.json()["version"] + 1
+    assert queued_campaign["content_plan"]["slots"][0]["generation_job_id"] == job_id
     duplicate = client.post(f"/api/v1/workspaces/{workspace_id}/posts/generate", headers=request_headers, json=body)
     assert duplicate.status_code == 202
     assert duplicate.json()["job_id"] == job_id
+    another_request = client.post(
+        f"/api/v1/workspaces/{workspace_id}/posts/generate",
+        headers={**headers, "Idempotency-Key": "generation-content-0002"},
+        json=body,
+    )
+    assert another_request.status_code == 409
+    assert another_request.json()["error"]["code"] == "content_slot_generation_pending"
 
     class FixedModel:
         last_system_prompt = ""
@@ -397,22 +525,59 @@ def test_content_generation_job_persists_cited_draft_and_is_idempotent(workflow_
     monkeypatch.setattr(content_tasks, "SessionLocal", session_factory)
     fixed_model = FixedModel()
     asyncio.run(content_tasks.content_generation_task_async(job_id, agent=ContentAgent(fixed_model)))
+    model_payload = json.dumps(fixed_model.last_input_payload, ensure_ascii=False)
+    assert fixed_model.last_input_payload["content_requirements"]["strategy_summary"] == "Tập trung món cơm gà, bữa cơm ấm áp cho gia đình."
+    assert fixed_model.last_input_payload["content_requirements"]["slot_topic"] == "Món cơm gà cho bữa tối cuối tuần"
+    assert fixed_model.last_input_payload["content_requirements"]["start_date"] == "2026-09-15"
+    assert "slot-family-dinner" not in model_payload
 
     async def check_saved_draft():
         async with session_factory() as db:
             job = await db.get(Job, job_id)
             posts = (await db.scalars(select(CampaignPost).where(CampaignPost.campaign_id == campaign_id))).all()
             versions = (await db.scalars(select(PostVersion).where(PostVersion.campaign_id == campaign_id))).all()
-            return job, posts, versions
+            saved_campaign = await db.get(Campaign, campaign_id)
+            return job, posts, versions, saved_campaign
 
-    job, posts, versions = asyncio.run(check_saved_draft())
+    job, posts, versions, saved_campaign = asyncio.run(check_saved_draft())
     assert job.status == "succeeded"
     assert len(posts) == len(versions) == 1
+    assert saved_campaign.version == campaign_response.json()["version"] + 2
+    assert saved_campaign.content_plan_json["slots"][0]["generated_post_id"] == posts[0].id
+    assert "generation_job_id" not in saved_campaign.content_plan_json["slots"][0]
     assert posts[0].status == "draft"
     assert versions[0].source == "ai_generated"
     assert versions[0].generation_job_id == job_id
     assert posts[0].current_json["citations"][0]["document_id"] == document_id
+    assert posts[0].current_json["content_slot_id"] == "slot-family-dinner"
+    assert posts[0].current_json["planned_date"] == "2026-09-15"
     assert job.result["estimated_cost_available"] is False
+
+    duplicate_after_completion = client.post(f"/api/v1/workspaces/{workspace_id}/posts/generate", headers=request_headers, json=body)
+    assert duplicate_after_completion.status_code == 202
+    assert duplicate_after_completion.json()["job_id"] == job_id
+    reused_slot = client.post(
+        f"/api/v1/workspaces/{workspace_id}/posts/generate",
+        headers={**headers, "Idempotency-Key": "generation-content-0003"},
+        json=body,
+    )
+    assert reused_slot.status_code == 409
+    assert reused_slot.json()["error"]["code"] == "content_slot_already_generated"
+    current_campaign = client.get(f"/api/v1/workspaces/{workspace_id}/campaigns/{campaign_id}").json()
+    locked_update = client.patch(
+        f"/api/v1/workspaces/{workspace_id}/campaigns/{campaign_id}",
+        headers=headers,
+        json={
+            "version": current_campaign["version"],
+            "name": current_campaign["name"],
+            "brief": current_campaign["brief"],
+            "content_plan": {"strategy_summary": current_campaign["content_plan"]["strategy_summary"], "slots": []},
+            "pillars": current_campaign["pillars"],
+            "channels": current_campaign["channels"],
+        },
+    )
+    assert locked_update.status_code == 409
+    assert locked_update.json()["error"]["code"] == "content_slot_locked"
 
     post_url = f"/api/v1/workspaces/{workspace_id}/posts/{posts[0].id}"
     submitted = client.post(f"{post_url}/submit-approval", headers=headers, json={"version": 1})

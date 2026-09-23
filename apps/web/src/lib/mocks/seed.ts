@@ -541,6 +541,13 @@ const campaignActive: Campaign = {
   workspace_id: WS_FB,
   name: 'Chiến dịch tháng 3 — Khách văn phòng',
   status: CAMPAIGN_STATUSES.ACTIVE,
+  content_plan: {
+    strategy_summary: 'Nhấn vào bữa trưa nhanh gọn, nước dùng ninh 12 tiếng và thông tin giá rõ ràng.',
+    slots: [
+      { id: 'slot-trua-1', scheduled_date: '2026-03-04', pillar: CONTENT_PILLARS.PRODUCT, format: POST_FORMATS.IMAGE, topic: 'Bát phở nóng hổi cho giờ nghỉ trưa' },
+      { id: 'slot-trua-2', scheduled_date: '2026-03-11', pillar: CONTENT_PILLARS.BEHIND_THE_SCENES, format: POST_FORMATS.TEXT, topic: 'Nước dùng ninh từ sáng sớm' },
+    ],
+  },
   brief: {
     objective: CAMPAIGN_OBJECTIVES.TRAFFIC,
     objective_note: 'Kéo khách văn phòng quanh phố cổ tới ăn trưa trong tháng 3.',
