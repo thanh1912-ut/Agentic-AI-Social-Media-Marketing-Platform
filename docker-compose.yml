@@ -52,11 +52,25 @@ services:
       context: .
       dockerfile: infra/docker/python.Dockerfile
     command: ["alembic", "upgrade", "head"]
-    env_file: [.env]
     environment:
       DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-agentic_marketing}
     depends_on:
       postgres:
+        condition: service_healthy
+
+  storage-init:
+    build:
+      context: .
+      dockerfile: infra/docker/python.Dockerfile
+    command: ["python", "-m", "services.api.init_storage"]
+    environment:
+      S3_ENDPOINT: http://minio:9000
+      S3_ACCESS_KEY: ${S3_ACCESS_KEY:-minioadmin}
+      S3_SECRET_KEY: ${S3_SECRET_KEY:-minioadmin}
+      S3_BUCKET: ${S3_BUCKET:-agentic-marketing}
+      STORAGE_BACKEND: s3
+    depends_on:
+      minio:
         condition: service_healthy
 
   api:
@@ -70,7 +84,19 @@ services:
       REDIS_URL: redis://redis:6379/0
       S3_ENDPOINT: http://minio:9000
       STORAGE_BACKEND: s3
-      COOKIE_SECURE: "0"
+      COOKIE_SECURE: ${COOKIE_SECURE:-0}
+      LLM_PROVIDER: ${LLM_PROVIDER:-deepseek}
+      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
+      DEEPSEEK_BASE_URL: ${DEEPSEEK_BASE_URL:-https://api.deepseek.com}
+      LLM_DEFAULT_MODEL: ${LLM_DEFAULT_MODEL:-deepseek-flash}
+      EMBEDDING_PROVIDER: ${EMBEDDING_PROVIDER:-none}
+      EMBEDDING_API_KEY: ${EMBEDDING_API_KEY:-}
+      EMBEDDING_MODEL: ${EMBEDDING_MODEL:-}
+      EMBEDDING_DIMENSIONS: ${EMBEDDING_DIMENSIONS:-1536}
+      RETRIEVAL_MODE: ${RETRIEVAL_MODE:-lexical}
+      CHUNKER_VERSION: ${CHUNKER_VERSION:-vi-token-window-v2}
+      MINIMUM_RELEVANCE_SCORE: ${MINIMUM_RELEVANCE_SCORE:-0.12}
+      MINIMUM_SEMANTIC_SCORE: ${MINIMUM_SEMANTIC_SCORE:-0.72}
     ports:
       - "${API_PORT:-8000}:8000"
     depends_on:
@@ -80,18 +106,42 @@ services:
         condition: service_healthy
       minio:
         condition: service_healthy
+      storage-init:
+        condition: service_completed_successfully
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/readyz', timeout=3)"
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 20s
 
   worker:
     build:
       context: .
       dockerfile: infra/docker/python.Dockerfile
-    command: ["celery", "-A", "services.worker.celery_app:celery_app", "worker", "--loglevel=INFO", "--queues=default", "--concurrency=2"]
+    command: ["celery", "-A", "services.worker.celery_app:celery_app", "worker", "--loglevel=INFO", "--queues=default,agent", "--concurrency=2"]
     env_file: [.env]
     environment:
       DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-agentic_marketing}
       REDIS_URL: redis://redis:6379/0
       S3_ENDPOINT: http://minio:9000
       STORAGE_BACKEND: s3
+      LLM_PROVIDER: ${LLM_PROVIDER:-deepseek}
+      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
+      DEEPSEEK_BASE_URL: ${DEEPSEEK_BASE_URL:-https://api.deepseek.com}
+      LLM_DEFAULT_MODEL: ${LLM_DEFAULT_MODEL:-deepseek-flash}
+      EMBEDDING_PROVIDER: ${EMBEDDING_PROVIDER:-none}
+      EMBEDDING_API_KEY: ${EMBEDDING_API_KEY:-}
+      EMBEDDING_MODEL: ${EMBEDDING_MODEL:-}
+      EMBEDDING_DIMENSIONS: ${EMBEDDING_DIMENSIONS:-1536}
+      RETRIEVAL_MODE: ${RETRIEVAL_MODE:-lexical}
+      CHUNKER_VERSION: ${CHUNKER_VERSION:-vi-token-window-v2}
+      MINIMUM_RELEVANCE_SCORE: ${MINIMUM_RELEVANCE_SCORE:-0.12}
+      MINIMUM_SEMANTIC_SCORE: ${MINIMUM_SEMANTIC_SCORE:-0.72}
     depends_on:
       migrate:
         condition: service_completed_successfully
@@ -99,23 +149,8 @@ services:
         condition: service_healthy
       minio:
         condition: service_healthy
-
-  agent-worker:
-    build:
-      context: .
-      dockerfile: infra/docker/python.Dockerfile
-    command: ["celery", "-A", "services.worker.celery_app:celery_app", "worker", "--loglevel=INFO", "--queues=agent", "--concurrency=1"]
-    env_file: [.env]
-    environment:
-      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-agentic_marketing}
-      REDIS_URL: redis://redis:6379/0
-      S3_ENDPOINT: http://minio:9000
-      STORAGE_BACKEND: s3
-    depends_on:
-      migrate:
+      storage-init:
         condition: service_completed_successfully
-      redis:
-        condition: service_healthy
 
   scheduler:
     build:
@@ -131,11 +166,13 @@ services:
         condition: service_completed_successfully
       redis:
         condition: service_healthy
-
   web:
     build:
       context: .
       dockerfile: infra/docker/web.Dockerfile
+      args:
+        NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL:-http://localhost:8000}
+        NEXT_PUBLIC_USE_MOCKS: ${NEXT_PUBLIC_USE_MOCKS:-0}
     environment:
       NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL:-http://localhost:8000}
       NEXT_PUBLIC_USE_MOCKS: ${NEXT_PUBLIC_USE_MOCKS:-0}
@@ -143,7 +180,7 @@ services:
       - "${WEB_PORT:-3000}:3000"
     depends_on:
       api:
-        condition: service_started
+        condition: service_healthy
 
 volumes:
   postgres_data:

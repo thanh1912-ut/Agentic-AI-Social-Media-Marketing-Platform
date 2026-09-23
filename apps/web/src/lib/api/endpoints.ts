@@ -1,10 +1,9 @@
 /**
  * Endpoints có kiểu — bọc `apiRequest` để component không bao giờ tự ghép URL.
  *
- * Mọi hàm ở đây trả type lấy từ `@agentic/contracts` (DRAFT, chờ M2/M3 chốt).
- * Khi backend có OpenAPI thật: chạy `npm run gen:api`, rồi thay type trong
- * `src/lib/api/types.ts` bằng type sinh tự động; các hàm dưới giữ nguyên chữ ký
- * nên tầng UI không phải sửa.
+ * Endpoint thuộc lát cắt auth/workspace/document/job dùng DTO sinh từ OpenAPI
+ * trong `src/lib/api/types.ts`. Endpoint còn lại là UI demo-only và không được
+ * gọi ở real mode cho tới khi backend công bố OpenAPI tương ứng.
  *
  * ⚠️ Những chỗ đánh dấu `CONTRACT-REQUEST` là endpoint/field mình cần M2 xác nhận.
  */
@@ -17,20 +16,14 @@ import type {
   ApplyRecommendationResponse,
   ApprovalRecord,
   ApprovalRequest,
-  BrandProfile,
   Campaign,
   CreateExportRequest,
-  DocumentUpload,
+  CreateManualPostRequest,
   ExportJob,
   FacebookPage,
   GenerateContentRequest,
   GenerateContentResponse,
-  InviteMemberRequest,
   InviteMemberResponse,
-  Job,
-  JobEvent,
-  LoginRequest,
-  LoginResponse,
   ManualPublicationRequest,
   Member,
   MetricImportCommitRequest,
@@ -45,22 +38,38 @@ import type {
   Recommendation,
   RecommendationFeedbackRequest,
   ReextractFieldRequest,
-  ResetPasswordRequest,
   ReviseWithAiRequest,
   SelectPageRequest,
-  SessionResponse,
   SocialConnection,
-  UpdateBrandProfileRequest,
   UpdateMemberRoleRequest,
   UpdatePostRequest,
-  UploadLimits,
-  User,
-  Workspace,
 } from '@agentic/contracts';
+
+import type {
+  ApiAcceptInvitationRequest,
+  ApiAcceptedResponse,
+  ApiBrandProfile,
+  ApiConfirmBrandProfileRequest,
+  ApiDocument,
+  ApiForgotPasswordRequest,
+  ApiInviteMemberRequest,
+  ApiInviteMemberResponse,
+  ApiJob,
+  ApiJobEvent,
+  ApiUpdateBrandProfileRequest,
+  ApiLoginRequest,
+  ApiLoginResponse,
+  ApiMember,
+  ApiResetPasswordRequest,
+  ApiSelectWorkspaceRequest,
+  ApiSessionResponse,
+  ApiUploadLimits,
+  ApiWorkspace,
+} from './types';
 
 import { apiDownload, apiRequest, apiUpload, newIdempotencyKey } from './client';
 
-export type { User };
+export type { ApiUser as User } from './types';
 
 const v1 = (path: string) => path;
 
@@ -71,30 +80,30 @@ const v1 = (path: string) => path;
 export const authApi = {
   /** `GET /me` — trạng thái phiên hiện tại. */
   me: (signal?: AbortSignal) =>
-    apiRequest<SessionResponse>(v1('/me'), { signal }),
+    apiRequest<ApiSessionResponse>(v1('/me'), { signal }),
 
-  login: (body: LoginRequest) =>
-    apiRequest<LoginResponse>(v1('/auth/login'), { method: 'POST', body }),
+  login: (body: ApiLoginRequest) =>
+    apiRequest<ApiLoginResponse>(v1('/auth/login'), { method: 'POST', body }),
 
   logout: () => apiRequest<void>(v1('/auth/logout'), { method: 'POST' }),
 
+  refresh: () => apiRequest<ApiLoginResponse>(v1('/auth/refresh'), { method: 'POST' }),
+
   forgotPassword: (email: string) =>
-    apiRequest<{ sent: boolean; message: string }>(v1('/auth/forgot-password'), {
+    apiRequest<unknown>(v1('/auth/forgot-password'), {
       method: 'POST',
-      body: { email },
+      body: { email } satisfies ApiForgotPasswordRequest,
     }),
 
-  resetPassword: (body: ResetPasswordRequest) =>
-    apiRequest<{ ok: boolean }>(v1('/auth/reset-password'), { method: 'POST', body }),
+  resetPassword: (body: ApiResetPasswordRequest) =>
+    apiRequest<unknown>(v1('/auth/reset-password'), { method: 'POST', body }),
 
   /** Xem trước lời mời trước khi đăng nhập/tạo tài khoản. */
   previewInvitation: (token: string) =>
-    apiRequest<{ email: string; workspace_name: string; role: string }>(
-      v1(`/auth/invitations/${encodeURIComponent(token)}`),
-    ),
+    apiRequest<unknown>(v1(`/auth/invitations/${encodeURIComponent(token)}`)),
 
-  acceptInvitation: (token: string, body: { full_name: string; password: string }) =>
-    apiRequest<LoginResponse>(
+  acceptInvitation: (token: string, body: ApiAcceptInvitationRequest) =>
+    apiRequest<ApiLoginResponse>(
       v1(`/auth/invitations/${encodeURIComponent(token)}/accept`),
       { method: 'POST', body },
     ),
@@ -105,25 +114,26 @@ export const authApi = {
 // ---------------------------------------------------------------------------
 
 export const workspaceApi = {
-  list: () => apiRequest<Workspace[]>(v1('/workspaces')),
+  list: () => apiRequest<readonly ApiWorkspace[]>(v1('/workspaces')),
 
   get: (workspaceId: string) =>
-    apiRequest<Workspace>(v1(`/workspaces/${workspaceId}`)),
+    apiRequest<ApiWorkspace>(v1(`/workspaces/${workspaceId}`)),
 
   select: (workspaceId: string) =>
-    apiRequest<SessionResponse>(v1('/me/active-workspace'), {
+    apiRequest<ApiSessionResponse>(v1('/me/active-workspace'), {
       method: 'PUT',
-      body: { workspace_id: workspaceId },
+      body: { workspace_id: workspaceId } satisfies ApiSelectWorkspaceRequest,
     }),
 
+  /** Mock-only: hiện không có trong OpenAPI; useOnboarding tắt endpoint khi mocks=0. */
   onboarding: (workspaceId: string) =>
     apiRequest<OnboardingState>(v1(`/workspaces/${workspaceId}/onboarding`)),
 
   members: (workspaceId: string) =>
-    apiRequest<Member[]>(v1(`/workspaces/${workspaceId}/members`)),
+    apiRequest<readonly ApiMember[]>(v1(`/workspaces/${workspaceId}/members`)),
 
-  inviteMember: (workspaceId: string, body: InviteMemberRequest) =>
-    apiRequest<InviteMemberResponse>(v1(`/workspaces/${workspaceId}/members`), {
+  inviteMember: (workspaceId: string, body: ApiInviteMemberRequest) =>
+    apiRequest<ApiInviteMemberResponse>(v1(`/workspaces/${workspaceId}/members`), {
       method: 'POST',
       body,
     }),
@@ -158,28 +168,29 @@ export const workspaceApi = {
 export const documentApi = {
   /** Hạn mức upload — đọc TRƯỚC khi người dùng chọn tệp. */
   limits: (workspaceId: string) =>
-    apiRequest<UploadLimits>(v1(`/workspaces/${workspaceId}/documents/limits`)),
+    apiRequest<ApiUploadLimits>(v1(`/workspaces/${workspaceId}/documents/limits`)),
 
   list: (workspaceId: string) =>
-    apiRequest<DocumentUpload[]>(v1(`/workspaces/${workspaceId}/documents`)),
+    apiRequest<readonly ApiDocument[]>(v1(`/workspaces/${workspaceId}/documents`)),
 
   get: (workspaceId: string, documentId: string) =>
-    apiRequest<DocumentUpload>(v1(`/workspaces/${workspaceId}/documents/${documentId}`)),
+    apiRequest<ApiDocument>(v1(`/workspaces/${workspaceId}/documents/${documentId}`)),
 
   /**
    * Upload nhiều tệp trong MỘT request. Trả 202 kèm job để UI theo dõi tiến độ.
    * Dùng khoá chống trùng để bấm hai lần không tạo hai job.
    */
-  upload: (workspaceId: string, files: File[]) => {
+  upload: (workspaceId: string, files: File[], idempotencyKey: string) => {
     const form = new FormData();
     for (const file of files) form.append('files', file);
-    return apiUpload<AcceptedResponse>(
+    return apiUpload<ApiAcceptedResponse>(
       v1(`/workspaces/${workspaceId}/documents`),
       form,
-      { idempotencyKey: newIdempotencyKey('documents') },
+      { idempotencyKey },
     );
   },
 
+  /** Mock-only: DELETE chưa được công bố trong OpenAPI và bị ẩn ở real mode. */
   remove: (workspaceId: string, documentId: string) =>
     apiRequest<void>(v1(`/workspaces/${workspaceId}/documents/${documentId}`), {
       method: 'DELETE',
@@ -187,7 +198,7 @@ export const documentApi = {
 
   /** Đọc lại một tài liệu bị lỗi (vd PDF scan sau khi bật OCR). */
   reprocess: (workspaceId: string, documentId: string) =>
-    apiRequest<AcceptedResponse>(
+    apiRequest<ApiAcceptedResponse>(
       v1(`/workspaces/${workspaceId}/documents/${documentId}/reprocess`),
       { method: 'POST' },
     ),
@@ -198,13 +209,21 @@ export const documentApi = {
 // ---------------------------------------------------------------------------
 
 export const brandApi = {
+  /** `GET /workspaces/{company_id}/brand-profile` — HTTP DTO from OpenAPI. */
   get: (workspaceId: string) =>
-    apiRequest<BrandProfile>(v1(`/workspaces/${workspaceId}/brand-profile`)),
+    apiRequest<ApiBrandProfile>(v1(`/workspaces/${workspaceId}/brand-profile`)),
 
   /** Lưu kèm `version` — lệch version sẽ nhận 409 `version_conflict`. */
-  update: (workspaceId: string, body: UpdateBrandProfileRequest) =>
-    apiRequest<BrandProfile>(v1(`/workspaces/${workspaceId}/brand-profile`), {
+  update: (workspaceId: string, body: ApiUpdateBrandProfileRequest) =>
+    apiRequest<ApiBrandProfile>(v1(`/workspaces/${workspaceId}/brand-profile`), {
       method: 'PATCH',
+      body,
+    }),
+
+  /** Xác nhận revision hiện tại, không tạo revision mới. */
+  confirm: (workspaceId: string, body: ApiConfirmBrandProfileRequest) =>
+    apiRequest<ApiBrandProfile>(v1(`/workspaces/${workspaceId}/brand-profile/confirm`), {
+      method: 'POST',
       body,
     }),
 
@@ -223,22 +242,22 @@ export const brandApi = {
 export const jobApi = {
   /** UI theo dõi mọi request dài bằng endpoint này. */
   get: (jobId: string, signal?: AbortSignal) =>
-    apiRequest<Job>(v1(`/jobs/${jobId}`), { signal }),
+    apiRequest<ApiJob>(v1(`/jobs/${jobId}`), { signal }),
 
   events: (jobId: string, afterSeq?: number) =>
-    apiRequest<JobEvent[]>(v1(`/jobs/${jobId}/events`), {
+    apiRequest<readonly ApiJobEvent[]>(v1(`/jobs/${jobId}/events`), {
       query: { after_seq: afterSeq },
     }),
 
   cancel: (jobId: string) =>
-    apiRequest<Job>(v1(`/jobs/${jobId}/cancel`), { method: 'POST' }),
+    apiRequest<ApiJob>(v1(`/jobs/${jobId}/cancel`), { method: 'POST' }),
 
   /**
    * Thử lại job. KHÔNG dùng cho job xuất bản có kết quả `outcome_unknown` —
    * trường hợp đó phải đi qua luồng đối soát thủ công.
    */
   retry: (jobId: string) =>
-    apiRequest<AcceptedResponse>(v1(`/jobs/${jobId}/retry`), { method: 'POST' }),
+    apiRequest<ApiAcceptedResponse>(v1(`/jobs/${jobId}/retry`), { method: 'POST' }),
 };
 
 // ---------------------------------------------------------------------------
@@ -282,6 +301,12 @@ export const campaignApi = {
 };
 
 export const postApi = {
+  create: (workspaceId: string, campaignId: string, body: CreateManualPostRequest) =>
+    apiRequest<Post>(v1(`/workspaces/${workspaceId}/campaigns/${campaignId}/posts`), {
+      method: 'POST',
+      body,
+    }),
+
   list: (workspaceId: string, campaignId?: string) =>
     apiRequest<Paginated<Post>>(v1(`/workspaces/${workspaceId}/posts`), {
       query: { campaign_id: campaignId, page_size: 100 },
@@ -355,6 +380,7 @@ export const exportApi = {
     apiRequest<AcceptedResponse>(v1(`/workspaces/${workspaceId}/exports`), {
       method: 'POST',
       body,
+      headers: { 'Idempotency-Key': newIdempotencyKey('export') },
     }),
 
   get: (workspaceId: string, exportId: string) =>

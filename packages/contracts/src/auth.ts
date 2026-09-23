@@ -74,7 +74,8 @@ export interface SelectWorkspaceRequest {
 
 export interface Member {
   id: Id;
-  user: User;
+  /** Null for an invitation that has not yet been accepted. */
+  user: User | null;
   role: WorkspaceRole;
   /** Trạng thái lời mời: đã tham gia hay còn chờ. */
   status: 'active' | 'invited' | 'suspended';

@@ -7,6 +7,12 @@ async function login(page: import('@playwright/test').Page) {
   await page.getByLabel('Email').fill(OWNER.email);
   await page.getByLabel('Mật khẩu').fill(OWNER.password);
   await page.getByRole('button', { name: 'Đăng nhập' }).click();
+  await page.waitForURL((url) => url.pathname === '/' || url.pathname.startsWith('/w/'), {
+    timeout: 20_000,
+  });
+  if (new URL(page.url()).pathname === '/') {
+    await page.getByRole('button', { name: 'Tiếp tục tới tài liệu' }).click();
+  }
   await page.waitForURL(/\/w\//, { timeout: 20_000 });
 }
 

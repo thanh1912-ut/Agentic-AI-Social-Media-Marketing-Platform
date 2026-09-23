@@ -12,6 +12,7 @@ import { HttpResponse, http } from 'msw';
 
 import {
   APPROVAL_DECISIONS,
+  BRAND_FIELD_KEYS,
   DOCUMENT_ERROR_CODES,
   DOCUMENT_KINDS,
   DOCUMENT_STATUSES,
@@ -30,6 +31,8 @@ import {
   type PostVersionList,
   type SessionResponse,
 } from '@agentic/contracts';
+
+import type { ApiDocument } from '@/lib/api/types';
 
 import {
   DEMO_ACCOUNTS,
@@ -59,6 +62,7 @@ import {
  * dùng cookie nên phiên vẫn còn. Mock phải mô phỏng đúng hành vi đó.
  */
 const SESSION_USER_KEY = 'agentic_demo_session_user';
+const SESSION_WORKSPACE_KEY = 'agentic_demo_active_workspace';
 
 function readStoredUserId(): string | null {
   if (typeof sessionStorage === 'undefined') return null;
@@ -67,6 +71,35 @@ function readStoredUserId(): string | null {
   } catch {
     return null;
   }
+}
+
+function readStoredWorkspaceId(): string | null {
+  if (typeof sessionStorage === 'undefined') return null;
+  try {
+    return sessionStorage.getItem(SESSION_WORKSPACE_KEY);
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Adapt the demo fixture to the generated HTTP DTO. These derived values are
+ * only a labelled mock scenario; real mode reads these fields from the API.
+ */
+function demoDocumentHttpOut(document: DocumentUpload): ApiDocument {
+  const isReady = document.status === DOCUMENT_STATUSES.READY;
+  const isFailed =
+    document.status === DOCUMENT_STATUSES.FAILED ||
+    document.status === DOCUMENT_STATUSES.UNSUPPORTED;
+  const isImage = document.kind === DOCUMENT_KINDS.IMAGE;
+
+  return {
+    ...document,
+    extraction_status: isReady ? (isImage ? 'metadata_only' : 'extracted') : isFailed ? 'failed' : 'pending',
+    knowledge_status: isReady ? (isImage ? 'not_available' : 'ready') : isFailed ? 'failed' : 'pending',
+    retrieval_mode: isReady && !isImage ? 'lexical' : 'not_available',
+    profile_status: isReady ? (isImage ? 'not_available' : 'ready') : isFailed ? 'failed' : 'pending',
+  };
 }
 
 function writeStoredUserId(userId: string | null): void {
@@ -80,7 +113,7 @@ function writeStoredUserId(userId: string | null): void {
 }
 
 let signedInUserId: string | null = readStoredUserId();
-let activeWorkspaceId: string = WS_FB;
+let activeWorkspaceId: string = readStoredWorkspaceId() ?? WS_FB;
 
 /** Bộ đếm để id sinh ra không trùng giữa các lần gọi. */
 let sequence = 0;
@@ -140,6 +173,12 @@ export const handlers = [
     return HttpResponse.json(session);
   }),
 
+  http.post('*/api/v1/auth/refresh', () => {
+    const session = currentSession();
+    if (!session) return unauthenticated();
+    return HttpResponse.json({ ...session, access_token: 'demo-access-token' });
+  }),
+
   http.post('*/api/v1/auth/login', async ({ request }) => {
     const body = (await request.json()) as { email?: string; password?: string };
     const email = (body.email ?? '').trim().toLowerCase();
@@ -165,7 +204,7 @@ export const handlers = [
 
     const session = currentSession();
     if (!session) return unauthenticated();
-    return HttpResponse.json(session);
+    return HttpResponse.json({ ...session, access_token: 'demo-access-token' });
   }),
 
   http.post('*/api/v1/auth/logout', () => {
@@ -206,6 +245,11 @@ export const handlers = [
     const workspace = demoWorkspaces.find((item) => item.id === body.workspace_id);
     if (!workspace) return notFound('doanh nghiệp');
     activeWorkspaceId = workspace.id;
+    try {
+      sessionStorage.setItem(SESSION_WORKSPACE_KEY, activeWorkspaceId);
+    } catch {
+      // Session storage can be unavailable in private browsing.
+    }
     return HttpResponse.json({ ...session, active_workspace_id: workspace.id });
   }),
 
@@ -232,7 +276,9 @@ export const handlers = [
   http.get('*/api/v1/workspaces/:workspaceId/documents', ({ params }) => {
     const session = currentSession();
     if (!session) return unauthenticated();
-    return HttpResponse.json(demoDocuments[params.workspaceId as string] ?? []);
+    return HttpResponse.json(
+      (demoDocuments[params.workspaceId as string] ?? []).map(demoDocumentHttpOut),
+    );
   }),
 
   http.post('*/api/v1/workspaces/:workspaceId/documents', async ({ params, request }) => {
@@ -399,10 +445,52 @@ export const handlers = [
     profile.version += 1;
     profile.updated_at = nowIso();
     if (body.confirm === true) {
+      for (const key of Object.values(BRAND_FIELD_KEYS)) {
+        const field = profile[key];
+        if (field.value !== null && field.value !== undefined && field.value !== '') {
+          field.state = 'confirmed';
+        }
+      }
       profile.confirmed_at = nowIso();
       profile.confirmed_by = session.user.id;
       profile.completeness = 1;
+    } else {
+      profile.confirmed_at = undefined;
+      profile.confirmed_by = undefined;
     }
+
+    return HttpResponse.json(profile);
+  }),
+
+  http.post('*/api/v1/workspaces/:workspaceId/brand-profile/confirm', async ({ params, request }) => {
+    const session = currentSession();
+    if (!session) return unauthenticated();
+
+    const profile = demoBrandProfiles[params.workspaceId as string];
+    if (!profile) return notFound('hồ sơ thương hiệu');
+
+    const body = (await request.json()) as { version?: number };
+    if (body.version !== profile.version) {
+      return fail(
+        409,
+        ERROR_CODES.VERSION_CONFLICT,
+        'Hồ sơ thương hiệu vừa được người khác cập nhật. Bạn đang xác nhận một bản cũ.',
+        { current_version: profile.version, your_version: body.version ?? 0 },
+      );
+    }
+
+    let confirmedFields = 0;
+    for (const key of Object.values(BRAND_FIELD_KEYS)) {
+      const field = profile[key];
+      if (field.value !== null && field.value !== undefined && field.value !== '') {
+        field.state = 'confirmed';
+        confirmedFields += 1;
+      }
+    }
+    profile.confirmed_at = nowIso();
+    profile.confirmed_by = session.user.id;
+    profile.completeness = confirmedFields / Object.values(BRAND_FIELD_KEYS).length;
+    profile.updated_at = nowIso();
 
     return HttpResponse.json(profile);
   }),

@@ -19,17 +19,18 @@ import {
   FIELD_REVIEW_STATE_LABELS,
   FIELD_REVIEW_STATES,
   type BrandFieldKey,
-  type BrandProduct,
-  type BrandProfile,
   type FieldReviewState,
-  type ProvenanceRef,
-  type UpdateBrandProfileRequest,
 } from '@agentic/contracts';
 
 import { useSession } from '@/components/session-gate';
 import { ApiError } from '@/lib/api';
 import { formatDateTime, formatNumber, formatPercent } from '@/lib/format';
-import { useBrandProfile, useUpdateBrandProfile } from '@/lib/hooks';
+import { useBrandProfile, useConfirmBrandProfile, useUpdateBrandProfile } from '@/lib/hooks';
+import type {
+  ApiBrandProfileField,
+  ApiProfileProvenance,
+  ApiUpdateBrandProfileRequest,
+} from '@/lib/api/types';
 import { ACTION_REQUIREMENTS, hasPermission, permissionDeniedReason } from '@/lib/permissions';
 import {
   Badge,
@@ -42,7 +43,6 @@ import {
   PermissionNotice,
   StatCard,
   StatusBadge,
-  UnavailableNotice,
   VersionConflictNotice,
 } from '@/components/ui';
 
@@ -50,7 +50,7 @@ import {
 // Cách sửa từng trường (khai báo một chỗ)
 // ---------------------------------------------------------------------------
 
-type EditControl = 'input' | 'textarea' | 'lines' | 'contact' | 'none';
+type EditControl = 'input' | 'textarea' | 'lines' | 'contact' | 'json' | 'none';
 
 const FIELD_EDIT_CONTROL: Record<BrandFieldKey, EditControl> = {
   [BRAND_FIELD_KEYS.BUSINESS_NAME]: 'input',
@@ -62,7 +62,7 @@ const FIELD_EDIT_CONTROL: Record<BrandFieldKey, EditControl> = {
   [BRAND_FIELD_KEYS.DO_NOT_USE]: 'lines',
   [BRAND_FIELD_KEYS.COMPETITORS]: 'lines',
   [BRAND_FIELD_KEYS.CONTACT]: 'contact',
-  [BRAND_FIELD_KEYS.PRODUCTS]: 'none',
+  [BRAND_FIELD_KEYS.PRODUCTS]: 'json',
 };
 
 const FIELD_EDIT_HINT: Record<BrandFieldKey, string> = {
@@ -77,7 +77,7 @@ const FIELD_EDIT_HINT: Record<BrandFieldKey, string> = {
   [BRAND_FIELD_KEYS.CONTACT]:
     'Mỗi dòng một mục dạng “khoá: giá trị”, ví dụ: hotline: 0900 000 000',
   [BRAND_FIELD_KEYS.PRODUCTS]:
-    'Danh sách sản phẩm có cấu trúc — bản này chỉ xem và chọn từ tài liệu, chưa sửa từng ô.',
+    'Nhập danh sách JSON; mỗi sản phẩm cần có name, có thể thêm description, price_range và usp.',
 };
 
 const FIELD_DISPLAY_ORDER: BrandFieldKey[] = [
@@ -114,21 +114,24 @@ interface FieldLike {
   label: string;
   value: unknown;
   state: FieldReviewState;
-  confidence?: number;
-  provenance: ProvenanceRef[];
-  alternatives: Array<{ value: unknown; provenance: ProvenanceRef[] }>;
-  updated_at?: string;
+  confidence?: number | null;
+  provenance: readonly ApiProfileProvenance[];
+  alternatives: readonly { value: unknown; provenance: readonly ApiProfileProvenance[] }[];
+  updated_at?: string | null;
 }
 
-function asFieldLike(field: BrandProfile[BrandFieldKey]): FieldLike {
+function asFieldLike(field: ApiBrandProfileField): FieldLike {
   return {
     key: field.key,
     label: field.label,
-    value: field.value as unknown,
+    value: field.value,
     state: field.state,
     confidence: field.confidence,
     provenance: field.provenance ?? [],
-    alternatives: (field.alternatives ?? []) as FieldLike['alternatives'],
+    alternatives: (field.alternatives ?? []).map((alternative) => ({
+      value: alternative.value,
+      provenance: alternative.provenance ?? [],
+    })),
     updated_at: field.updated_at,
   };
 }
@@ -137,12 +140,13 @@ function isMissingValue(value: unknown): boolean {
   if (value === null || value === undefined) return true;
   if (typeof value === 'string') return value.trim() === '';
   if (Array.isArray(value)) return value.length === 0;
-  if (typeof value === 'object') return Object.keys(value as Record<string, unknown>).length === 0;
+  if (typeof value === 'object') return Object.keys(value).length === 0;
   return false;
 }
 
 /** Giá trị hiển thị trong ô nhập (chỉ dùng cho trường sửa được). */
 function valueToDraftText(value: unknown, control: EditControl): string {
+  if (control === 'json') return JSON.stringify(value ?? [], null, 2);
   if (control === 'input' || control === 'textarea') {
     return typeof value === 'string' ? value : '';
   }
@@ -152,7 +156,8 @@ function valueToDraftText(value: unknown, control: EditControl): string {
   }
   if (control === 'contact') {
     if (value === null || typeof value !== 'object' || Array.isArray(value)) return '';
-    return Object.entries(value as Record<string, string>)
+    return Object.entries(value)
+      .filter((entry): entry is [string, string] => typeof entry[1] === 'string')
       .map(([key, item]) => `${key}: ${item}`)
       .join('\n');
   }
@@ -160,6 +165,10 @@ function valueToDraftText(value: unknown, control: EditControl): string {
 }
 
 type ParseResult = { ok: true; value: unknown } | { ok: false; error: string };
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
 
 function parseDraftText(key: BrandFieldKey, raw: string): ParseResult {
   const control = FIELD_EDIT_CONTROL[key];
@@ -203,17 +212,54 @@ function parseDraftText(key: BrandFieldKey, raw: string): ParseResult {
     return { ok: true, value: record };
   }
 
+  if (control === 'json') {
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(raw);
+    } catch {
+      return { ok: false, error: 'JSON chưa hợp lệ. Hãy kiểm tra dấu ngoặc kép và dấu phẩy.' };
+    }
+    if (!Array.isArray(parsed)) {
+      return { ok: false, error: 'Danh sách sản phẩm phải là một mảng JSON.' };
+    }
+    for (const [index, item] of parsed.entries()) {
+      if (!isRecord(item) || typeof item.name !== 'string' || item.name.trim() === '') {
+        return {
+          ok: false,
+          error: `Sản phẩm thứ ${index + 1} cần là object có trường name dạng văn bản.`,
+        };
+      }
+      if (
+        ('description' in item && item.description !== undefined && typeof item.description !== 'string') ||
+        ('price_range' in item && item.price_range !== undefined && typeof item.price_range !== 'string') ||
+        ('usp' in item && item.usp !== undefined &&
+          (!Array.isArray(item.usp) || !item.usp.every((point) => typeof point === 'string')))
+      ) {
+        return {
+          ok: false,
+          error: `Mô tả, khoảng giá phải là văn bản và usp phải là danh sách văn bản (sản phẩm thứ ${index + 1}).`,
+        };
+      }
+    }
+    return { ok: true, value: parsed };
+  }
+
   return {
     ok: false,
     error: 'Trường này chưa hỗ trợ sửa trực tiếp trong bản dựng hiện tại.',
   };
 }
 
-function provenanceLocation(ref: ProvenanceRef): string {
+function provenanceLocation(ref: ApiProfileProvenance): string {
   const parts: string[] = [];
   if (typeof ref.page === 'number') parts.push(`Trang ${formatNumber(ref.page)}`);
   if (ref.sheet) parts.push(`Sheet “${ref.sheet}”`);
   if (typeof ref.row === 'number') parts.push(`Dòng ${formatNumber(ref.row)}`);
+  if (typeof ref.char_start === 'number' || typeof ref.char_end === 'number') {
+    const start = typeof ref.char_start === 'number' ? formatNumber(ref.char_start) : '…';
+    const end = typeof ref.char_end === 'number' ? formatNumber(ref.char_end) : '…';
+    parts.push(`Ký tự ${start}–${end}`);
+  }
   return parts.length > 0
     ? parts.join(' · ')
     : 'Tài liệu không kèm số trang/dòng cho đoạn trích này.';
@@ -230,7 +276,7 @@ function provenanceLocation(ref: ProvenanceRef): string {
  * nút có `aria-expanded`/`aria-controls` rõ ràng, và trình đọc màn hình luôn đọc
  * được đây là nút mở nguồn.
  */
-function ProvenanceList({ refs }: { refs: ProvenanceRef[] }) {
+function ProvenanceList({ refs }: { refs: readonly ApiProfileProvenance[] }) {
   const [open, setOpen] = useState(false);
   const regionId = useId();
 
@@ -271,11 +317,30 @@ function MissingValue({ reason }: { reason: string }) {
   );
 }
 
-function BrandProductsView({ products }: { products: BrandProduct[] }) {
+interface ProductLike {
+  id?: string;
+  name: string;
+  description?: string;
+  price_range?: string;
+  usp?: string[];
+}
+
+function isBrandProduct(value: unknown): value is ProductLike {
+  if (!isRecord(value)) return false;
+  return (
+    typeof value.name === 'string' &&
+    (!('id' in value) || typeof value.id === 'string') &&
+    (!('description' in value) || typeof value.description === 'string') &&
+    (!('price_range' in value) || typeof value.price_range === 'string') &&
+    (!('usp' in value) || (Array.isArray(value.usp) && value.usp.every((point) => typeof point === 'string')))
+  );
+}
+
+function BrandProductsView({ products }: { products: readonly ProductLike[] }) {
   return (
     <ul className="space-y-2">
-      {products.map((product) => (
-        <li key={product.id} className="rounded-lg border border-slate-200 px-3 py-2">
+      {products.map((product, index) => (
+        <li key={product.id ?? `${product.name}-${index}`} className="rounded-lg border border-slate-200 px-3 py-2">
           <p className="text-sm font-medium text-slate-900">{product.name}</p>
           {product.description ? (
             <p className="mt-0.5 text-sm text-slate-700">{product.description}</p>
@@ -308,7 +373,11 @@ function FieldValueView({
   const control = FIELD_EDIT_CONTROL[fieldKey];
 
   if (control === 'contact') {
-    const entries = Object.entries(value as Record<string, string>);
+    if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+      return <MissingValue reason={missingReason} />;
+    }
+    const entries = Object.entries(value)
+      .filter((entry): entry is [string, string] => typeof entry[1] === 'string');
     return (
       <dl className="space-y-1">
         {entries.map(([key, item]) => (
@@ -322,7 +391,7 @@ function FieldValueView({
   }
 
   if (Array.isArray(value)) {
-    const items = value.filter((item) => typeof item === 'string') as string[];
+    const items = value.filter((item): item is string => typeof item === 'string');
     if (items.length > 0) {
       return (
         <ul className="list-inside list-disc space-y-0.5 text-sm text-slate-900">
@@ -335,7 +404,8 @@ function FieldValueView({
   }
 
   if (fieldKey === BRAND_FIELD_KEYS.PRODUCTS && Array.isArray(value)) {
-    return <BrandProductsView products={value as BrandProduct[]} />;
+    const products = value.filter(isBrandProduct);
+    if (products.length > 0) return <BrandProductsView products={products} />;
   }
 
   if (typeof value === 'string') {
@@ -370,6 +440,7 @@ export default function TrangHoSoThuongHieu() {
 
   const brandQuery = useBrandProfile(activeId);
   const update = useUpdateBrandProfile(activeId);
+  const confirmProfile = useConfirmBrandProfile(activeId);
 
   const [textDrafts, setTextDrafts] = useState<Partial<Record<BrandFieldKey, string>>>({});
   const [choiceDrafts, setChoiceDrafts] = useState<
@@ -403,11 +474,10 @@ export default function TrangHoSoThuongHieu() {
 
   if (brandQuery.isError) {
     if (loadError?.isForbidden) {
-      const permission = loadError.details.permission;
       return (
         <PermissionNotice
           message={loadError.message}
-          requiredPermission={typeof permission === 'string' ? permission : undefined}
+          requiredPermission={loadError.requiredPermission ?? undefined}
         />
       );
     }
@@ -437,10 +507,11 @@ export default function TrangHoSoThuongHieu() {
       ? profile.completeness
       : null;
 
-  const conflictError = update.error instanceof ApiError && update.error.isVersionConflict
-    ? update.error
+  const mutationError = update.isError ? update.error : confirmProfile.error;
+  const conflictError = mutationError instanceof ApiError && mutationError.isVersionConflict
+    ? mutationError
     : null;
-  const saveError = update.error && !conflictError ? update.error : null;
+  const saveError = mutationError && !conflictError ? mutationError : null;
 
   function draftTextFor(field: FieldLike): string | null {
     const control = FIELD_EDIT_CONTROL[field.key];
@@ -474,12 +545,13 @@ export default function TrangHoSoThuongHieu() {
           key: field.key,
           label: field.label,
           text: parsed.ok
-            ? Array.isArray(parsed.value)
-              ? (parsed.value as string[]).join('; ')
+              ? Array.isArray(parsed.value)
+              ? parsed.value.filter((value): value is string => typeof value === 'string').join('; ')
               : parsed.value !== null &&
                   typeof parsed.value === 'object' &&
                   !Array.isArray(parsed.value)
-                ? Object.entries(parsed.value as Record<string, string>)
+                ? Object.entries(parsed.value)
+                    .filter((entry): entry is [string, string] => typeof entry[1] === 'string')
                     .map(([k, v]) => `${k}: ${v}`)
                     .join('; ')
                 : String(parsed.value)
@@ -493,8 +565,9 @@ export default function TrangHoSoThuongHieu() {
   const pendingDraftText = pendingChanges.map((item) => `${item.label}: ${item.text}`).join('\n');
   const hasPendingChanges = pendingChanges.length > 0;
 
-  function buildSaveFields(): { fields: UpdateBrandProfileRequest['fields']; error: string | null } {
-    const payload: UpdateBrandProfileRequest['fields'] = [];
+  type ProfileFieldUpdate = NonNullable<ApiUpdateBrandProfileRequest['fields']>[number];
+  function buildSaveFields(): { fields: ProfileFieldUpdate[]; error: string | null } {
+    const payload: ProfileFieldUpdate[] = [];
 
     for (const field of fields) {
       const choice = choiceDrafts[field.key];
@@ -537,23 +610,26 @@ export default function TrangHoSoThuongHieu() {
 
     setFormError(null);
     setNotice(null);
+    update.reset();
+    confirmProfile.reset();
+    const onSuccess = () => {
+      setTextDrafts({});
+      setChoiceDrafts({});
+      setNotice(
+        confirm
+          ? 'Đã lưu và xác nhận hồ sơ thương hiệu. Các trường vừa gửi được đánh dấu đã xác nhận.'
+          : 'Đã lưu thay đổi vào hồ sơ thương hiệu.',
+      );
+    };
+
+    if (confirm && built.fields.length === 0) {
+      confirmProfile.mutate({ version: profile.version }, { onSuccess });
+      return;
+    }
+
     update.mutate(
-      {
-        version: profile.version,
-        fields: built.fields,
-        ...(confirm ? { confirm: true } : {}),
-      },
-      {
-        onSuccess: () => {
-          setTextDrafts({});
-          setChoiceDrafts({});
-          setNotice(
-            confirm
-              ? 'Đã lưu và xác nhận hồ sơ thương hiệu. Các trường vừa gửi được đánh dấu đã xác nhận.'
-              : 'Đã lưu thay đổi vào hồ sơ thương hiệu.',
-          );
-        },
-      },
+      { version: profile.version, fields: built.fields, confirm },
+      { onSuccess },
     );
   }
 
@@ -844,10 +920,10 @@ export default function TrangHoSoThuongHieu() {
                       <label htmlFor={inputId} className="block text-sm font-medium text-slate-700">
                         Sửa “{field.label}”
                       </label>
-                      {control === 'textarea' ? (
+                      {control === 'textarea' || control === 'json' ? (
                         <textarea
                           id={inputId}
-                          rows={4}
+                          rows={control === 'json' ? 9 : 4}
                           value={currentValue}
                           aria-describedby={hintId}
                           onChange={(event) => {
@@ -922,13 +998,7 @@ export default function TrangHoSoThuongHieu() {
                       Ô sửa đã bị khoá: {editDeniedReason}
                     </p>
                   )
-                ) : (
-                  <UnavailableNotice
-                    title="Chưa sửa được danh sách sản phẩm"
-                    reason={FIELD_EDIT_HINT[BRAND_FIELD_KEYS.PRODUCTS]}
-                    remedy="Chọn giá trị đúng từ tài liệu (nếu mục “Tài liệu của bạn không thống nhất” xuất hiện), hoặc sửa sản phẩm trong tài liệu gốc rồi tải lên lại."
-                  />
-                )}
+                ) : null}
 
                 {field.provenance.length > 0 ? (
                   <ProvenanceList refs={field.provenance} />
@@ -977,7 +1047,7 @@ export default function TrangHoSoThuongHieu() {
 
           <div className="flex flex-wrap gap-3">
             <Button
-              loading={update.isPending}
+              loading={update.isPending || confirmProfile.isPending}
               disabled={saveDisabledReason !== undefined}
               disabledReason={saveDisabledReason}
               onClick={() => handleSave(false)}
@@ -986,7 +1056,7 @@ export default function TrangHoSoThuongHieu() {
             </Button>
             <Button
               variant="secondary"
-              loading={update.isPending}
+              loading={update.isPending || confirmProfile.isPending}
               disabled={confirmDisabledReason !== undefined}
               disabledReason={confirmDisabledReason}
               onClick={() => handleSave(true)}

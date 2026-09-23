@@ -17,6 +17,9 @@
     "test:e2e": "npm --workspace @agentic/web run test:e2e",
     "gen:api": "npm --workspace @agentic/web run gen:api"
   },
+  "overrides": {
+    "postcss": "^8.5.24"
+  },
   "engines": {
     "node": ">=22"
   }

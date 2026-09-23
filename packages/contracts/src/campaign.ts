@@ -204,6 +204,14 @@ export interface GenerateContentResponse {
   max_count: number;
 }
 
+/** Tạo bản nháp thủ công khi AI provider chưa được bật cho workspace. */
+export interface CreateManualPostRequest {
+  pillar: ContentPillar;
+  format: PostFormat;
+  caption: string;
+  hashtags?: string[];
+}
+
 // ---------------------------------------------------------------------------
 // Approval
 // ---------------------------------------------------------------------------

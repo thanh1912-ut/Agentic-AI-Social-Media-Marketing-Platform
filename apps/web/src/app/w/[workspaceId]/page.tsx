@@ -19,15 +19,13 @@ import {
   DOCUMENT_STATUSES,
   FIELD_REVIEW_STATES,
   type BrandFieldKey,
-  type BrandProfile,
-  type DocumentStatus,
-  type DocumentUpload,
   type OnboardingState,
 } from '@agentic/contracts';
 
 import { useSession } from '@/components/session-gate';
 import { ApiError } from '@/lib/api';
 import { useMocks } from '@/lib/api/config';
+import type { ApiBrandProfile, ApiDocument as DocumentUpload } from '@/lib/api/types';
 import { formatNumber, formatPercent, formatRelative } from '@/lib/format';
 import { useBrandProfile, useDocuments, useOnboarding } from '@/lib/hooks';
 import {
@@ -41,6 +39,7 @@ import {
   ProgressBar,
   StatCard,
   StatusBadge,
+  UnavailableNotice,
   type Tone,
 } from '@/components/ui';
 
@@ -59,15 +58,6 @@ const BRAND_FIELD_ORDER: BrandFieldKey[] = [
   BRAND_FIELD_KEYS.DO_NOT_USE,
   BRAND_FIELD_KEYS.COMPETITORS,
   BRAND_FIELD_KEYS.CONTACT,
-];
-
-const DOCUMENT_STATUS_ORDER: DocumentStatus[] = [
-  DOCUMENT_STATUSES.PENDING,
-  DOCUMENT_STATUSES.UPLOADING,
-  DOCUMENT_STATUSES.PROCESSING,
-  DOCUMENT_STATUSES.READY,
-  DOCUMENT_STATUSES.FAILED,
-  DOCUMENT_STATUSES.UNSUPPORTED,
 ];
 
 /**
@@ -97,12 +87,23 @@ function documentError(error: NonNullable<DocumentUpload['error']>): {
   message: string;
   hint: string;
 } {
-  const meta = DOCUMENT_ERROR_LABELS[error.code];
+  const meta =
+    Object.entries(DOCUMENT_ERROR_LABELS).find(([code]) => code === error.code)?.[1] ?? {
+      label: 'Không đọc được tài liệu',
+      hint: 'Kiểm tra tệp rồi thử tải lên lại. Nếu lỗi tiếp tục, liên hệ hỗ trợ và gửi mã yêu cầu.',
+    };
   const message = (error.message ?? '').trim();
   const hint = (error.hint ?? '').trim();
   return {
     message: message !== '' ? message : meta.label,
     hint: hint !== '' ? hint : meta.hint,
+  };
+}
+
+function documentStatusMeta(status: string) {
+  return Object.entries(DOCUMENT_STATUS_LABELS).find(([value]) => value === status)?.[1] ?? {
+    label: status || 'Chưa rõ',
+    tone: 'neutral' as const,
   };
 }
 
@@ -137,7 +138,7 @@ function resolveStepTarget(
   return { href: `/w/${workspaceId}${segment === '' ? '' : `/${segment}`}` };
 }
 
-function countBrandFields(profile: BrandProfile) {
+function countBrandFields(profile: ApiBrandProfile) {
   let awaiting = 0;
   let missing = 0;
   let confirmed = 0;
@@ -171,11 +172,10 @@ function SectionError({
   const apiError = error instanceof ApiError ? error : null;
 
   if (apiError?.isForbidden) {
-    const permission = apiError.details.permission;
     return (
       <PermissionNotice
         message={apiError.message}
-        requiredPermission={typeof permission === 'string' ? permission : undefined}
+        requiredPermission={apiError.requiredPermission ?? undefined}
       />
     );
   }
@@ -201,14 +201,14 @@ export default function TrangTongQuan() {
   const workspace = workspaces.find((item) => item.id === workspaceId) ?? null;
   // Không phải thành viên thì không gọi API của doanh nghiệp đó.
   const activeId = workspace ? workspaceId : '';
+  const mocksEnabled = useMocks();
 
   const onboarding = useOnboarding(activeId);
-  const brand = useBrandProfile(activeId);
+  const brand = useBrandProfile(activeId, mocksEnabled);
   const documents = useDocuments(activeId);
 
   // Nhãn dữ liệu demo: `useMocks()` chỉ đọc được trong trình duyệt nên phải chờ
   // mount, nếu không bản render ở server và ở client sẽ lệch nhau.
-  const mocksEnabled = useMocks();
   const [mounted, setMounted] = useState(false);
   useEffect(() => setMounted(true), []);
 
@@ -220,6 +220,32 @@ export default function TrangTongQuan() {
         <Button variant="secondary" onClick={() => router.push('/')}>
           Về trang chủ
         </Button>
+      </div>
+    );
+  }
+
+  if (!mocksEnabled) {
+    return (
+      <div className="space-y-5">
+        <header>
+          <h1 className="text-lg font-semibold text-slate-900">Bắt đầu với {workspace.name}</h1>
+          <p className="mt-1 text-sm text-slate-600">
+            Tiến độ onboarding chưa có trong HTTP OpenAPI hiện hành. Các màn hình này không dùng dữ liệu demo khi kết nối API thật.
+          </p>
+        </header>
+        <UnavailableNotice
+          title="Chưa có endpoint onboarding trong API"
+          reason="OpenAPI hiện hành chưa khai báo endpoint đọc tiến độ onboarding, nên không thể hiển thị trạng thái tổng quan có nguồn từ máy chủ."
+          remedy="Bạn vẫn có thể tiếp tục ở luồng đã có contract: tải tài liệu lên và theo dõi tác vụ xử lý."
+          action={
+            <Link
+              className="text-sm font-medium text-slate-900 underline"
+              href={`/w/${workspaceId}/documents`}
+            >
+              Mở tài liệu
+            </Link>
+          }
+        />
       </div>
     );
   }
@@ -439,10 +465,10 @@ export default function TrangTongQuan() {
         ) : (
           <div className="space-y-4">
             <ul className="flex flex-wrap gap-3">
-              {DOCUMENT_STATUS_ORDER.map((status) => {
+              {[...new Set(docs.map((doc) => doc.status))].map((status) => {
                 const count = docs.filter((doc) => doc.status === status).length;
                 if (count === 0) return null;
-                const meta = DOCUMENT_STATUS_LABELS[status];
+                const meta = documentStatusMeta(status);
                 return (
                   <li key={status} className="flex items-center gap-2">
                     <StatusBadge label={meta.label} tone={meta.tone} />

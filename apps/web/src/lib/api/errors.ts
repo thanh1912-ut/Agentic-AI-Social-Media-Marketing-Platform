@@ -23,6 +23,7 @@ export interface ApiErrorDetails {
   current_version?: number;
   your_version?: number;
   permission?: string;
+  required_permission?: string;
   retry_after_seconds?: number;
   [key: string]: unknown;
 }
@@ -94,6 +95,11 @@ export class ApiError extends Error {
     return typeof value === 'number' ? value : null;
   }
 
+  get requiredPermission(): string | null {
+    const value = this.details.required_permission ?? this.details.permission;
+    return typeof value === 'string' ? value : null;
+  }
+
   /** Chuỗi hiển thị kèm khi cần báo cho người dùng gửi hỗ trợ. */
   get reference(): string | null {
     if (!this.code && !this.requestId) return null;
@@ -134,9 +140,7 @@ export function parseErrorBody(body: unknown, status: number | null): ApiError {
   const requestId = typeof rawRequestId === 'string' ? rawRequestId : null;
 
   const rawDetails = source.details ?? body.details;
-  const details: ApiErrorDetails = isRecord(rawDetails)
-    ? (rawDetails as ApiErrorDetails)
-    : {};
+  const details: ApiErrorDetails = isRecord(rawDetails) ? { ...rawDetails } : {};
 
   const rawRetryable = source.retryable;
   const retryable = typeof rawRetryable === 'boolean' ? rawRetryable : undefined;

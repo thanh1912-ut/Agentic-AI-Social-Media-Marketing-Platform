@@ -9,9 +9,12 @@ import {
   CAMPAIGN_STATUS_LABELS,
   CONTENT_PILLAR_LABELS,
   EXPORT_FORMATS,
+  POST_FORMATS,
   POST_FORMAT_LABELS,
   POST_STATUS_LABELS,
   PERMISSIONS,
+  type ContentPillar,
+  type PostFormat,
 } from '@agentic/contracts';
 
 import { ApiError } from '@/lib/api';
@@ -30,6 +33,7 @@ import {
 import {
   useCampaign,
   useCreateExport,
+  useCreatePost,
   useGenerateContent,
   usePosts,
 } from '@/lib/hooks';
@@ -46,10 +50,15 @@ export default function CampaignDetailPage() {
   const campaign = useCampaign(workspace ? workspaceId : '', campaignId);
   const posts = usePosts(workspace ? workspaceId : '', campaignId);
   const generate = useGenerateContent(workspaceId);
+  const createPost = useCreatePost(workspaceId, campaignId);
   const createExport = useCreateExport(workspaceId);
   const mocksEnabled = useMocks();
   const [count, setCount] = useState('3');
   const [format, setFormat] = useState<'csv' | 'xlsx'>(EXPORT_FORMATS.XLSX);
+  const [manualCaption, setManualCaption] = useState('');
+  const [manualHashtags, setManualHashtags] = useState('');
+  const [manualPillar, setManualPillar] = useState<ContentPillar>('product');
+  const [manualFormat, setManualFormat] = useState<PostFormat>(POST_FORMATS.TEXT);
 
   if (campaign.isPending || posts.isPending) {
     return <LoadingBlock label="Đang tải chiến dịch và lịch nội dung…" />;
@@ -71,6 +80,7 @@ export default function CampaignDetailPage() {
   const data = campaign.data;
   const status = CAMPAIGN_STATUS_LABELS[data.status];
   const canGenerate = hasPermission(workspace, PERMISSIONS.POST_GENERATE);
+  const canEditPosts = hasPermission(workspace, PERMISSIONS.POST_EDIT);
   const canExport = hasPermission(workspace, PERMISSIONS.EXPORT_CREATE);
 
   function submitGenerate(event: FormEvent<HTMLFormElement>) {
@@ -87,6 +97,17 @@ export default function CampaignDetailPage() {
     createExport.mutate(
       { campaign_id: data.id, format },
       { onSuccess: (accepted) => router.push(`/w/${workspaceId}/jobs/${accepted.job_id}`) },
+    );
+  }
+
+  function submitManualPost(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const hashtags = manualHashtags.split(/[\s,]+/).map((item) => item.trim()).filter(Boolean);
+    createPost.mutate(
+      { pillar: manualPillar, format: manualFormat, caption: manualCaption.trim(), hashtags },
+      {
+        onSuccess: (post) => router.push(`/w/${workspaceId}/campaigns/${campaignId}/posts/${post.id}`),
+      },
     );
   }
 
@@ -118,7 +139,38 @@ export default function CampaignDetailPage() {
         </dl>
       </Card>
 
-      <div className="grid gap-4 lg:grid-cols-2">
+      <div className="grid gap-4 lg:grid-cols-3">
+        <Card title="Tạo bài thủ công" description="Bạn vẫn có thể viết, sửa, duyệt và xuất bài khi chưa bật xử lý AI.">
+          {!canEditPosts ? (
+            <PermissionNotice message={permissionDeniedReason(workspace, PERMISSIONS.POST_EDIT)} requiredPermission={PERMISSIONS.POST_EDIT} />
+          ) : (
+            <form onSubmit={submitManualPost} className="space-y-3">
+              <div>
+                <label htmlFor="manual-pillar" className="block text-sm font-medium text-slate-700">Trụ nội dung</label>
+                <select id="manual-pillar" value={manualPillar} onChange={(event) => setManualPillar(event.target.value as ContentPillar)} className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm">
+                  {Object.entries(CONTENT_PILLAR_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+                </select>
+              </div>
+              <div>
+                <label htmlFor="manual-format" className="block text-sm font-medium text-slate-700">Định dạng</label>
+                <select id="manual-format" value={manualFormat} onChange={(event) => setManualFormat(event.target.value as PostFormat)} className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm">
+                  {Object.entries(POST_FORMAT_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+                </select>
+              </div>
+              <div>
+                <label htmlFor="manual-caption" className="block text-sm font-medium text-slate-700">Nội dung</label>
+                <textarea id="manual-caption" required maxLength={10000} rows={5} value={manualCaption} onChange={(event) => setManualCaption(event.target.value)} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" />
+              </div>
+              <div>
+                <label htmlFor="manual-hashtags" className="block text-sm font-medium text-slate-700">Hashtag</label>
+                <input id="manual-hashtags" value={manualHashtags} onChange={(event) => setManualHashtags(event.target.value)} placeholder="#monviet #bepmoc" className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" />
+              </div>
+              {createPost.error ? <p role="alert" className="text-sm text-rose-700">{createPost.error instanceof ApiError ? createPost.error.message : 'Không tạo được bản nháp.'}</p> : null}
+              <Button type="submit" loading={createPost.isPending} disabled={!manualCaption.trim()}>Tạo bản nháp</Button>
+            </form>
+          )}
+        </Card>
+
         <Card title="Tạo nội dung bằng AI" description="Mỗi lần tạo tối đa 10 bài. Kết quả là bản nháp, vẫn cần chỉnh sửa và duyệt.">
           {!canGenerate ? (
             <PermissionNotice message={permissionDeniedReason(workspace, PERMISSIONS.POST_GENERATE)} requiredPermission={PERMISSIONS.POST_GENERATE} />

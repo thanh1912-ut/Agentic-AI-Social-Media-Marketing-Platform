@@ -20,16 +20,23 @@ import {
   DOCUMENT_STATUS_LABELS,
   DOCUMENT_STATUSES,
   type DocumentKind,
-  type DocumentUpload,
-  type UploadLimits,
 } from '@agentic/contracts';
 
 import { useSession } from '@/components/session-gate';
 import { ApiError } from '@/lib/api';
+import { useMocks } from '@/lib/api/config';
+import type { ApiDocument as DocumentUpload, ApiUploadLimits as UploadLimits } from '@/lib/api/types';
 import { formatBytes, formatDateTime, formatNumber, formatRelative } from '@/lib/format';
+import {
+  extractionStatusMeta,
+  knowledgeStatusMeta,
+  profileStatusMeta,
+  retrievalModeMeta,
+} from '@/lib/processing-status';
 import {
   useDeleteDocument,
   useDocuments,
+  newDocumentUploadKey,
   useReprocessDocument,
   useUploadDocuments,
   useUploadLimits,
@@ -97,7 +104,9 @@ function detectKind(file: File): DocumentKind | null {
 }
 
 function acceptedKindText(limits: UploadLimits): string {
-  return limits.accepted_kinds.map((kind) => DOCUMENT_KIND_LABELS[kind]).join(', ');
+  return limits.accepted_kinds
+    .map((kind) => Object.entries(DOCUMENT_KIND_LABELS).find(([value]) => value === kind)?.[1] ?? kind)
+    .join(', ');
 }
 
 /** Kiểm tra sớm ở trình duyệt. Trả về cả tệp nhận và tệp bị từ chối kèm lý do. */
@@ -165,12 +174,23 @@ function validateFiles(
 }
 
 function documentError(error: NonNullable<DocumentUpload['error']>): { message: string; hint: string } {
-  const meta = DOCUMENT_ERROR_LABELS[error.code];
+  const meta =
+    Object.entries(DOCUMENT_ERROR_LABELS).find(([code]) => code === error.code)?.[1] ?? {
+      label: 'Không đọc được tài liệu',
+      hint: 'Kiểm tra tệp rồi thử tải lên lại. Nếu lỗi tiếp tục, liên hệ hỗ trợ và gửi mã yêu cầu.',
+    };
   const message = (error.message ?? '').trim();
   const hint = (error.hint ?? '').trim();
   return {
     message: message !== '' ? message : meta.label,
     hint: hint !== '' ? hint : meta.hint,
+  };
+}
+
+function documentStatusMeta(status: string) {
+  return Object.entries(DOCUMENT_STATUS_LABELS).find(([value]) => value === status)?.[1] ?? {
+    label: status || 'Chưa rõ',
+    tone: 'neutral' as const,
   };
 }
 
@@ -199,11 +219,10 @@ function SectionError({
   const apiError = error instanceof ApiError ? error : null;
 
   if (apiError?.isForbidden) {
-    const permission = apiError.details.permission;
     return (
       <PermissionNotice
         message={apiError.message}
-        requiredPermission={typeof permission === 'string' ? permission : undefined}
+        requiredPermission={apiError.requiredPermission ?? undefined}
       />
     );
   }
@@ -225,6 +244,7 @@ export default function TrangTaiLieu() {
   const workspaceId = params?.workspaceId ?? '';
   const router = useRouter();
   const { workspaces } = useSession();
+  const mocksEnabled = useMocks();
 
   const workspace = workspaces.find((item) => item.id === workspaceId) ?? null;
   const activeId = workspace ? workspaceId : '';
@@ -237,7 +257,7 @@ export default function TrangTaiLieu() {
 
   const [isDragging, setIsDragging] = useState(false);
   const [rejected, setRejected] = useState<RejectedFile[]>([]);
-  const [lastBatch, setLastBatch] = useState<File[]>([]);
+  const [lastBatch, setLastBatch] = useState<{ files: File[]; idempotencyKey: string } | null>(null);
   const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
   const [lastReprocessId, setLastReprocessId] = useState<string | null>(null);
 
@@ -287,8 +307,9 @@ export default function TrangTaiLieu() {
 
     if (result.accepted.length === 0) return;
 
-    setLastBatch(result.accepted);
-    upload.mutate(result.accepted, {
+    const request = { files: result.accepted, idempotencyKey: newDocumentUploadKey() };
+    setLastBatch(request);
+    upload.mutate(request, {
       onSuccess: (response) => {
         // Có job_id thì đưa người dùng sang màn hình theo dõi tiến độ.
         router.push(`/w/${workspaceId}/jobs/${response.job_id}`);
@@ -434,7 +455,7 @@ export default function TrangTaiLieu() {
                 title="Không tải lên được tài liệu"
                 error={uploadError}
                 onRetry={
-                  lastBatch.length > 0 && canPickFiles ? () => upload.mutate(lastBatch) : () => undefined
+                  lastBatch && canPickFiles ? () => upload.mutate(lastBatch) : () => undefined
                 }
               />
             ) : null}
@@ -447,7 +468,7 @@ export default function TrangTaiLieu() {
       {/* ---------------------------------------------------------------- */}
       <Card
         title="Tài liệu đã tải lên"
-        description="Tình trạng đọc nội dung của từng tệp."
+        description="Theo dõi riêng việc đọc nội dung, khả năng truy xuất knowledge và trạng thái tạo Brand Profile."
         actions={
           <Button variant="secondary" size="sm" onClick={() => void documentsQuery.refetch()}>
             Làm mới danh sách
@@ -520,20 +541,25 @@ export default function TrangTaiLieu() {
                 </thead>
                 <tbody>
                   {documents.map((doc) => {
-                    const statusMeta = DOCUMENT_STATUS_LABELS[doc.status];
+                    const statusMeta = documentStatusMeta(doc.status);
                     const isBusy =
                       doc.status === DOCUMENT_STATUSES.PROCESSING ||
-                      doc.status === DOCUMENT_STATUSES.UPLOADING;
+                      doc.status === DOCUMENT_STATUSES.UPLOADING ||
+                      doc.status === DOCUMENT_STATUSES.PENDING;
                     const extracted = extractedText(doc);
                     const errorDetail = doc.error ? documentError(doc.error) : null;
                     const isPendingDelete = pendingDeleteId === doc.id;
+                    const extractionMeta = extractionStatusMeta(doc.extraction_status);
+                    const knowledgeMeta = knowledgeStatusMeta(doc.knowledge_status);
+                    const profileMeta = profileStatusMeta(doc.profile_status);
+                    const retrievalMeta = retrievalModeMeta(doc.retrieval_mode);
 
                     return (
                       <Fragment key={doc.id}>
                         <tr className="border-b border-slate-100 align-top">
                           <td className="px-3 py-3 text-slate-900">{doc.filename}</td>
                           <td className="px-3 py-3 text-slate-700">
-                            {DOCUMENT_KIND_LABELS[doc.kind]}
+                            {Object.entries(DOCUMENT_KIND_LABELS).find(([kind]) => kind === doc.kind)?.[1] ?? doc.kind}
                           </td>
                           <td className="px-3 py-3 tabular-nums text-slate-700">
                             {formatBytes(doc.size)}
@@ -596,7 +622,7 @@ export default function TrangTaiLieu() {
                                     Huỷ
                                   </Button>
                                 </>
-                              ) : (
+                              ) : mocksEnabled ? (
                                 <Button
                                   variant="ghost"
                                   size="sm"
@@ -606,7 +632,28 @@ export default function TrangTaiLieu() {
                                 >
                                   Xoá tài liệu
                                 </Button>
-                              )}
+                              ) : null}
+                            </div>
+                          </td>
+                        </tr>
+
+                        <tr className="border-b border-slate-100 bg-slate-50">
+                          <td colSpan={6} className="px-3 py-3">
+                            <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+                              {[
+                                { label: 'Đọc tài liệu', meta: extractionMeta },
+                                { label: 'Knowledge / truy xuất', meta: knowledgeMeta },
+                                { label: 'Mode truy xuất', meta: retrievalMeta },
+                                { label: 'Brand Profile', meta: profileMeta },
+                              ].map(({ label, meta }) => (
+                                <div key={label} className="rounded-lg border border-slate-200 bg-white p-3">
+                                  <p className="text-xs font-medium text-slate-600">{label}</p>
+                                  <div className="mt-1">
+                                    <StatusBadge label={meta.label} tone={meta.tone} />
+                                  </div>
+                                  <p className="mt-1 text-xs leading-5 text-slate-600">{meta.description}</p>
+                                </div>
+                              ))}
                             </div>
                           </td>
                         </tr>

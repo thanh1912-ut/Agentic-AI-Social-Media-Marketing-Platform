@@ -34,6 +34,26 @@ function trimTrailingSlashes(value: string): string {
   return value.replace(/\/+$/, '');
 }
 
+function validateApiOrigin(value: string): string {
+  let parsed: URL;
+  try {
+    parsed = new URL(value);
+  } catch {
+    throw new Error('NEXT_PUBLIC_API_BASE_URL phải là origin đầy đủ, ví dụ https://api.example.com.');
+  }
+  if (
+    (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') ||
+    parsed.username !== '' ||
+    parsed.password !== '' ||
+    parsed.pathname !== '/' ||
+    parsed.search !== '' ||
+    parsed.hash !== ''
+  ) {
+    throw new Error('NEXT_PUBLIC_API_BASE_URL chỉ nhận API origin, không thêm /api/v1 hoặc path khác.');
+  }
+  return trimTrailingSlashes(parsed.origin);
+}
+
 function readRuntimeConfig(): RuntimeConfig {
   if (typeof window === 'undefined') return {};
   return window.__AGENTIC_RUNTIME_CONFIG__ ?? {};
@@ -42,12 +62,12 @@ function readRuntimeConfig(): RuntimeConfig {
 /** Base URL của API, chưa gồm `/api/v1`. */
 export function apiBaseUrl(): string {
   const runtime = readRuntimeConfig().apiBaseUrl;
-  if (runtime && runtime.trim() !== '') return trimTrailingSlashes(runtime.trim());
+  if (runtime && runtime.trim() !== '') return validateApiOrigin(runtime.trim());
 
   const fromEnv = process.env.NEXT_PUBLIC_API_BASE_URL;
-  if (fromEnv && fromEnv.trim() !== '') return trimTrailingSlashes(fromEnv.trim());
+  if (fromEnv && fromEnv.trim() !== '') return validateApiOrigin(fromEnv.trim());
 
-  return DEFAULT_API_BASE_URL;
+  return validateApiOrigin(DEFAULT_API_BASE_URL);
 }
 
 /** Tiền tố phiên bản API. Mọi endpoint đều nằm dưới đây. */

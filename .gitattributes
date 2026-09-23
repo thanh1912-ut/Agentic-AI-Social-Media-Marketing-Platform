@@ -1,0 +1,2 @@
+# Preserve upstream hard line breaks and CRLF formatting in vendored skills.
+.agents/skills/** whitespace=-blank-at-eol

@@ -14,40 +14,47 @@ import {
   type UseMutationResult,
   type UseQueryResult,
 } from '@tanstack/react-query';
+import { useEffect, useRef } from 'react';
 
 import type {
-  AcceptedResponse,
   AnalyticsQuery,
   AnalyticsResponse,
   ApprovalRequest,
   BrandProfile,
   Campaign,
   CreateExportRequest,
-  DocumentUpload,
+  CreateManualPostRequest,
   GenerateContentRequest,
   GenerateContentResponse,
-  Job,
-  Member,
   OnboardingState,
   Paginated,
   Post,
   PostVersionList,
   Publication,
   Recommendation,
-  SessionResponse,
   SocialConnection,
-  UpdateBrandProfileRequest,
   UpdatePostRequest,
-  UploadLimits,
-  Workspace,
 } from '@agentic/contracts';
 
-import { api } from '@/lib/api';
+import type {
+  ApiAcceptedResponse as AcceptedResponse,
+  ApiBrandProfile,
+  ApiConfirmBrandProfileRequest,
+  ApiDocument as DocumentUpload,
+  ApiJob as Job,
+  ApiMember as Member,
+  ApiSessionResponse as SessionResponse,
+  ApiUploadLimits as UploadLimits,
+  ApiUpdateBrandProfileRequest,
+  ApiWorkspace as Workspace,
+} from '@/lib/api/types';
+import { api, useMocks } from '@/lib/api';
 import {
   JOB_LIST_POLL_INTERVAL_MS,
   JOB_POLL_INTERVAL_MS,
   queryKeys,
 } from '@/lib/query-keys';
+import { newIdempotencyKey } from '@/lib/api/client';
 
 // ---------------------------------------------------------------------------
 // Phiên & workspace
@@ -61,7 +68,7 @@ export function useMe(): UseQueryResult<SessionResponse> {
   });
 }
 
-export function useWorkspaces(): UseQueryResult<Workspace[]> {
+export function useWorkspaces(): UseQueryResult<readonly Workspace[]> {
   return useQuery({
     queryKey: queryKeys.workspaces,
     queryFn: () => api.workspace.list(),
@@ -76,15 +83,27 @@ export function useWorkspace(workspaceId: string): UseQueryResult<Workspace> {
   });
 }
 
-export function useOnboarding(workspaceId: string): UseQueryResult<OnboardingState> {
-  return useQuery({
-    queryKey: queryKeys.onboarding(workspaceId),
-    queryFn: () => api.workspace.onboarding(workspaceId),
-    enabled: workspaceId !== '',
+export function useSelectWorkspace() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (workspaceId: string) => api.workspace.select(workspaceId),
+    onSuccess: (session) => {
+      queryClient.setQueryData(queryKeys.me, session);
+      queryClient.setQueryData(queryKeys.workspaces, session.workspaces);
+    },
   });
 }
 
-export function useMembers(workspaceId: string): UseQueryResult<Member[]> {
+export function useOnboarding(workspaceId: string): UseQueryResult<OnboardingState> {
+  const mocksEnabled = useMocks();
+  return useQuery({
+    queryKey: queryKeys.onboarding(workspaceId),
+    queryFn: () => api.workspace.onboarding(workspaceId),
+    enabled: workspaceId !== '' && mocksEnabled,
+  });
+}
+
+export function useMembers(workspaceId: string): UseQueryResult<readonly Member[]> {
   return useQuery({
     queryKey: queryKeys.members(workspaceId),
     queryFn: () => api.workspace.members(workspaceId),
@@ -106,7 +125,7 @@ export function useUploadLimits(workspaceId: string): UseQueryResult<UploadLimit
   });
 }
 
-export function useDocuments(workspaceId: string): UseQueryResult<DocumentUpload[]> {
+export function useDocuments(workspaceId: string): UseQueryResult<readonly DocumentUpload[]> {
   return useQuery({
     queryKey: queryKeys.documents(workspaceId),
     queryFn: () => api.document.list(workspaceId),
@@ -121,21 +140,38 @@ export function useDocuments(workspaceId: string): UseQueryResult<DocumentUpload
           doc.status === 'uploading' ||
           doc.status === 'pending',
       );
-      return busy ? JOB_LIST_POLL_INTERVAL_MS : false;
+      const withinPollingLimit = data.some((doc) => {
+        if (doc.status !== 'processing' && doc.status !== 'uploading' && doc.status !== 'pending') {
+          return false;
+        }
+        const uploadedAt = Date.parse(doc.uploaded_at);
+        return Number.isFinite(uploadedAt) && Date.now() - uploadedAt < 10 * 60_000;
+      });
+      return busy && withinPollingLimit ? JOB_LIST_POLL_INTERVAL_MS : false;
     },
   });
 }
 
+export interface UploadDocumentsVariables {
+  files: File[];
+  idempotencyKey: string;
+}
+
 export function useUploadDocuments(
   workspaceId: string,
-): UseMutationResult<AcceptedResponse, Error, File[]> {
+): UseMutationResult<AcceptedResponse, Error, UploadDocumentsVariables> {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (files: File[]) => api.document.upload(workspaceId, files),
+    mutationFn: ({ files, idempotencyKey }) =>
+      api.document.upload(workspaceId, files, idempotencyKey),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: queryKeys.documents(workspaceId) });
     },
   });
+}
+
+export function newDocumentUploadKey(): string {
+  return newIdempotencyKey('documents');
 }
 
 export function useReprocessDocument(workspaceId: string) {
@@ -150,9 +186,13 @@ export function useReprocessDocument(workspaceId: string) {
 }
 
 export function useDeleteDocument(workspaceId: string) {
+  const mocksEnabled = useMocks();
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (documentId: string) => api.document.remove(workspaceId, documentId),
+    mutationFn: (documentId: string) => {
+      if (!mocksEnabled) throw new Error('Xoá tài liệu chưa có trong HTTP OpenAPI.');
+      return api.document.remove(workspaceId, documentId);
+    },
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: queryKeys.documents(workspaceId) });
     },
@@ -163,19 +203,32 @@ export function useDeleteDocument(workspaceId: string) {
 // Brand profile
 // ---------------------------------------------------------------------------
 
-export function useBrandProfile(workspaceId: string): UseQueryResult<BrandProfile> {
+export function useBrandProfile(
+  workspaceId: string,
+  enabled = true,
+): UseQueryResult<ApiBrandProfile> {
   return useQuery({
     queryKey: queryKeys.brandProfile(workspaceId),
     queryFn: () => api.brand.get(workspaceId),
-    enabled: workspaceId !== '',
+    enabled: workspaceId !== '' && enabled,
   });
 }
 
 export function useUpdateBrandProfile(workspaceId: string) {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (body: UpdateBrandProfileRequest) =>
-      api.brand.update(workspaceId, body),
+    mutationFn: (body: ApiUpdateBrandProfileRequest) => api.brand.update(workspaceId, body),
+    onSuccess: (profile) => {
+      queryClient.setQueryData(queryKeys.brandProfile(workspaceId), profile);
+      void queryClient.invalidateQueries({ queryKey: queryKeys.onboarding(workspaceId) });
+    },
+  });
+}
+
+export function useConfirmBrandProfile(workspaceId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (body: ApiConfirmBrandProfileRequest) => api.brand.confirm(workspaceId, body),
     onSuccess: (profile) => {
       queryClient.setQueryData(queryKeys.brandProfile(workspaceId), profile);
       void queryClient.invalidateQueries({ queryKey: queryKeys.onboarding(workspaceId) });
@@ -185,10 +238,13 @@ export function useUpdateBrandProfile(workspaceId: string) {
 
 /** Nhờ AI trích xuất lại một trường — trả job để theo dõi. */
 export function useReextractBrandField(workspaceId: string) {
+  const mocksEnabled = useMocks();
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (body: { key: BrandProfile['business_name']['key']; document_ids?: string[] }) =>
-      api.brand.reextract(workspaceId, body),
+    mutationFn: (body: { key: BrandProfile['business_name']['key']; document_ids?: string[] }) => {
+      if (!mocksEnabled) throw new Error('Tái trích xuất Brand Profile chưa có trong HTTP OpenAPI.');
+      return api.brand.reextract(workspaceId, body);
+    },
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: queryKeys.brandProfile(workspaceId) });
     },
@@ -205,13 +261,32 @@ export function useReextractBrandField(workspaceId: string) {
  * Tự dừng hỏi khi job đã kết thúc — không để trình duyệt gọi mãi.
  */
 export function useJob(jobId: string | null | undefined): UseQueryResult<Job> {
+  const pollingStartedAt = useRef<number | null>(null);
+
+  useEffect(() => {
+    pollingStartedAt.current = null;
+    return () => {
+      pollingStartedAt.current = null;
+    };
+  }, [jobId]);
+
   return useQuery({
     queryKey: queryKeys.job(jobId ?? ''),
-    queryFn: ({ signal }) => api.job.get(jobId as string, signal),
+    queryFn: ({ signal }) => {
+      if (!jobId) throw new Error('Thiếu mã job.');
+      if (pollingStartedAt.current === null) pollingStartedAt.current = Date.now();
+      return api.job.get(jobId, signal);
+    },
     enabled: Boolean(jobId),
     refetchInterval: (query) => {
+      if (query.state.status === 'error') return false;
       const status = query.state.data?.status;
-      if (status === 'running' || status === 'queued') return JOB_POLL_INTERVAL_MS;
+      const withinPollingLimit =
+        pollingStartedAt.current !== null &&
+        Date.now() - pollingStartedAt.current < 10 * 60_000;
+      if ((status === 'running' || status === 'queued') && withinPollingLimit) {
+        return JOB_POLL_INTERVAL_MS;
+      }
       return false;
     },
   });
@@ -255,6 +330,16 @@ export function useCampaigns(workspaceId: string): UseQueryResult<Paginated<Camp
   });
 }
 
+export function useCreateCampaign(workspaceId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (body: Partial<Campaign>) => api.campaign.create(workspaceId, body),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.campaigns(workspaceId) });
+    },
+  });
+}
+
 export function useCampaign(
   workspaceId: string,
   campaignId: string,
@@ -263,6 +348,18 @@ export function useCampaign(
     queryKey: queryKeys.campaign(workspaceId, campaignId),
     queryFn: () => api.campaign.get(workspaceId, campaignId),
     enabled: workspaceId !== '' && campaignId !== '',
+  });
+}
+
+export function useCreatePost(workspaceId: string, campaignId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (body: CreateManualPostRequest) => api.post.create(workspaceId, campaignId, body),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.posts(workspaceId, campaignId) });
+      void queryClient.invalidateQueries({ queryKey: queryKeys.campaign(workspaceId, campaignId) });
+      void queryClient.invalidateQueries({ queryKey: queryKeys.campaigns(workspaceId) });
+    },
   });
 }
 

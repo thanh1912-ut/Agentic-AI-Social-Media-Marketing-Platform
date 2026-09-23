@@ -12,6 +12,24 @@ class StrictSchema(BaseModel):
     model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
 
 
+class ApiFieldErrorOut(StrictSchema):
+    field: str
+    message: str
+
+
+class ApiErrorOut(StrictSchema):
+    code: str
+    message: str
+    field_errors: list[ApiFieldErrorOut] = Field(default_factory=list)
+    request_id: str
+    retryable: bool = False
+    details: dict[str, Any] | None = None
+
+
+class ApiErrorEnvelope(StrictSchema):
+    error: ApiErrorOut
+
+
 class RegisterRequest(StrictSchema):
     email: EmailStr
     password: str = Field(min_length=8, max_length=200)
@@ -123,9 +141,20 @@ class DocumentOut(StrictSchema):
     job_id: str | None = None
     error: DocumentError | None = None
     extracted: dict[str, Any] | None = None
+    extraction_status: Literal["pending", "extracted", "metadata_only", "failed"] = "pending"
+    knowledge_status: Literal["pending", "ready", "not_available", "failed"] = "pending"
+    retrieval_mode: Literal["lexical", "semantic_vector", "not_available"] = "not_available"
+    profile_status: Literal["pending", "ready", "not_available", "failed"] = "pending"
     uploaded_by: str
     uploaded_at: datetime
     processed_at: datetime | None = None
+
+
+class JobErrorOut(StrictSchema):
+    code: str
+    message: str
+    hint: str | None = None
+    retryable: bool = False
 
 
 class JobStepOut(StrictSchema):
@@ -136,14 +165,7 @@ class JobStepOut(StrictSchema):
     message: str | None = None
     started_at: datetime | None = None
     finished_at: datetime | None = None
-    error: DocumentError | None = None
-
-
-class JobErrorOut(StrictSchema):
-    code: str
-    message: str
-    hint: str | None = None
-    retryable: bool = False
+    error: JobErrorOut | None = None
 
 
 class JobOut(StrictSchema):
@@ -173,3 +195,92 @@ class JobEventOut(StrictSchema):
     type: str
     message: str
     progress: int | None = None
+
+
+BrandFieldKey = Literal[
+    "business_name",
+    "industry",
+    "description",
+    "products",
+    "target_audience",
+    "brand_voice",
+    "tone_keywords",
+    "do_not_use",
+    "competitors",
+    "contact",
+]
+
+
+class ProfileProvenanceOut(StrictSchema):
+    document_id: str
+    document_name: str
+    page: int | None = None
+    sheet: str | None = None
+    row: int | None = None
+    quote: str
+    char_start: int | None = None
+    char_end: int | None = None
+
+
+class ProfileAlternativeOut(StrictSchema):
+    value: Any
+    provenance: list[ProfileProvenanceOut] = Field(default_factory=list)
+
+
+class BrandProfileFieldOut(StrictSchema):
+    key: BrandFieldKey
+    label: str
+    value: Any = None
+    state: Literal["suggested", "confirmed", "edited", "missing", "conflict"]
+    confidence: float | None = Field(default=None, ge=0, le=1)
+    provenance: list[ProfileProvenanceOut] = Field(default_factory=list)
+    alternatives: list[ProfileAlternativeOut] = Field(default_factory=list)
+    updated_at: datetime | None = None
+    updated_by: str | None = None
+
+
+class BrandProfileOut(StrictSchema):
+    id: str
+    workspace_id: str
+    version: int
+    business_name: BrandProfileFieldOut
+    industry: BrandProfileFieldOut
+    description: BrandProfileFieldOut
+    products: BrandProfileFieldOut
+    target_audience: BrandProfileFieldOut
+    brand_voice: BrandProfileFieldOut
+    tone_keywords: BrandProfileFieldOut
+    do_not_use: BrandProfileFieldOut
+    competitors: BrandProfileFieldOut
+    contact: BrandProfileFieldOut
+    confirmed_at: datetime | None = None
+    confirmed_by: str | None = None
+    completeness: float = Field(ge=0, le=1)
+    updated_at: datetime
+
+
+class ProfileFieldUpdate(StrictSchema):
+    key: BrandFieldKey
+    value: Any
+
+
+class UpdateBrandProfileRequest(StrictSchema):
+    version: int = Field(ge=1)
+    fields: list[ProfileFieldUpdate] = Field(default_factory=list, max_length=10)
+    confirm: bool = False
+
+
+class ConfirmBrandProfileRequest(StrictSchema):
+    version: int = Field(ge=1)
+
+
+class BrandProfileRevisionOut(StrictSchema):
+    id: str
+    workspace_id: str
+    version: int
+    profile: BrandProfileOut
+    confirmed_at: datetime | None = None
+    confirmed_by: str | None = None
+    created_at: datetime
+    input_snapshot_id: str | None = None
+    warnings: list[str] = Field(default_factory=list)

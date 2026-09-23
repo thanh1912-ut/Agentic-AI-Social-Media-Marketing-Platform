@@ -134,3 +134,79 @@ Mình **chưa** chạy thử với người dùng thật. Cần kiểm trong tu�
 4. Họ có nhận ra nhãn "Dữ liệu demo" không, hay vẫn tưởng là số thật?
 
 Đây là giả định, chưa phải kết luận.
+
+---
+
+## 7. Trạng thái nối API (2026-09-23)
+
+Real mode dùng API origin từ `NEXT_PUBLIC_API_BASE_URL` (không thêm `/api/v1`)
+và `NEXT_PUBLIC_USE_MOCKS=0`. Auth/session, workspace, upload, document list và
+job dùng DTO generate từ OpenAPI. Trình duyệt gửi cookie credentials + CSRF header;
+không lưu access token vào local storage/session storage.
+
+- Login xong, người thuộc nhiều doanh nghiệp chọn workspace; một workspace được
+  mở thẳng. URL chứa workspace hiện tại để F5 vẫn trở lại đúng khu vực đó.
+- Upload chỉ được mở khi tải được upload limits. File unsupported/quá giới hạn
+  bị nêu tên và lý do trước khi gửi; lỗi API hiển thị lỗi thật, không thay bằng
+  tài liệu demo. Mỗi lần upload retry giữ nguyên `Idempotency-Key`.
+- Job lấy status/progress từ API. Chỉ hiển thị phần trăm backend gửi; polling dừng
+  khi job kết thúc, request lỗi hoặc quá 10 phút.
+- Danh sách tài liệu hiển thị riêng trạng thái đọc/trích xuất, knowledge,
+  `retrieval_mode` và Brand Profile từ `DocumentOut`. `retrieval_mode` phân biệt
+  `lexical`, `semantic_vector` và `not_available`; đây là mode chứ không phải
+  health check riêng của embedding provider. `extraction_status=extracted`
+  không được diễn giải là profile đã tạo; `profile_status=ready` vẫn không có
+  nghĩa người dùng đã xác nhận profile. `not_available` và trạng thái chưa biết
+  được giữ riêng, không tự quy nguyên nhân embedding/provider nếu API chưa gửi.
+- Job lỗi provider được dịch sang nội dung provider-neutral theo `JobErrorOut`
+  (`provider_not_configured`, `provider_model_not_found`, timeout,
+  `generation_failed` và alias worker cũ).
+  Nút thử lại chỉ xuất hiện theo cờ `retryable` từ API. Frontend không tích hợp
+  SDK/key của provider và không đưa lộ trình cấu hình OpenAI vào nội dung UI.
+- Lời mời chưa được nhận có `user=null`; giao diện hiển thị email lời mời và
+  trạng thái chờ, không giả lập hồ sơ người dùng.
+- Trang Brand Profile dùng GET/PATCH/POST confirm trong OpenAPI: hiển thị trạng
+  thái gợi ý/thiếu/mâu thuẫn, nguồn và locator; lưu kèm `version`, không tự retry
+  409. Sửa + xác nhận dùng PATCH nguyên tử; xác nhận revision không chỉnh sửa
+  dùng POST confirm. Real mode tải lại profile từ API, không lấy fixture.
+- Luồng end-to-end “upload → AI profile → source → confirm → reload” mới có
+  frontend và E2E real được chuẩn bị. Chưa xác nhận hoàn tất cho tới khi API và
+  worker chạy trong môi trường tích hợp, trả evidence từ tài liệu và E2E chạy với
+  account pilot thật.
+- OpenAPI dùng field lỗi `code` dạng string cùng `message`, `hint`, `retryable`
+  (chưa có enum mã lỗi); worker chuyển mã provider-neutral của M3 và frontend
+  quyết định thử lại chỉ theo `retryable`. `retrieval_mode` cho biết lexical,
+  semantic/vector hoặc chưa khả dụng, nhưng không khẳng định sức khoẻ provider.
+- Dashboard onboarding, campaign, publishing, analytics và recommendation vẫn
+  là mock-only; real mode chặn các trang chưa được nối contract.
+- OpenAPI hiện không khai báo scanner state; không được hứa người dùng rằng file
+  đã quét an toàn. M2 cần cung cấp state/error/quarantine rõ ràng trước pilot.
+
+### Chạy kiểm tra
+
+Mock E2E hiện tại (dữ liệu demo có nhãn):
+
+```sh
+cd apps/web
+npm run test:e2e
+```
+
+Real E2E dùng config riêng, đặt `NEXT_PUBLIC_USE_MOCKS=0` và không cài MSW. Cần
+API test environment, account/workspace đã provision và origin browser truy cập được.
+API upload/job phải tạo profile có ít nhất một provenance reference; E2E dùng AI
+fixture phía server nếu đã cấu hình, còn nghiệm thu chung cần một lượt LLM thật:
+
+```sh
+cd apps/web
+E2E_REAL_API_BASE_URL=https://api.example.vn \
+E2E_REAL_EMAIL='pilot-owner@example.vn' \
+E2E_REAL_PASSWORD='...' \
+E2E_REAL_WORKSPACE_ID='...' \
+npm run test:e2e:real
+```
+
+Không ghi credentials thật vào repo/log. Bộ real E2E kiểm login, upload TXT/PDF
+có text, job, reload danh sách tài liệu, Brand Profile source/confirm, 409 không
+retry, reload dữ liệu đã lưu, logout/session mất cookie, API error không rơi về
+fixture và request đi đúng API origin. Chưa chạy được E2E real nếu API origin hoặc
+account chưa được provision; kết quả mock không được tính là nghiệm thu backend/AI.

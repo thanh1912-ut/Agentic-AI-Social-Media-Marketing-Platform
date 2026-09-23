@@ -124,10 +124,10 @@ export const demoMembers: Record<string, Member[]> = {
     { id: 'mem_2', user: editor, role: 'editor', status: 'active', joined_at: hoursAgo(24 * 60) },
     {
       id: 'mem_3',
-      user: viewer,
+      user: null,
       role: 'viewer',
       status: 'invited',
-      invited_email: viewer.email,
+      invited_email: 'moi-moi@pho-bac.vn',
       invitation_expires_at: new Date(
         new Date(DEMO_NOW).getTime() + 5 * 86_400_000,
       ).toISOString(),

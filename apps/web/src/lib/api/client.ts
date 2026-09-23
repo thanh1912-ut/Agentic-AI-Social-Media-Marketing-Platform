@@ -32,6 +32,7 @@ export interface RequestOptions {
 }
 
 const MUTATING_METHODS: readonly HttpMethod[] = ['POST', 'PUT', 'PATCH', 'DELETE'];
+let refreshInFlight: Promise<void> | null = null;
 
 function buildQuery(
   query: RequestOptions['query'],
@@ -88,6 +89,35 @@ async function readBody(response: Response): Promise<unknown> {
   }
 }
 
+async function refreshSessionRequest(): Promise<void> {
+  let response: Response;
+  try {
+    response = await fetch(apiUrl('/auth/refresh'), {
+      method: 'POST',
+      headers: { Accept: 'application/json' },
+      credentials: 'include',
+      cache: 'no-store',
+    });
+  } catch (cause) {
+    throw networkError(cause);
+  }
+
+  if (!response.ok) {
+    throw parseErrorBody(await readBody(response), response.status);
+  }
+}
+
+/** Refresh once for concurrent 401 responses; the server rotates the cookie. */
+async function refreshSession(): Promise<void> {
+  if (!refreshInFlight) refreshInFlight = refreshSessionRequest();
+  const inFlight = refreshInFlight;
+  try {
+    await inFlight;
+  } finally {
+    if (refreshInFlight === inFlight) refreshInFlight = null;
+  }
+}
+
 /**
  * Gọi API và trả dữ liệu đã parse.
  *
@@ -109,25 +139,34 @@ export async function apiRequest<T>(
     body = JSON.stringify(options.body);
   }
 
-  if (MUTATING_METHODS.includes(method)) {
-    const token = readCookie(CSRF_COOKIE_NAME);
-    if (token) headers[CSRF_HEADER_NAME] = token;
-  }
+  const send = async (): Promise<Response> => {
+    const requestHeaders = { ...headers };
+    if (MUTATING_METHODS.includes(method)) {
+      const token = readCookie(CSRF_COOKIE_NAME);
+      if (token) requestHeaders[CSRF_HEADER_NAME] = token;
+      else delete requestHeaders[CSRF_HEADER_NAME];
+    }
+    try {
+      return await fetch(apiUrl(pathname, options.query), {
+        method,
+        headers: requestHeaders,
+        body,
+        // Phiên nằm trong cookie HttpOnly do backend đặt — không lưu token ở JS.
+        credentials: 'include',
+        cache: 'no-store',
+        signal: options.signal,
+      });
+    } catch (cause) {
+      if (cause instanceof DOMException && cause.name === 'AbortError') throw cause;
+      throw networkError(cause);
+    }
+  };
 
-  let response: Response;
-  try {
-    response = await fetch(apiUrl(pathname, options.query), {
-      method,
-      headers,
-      body,
-      // Phiên nằm trong cookie HttpOnly do backend đặt — không lưu token ở JS.
-      credentials: 'include',
-      cache: 'no-store',
-      signal: options.signal,
-    });
-  } catch (cause) {
-    if (cause instanceof DOMException && cause.name === 'AbortError') throw cause;
-    throw networkError(cause);
+  let response = await send();
+  const isAuthEndpoint = pathname.startsWith('/auth/');
+  if (response.status === 401 && !isAuthEndpoint) {
+    await refreshSession();
+    response = await send();
   }
 
   const parsed = await readBody(response);

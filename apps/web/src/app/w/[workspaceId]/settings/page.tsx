@@ -14,12 +14,12 @@ import { useParams, useRouter } from 'next/navigation';
 import {
   ROLE_DESCRIPTIONS,
   ROLE_LABELS,
-  type Member,
   type WorkspaceRole,
 } from '@agentic/contracts';
 
 import { useSession } from '@/components/session-gate';
 import { ApiError } from '@/lib/api';
+import type { ApiMember as Member } from '@/lib/api/types';
 import { formatDate, formatDateTime, formatDeadline, formatNumber } from '@/lib/format';
 import { useMembers } from '@/lib/hooks';
 import { ACTION_REQUIREMENTS, hasPermission, permissionDeniedReason } from '@/lib/permissions';
@@ -169,11 +169,7 @@ export default function TrangCaiDat() {
           loadError?.isForbidden ? (
             <PermissionNotice
               message={loadError.message}
-              requiredPermission={
-                typeof loadError.details.permission === 'string'
-                  ? loadError.details.permission
-                  : undefined
-              }
+              requiredPermission={loadError.requiredPermission ?? undefined}
             />
           ) : (
             <ErrorPanel
@@ -214,16 +210,19 @@ export default function TrangCaiDat() {
                 {members.map((member) => {
                   const statusMeta = MEMBER_STATUS_LABELS[member.status];
                   const email =
-                    member.user.email && member.user.email.trim() !== ''
+                    member.user?.email && member.user.email.trim() !== ''
                       ? member.user.email
                       : (member.invited_email ?? '');
+                  const displayName = member.user?.full_name.trim()
+                    ? member.user.full_name
+                    : member.status === 'invited'
+                      ? 'Lời mời đang chờ'
+                      : 'Chưa có tên hiển thị';
                   return (
                     <tr key={member.id} className="border-b border-slate-100 align-top">
                       <td className="px-3 py-3">
                         <p className="font-medium text-slate-900">
-                          {member.user.full_name.trim() !== ''
-                            ? member.user.full_name
-                            : 'Chưa có tên hiển thị'}
+                          {displayName}
                         </p>
                         <p className="text-xs text-slate-600">
                           {email !== '' ? (
