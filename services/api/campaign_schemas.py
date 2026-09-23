@@ -138,16 +138,24 @@ class CreateManualPostRequest(StrictModel):
     hashtags: list[str] = Field(default_factory=list, max_length=50)
 
 
+class PostMediaAttachmentIn(StrictModel):
+    asset_id: str = Field(min_length=1, max_length=36)
+    alt_text: str = Field(default="", max_length=500)
+
+
 class UpdatePostRequest(StrictModel):
     version: int = Field(ge=1)
     caption: str | None = Field(default=None, min_length=1, max_length=10000)
     hashtags: list[str] | None = Field(default=None, max_length=50)
+    media: list[PostMediaAttachmentIn] | None = Field(default=None, max_length=10)
     note: str | None = Field(default=None, max_length=1000)
 
     @model_validator(mode="after")
     def update_has_changes(self) -> "UpdatePostRequest":
-        if self.caption is None and self.hashtags is None:
-            raise ValueError("caption or hashtags must be provided")
+        if self.caption is None and self.hashtags is None and self.media is None:
+            raise ValueError("caption, hashtags, or media must be provided")
+        if self.media is not None and len({item.asset_id for item in self.media}) != len(self.media):
+            raise ValueError("media asset IDs must be unique")
         return self
 
 
@@ -219,6 +227,7 @@ class ApprovalRecordOut(StrictModel):
     decided_by: str
     decided_by_name: str
     decided_at: datetime
+    content_sha256: str
 
 
 class SubmitApprovalRequest(StrictModel):

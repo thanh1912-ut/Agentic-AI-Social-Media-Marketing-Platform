@@ -1,8 +1,21 @@
 # Báo cáo kiểm thử
 
-Cập nhật: 2026-09-24 04:14 (Asia/Ho_Chi_Minh). Các kiểm tra mới nhất chạy trên working tree của branch `codex/product-v1-completion`; PLAN-001 strategy/content slots đã có API, worker, UI và migration 0008 trước khi push. Project owner đã chấp thuận data flow đoạn trích tài liệu + Brand Profile + strategy/chủ đề/ngày slot đã chọn tới DeepSeek.
+Cập nhật: 2026-09-24 05:04 (Asia/Ho_Chi_Minh). Kết quả mới nhất kiểm tra code snapshot trên branch `codex/product-v1-completion`, dựa trên commit `7d603e4` cộng với thay đổi MEDIA-001 trước commit. Project owner đã chấp thuận gửi đoạn trích tài liệu, Brand Profile và strategy/topic/date của slot đã chọn tới DeepSeek.
 
 Môi trường: Python 3.11.16, Node.js 26.7.0, SQLite tạm, Chromium desktop/mobile. Bộ Playwright tự động dùng Next.js local và MSW; ngoài ra có một browser smoke thủ công qua Codex browser với Next.js + FastAPI real mode và DB SQLite hoàn toàn mới.
+
+## Snapshot nghiệm thu MEDIA-001 mới nhất
+
+| Check | Kết quả | Giới hạn |
+|---|---|---|
+| `.venv/bin/python -m pytest -q -p no:cacheprovider` | **105 passed, 1 skipped** | Chạy trên code snapshot nêu ở đầu tài liệu. Skip duy nhất là live DeepSeek smoke vì chưa có `DEEPSEEK_API_KEY`; một cảnh báo pending deprecation của LangGraph. Suite gồm API/worker fixtures và test media upload/tenant isolation/version/approval hash; fixture không gọi provider thật. |
+| `npm run test:e2e -- slice2-campaign.spec.ts --workers=1` | **14 passed** (7 desktop + 7 mobile) | Chromium với MSW. Có upload ảnh, preview, attach vào version mới và detach bằng version kế tiếp. Không gọi API thật, DeepSeek hay Meta. Chạy server cần quyền localhost; lần được nghiệm thu chạy trên loopback. |
+| Frontend `npm run typecheck`, `npm test`, `npm run lint`, `npm run build` | **PASS; 43 tests passed** | Production build có route post editor/media; không phải real-mode API acceptance. |
+| Fresh SQLite Alembic `upgrade head`, rerun, `current` | **PASS — `0009_media_assets_and_approval_hash (head)`** | DB disposable `/private/tmp/agentic-v1-media-migration-final.sqlite`; không dùng app/customer data. |
+| Fresh PostgreSQL 18.3 Alembic `upgrade head`, rerun | **PASS — migration 0001→0009; pgvector 0.8.2** | Cluster dùng một lần, bind loopback `127.0.0.1:55439`, dừng sau test; `media_assets` có 12 cột, `post_approvals.content_sha256` NOT NULL. Đây chỉ là migration test, không phải API/worker runtime acceptance trên PostgreSQL. |
+| `.venv/bin/python scripts/export_openapi.py --check`; Python `compileall`; `git diff --check` | **PASS** | OpenAPI/generated TypeScript đồng bộ; không phát hiện lỗi cú pháp hoặc whitespace. |
+
+Không có DeepSeek key nên không có model-list/live JSON request hoặc chi phí/latency thực. Không có Meta credentials và không đăng bài thật. Docker/Podman và MinIO không khả dụng, nên Compose/full worker runtime, Redis queue/restart và object store deployment chưa được kiểm tra. E2E MEDIA-001 ở trên là browser mock path; API/media behavior được kiểm tra riêng bởi backend fixture integration suite.
 
 ## Đã chạy
 

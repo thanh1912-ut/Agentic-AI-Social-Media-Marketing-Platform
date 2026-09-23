@@ -188,15 +188,20 @@ export async function apiDownload(
   query?: RequestOptions['query'],
 ): Promise<Blob> {
   let response: Response;
+  const send = async () => fetch(apiUrl(pathname, query), {
+    method: 'GET',
+    headers: { Accept: '*/*' },
+    credentials: 'include',
+    cache: 'no-store',
+  });
   try {
-    response = await fetch(apiUrl(pathname, query), {
-      method: 'GET',
-      headers: { Accept: '*/*' },
-      credentials: 'include',
-      cache: 'no-store',
-    });
+    response = await send();
   } catch (cause) {
     throw networkError(cause);
+  }
+  if (response.status === 401) {
+    await refreshSession();
+    response = await send();
   }
 
   if (!response.ok) {

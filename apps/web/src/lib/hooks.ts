@@ -25,6 +25,7 @@ import type {
   CreateExportRequest,
   CreateManualPostRequest,
   GenerateContentRequest,
+  MediaAsset,
   GenerateContentResponse,
   OnboardingState,
   Paginated,
@@ -413,6 +414,12 @@ export function usePostVersions(
     queryKey: queryKeys.postVersions(workspaceId, postId),
     queryFn: () => api.post.versions(workspaceId, postId),
     enabled: workspaceId !== '' && postId !== '',
+  });
+}
+
+export function useUploadMediaAsset(workspaceId: string) {
+  return useMutation<MediaAsset, Error, { file: File; altText: string }>({
+    mutationFn: ({ file, altText }) => api.media.upload(workspaceId, file, altText),
   });
 }
 

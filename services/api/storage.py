@@ -31,6 +31,9 @@ class LocalObjectStorage:
         path.parent.mkdir(parents=True, exist_ok=True)
         await asyncio.to_thread(path.write_bytes, content)
 
+    async def read(self, key: str) -> bytes:
+        return await asyncio.to_thread(self.path(key).read_bytes)
+
     def path(self, key: str) -> Path:
         parts = _storage_key_parts(key)
         root = self.root.resolve()

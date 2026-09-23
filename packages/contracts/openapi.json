@@ -398,6 +398,10 @@
       "ApprovalRecordOut": {
         "additionalProperties": false,
         "properties": {
+          "content_sha256": {
+            "title": "Content Sha256",
+            "type": "string"
+          },
           "decided_at": {
             "format": "date-time",
             "title": "Decided At",
@@ -450,7 +454,8 @@
           "decision",
           "decided_by",
           "decided_by_name",
-          "decided_at"
+          "decided_at",
+          "content_sha256"
         ],
         "title": "ApprovalRecordOut",
         "type": "object"
@@ -507,6 +512,26 @@
           "files"
         ],
         "title": "Body_upload_documents_api_v1_workspaces__company_id__documents_post",
+        "type": "object"
+      },
+      "Body_upload_media_asset_api_v1_workspaces__company_id__media_post": {
+        "properties": {
+          "alt_text": {
+            "default": "",
+            "maxLength": 500,
+            "title": "Alt Text",
+            "type": "string"
+          },
+          "file": {
+            "contentMediaType": "application/octet-stream",
+            "title": "File",
+            "type": "string"
+          }
+        },
+        "required": [
+          "file"
+        ],
+        "title": "Body_upload_media_asset_api_v1_workspaces__company_id__media_post",
         "type": "object"
       },
       "BrandProfileFieldOut": {
@@ -2425,6 +2450,60 @@
         "title": "LoginResponse",
         "type": "object"
       },
+      "MediaAssetOut": {
+        "additionalProperties": false,
+        "properties": {
+          "alt_text": {
+            "title": "Alt Text",
+            "type": "string"
+          },
+          "content_path": {
+            "title": "Content Path",
+            "type": "string"
+          },
+          "content_sha256": {
+            "title": "Content Sha256",
+            "type": "string"
+          },
+          "filename": {
+            "title": "Filename",
+            "type": "string"
+          },
+          "height": {
+            "title": "Height",
+            "type": "integer"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "mime_type": {
+            "title": "Mime Type",
+            "type": "string"
+          },
+          "size_bytes": {
+            "title": "Size Bytes",
+            "type": "integer"
+          },
+          "width": {
+            "title": "Width",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "filename",
+          "mime_type",
+          "size_bytes",
+          "content_sha256",
+          "width",
+          "height",
+          "alt_text",
+          "content_path"
+        ],
+        "title": "MediaAssetOut",
+        "type": "object"
+      },
       "MemberOut": {
         "additionalProperties": false,
         "properties": {
@@ -2896,6 +2975,28 @@
           "page_size"
         ],
         "title": "PaginatedPosts",
+        "type": "object"
+      },
+      "PostMediaAttachmentIn": {
+        "additionalProperties": false,
+        "properties": {
+          "alt_text": {
+            "default": "",
+            "maxLength": 500,
+            "title": "Alt Text",
+            "type": "string"
+          },
+          "asset_id": {
+            "maxLength": 36,
+            "minLength": 1,
+            "title": "Asset Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "asset_id"
+        ],
+        "title": "PostMediaAttachmentIn",
         "type": "object"
       },
       "PostOut": {
@@ -3791,6 +3892,21 @@
               }
             ],
             "title": "Hashtags"
+          },
+          "media": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/PostMediaAttachmentIn"
+                },
+                "maxItems": 10,
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Media"
           },
           "note": {
             "anyOf": [
@@ -7165,6 +7281,134 @@
         "summary": "Download Export",
         "tags": [
           "campaigns-content-approvals"
+        ]
+      }
+    },
+    "/api/v1/workspaces/{company_id}/media": {
+      "post": {
+        "operationId": "upload_media_asset_api_v1_workspaces__company_id__media_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "company_id",
+            "required": true,
+            "schema": {
+              "title": "Company Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_upload_media_asset_api_v1_workspaces__company_id__media_post"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MediaAssetOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Upload Media Asset",
+        "tags": [
+          "media-assets"
+        ]
+      }
+    },
+    "/api/v1/workspaces/{company_id}/media/{asset_id}/content": {
+      "get": {
+        "operationId": "download_media_asset_api_v1_workspaces__company_id__media__asset_id__content_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "company_id",
+            "required": true,
+            "schema": {
+              "title": "Company Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "asset_id",
+            "required": true,
+            "schema": {
+              "title": "Asset Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Download Media Asset",
+        "tags": [
+          "media-assets"
         ]
       }
     },

@@ -13,7 +13,7 @@ from fastapi.responses import JSONResponse
 from redis.asyncio import Redis
 from sqlalchemy import text
 
-from . import analytics, auth, brand_profiles, campaign_workflows, documents, jobs, workspaces
+from . import analytics, auth, brand_profiles, campaign_workflows, documents, jobs, media, workspaces
 from .config import settings
 from .db import create_schema, engine
 from .errors import ApiProblem, api_problem_handler, error_body
@@ -85,6 +85,7 @@ app.add_exception_handler(RequestValidationError, validation_exception_handler)
 app.include_router(auth.router, prefix="/api/v1")
 app.include_router(workspaces.router, prefix="/api/v1")
 app.include_router(documents.router, prefix="/api/v1")
+app.include_router(media.router, prefix="/api/v1")
 app.include_router(brand_profiles.router, prefix="/api/v1")
 app.include_router(campaign_workflows.router, prefix="/api/v1")
 app.include_router(analytics.router, prefix="/api/v1")

@@ -22,6 +22,7 @@ import type {
   ExportJob,
   FacebookPage,
   GenerateContentRequest,
+  MediaAsset,
   GenerateContentResponse,
   InviteMemberResponse,
   ManualPublicationRequest,
@@ -314,6 +315,15 @@ export const campaignApi = {
       v1(`/workspaces/${workspaceId}/campaigns/${campaignId}/brief-revisions/${draftId}/accept`),
       { method: 'POST' },
     ),
+};
+
+export const mediaApi = {
+  upload: (workspaceId: string, file: File, altText: string) => {
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('alt_text', altText);
+    return apiUpload<MediaAsset>(v1(`/workspaces/${workspaceId}/media`), formData);
+  },
 };
 
 export const postApi = {
@@ -655,6 +665,7 @@ export const api = {
   job: jobApi,
   campaign: campaignApi,
   post: postApi,
+  media: mediaApi,
   approval: approvalApi,
   export: exportApi,
   publishing: publishingApi,

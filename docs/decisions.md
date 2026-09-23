@@ -153,3 +153,12 @@ Ngày tạo: 2026-09-23. Trạng thái dưới đây được ghi từ audit đ�
 - DeepSeek data flow: chủ dự án chấp thuận gửi campaign strategy, slot topic và ngày đã chọn cùng Brand Profile và đoạn trích nguồn phù hợp khi người dùng bấm sinh theo slot. ID database và slot nội bộ không nằm trong prompt.
 - Ảnh hưởng: draft lưu `content_slot_id` và `planned_date`; slot đã chạy/đã sinh không thể bị xóa hoặc sửa nội dung. Bài tạo ra vẫn là draft và cần người duyệt.
 - Trạng thái: IMPLEMENTED; SQLite API/worker fixtures và PostgreSQL migration 0001→0008 pass. Live DeepSeek và full runtime chưa được xác minh.
+
+## DEC-020 — Ảnh là asset tenant-scoped, gắn vào immutable post version
+
+- Ngày: 2026-09-24.
+- Vấn đề: upload ảnh trước đây chỉ tạo metadata tài liệu; editor không thể lưu ảnh thật vào bài và approval không có fingerprint bao phủ nội dung/media.
+- Quyết định: thêm `media_assets` với hash SHA-256, MIME/dimension/size, server-generated storage key và uniqueness theo workspace+hash. Chỉ nhận JPEG/PNG/WebP khớp MIME; giới hạn mặc định 12 MiB và 40 triệu pixel. Download yêu cầu membership workspace. Gắn/gỡ ảnh qua post update sẽ tạo `PostVersion` mới; alt text và media metadata/hash nằm trong version. Mỗi approval lưu SHA-256 canonical hash của đúng version. Export ghi filename, asset hash và protected API path.
+- Không chọn: URL public cho asset, sửa version tại chỗ, tự xóa asset đang có reference, hoặc tự publish ảnh lên Meta khi chưa có connector/quyền.
+- Ảnh hưởng: migration 0009; endpoint upload/content mới; OpenAPI và TypeScript client cập nhật; file binary dùng object storage local/S3 adapter hiện tại. Asset được giữ lại để version cũ còn tham chiếu. Approval fingerprint đã lưu; connector tương lai phải đối chiếu hash trước khi publish.
+- Trạng thái: IMPLEMENTED; backend suite 105 passed/1 live-provider skip; 14 desktop/mobile Playwright tests, frontend 43 tests/typecheck/lint/build và SQLite/PostgreSQL migration 0001→0009 đều pass. E2E chạy với MSW; chưa có Meta image publishing hoặc live DeepSeek. Chi tiết ở `docs/test-report.md`.

@@ -47,6 +47,8 @@ class Settings:
     s3_secret_key: str = os.getenv("S3_SECRET_KEY", "minioadmin")
     s3_bucket: str = os.getenv("S3_BUCKET", "agentic-marketing")
     max_upload_bytes: int = int(os.getenv("MAX_UPLOAD_BYTES", str(25 * 1024 * 1024)))
+    max_image_bytes: int = int(os.getenv("MAX_IMAGE_BYTES", str(12 * 1024 * 1024)))
+    max_image_pixels: int = int(os.getenv("MAX_IMAGE_PIXELS", "40000000"))
     max_files_per_request: int = int(os.getenv("MAX_FILES_PER_REQUEST", "10"))
     parser_version: str = os.getenv("PARSER_VERSION", "m2-parser-v1")
     auto_create_schema: bool = _bool("AUTO_CREATE_SCHEMA", False)
@@ -101,6 +103,8 @@ if settings.embedding_dimensions != 1536:
     raise ValueError(
         "EMBEDDING_DIMENSIONS currently must be 1536; another dimension requires a database migration and full reindex"
     )
+if settings.max_image_bytes < 1 or settings.max_image_pixels < 1:
+    raise ValueError("Image upload byte and pixel limits must be positive")
 if not 0 <= settings.minimum_relevance_score <= 1 or not 0 <= settings.minimum_semantic_score <= 1:
     raise ValueError("Relevance thresholds must be between 0 and 1")
 if settings.llm_max_tokens < 1 or settings.llm_max_input_chars < 1 or settings.ai_request_timeout_seconds < 1:

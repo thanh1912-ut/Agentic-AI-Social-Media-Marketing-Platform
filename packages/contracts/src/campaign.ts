@@ -114,9 +114,26 @@ export interface PostMedia {
   mime_type?: string;
   /** Ảnh do AI gợi ý hay người dùng tải lên. */
   source: 'ai_suggested' | 'uploaded' | 'external_url';
+  asset_id?: Id;
+  filename?: string;
+  size_bytes?: number;
+  sha256?: string;
 }
 
 /** Một phiên bản nội dung. Mọi sửa đổi tạo version mới, không ghi đè. */
+export interface MediaAsset {
+  id: Id;
+  filename: string;
+  mime_type: 'image/jpeg' | 'image/png' | 'image/webp';
+  size_bytes: number;
+  content_sha256: string;
+  width: number;
+  height: number;
+  alt_text: string;
+  /** API route path, fetched with the authenticated API client. */
+  content_path: string;
+}
+
 export interface PostVersion {
   version: number;
   caption: string;
@@ -183,12 +200,17 @@ export interface PostVersionList {
   pending_approval_version?: number;
 }
 
+export interface PostMediaAttachment {
+  asset_id: Id;
+  alt_text: string;
+}
+
 export interface UpdatePostRequest {
   /** Version client đang giữ. Lệch → 409 version_conflict. */
   version: number;
   caption?: string;
   hashtags?: string[];
-  media?: PostMedia[];
+  media?: PostMediaAttachment[];
   scheduled_at?: Timestamp;
   note?: string;
 }
@@ -255,6 +277,7 @@ export interface ApprovalRecord {
   decided_by: Id;
   decided_by_name: string;
   decided_at: Timestamp;
+  content_sha256?: string;
 }
 
 // ---------------------------------------------------------------------------

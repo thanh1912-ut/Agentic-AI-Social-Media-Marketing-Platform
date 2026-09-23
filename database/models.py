@@ -165,6 +165,26 @@ class Document(Base, IdMixin, TimestampMixin):
     processed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
+class MediaAsset(Base, IdMixin):
+    __tablename__ = "media_assets"
+    __table_args__ = (
+        UniqueConstraint("company_id", "content_sha256", name="uq_media_asset_company_hash"),
+        Index("ix_media_asset_company_created", "company_id", "created_at"),
+    )
+
+    company_id: Mapped[str] = mapped_column(ForeignKey("companies.id", ondelete="CASCADE"), nullable=False)
+    filename: Mapped[str] = mapped_column(String(255), nullable=False)
+    mime_type: Mapped[str] = mapped_column(String(100), nullable=False)
+    size_bytes: Mapped[int] = mapped_column(Integer, nullable=False)
+    content_sha256: Mapped[str] = mapped_column(String(64), nullable=False)
+    width: Mapped[int] = mapped_column(Integer, nullable=False)
+    height: Mapped[int] = mapped_column(Integer, nullable=False)
+    alt_text: Mapped[str] = mapped_column(String(500), default="", nullable=False)
+    storage_key: Mapped[str] = mapped_column(String(1024), nullable=False, unique=True)
+    uploaded_by: Mapped[str] = mapped_column(ForeignKey("users.id"), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
+
+
 class DocumentChunk(Base, IdMixin, TimestampMixin):
     __tablename__ = "document_chunks"
     __table_args__ = (Index("ix_document_chunk_company_document", "company_id", "document_id"),)
@@ -348,6 +368,7 @@ class PostApproval(Base, IdMixin):
     reason: Mapped[str | None] = mapped_column(Text)
     decided_by: Mapped[str] = mapped_column(ForeignKey("users.id"), nullable=False)
     decided_by_name: Mapped[str] = mapped_column(String(200), nullable=False)
+    content_sha256: Mapped[str] = mapped_column(String(64), nullable=False)
     decided_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
 
 

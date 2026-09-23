@@ -1,8 +1,9 @@
 'use client';
 
+import Image from 'next/image';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
-import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
+import { useEffect, useMemo, useRef, useState, type ChangeEvent, type FormEvent } from 'react';
 
 import {
   APPROVAL_DECISIONS,
@@ -11,9 +12,10 @@ import {
   VERSION_SOURCES,
   type ReviseWithAiRequest,
   type PostVersion,
+  type PostMedia,
 } from '@agentic/contracts';
 
-import { ApiError } from '@/lib/api';
+import { ApiError, apiDownload, saveBlob } from '@/lib/api';
 import { hasPermission, permissionDeniedReason } from '@/lib/permissions';
 import { useSession } from '@/components/session-gate';
 import {
@@ -36,6 +38,7 @@ import {
   useRevisePostWithAi,
   useSubmitApproval,
   useUpdatePost,
+  useUploadMediaAsset,
 } from '@/lib/hooks';
 import { formatDateTime } from '@/lib/format';
 
@@ -45,6 +48,65 @@ const SOURCE_LABELS: Record<PostVersion['source'], string> = {
   [VERSION_SOURCES.AI_REVISED]: 'AI sửa',
   [VERSION_SOURCES.IMPORTED]: 'Nhập từ nơi khác',
 };
+
+function PostMediaPreview({ media, onRemove }: { media: PostMedia; onRemove?: () => void }) {
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [loading, setLoading] = useState(media.source === 'uploaded');
+  const [failed, setFailed] = useState(false);
+
+  useEffect(() => {
+    let disposed = false;
+    let objectUrl: string | null = null;
+    setPreviewUrl(null);
+    setFailed(false);
+    if (media.source !== 'uploaded') {
+      setLoading(false);
+      return () => { disposed = true; };
+    }
+    setLoading(true);
+    void apiDownload(media.url).then((blob) => {
+      if (disposed) return;
+      objectUrl = URL.createObjectURL(blob);
+      setPreviewUrl(objectUrl);
+      setLoading(false);
+    }).catch(() => {
+      if (!disposed) {
+        setFailed(true);
+        setLoading(false);
+      }
+    });
+    return () => {
+      disposed = true;
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+    };
+  }, [media.source, media.url]);
+
+  async function download() {
+    try {
+      const blob = await apiDownload(media.url);
+      saveBlob(blob, media.filename || 'brand-image');
+    } catch {
+      setFailed(true);
+    }
+  }
+
+  return (
+    <figure className="overflow-hidden rounded-lg border border-slate-200 bg-white">
+      <div className="flex aspect-video items-center justify-center bg-slate-50">
+        {previewUrl ? <Image src={previewUrl} alt={media.alt} width={1280} height={720} unoptimized className="h-full w-full object-contain" /> :
+          <p className="px-4 text-center text-sm text-slate-600">{loading ? 'Đang tải ảnh…' : failed ? 'Không tải được ảnh.' : media.alt}</p>}
+      </div>
+      <figcaption className="space-y-2 p-3">
+        <p className="break-words text-sm font-medium text-slate-800">{media.filename || media.alt || 'Ảnh đính kèm'}</p>
+        {media.alt ? <p className="text-xs text-slate-600">Mô tả: {media.alt}</p> : null}
+        <div className="flex flex-wrap gap-2">
+          {media.source === 'uploaded' ? <button type="button" onClick={() => void download()} className="text-sm font-medium text-sky-700 underline">Tải ảnh</button> : null}
+          {onRemove ? <button type="button" onClick={onRemove} className="text-sm font-medium text-rose-700 underline">Gỡ khỏi bản nháp</button> : null}
+        </div>
+      </figcaption>
+    </figure>
+  );
+}
 
 export default function PostEditorPage() {
   const params = useParams<{ workspaceId?: string; campaignId?: string; postId?: string }>();
@@ -56,12 +118,16 @@ export default function PostEditorPage() {
   const post = usePost(workspace ? workspaceId : '', postId);
   const versions = usePostVersions(workspace ? workspaceId : '', postId);
   const update = useUpdatePost(workspaceId, postId);
+  const uploadMedia = useUploadMediaAsset(workspaceId);
   const reviseWithAi = useRevisePostWithAi(workspaceId, postId);
   const submitApproval = useSubmitApproval(workspaceId, postId);
   const decideApproval = useDecideApproval(workspaceId, postId);
   const mocksEnabled = useMocks();
   const [caption, setCaption] = useState('');
   const [hashtags, setHashtags] = useState('');
+  const [selectedMedia, setSelectedMedia] = useState<PostMedia[]>([]);
+  const [mediaChanged, setMediaChanged] = useState(false);
+  const [mediaAltText, setMediaAltText] = useState('');
   const [note, setNote] = useState('');
   const [rejectionReason, setRejectionReason] = useState('');
   const [compareVersion, setCompareVersion] = useState<number | null>(null);
@@ -75,6 +141,8 @@ export default function PostEditorPage() {
     if (!post.data) return;
     setCaption(post.data.current.caption);
     setHashtags(post.data.current.hashtags.join(' '));
+    setSelectedMedia(post.data.current.media.filter((item) => item.source === 'uploaded'));
+    setMediaChanged(false);
     setNote('');
   }, [post.data]);
 
@@ -104,6 +172,8 @@ export default function PostEditorPage() {
   const canSubmit = canEdit && (current.status === 'draft' || current.status === 'rejected' || current.requires_reapproval);
   const apiError = update.error instanceof ApiError ? update.error : null;
   const hasBlockingError = apiError?.isVersionConflict ?? false;
+  const previewMedia = mediaChanged ? selectedMedia : current.current.media;
+  const postLocked = current.status === 'scheduled' || current.status === 'published';
 
   function save(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -111,7 +181,33 @@ export default function PostEditorPage() {
       version: current.version,
       caption: caption.trim(),
       hashtags: hashtags.split(/\s+/).map((item) => item.trim()).filter(Boolean),
+      ...(mediaChanged ? { media: selectedMedia.map((item) => ({ asset_id: item.asset_id ?? item.id, alt_text: item.alt })) } : {}),
       note: note.trim() || undefined,
+    });
+  }
+
+  function uploadImage(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.currentTarget.files?.[0];
+    event.currentTarget.value = '';
+    if (!file || selectedMedia.length >= 10) return;
+    uploadMedia.mutate({ file, altText: mediaAltText.trim() }, {
+      onSuccess: (asset) => {
+        const media: PostMedia = {
+          id: asset.id,
+          asset_id: asset.id,
+          url: asset.content_path,
+          alt: mediaAltText.trim() || asset.alt_text,
+          width: asset.width,
+          height: asset.height,
+          mime_type: asset.mime_type,
+          source: 'uploaded',
+          filename: asset.filename,
+          size_bytes: asset.size_bytes,
+          sha256: asset.content_sha256,
+        };
+        setSelectedMedia((items) => items.some((item) => item.id === media.id) ? items : [...items, media]);
+        setMediaChanged(true);
+      },
     });
   }
 
@@ -193,13 +289,38 @@ export default function PostEditorPage() {
               <label htmlFor="post-note" className="block text-sm font-medium text-slate-700">Ghi chú phiên bản (không bắt buộc)</label>
               <input id="post-note" value={note} onChange={(event) => setNote(event.target.value)} disabled={!canEdit} placeholder="Ví dụ: sửa CTA theo feedback của chủ quán" className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900 disabled:bg-slate-100" />
             </div>
-            {canEdit ? <Button type="submit" loading={update.isPending} disabled={caption.trim() === ''} disabledReason="Caption không được để trống.">Lưu thành phiên bản mới</Button> : <PermissionNotice message={permissionDeniedReason(workspace, PERMISSIONS.POST_EDIT)} requiredPermission={PERMISSIONS.POST_EDIT} />}
+            <section className="space-y-3 rounded-lg border border-slate-200 p-3" aria-labelledby="post-media-heading">
+              <div>
+                <h2 id="post-media-heading" className="text-sm font-semibold text-slate-900">Ảnh cho bài viết</h2>
+                <p className="mt-1 text-xs text-slate-600">Tệp được lưu riêng trong workspace. Gắn hoặc gỡ ảnh sẽ tạo phiên bản mới khi bạn lưu bài.</p>
+              </div>
+              {canEdit ? <>
+                <div>
+                  <label htmlFor="post-media-alt" className="block text-sm font-medium text-slate-700">Mô tả ảnh (alt text)</label>
+                  <input id="post-media-alt" value={mediaAltText} onChange={(event) => setMediaAltText(event.target.value)} maxLength={500} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" placeholder="Ví dụ: Tô phở bò đặt trên bàn gỗ cạnh rau thơm" />
+                </div>
+                <div>
+                  <label htmlFor="post-media-file" className="block text-sm font-medium text-slate-700">Tải ảnh JPEG, PNG hoặc WebP</label>
+                  <input id="post-media-file" type="file" accept="image/jpeg,image/png,image/webp" onChange={uploadImage} disabled={uploadMedia.isPending || selectedMedia.length >= 10 || postLocked} className="mt-1 block w-full text-sm text-slate-700" />
+                  <p className="mt-1 text-xs text-slate-500">Tối đa 10 ảnh cho mỗi phiên bản. Ảnh chỉ được gắn vào bài sau khi bấm lưu phiên bản.</p>
+                </div>
+              </> : <PermissionNotice message={permissionDeniedReason(workspace, PERMISSIONS.POST_EDIT)} requiredPermission={PERMISSIONS.POST_EDIT} />}
+              {postLocked ? <p role="note" className="text-sm text-amber-800">Bài đã lên lịch hoặc đã đăng và không thể sửa.</p> : null}
+              {uploadMedia.isPending ? <p role="status" className="text-sm text-slate-600">Đang kiểm tra và tải ảnh lên…</p> : null}
+              {uploadMedia.error ? <p role="alert" className="text-sm text-rose-700">{uploadMedia.error instanceof ApiError ? uploadMedia.error.message : 'Không tải được ảnh.'}</p> : null}
+              {mediaChanged ? <p role="status" className="text-sm text-sky-800">Thay đổi ảnh chưa lưu. Bấm “Lưu thành phiên bản mới” để gắn ảnh vào bài.</p> : null}
+              {previewMedia.length ? <div className="grid gap-3 sm:grid-cols-2">
+                {previewMedia.map((media) => <PostMediaPreview key={media.id} media={media} onRemove={canEdit && !postLocked && media.source === 'uploaded' ? () => { setSelectedMedia((items) => items.filter((item) => item.id !== media.id)); setMediaChanged(true); } : undefined} />)}
+              </div> : <p className="text-sm text-slate-600">Phiên bản này chưa có ảnh đính kèm.</p>}
+            </section>
+            {canEdit ? <Button type="submit" loading={update.isPending} disabled={caption.trim() === '' || uploadMedia.isPending || postLocked} disabledReason={postLocked ? 'Bài đã lên lịch hoặc đã đăng; hãy tạo bài mới nếu cần nội dung khác.' : uploadMedia.isPending ? 'Chờ tải ảnh xong trước khi lưu phiên bản.' : 'Caption không được để trống.'}>Lưu thành phiên bản mới</Button> : <PermissionNotice message={permissionDeniedReason(workspace, PERMISSIONS.POST_EDIT)} requiredPermission={PERMISSIONS.POST_EDIT} />}
           </form>
         </Card>
 
         <Card title="Preview Facebook" description="Bản xem trước không phải thao tác đăng bài.">
           <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
             <div className="flex items-center gap-2 border-b border-slate-100 px-4 py-3"><div className="flex size-8 items-center justify-center rounded-full bg-slate-900 text-xs font-semibold text-white">PB</div><div><p className="text-sm font-semibold">Phở Bắc Hà Nội</p><p className="text-xs text-slate-500">Bây giờ · 🌐</p></div></div>
+            {previewMedia.filter((media) => media.source === 'uploaded').map((media) => <PostMediaPreview key={`facebook-${media.id}`} media={media} />)}
             <div className="px-4 py-4"><p className="prose-caption text-sm text-slate-800">{caption || 'Caption sẽ hiển thị ở đây.'}</p><p className="mt-3 text-sm text-sky-700">{hashtags}</p></div>
             <div className="border-t border-slate-100 px-4 py-3 text-xs text-slate-500">Bản {current.version} · chưa đăng</div>
           </div>

@@ -27,6 +27,7 @@ from database.models import (
     Job,
     JobStep,
     Membership,
+    MediaAsset,
     PostApproval,
     PostVersion,
     User,
@@ -55,6 +56,7 @@ from .campaign_schemas import (
 )
 from .db import get_db
 from .dependencies import current_user, membership_for, require_csrf, require_permission
+from .content_integrity import content_sha256
 from .errors import ApiProblem
 from .job_service import accepted_response, append_job_event, dispatch_content_generation_job
 from .permissions import has_permission
@@ -79,6 +81,7 @@ EXPORT_COLUMNS = {
     "hashtags": "Hashtag",
     "scheduled_at": "Lịch đăng",
     "citations": "Nguồn tham khảo",
+    "media": "Ảnh đính kèm (tên, SHA-256, đường dẫn API)",
 }
 
 
@@ -515,6 +518,8 @@ async def update_post(
 ):
     post = await _get_post(db, company_id, post_id, lock=True)
     _check_post_version(post, request.version)
+    if post.status in {"scheduled", "published"}:
+        raise ApiProblem(409, "post_immutable", "Không thể thay đổi bài đã lên lịch hoặc đã đăng. Hãy tạo bài mới cho nội dung tiếp theo.")
     old = await db.scalar(select(PostVersion).where(PostVersion.company_id == company_id, PostVersion.post_id == post.id, PostVersion.version == post.current_version))
     if old is None:
         raise ApiProblem(500, "content_version_missing", "Không tìm thấy phiên bản nội dung hiện tại.")
@@ -523,6 +528,36 @@ async def update_post(
         content["caption"] = request.caption
     if request.hashtags is not None:
         content["hashtags"] = request.hashtags
+    if request.media is not None:
+        asset_ids = [item.asset_id for item in request.media]
+        assets = (await db.scalars(select(MediaAsset).where(
+            MediaAsset.company_id == company_id,
+            MediaAsset.id.in_(asset_ids),
+        ))).all() if asset_ids else []
+        assets_by_id = {asset.id: asset for asset in assets}
+        if len(assets_by_id) != len(asset_ids):
+            raise ApiProblem(404, "not_found", "Một hoặc nhiều ảnh không thuộc workspace này.")
+        existing_non_upload_media = [
+            item for item in content.get("media", [])
+            if isinstance(item, dict) and item.get("source") != "uploaded"
+        ]
+        content["media"] = existing_non_upload_media + [
+            {
+                "id": asset.id,
+                "asset_id": asset.id,
+                "url": f"/workspaces/{company_id}/media/{asset.id}/content",
+                "alt": attachment.alt_text.strip(),
+                "width": asset.width,
+                "height": asset.height,
+                "mime_type": asset.mime_type,
+                "source": "uploaded",
+                "filename": asset.filename,
+                "size_bytes": asset.size_bytes,
+                "sha256": asset.content_sha256,
+            }
+            for attachment in request.media
+            for asset in [assets_by_id[attachment.asset_id]]
+        ]
     was_approved = bool(await db.scalar(select(PostApproval.id).where(
         PostApproval.company_id == company_id,
         PostApproval.post_id == post.id,
@@ -705,12 +740,21 @@ async def decide_post_approval(
         raise ApiProblem(409, "state_conflict", "Phiên bản này không còn nằm trong hàng chờ duyệt.")
     if request.decision == "rejected" and not request.reason:
         raise ApiProblem(422, "validation_error", "Cần ghi lý do khi từ chối bài viết.")
+    version = await db.scalar(select(PostVersion).where(
+        PostVersion.company_id == company_id,
+        PostVersion.post_id == post.id,
+        PostVersion.version == request.version,
+    ))
+    if version is None:
+        raise ApiProblem(500, "content_version_missing", "Không tìm thấy phiên bản nội dung cần duyệt.")
+    approved_content_sha256 = content_sha256(version.content_json)
     now = utcnow()
     db.add(PostApproval(
         company_id=company_id,
         post_id=post.id,
         version=request.version,
         decision=request.decision,
+        content_sha256=approved_content_sha256,
         reason=request.reason,
         decided_by=user.id,
         decided_by_name=user.full_name,
@@ -721,7 +765,7 @@ async def decide_post_approval(
     post.requires_reapproval = False
     post.rejection_reason = request.reason if request.decision == "rejected" else None
     post.updated_at = now
-    db.add(AuditEvent(company_id=company_id, actor_user_id=user.id, action=f"post.approval.{request.decision}", entity_type="post", entity_id=post.id, metadata_json={"version": request.version}))
+    db.add(AuditEvent(company_id=company_id, actor_user_id=user.id, action=f"post.approval.{request.decision}", entity_type="post", entity_id=post.id, metadata_json={"version": request.version, "content_sha256": approved_content_sha256}))
     await db.commit()
     return await _post_out(db, post)
 
@@ -736,7 +780,7 @@ async def post_approval_history(
     await membership_for(company_id, user, db)
     await _get_post(db, company_id, post_id)
     rows = (await db.scalars(select(PostApproval).where(PostApproval.company_id == company_id, PostApproval.post_id == post_id).order_by(PostApproval.decided_at.desc()))).all()
-    return [ApprovalRecordOut(id=row.id, post_id=row.post_id, version=row.version, decision=row.decision, reason=row.reason, decided_by=row.decided_by, decided_by_name=row.decided_by_name, decided_at=row.decided_at) for row in rows]
+    return [ApprovalRecordOut(id=row.id, post_id=row.post_id, version=row.version, decision=row.decision, reason=row.reason, decided_by=row.decided_by, decided_by_name=row.decided_by_name, decided_at=row.decided_at, content_sha256=row.content_sha256) for row in rows]
 
 
 @router.get("/workspaces/{company_id}/approvals", response_model=PaginatedPosts)
@@ -816,6 +860,10 @@ async def create_export(
             "hashtags": " ".join(content.get("hashtags", [])),
             "scheduled_at": post.scheduled_at.isoformat() if post.scheduled_at else "",
             "citations": " | ".join(f"{item.get('source_id', '')} {item.get('locator', '')}" for item in citations),
+            "media": " | ".join(
+                f"{item.get('filename') or item.get('alt') or 'image'} [sha256:{item.get('sha256', '')}] {item.get('url', '')}"
+                for item in content.get("media", [])
+            ),
         })
         versions[post.id] = post.current_version
     artifact_id = new_id()

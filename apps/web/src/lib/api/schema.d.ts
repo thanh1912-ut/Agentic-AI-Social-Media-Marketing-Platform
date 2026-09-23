@@ -673,6 +673,40 @@ export interface paths {
         readonly patch?: never;
         readonly trace?: never;
     };
+    readonly "/api/v1/workspaces/{company_id}/media": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get?: never;
+        readonly put?: never;
+        /** Upload Media Asset */
+        readonly post: operations["upload_media_asset_api_v1_workspaces__company_id__media_post"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/v1/workspaces/{company_id}/media/{asset_id}/content": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /** Download Media Asset */
+        readonly get: operations["download_media_asset_api_v1_workspaces__company_id__media__asset_id__content_get"];
+        readonly put?: never;
+        readonly post?: never;
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
     readonly "/api/v1/workspaces/{company_id}/members": {
         readonly parameters: {
             readonly query?: never;
@@ -1020,6 +1054,8 @@ export interface components {
         };
         /** ApprovalRecordOut */
         readonly ApprovalRecordOut: {
+            /** Content Sha256 */
+            readonly content_sha256: string;
             /**
              * Decided At
              * Format: date-time
@@ -1062,6 +1098,16 @@ export interface components {
              * @description Một hoặc nhiều tài liệu thương hiệu
              */
             readonly files: readonly string[];
+        };
+        /** Body_upload_media_asset_api_v1_workspaces__company_id__media_post */
+        readonly Body_upload_media_asset_api_v1_workspaces__company_id__media_post: {
+            /**
+             * Alt Text
+             * @default
+             */
+            readonly alt_text: string;
+            /** File */
+            readonly file: string;
         };
         /** BrandProfileFieldOut */
         readonly BrandProfileFieldOut: {
@@ -1719,6 +1765,27 @@ export interface components {
             /** Workspaces */
             readonly workspaces: readonly components["schemas"]["WorkspaceOut"][];
         };
+        /** MediaAssetOut */
+        readonly MediaAssetOut: {
+            /** Alt Text */
+            readonly alt_text: string;
+            /** Content Path */
+            readonly content_path: string;
+            /** Content Sha256 */
+            readonly content_sha256: string;
+            /** Filename */
+            readonly filename: string;
+            /** Height */
+            readonly height: number;
+            /** Id */
+            readonly id: string;
+            /** Mime Type */
+            readonly mime_type: string;
+            /** Size Bytes */
+            readonly size_bytes: number;
+            /** Width */
+            readonly width: number;
+        };
         /** MemberOut */
         readonly MemberOut: {
             /** Id */
@@ -1861,6 +1928,16 @@ export interface components {
             readonly page_size: number;
             /** Total */
             readonly total: number;
+        };
+        /** PostMediaAttachmentIn */
+        readonly PostMediaAttachmentIn: {
+            /**
+             * Alt Text
+             * @default
+             */
+            readonly alt_text: string;
+            /** Asset Id */
+            readonly asset_id: string;
         };
         /** PostOut */
         readonly PostOut: {
@@ -2172,6 +2249,8 @@ export interface components {
             readonly caption?: string | null;
             /** Hashtags */
             readonly hashtags?: readonly string[] | null;
+            /** Media */
+            readonly media?: readonly components["schemas"]["PostMediaAttachmentIn"][] | null;
             /** Note */
             readonly note?: string | null;
             /** Version */
@@ -2263,6 +2342,7 @@ export type SchemaApplyRecommendationResponse = components['schemas']['ApplyReco
 export type SchemaApprovalRecordOut = components['schemas']['ApprovalRecordOut'];
 export type SchemaApprovalRequest = components['schemas']['ApprovalRequest'];
 export type SchemaBodyUploadDocumentsApiV1WorkspacesCompanyIdDocumentsPost = components['schemas']['Body_upload_documents_api_v1_workspaces__company_id__documents_post'];
+export type SchemaBodyUploadMediaAssetApiV1WorkspacesCompanyIdMediaPost = components['schemas']['Body_upload_media_asset_api_v1_workspaces__company_id__media_post'];
 export type SchemaBrandProfileFieldOut = components['schemas']['BrandProfileFieldOut'];
 export type SchemaBrandProfileOut = components['schemas']['BrandProfileOut'];
 export type SchemaBrandProfileRevisionOut = components['schemas']['BrandProfileRevisionOut'];
@@ -2297,6 +2377,7 @@ export type SchemaJobOut = components['schemas']['JobOut'];
 export type SchemaJobStepOut = components['schemas']['JobStepOut'];
 export type SchemaLoginRequest = components['schemas']['LoginRequest'];
 export type SchemaLoginResponse = components['schemas']['LoginResponse'];
+export type SchemaMediaAssetOut = components['schemas']['MediaAssetOut'];
 export type SchemaMemberOut = components['schemas']['MemberOut'];
 export type SchemaMetricGroupOut = components['schemas']['MetricGroupOut'];
 export type SchemaMetricImportRequest = components['schemas']['MetricImportRequest'];
@@ -2305,6 +2386,7 @@ export type SchemaMetricObservation = components['schemas']['MetricObservation']
 export type SchemaMetricPointIn = components['schemas']['MetricPointIn'];
 export type SchemaPaginatedCampaigns = components['schemas']['PaginatedCampaigns'];
 export type SchemaPaginatedPosts = components['schemas']['PaginatedPosts'];
+export type SchemaPostMediaAttachmentIn = components['schemas']['PostMediaAttachmentIn'];
 export type SchemaPostOut = components['schemas']['PostOut'];
 export type SchemaPostVersionListOut = components['schemas']['PostVersionListOut'];
 export type SchemaPostVersionOut = components['schemas']['PostVersionOut'];
@@ -4119,6 +4201,75 @@ export interface operations {
                 content: {
                     readonly "application/json": unknown;
                 };
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    readonly upload_media_asset_api_v1_workspaces__company_id__media_post: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: {
+                readonly authorization?: string | null;
+            };
+            readonly path: {
+                readonly company_id: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "multipart/form-data": components["schemas"]["Body_upload_media_asset_api_v1_workspaces__company_id__media_post"];
+            };
+        };
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 201: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["MediaAssetOut"];
+                };
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    readonly download_media_asset_api_v1_workspaces__company_id__media__asset_id__content_get: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: {
+                readonly authorization?: string | null;
+            };
+            readonly path: {
+                readonly company_id: string;
+                readonly asset_id: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             readonly 422: {

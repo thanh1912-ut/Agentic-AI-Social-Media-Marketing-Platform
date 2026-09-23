@@ -1,69 +1,54 @@
 # Tiến độ triển khai
 
-Cập nhật gần nhất: 2026-09-24 04:14 (Asia/Ho_Chi_Minh)
+Cập nhật gần nhất: 2026-09-24 05:04 (Asia/Ho_Chi_Minh)
 
-## Trạng thái phiên
+## Trạng thái hiện tại
 
-- Branch: `codex/product-v1-completion`, PR #1 đang mở. Bản cập nhật hiện tại hoàn tất campaign strategy/content slots, nối slot vào DeepSeek generation job, thêm migration 0008; API/worker tests và 12 desktop/mobile E2E đã pass. Đang hoàn tất docs và review diff trước khi push.
-- Phase hiện tại: AI integration và bàn giao. Branch có REC-002, real-mode manual workflow, security fixes, rate limits, Brand Profile/DeepSeek worker flow, durable content-generation jobs và AI revise version workflow.
-- Trạng thái: data flow gửi đoạn trích tài liệu và Brand Profile tới DeepSeek, cùng strategy/chủ đề/ngày slot khi người dùng chọn slot, đã được chủ dự án chấp thuận ngày 2026-09-24. Code path đã bật qua factory server-side; API key chưa có nên live request/model-account check chưa chạy.
-- Snapshot source M1/M2/M3 đã được đưa vào worktree riêng; checkout và index gốc ở `/Users/lethanh/agent` được giữ nguyên.
-- Phase 0 (audit và sáu tài liệu) đã hoàn tất. Phase 1: dependency checks pass; migration 0001→0008 đã chạy trên PostgreSQL 18 + pgvector cô lập, sau đó `upgrade head` chạy lại không đổi schema. Full Compose/Redis/MinIO runtime chưa nghiệm thu.
-- Phase 3 có campaign CRUD và brief edit tenant-scoped; update dùng expected version và stale update trả 409. Manual post/version, approval và CSV/XLSX export cũng có. Content generation và AI revise dùng durable/idempotent jobs, xác minh Brand Profile đã xác nhận, tenant/relevance/source context và base version; revise lưu `ai_revised` PostVersion, giữ trường ngoài scope và buộc duyệt lại khi bài từng được duyệt. Không tự gửi duyệt hoặc đăng.
-- PLAN-001 đã có strategy summary và content slots persisted trên campaign; slot lưu ngày/trụ/format/topic, edit có version guard và slot được khóa khi đang chạy/đã sinh. API reserve slot theo idempotency key; worker gửi strategy/topic/ngày đã chọn tới DeepSeek, lưu `content_slot_id`/ngày dự kiến vào draft và gắn lại slot. Retry/cancel giải phóng hoặc lấy lại reservation. Chủ dự án đã chấp thuận thêm data flow slot ngày 2026-09-24.
-- Phase 5 có manual metric snapshot import API/UI, tenant/post validation, duplicate detection, timestamp/source/age metadata, dashboard nhóm theo pillar/format và freshness/coverage. Phase 6 có recommendation rule-based có evidence/abstain; feedback được lưu; Apply tạo brief revision; owner accept theo version guard; REC-002 lưu kết quả so sánh trước/sau cùng source, metric và tuổi bài.
+- Branch: `codex/product-v1-completion`. Bản code đang nghiệm thu bắt đầu từ `7d603e4` và thêm MEDIA-001; commit cuối sẽ được ghi sau khi kiểm tra diff và push PR #1.
+- Phase hiện tại: Phase 7 — hardening và bàn giao core pilot. Mốc vừa đạt: MEDIA-001 asset ảnh được tích hợp từ upload tới post version, approval fingerprint và export; 14 browser E2E desktop/mobile, 105 backend tests, 43 frontend tests và PostgreSQL migrations 0001→0009 đã pass.
+- Công việc trong phiên: cập nhật sáu tài liệu vận hành, rà staged diff, commit đúng file của task và cập nhật nhánh PR. Không có service API/web nào đang chạy sau E2E.
+- Checkout dùng cho task là `/private/tmp/agentic-v1-media`; working tree và index gốc tại `/Users/lethanh/agent` được giữ nguyên.
+- Chủ dự án đã chấp thuận gửi đoạn trích tài liệu, Brand Profile và strategy/topic/date của slot được chọn tới DeepSeek. Chưa có `DEEPSEEK_API_KEY`; không có live model call hay số liệu token/cost/latency.
 
 ## Tiến độ theo subsystem
 
 | Subsystem | Implementation | Verification | Evidence | Next action |
 |---|---|---|---|---|
-| Auth/workspace/membership | API/session/tenant permissions | Fixture API tests; UI real-mode login qua SQLite cô lập | `services/api/auth.py`, `services/api/workspaces.py` | Kiểm chứng PostgreSQL và full session lifecycle trên runtime riêng. |
-| Upload/ingestion/jobs | Parser, durable jobs/recovery; server-generated object keys và traversal guard | Python suite pass; PostgreSQL/MinIO/restart runtime chưa xác minh | `services/api/documents.py`, `services/api/storage.py`, `tests/test_storage_security.py` | Kiểm legacy keys và chạy trên isolated PostgreSQL/object store. |
-| Brand Profile | Handler/citations/revisions; worker dùng DeepSeek theo cấu hình, API key server-side | Fixture worker/API tests pass; live provider chưa chạy | `services/api/brand_profiles.py`, `services/worker/tasks.py` | Cần provision key và test model account/runtime thật. |
-| Retrieval | Tenant/source/version/locator; lexical mode mặc định | Fixture tests pass; semantic vector chưa cấu hình | `services/ingestion/knowledge_store.py` | Chọn embedding provider, cấu hình threshold và reindex trước semantic mode. |
-| DeepSeek | Chat Completions JSON-mode adapter; worker factory giới hạn input/token/timeout; API key chỉ ở server | Fake-client pass; live smoke skipped | `services/agents/providers/deepseek.py`, `services/worker/model_provider.py` | Cần provision key, xác minh model list của tài khoản và chạy live smoke. |
-| PostgreSQL migrations | Migrations 0001→0008 và pgvector extension | Isolated PostgreSQL 18.3, pgvector 0.8.2; clean upgrade + rerun; JSON `content_plan_json` NOT NULL/default `{}`; 27 public tables | `database/migrations/env.py`, migration 0008, disposable DB | Chạy full API/worker stack và data-path trên PostgreSQL/Redis/MinIO. |
-| Campaign | Tenant-scoped brief/strategy/slots; optimistic version; slot generation reservation and post linkage | SQLite API/worker tests; Playwright desktop/mobile slot edit → job route | `services/api/campaign_workflows.py`, `services/worker/content_tasks.py`, campaign detail UI | Acceptance trên PostgreSQL/Redis/MinIO; MEDIA-001 vẫn mở. |
-| Media assets | Document uploader nhận ảnh làm metadata-only input; post version giữ media field và image brief | Parser/upload fixture pass; chưa có asset attach/preview API hoặc UI | `services/api/documents.py`, post editor | MEDIA-001: asset upload/list/preview/attach có tenant checks; approvals phải gắn media hash. |
-| Content/version | Generation/revise là durable/idempotent jobs; slot sends approved strategy/topic/date; citations and immutable versions; human approval required | Python API/worker tests cover slot reservation/idempotency/retry/cancel and citations; live DeepSeek chưa chạy | `services/api/campaign_workflows.py`, `services/worker/content_tasks.py`, post editor | Provision DeepSeek key and run real provider E2E; verify full runtime. |
-| Approval | Quyết định gắn exact current/pending version | Exact-version, stale-version, reapproval tests pass | `services/api/campaign_workflows.py` | Tích hợp publishing guard khi connector Meta đủ quyền. |
-| Export | CSV/XLSX thật, idempotency, formula-safe output | API download + real-mode XLSX download pass | `services/api/campaign_workflows.py` | Kiểm thử object storage trên MinIO. |
-| Meta | Chưa có connector; có hướng dẫn export và đăng tay | Publishing page production build/browser checked; không gọi Meta | `apps/web/src/app/w/[workspaceId]/publishing/page.tsx` | Cần Page/app/token/quyền và App Review. |
-| Metrics/dashboard | Manual snapshots, API/UI dashboard, null-aware counts, coverage/freshness | SQLite API, clean migrations 0001→0007, OpenAPI pass | `services/api/analytics.py`, analytics UI | Meta sync và nguồn số liệu thật chưa có. |
-| Recommendation | Rule-based evidence/abstain; feedback/audit; Apply draft, owner accept; outcome windows | API cohort/evidence/idempotency tests; desktop/mobile MSW flow pass | REC-001/REC-002 migrations and analytics API/UI | Nhập follow-up metrics thật; không diễn giải như bằng chứng nhân quả. |
-| Frontend | Auth/workspace/docs/brand/campaign brief edit/manual post/AI revise/export/analytics/recommendations | Typecheck/lint/build pass; 43 unit tests; campaign slice E2E 10 pass desktop/mobile; earlier full mock E2E 32 pass; real-mode manual workflow pass | `apps/web/src/**`, `tests/e2e/**` | Brand extraction và AI generation/revise real-provider E2E còn chờ AI-001. |
-| Security/ops | JWT/docs protections, explicit CORS allowlist, safe inline config, upload traversal fix, refresh/logout CSRF, Redis rate limits | Full Python suite 104 pass/1 skip; OpenAPI check, compile pass; 43 frontend tests, typecheck/lint/build pass | `docs/security-review.md`, storage/CORS/runtime-config/auth-CSRF/rate-limit regressions | Trusted proxy/edge behavior, Redis/Compose, MinIO, backup/restore và deployment E2E còn mở. |
+| Auth/workspace/membership | Session, workspace và tenant permissions | API fixture tests pass; real-mode manual flow đã được kiểm tra trước đó trên SQLite | `services/api/auth.py`, `services/api/workspaces.py`, `docs/test-report.md` | Chạy lifecycle trên runtime PostgreSQL/Redis triển khai. |
+| Upload/ingestion/jobs | Parser, durable ingestion/recovery và server-generated object keys | Python suite pass; full worker restart và MinIO chưa xác minh | `services/api/documents.py`, `services/ingestion`, `services/worker` | Nghiệm thu trên PostgreSQL/Redis/object storage. |
+| Brand Profile | Extraction worker, source citations, revision/edit/confirm; DeepSeek server-side adapter | Fake-model API/worker tests pass; live provider NOT_VERIFIED | `services/api/brand_profiles.py`, `services/worker/tasks.py` | Provision key trong secret store rồi chạy live smoke/browser path. |
+| Retrieval | Tenant/source/version/locator filters; lexical retrieval và relevance threshold | Fixture tests pass; semantic embeddings NOT_CONFIGURED | `services/ingestion/knowledge_store.py` | Chọn embedding provider/data flow; reindex trước khi bật semantic mode. |
+| DeepSeek | Một Chat Completions JSON-mode adapter dùng worker factory; timeout/input/output limits | Fake-client pass; live smoke skip vì thiếu key | `services/agents/providers/deepseek.py`, `services/worker/model_provider.py` | Xác nhận model trong account, live request và chi phí/latency sau khi key được provision. |
+| PostgreSQL migrations | Alembic schema 0001→0009, gồm media_assets và post approval hash | PostgreSQL 18.3 + pgvector 0.8.2: upgrade mới và rerun pass; SQLite upgrade/rerun cũng pass | migration 0009, `docs/test-report.md` | Chạy API/worker data-path trên runtime triển khai. |
+| Runtime/infrastructure | Compose khai báo API, worker, scheduler, PostgreSQL, Redis, object storage | Compose/containers chưa boot; không có Docker/Podman hoặc MinIO trong môi trường | `infra/`, `docker-compose.yml`, `docs/runbook.md` | Provision test services; health/readiness, job recovery và storage smoke. |
+| Campaign/content slots | Brief, strategy, slots, durable generation/revise, version guard | API/worker fixtures và desktop/mobile mock E2E pass; live LLM NOT_VERIFIED | `services/api/campaign_workflows.py`, `services/worker/content_tasks.py` | DeepSeek live browser acceptance sau khi có secret. |
+| Media assets | JPEG/PNG/WebP upload, tenant-scoped preview/download, attach/detach theo version, export reference | Python integration coverage; 14/14 desktop/mobile Playwright campaign E2E pass | `services/api/media.py`, `apps/web/src/app/w/[workspaceId]/campaigns/[campaignId]/posts/[postId]/page.tsx`, migration 0009 | DONE cho manual media workflow; Meta image publishing thuộc META-001. |
+| Approval/export | Approval gắn exact version và SHA-256 của nội dung/media; CSV/XLSX có media filename/hash/path | API test và full frontend build pass; manual export/download browser evidence đã có | `services/api/content_integrity.py`, campaign workflow, `docs/test-report.md` | Publisher tương lai phải so hash trước khi gửi; Meta connector chưa có. |
+| Meta | Trang real mode giải thích fallback export → đăng tay → nhập metrics; chưa có connector | Publishing UI/browser kiểm tra trước đó; không gọi Meta API | `apps/web/src/app/w/[workspaceId]/publishing/page.tsx` | BLOCKED_EXTERNAL: cần app/Page/token/quyền/App Review và reconciliation. |
+| Metrics/dashboard | Manual snapshots, null-aware KPI, coverage/freshness, grouping | SQLite API/browser evidence và existing test suite pass | `services/api/analytics.py`, analytics UI | Nhập nguồn số liệu thật; Meta sync còn mở. |
+| Recommendation | Evidence/abstain, feedback, apply draft, owner accept/version guard, outcome windows | SQLite API tests và desktop/mobile mock flow pass | recommendation routes/UI, migration 0006–0007 | Kiểm chứng với dữ liệu pilot; không diễn giải outcome như quan hệ nhân quả. |
+| Frontend | Auth, brand, campaigns, media editor, analytics, publishing guidance | Typecheck, 43 Vitest, lint, production build pass; 14/14 focused desktop/mobile E2E pass | `apps/web`, `tests/e2e/slice2-campaign.spec.ts` | Real-mode AI generation/browser path cần DeepSeek key. |
+| Security/operations | CSRF, tenant checks, rate limits, upload validation, approval hash | 105 pytest pass/1 live-DeepSeek skip; OpenAPI/compile/diff checks pass | `docs/security-review.md`, `docs/test-report.md` | Backup/restore, proxy/edge controls, load smoke và full operational review còn mở. |
 
-## Kiểm thử gần nhất
+## Blockers và ảnh hưởng
 
-- Python: `104 passed, 1 skipped`; includes AI revise and content slot API/worker, idempotency, version recheck, reservation retry/cancel, source citations, scope preservation and reapproval. Skip là live DeepSeek smoke.
-- Frontend: `43 passed`; typecheck and lint rerun pass, and production build pass.
-- OpenAPI `--check` và generated TypeScript update phản ánh `202` + `Idempotency-Key` của content-generation endpoint.
-- OpenAPI/TypeScript artifacts now include `POST /workspaces/{company_id}/posts/{post_id}/revise` with `202` job response and idempotency header.
-- Playwright mock E2E cũ: `32 passed` desktop/mobile; REC-002 test riêng chạy lại `2 passed` (desktop + mobile), gồm accept revision và lưu/hiển thị outcome qua MSW demo data, không phải live API.
-- Playwright campaign slice: `12 passed` (6 desktop + 6 mobile), có sửa strategy/topic qua MSW rồi tạo job theo chủ đề slot; các luồng bài/duyệt/revise vẫn pass; không gọi DeepSeek.
-- Real-mode Playwright: `1 passed`; đăng ký account mới, login, tạo campaign, viết/duyệt bài thủ công, tạo export và tải XLSX qua FastAPI thật + SQLite tạm. Không gọi DeepSeek hoặc Meta.
-- OpenAPI `--check`, Python `compileall` và SQLite migration 0001→0007 pass.
-- `npm ls postcss --all` pass: PostCSS 8.5.24/8.5.28 trong cây dependency.
-- `npm audit --audit-level=high` pass: 0 vulnerabilities.
-- Real-mode browser smoke chạy với Next.js production build và FastAPI trên loopback, SQLite DB mới trong `/private/tmp`, account E2E và 10 metric points giả lập. Login, dashboard, lưu recommendation, feedback `useful`, Apply tạo pending draft, owner accept đều pass; API xác nhận campaign version `2` và brief có nội dung recommendation. Sau đó trang publishing ở commit `c77720d` hiển thị fallback thủ công, không 404. Không gọi DeepSeek hoặc Meta.
-- PostgreSQL 18.3 isolated DB: Alembic clean upgrade 0001→0008 và rerun pass; `vector 0.8.2`, 27 public tables; `campaigns.content_plan_json` xác nhận JSON NOT NULL default `{}`. Trước fix, PostgreSQL từ chối revision ID 45 ký tự do bảng `alembic_version` mặc định `VARCHAR(32)`; migration env hiện tạo/nâng version column lên `VARCHAR(128)`.
-- OpenAPI `--check`, Python `compileall`, SQLite migration 0001→0008 + rerun và clean PostgreSQL migration 0001→0008 + rerun pass.
-- Storage traversal được tái hiện rồi sửa; regression/full-suite evidence và giới hạn security review nằm trong [security-review.md](security-review.md).
+- **AI-001 — DeepSeek live validation:** user đã chấp thuận data flow cho tài liệu, Brand Profile và slot strategy/topic/date; implementation và fake-client tests pass. Chưa có `DEEPSEEK_API_KEY`, nên model-list check, live request, browser flow, tokens, latency và chi phí chưa được xác minh. Cần provision key ở server secret store; không gửi key qua chat.
+- **RUN-001 / OPS-001 — full runtime:** PostgreSQL migration test đã pass trong cluster cô lập. Docker/Podman và MinIO không có; Compose, API/worker/scheduler health, Redis queue behavior, MinIO, restart recovery và backup/restore chưa nghiệm thu. Có thể tiếp tục fixture và local adapter checks độc lập.
+- **META-001 — external access:** chưa có Meta App/Page/token, permissions hoặc App Review. Automatic publishing/metrics sync bị chặn; fallback manual export/publish/import được giữ rõ trong UI.
+- **RAG-001 — semantic embedding:** đang dùng lexical retrieval. Embedding provider và data flow bên ngoài chưa được chọn/chấp thuận; không bật vector generation mặc định.
 
-Chi tiết: [test-report.md](test-report.md).
+## Bằng chứng mới nhất
 
-## Blockers
+- Python 3.11: `.venv/bin/python -m pytest -q -p no:cacheprovider` — **105 passed, 1 skipped**. Skip là live DeepSeek smoke; có một cảnh báo pending deprecation từ LangGraph.
+- Frontend: `npm test` — **43 passed**; typecheck, ESLint và `next build` pass.
+- Browser: `npm run test:e2e -- slice2-campaign.spec.ts --workers=1` — **14 passed** (7 desktop + 7 mobile), bao gồm upload ảnh, preview, attach version và detach version. Chạy MSW, không gọi DeepSeek.
+- Database: PostgreSQL 18.3/pgvector 0.8.2 migration 0001→0009 và rerun pass; SQLite 0001→0009 pass. Đây là migration checks, chưa phải API/worker acceptance trên PostgreSQL.
+- OpenAPI `--check`, Python compileall và `git diff --check` pass. Chi tiết môi trường/lệnh/giới hạn ở [test-report.md](test-report.md).
 
-- **AI-001 — live validation:** bạn đã chấp thuận gửi đoạn trích tài liệu, Brand Profile, và strategy/topic/date của slot được chọn tới DeepSeek. API/worker path đã được triển khai và fixture-tested; chưa có `DEEPSEEK_API_KEY`, nên chưa xác minh model list, live request, latency/token/cost hoặc browser E2E với LLM thật. Metadata chi phí được lưu `null`, không giả định bằng 0.
-- **DB/RUN-001 — runtime:** migration đã được xác minh trên PostgreSQL 18/pgvector trong cluster tạm cô lập; PostgreSQL 15 dùng chung trên máy không bị thay đổi. Docker/Podman và MinIO không có, nên Compose, Redis thực, worker restart, object storage và health/readiness chưa được nghiệm thu.
-- **E2E-001 — phạm vi:** real-mode đã kiểm tra analytics/recommendation và manual campaign → post → approval → export; AI generation/revise API+worker fixture integration và mock browser flow pass. Chưa chạy browser flow với LLM thật hoặc acceptance trên PostgreSQL/MinIO.
-- **MEDIA-001 — product gap:** ảnh upload chưa có asset/list/preview/attach lifecycle; post versions và export chưa có media reference workflow. Phần này còn code độc lập, không phụ thuộc secret.
-- **META-001 — quyền bên ngoài:** chưa có Meta app/Page credentials, permission hoặc App Review evidence.
-- **RAG-001 — embedding:** retrieval vẫn lexical. Embedding bên ngoài có cờ riêng `EMBEDDING_DATA_FLOW_APPROVED=0`; chưa được chấp thuận hoặc bật.
+## Ba việc tiếp theo
 
-## Việc tiếp theo
+1. Provision DeepSeek key ở server secret store; chạy model-list/JSON smoke và browser flow Brand Profile/content thật, ghi tokens/latency/cost.
+2. Provision runtime test cô lập (PostgreSQL, Redis, object storage, Docker/Compose nếu có); kiểm tra API/worker restart, health/readiness và backup/restore.
+3. Khi được cấp Meta app/Page/token và App Review, triển khai/test publisher duplicate-safe; đến lúc đó dùng manual fallback. Sau pilot, chọn riêng embedding provider/data flow nếu cần semantic RAG.
 
-1. Provision `DEEPSEEK_API_KEY` trong secret store server-side; chạy model-list + structured-output smoke và E2E Brand Profile/content trên môi trường cô lập.
-2. Hoàn tất MEDIA-001 (asset upload/list/preview/attach và media-aware approval/export) trước khi gọi core v1 hoàn chỉnh.
-3. Khi môi trường test được provision: nghiệm thu full PostgreSQL/Compose/worker/MinIO, backup/restore, trusted proxy/Redis limits; hoàn tất Meta feasibility khi credentials, Page permission và App Review sẵn sàng.
+Không có URL service nào đang chạy. Hướng dẫn chạy và các giới hạn vận hành nằm ở [runbook.md](runbook.md); kế hoạch/phạm vi ở [implementation-plan.md](implementation-plan.md); kiểm thử ở [test-report.md](test-report.md).

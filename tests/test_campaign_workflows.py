@@ -7,10 +7,12 @@ import csv
 import io
 import json
 from datetime import datetime, timezone
+from dataclasses import replace
 
 import pytest
 from fastapi.testclient import TestClient
 from openpyxl import load_workbook
+from PIL import Image
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from sqlalchemy.pool import StaticPool
@@ -22,6 +24,7 @@ from database.models import (
     CampaignPost,
     Document,
     Job,
+    MediaAsset,
     KnowledgeChunk,
     PostVersion,
     new_id,
@@ -29,6 +32,8 @@ from database.models import (
 from packages.contracts import GeneratedPost, SourceReference
 from packages.prompts import CONTENT_REVISE_SYSTEM_PROMPT
 from services.api import campaign_workflows
+from services.api import media as media_api
+from services.api.content_integrity import content_sha256
 from services.api import job_service
 from services.api import jobs as job_routes
 from services.api.db import get_db
@@ -672,7 +677,7 @@ def test_export_writes_downloadable_csv_and_is_idempotent(workflow_api, tmp_path
     campaign_id = campaign_response.json()["id"]
     post_id = new_id()
     now = datetime.now(timezone.utc)
-    content = {"caption": "=1+1, món nhà", "hashtags": ["#BepMoc"], "media": [], "citations": []}
+    content = {"caption": "=1+1, món nhà", "hashtags": ["#BepMoc"], "media": [{"filename": "pho.png", "asset_id": "asset-1", "sha256": "a" * 64, "url": f"/workspaces/{workspace_id}/media/asset-1/content"}], "citations": []}
 
     async def seed():
         async with session_factory() as db:
@@ -711,6 +716,8 @@ def test_export_writes_downloadable_csv_and_is_idempotent(workflow_api, tmp_path
     rows = list(csv.reader(io.StringIO(download.content.decode("utf-8-sig"))))
     assert rows[0][6] == "Nội dung"
     assert rows[1][6].startswith("'=1+1")
+    assert rows[0][-1].startswith("Ảnh đính kèm")
+    assert "pho.png" in rows[1][-1] and "a" * 64 in rows[1][-1] and "/media/asset-1/content" in rows[1][-1]
 
     xlsx_response = client.post(
         f"/api/v1/workspaces/{workspace_id}/exports",
@@ -723,3 +730,174 @@ def test_export_writes_downloadable_csv_and_is_idempotent(workflow_api, tmp_path
     assert xlsx_download.status_code == 200
     workbook = load_workbook(io.BytesIO(xlsx_download.content), read_only=True, data_only=True)
     assert workbook.active.cell(row=2, column=7).value.startswith("'=1+1")
+
+
+def test_media_upload_is_validated_tenant_scoped_versioned_and_approval_hashed(workflow_api, tmp_path, monkeypatch) -> None:
+    client, session_factory = workflow_api
+    owner = _register(client, "media-owner@example.com")
+    workspace_id = owner["active_workspace_id"]
+    headers = {"X-CSRF-Token": client.cookies.get("agentic_csrf")}
+    monkeypatch.setattr(media_api, "storage", LocalObjectStorage(tmp_path / "media-store"))
+
+    image_buffer = io.BytesIO()
+    Image.new("RGB", (2, 2), color=(174, 42, 51)).save(image_buffer, format="PNG")
+    image_bytes = image_buffer.getvalue()
+    upload_url = f"/api/v1/workspaces/{workspace_id}/media"
+    uploaded = client.post(
+        upload_url,
+        headers=headers,
+        data={"alt_text": "Ảnh chụp món ăn"},
+        files={"file": ("menu.png", image_bytes, "image/png")},
+    )
+    assert uploaded.status_code == 201, uploaded.text
+    asset = uploaded.json()
+    assert asset["mime_type"] == "image/png"
+    assert asset["size_bytes"] == len(image_bytes)
+    assert asset["width"] == asset["height"] == 2
+    assert asset["content_sha256"]
+
+    downloaded = client.get(f"/api/v1{asset['content_path']}")
+    assert downloaded.status_code == 200
+    assert downloaded.content == image_bytes
+    assert downloaded.headers["x-content-sha256"] == asset["content_sha256"]
+    assert downloaded.headers["x-content-type-options"] == "nosniff"
+
+    spoofed = client.post(
+        upload_url,
+        headers=headers,
+        files={"file": ("menu.jpg", image_bytes, "image/jpeg")},
+    )
+    assert spoofed.status_code == 415
+    malformed = client.post(
+        upload_url,
+        headers=headers,
+        files={"file": ("not-an-image.png", b"plain text", "image/png")},
+    )
+    assert malformed.status_code == 422
+    monkeypatch.setattr(media_api, "settings", replace(media_api.settings, max_image_bytes=len(image_bytes) - 1))
+    oversized = client.post(
+        upload_url,
+        headers=headers,
+        files={"file": ("large.png", image_bytes, "image/png")},
+    )
+    assert oversized.status_code == 413
+    monkeypatch.setattr(media_api, "settings", replace(media_api.settings, max_image_bytes=12 * 1024 * 1024, max_image_pixels=1))
+    too_many_pixels = client.post(
+        upload_url,
+        headers=headers,
+        files={"file": ("large-dimensions.png", image_bytes, "image/png")},
+    )
+    assert too_many_pixels.status_code == 413
+
+    campaign_payload = {
+        "name": "Menu món mới",
+        "brief": {
+            "objective": "awareness", "audience": ["Khách địa phương"], "product_ids": [],
+            "key_message": "Món ăn mới trong tuần", "must_include": [], "must_avoid": [],
+            "start_date": "2026-09-01", "end_date": "2026-09-30",
+        },
+        "pillars": ["product"], "channels": ["facebook_page"],
+    }
+    campaign_response = client.post(
+        f"/api/v1/workspaces/{workspace_id}/campaigns", headers=headers, json=campaign_payload,
+    )
+    assert campaign_response.status_code == 201, campaign_response.text
+    campaign_id = campaign_response.json()["id"]
+    post_response = client.post(
+        f"/api/v1/workspaces/{workspace_id}/campaigns/{campaign_id}/posts",
+        headers=headers,
+        json={"pillar": "product", "format": "image", "caption": "Món mới hôm nay", "hashtags": ["#BepMoc"]},
+    )
+    assert post_response.status_code == 201, post_response.text
+    post_id = post_response.json()["id"]
+    post_url = f"/api/v1/workspaces/{workspace_id}/posts/{post_id}"
+
+    async def add_existing_ai_suggestion():
+        async with session_factory() as db:
+            version = await db.scalar(select(PostVersion).where(
+                PostVersion.company_id == workspace_id,
+                PostVersion.post_id == post_id,
+                PostVersion.version == 1,
+            ))
+            version.content_json = {
+                **version.content_json,
+                "media": [{"id": "suggested-1", "url": "", "alt": "AI image brief", "source": "ai_suggested"}],
+            }
+            await db.commit()
+
+    asyncio.run(add_existing_ai_suggestion())
+
+    attached = client.patch(
+        post_url,
+        headers=headers,
+        json={"version": 1, "media": [{"asset_id": asset["id"], "alt_text": "Bát món mới cùng rau thơm"}]},
+    )
+    assert attached.status_code == 200, attached.text
+    attached_body = attached.json()
+    assert attached_body["version"] == 2
+    media = attached_body["current"]["media"]
+    assert len(media) == 2
+    uploaded_media = next(item for item in media if item["source"] == "uploaded")
+    assert uploaded_media["asset_id"] == asset["id"]
+    assert uploaded_media["alt"] == "Bát món mới cùng rau thơm"
+    assert uploaded_media["sha256"] == asset["content_sha256"]
+    assert any(item["id"] == "suggested-1" for item in media)
+
+    submitted = client.post(
+        f"{post_url}/submit-approval", headers=headers, json={"version": 2},
+    )
+    assert submitted.status_code == 200, submitted.text
+    approved = client.post(
+        f"{post_url}/approval", headers=headers, json={"version": 2, "decision": "approved"},
+    )
+    assert approved.status_code == 200, approved.text
+    approval_history = client.get(f"{post_url}/approvals")
+    assert approval_history.status_code == 200
+    approval_hash = approval_history.json()[0]["content_sha256"]
+
+    async def read_version_and_asset():
+        async with session_factory() as db:
+            version = await db.scalar(select(PostVersion).where(
+                PostVersion.company_id == workspace_id,
+                PostVersion.post_id == post_id,
+                PostVersion.version == 2,
+            ))
+            saved_asset = await db.scalar(select(MediaAsset).where(
+                MediaAsset.company_id == workspace_id, MediaAsset.id == asset["id"],
+            ))
+            return content_sha256(version.content_json), saved_asset
+
+    expected_hash, saved_asset = asyncio.run(read_version_and_asset())
+    assert approval_hash == expected_hash
+    assert saved_asset.content_sha256 == uploaded_media["sha256"]
+
+    detached = client.patch(post_url, headers=headers, json={"version": 2, "media": []})
+    assert detached.status_code == 200, detached.text
+    assert detached.json()["version"] == 3
+    assert len(detached.json()["current"]["media"]) == 1
+    assert detached.json()["current"]["media"][0]["id"] == "suggested-1"
+    assert detached.json()["requires_reapproval"] is True
+
+    other = _register(client, "media-other@example.com")
+    other_workspace_id = other["active_workspace_id"]
+    other_headers = {"X-CSRF-Token": client.cookies.get("agentic_csrf")}
+    other_campaign = client.post(
+        f"/api/v1/workspaces/{other_workspace_id}/campaigns",
+        headers=other_headers,
+        json=campaign_payload,
+    )
+    assert other_campaign.status_code == 201
+    other_post = client.post(
+        f"/api/v1/workspaces/{other_workspace_id}/campaigns/{other_campaign.json()['id']}/posts",
+        headers=other_headers,
+        json={"pillar": "product", "format": "image", "caption": "Ảnh workspace khác", "hashtags": []},
+    )
+    assert other_post.status_code == 201
+    foreign_attach = client.patch(
+        f"/api/v1/workspaces/{other_workspace_id}/posts/{other_post.json()['id']}",
+        headers=other_headers,
+        json={"version": 1, "media": [{"asset_id": asset["id"], "alt_text": "cross-tenant"}]},
+    )
+    assert foreign_attach.status_code == 404
+    cross_tenant_download = client.get(f"/api/v1/workspaces/{other_workspace_id}/media/{asset['id']}/content")
+    assert cross_tenant_download.status_code == 404

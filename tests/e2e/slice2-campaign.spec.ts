@@ -76,6 +76,32 @@ test.describe('lát cắt 2 — campaign và nội dung', () => {
     await expect(page.getByRole('button', { name: 'Duyệt bản 5' })).toBeVisible();
   });
 
+  test('upload ảnh, preview và gỡ ảnh bằng các phiên bản riêng', async ({ page }) => {
+    await login(page);
+    await page.goto('/w/ws_pho_bac/campaigns/cmp_khai_truong/posts/post_2');
+    const versionLabel = page.locator('header').getByText(/Phiên bản \d+/);
+    const initialVersion = Number((await versionLabel.textContent())?.match(/Phiên bản (\d+)/)?.[1]);
+    expect(Number.isInteger(initialVersion)).toBeTruthy();
+
+    const altText = 'Tô phở nóng với rau thơm trên bàn gỗ';
+    await page.getByLabel('Mô tả ảnh (alt text)').fill(altText);
+    await page.getByLabel('Tải ảnh JPEG, PNG hoặc WebP').setInputFiles({
+      name: 'pho-nong.png',
+      mimeType: 'image/png',
+      buffer: Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/wv8AAAAASUVORK5CYII=', 'base64'),
+    });
+    await expect(page.getByText(`Mô tả: ${altText}`).first()).toBeVisible();
+    await expect(page.getByText(/Thay đổi ảnh chưa lưu/)).toBeVisible();
+    await page.getByRole('button', { name: 'Lưu thành phiên bản mới' }).click();
+    await expect(versionLabel).toHaveText(new RegExp(`Phiên bản ${initialVersion + 1}`));
+    await expect(page.getByText(`Mô tả: ${altText}`).first()).toBeVisible();
+
+    await page.getByRole('button', { name: 'Gỡ khỏi bản nháp' }).click();
+    await expect(page.getByText('Phiên bản này chưa có ảnh đính kèm.')).toBeVisible();
+    await page.getByRole('button', { name: 'Lưu thành phiên bản mới' }).click();
+    await expect(versionLabel).toHaveText(new RegExp(`Phiên bản ${initialVersion + 2}`));
+  });
+
   test('AI revise tạo version demo mới rồi quay lại trạng thái draft', async ({ page }) => {
     await login(page);
     await page.goto('/w/ws_pho_bac/campaigns/cmp_khai_truong/posts/post_2');

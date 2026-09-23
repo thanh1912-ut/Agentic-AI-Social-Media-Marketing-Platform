@@ -27,6 +27,8 @@ import {
   type ApprovalRequest,
   type DocumentUpload,
   type Job,
+  type MediaAsset,
+  type PostMedia,
   type PostVersion,
   type PostVersionList,
   type SessionResponse,
@@ -127,6 +129,7 @@ let activeWorkspaceId: string = readStoredWorkspaceId() ?? WS_FB;
 
 /** Bộ đếm để id sinh ra không trùng giữa các lần gọi. */
 let sequence = 0;
+const uploadedMedia = new Map<string, { media: PostMedia; bytes: Uint8Array }>();
 const nextId = (prefix: string): string => {
   sequence += 1;
   return `${prefix}_${sequence}`;
@@ -673,6 +676,37 @@ export const handlers = [
     return HttpResponse.json({ items, total: items.length, page: 1, page_size: 100 });
   }),
 
+  http.post('*/api/v1/workspaces/:workspaceId/media', async ({ params, request }) => {
+    const session = currentSession();
+    if (!session) return unauthenticated();
+    const form = await request.formData();
+    const file = form.get('file');
+    if (!(file instanceof File)) return fail(422, ERROR_CODES.VALIDATION_ERROR, 'Chọn một tệp ảnh trước.');
+    const id = nextId('asset');
+    const bytes = new Uint8Array(await file.arrayBuffer());
+    const contentPath = `/workspaces/${String(params.workspaceId)}/media/${id}/content`;
+    const media: PostMedia = {
+      id, asset_id: id, url: contentPath, alt: String(form.get('alt_text') ?? ''),
+      width: 1, height: 1, mime_type: file.type, source: 'uploaded',
+      filename: file.name, size_bytes: file.size, sha256: 'a'.repeat(64),
+    };
+    uploadedMedia.set(id, { media, bytes });
+    const response: MediaAsset = {
+      id, filename: file.name, mime_type: file.type as MediaAsset['mime_type'],
+      size_bytes: file.size, content_sha256: media.sha256 ?? '', width: 1, height: 1,
+      alt_text: media.alt, content_path: contentPath,
+    };
+    return HttpResponse.json(response, { status: 201 });
+  }),
+
+  http.get('*/api/v1/workspaces/:workspaceId/media/:assetId/content', ({ params }) => {
+    const session = currentSession();
+    if (!session) return unauthenticated();
+    const item = uploadedMedia.get(String(params.assetId));
+    if (!item) return notFound('ảnh');
+    return new HttpResponse(item.bytes, { headers: { 'Content-Type': item.media.mime_type ?? 'application/octet-stream' } });
+  }),
+
   http.get('*/api/v1/workspaces/:workspaceId/posts/:postId', ({ params }) => {
     const session = currentSession();
     if (!session) return unauthenticated();
@@ -711,6 +745,7 @@ export const handlers = [
       version?: number;
       caption?: string;
       hashtags?: string[];
+      media?: Array<{ asset_id: string; alt_text: string }>;
       note?: string;
     };
     if (body.version !== post.version) {
@@ -727,6 +762,10 @@ export const handlers = [
       version: nextVersion,
       caption: body.caption ?? post.current.caption,
       hashtags: body.hashtags ?? post.current.hashtags,
+      media: body.media === undefined ? post.current.media : body.media.flatMap((attachment) => {
+        const uploaded = uploadedMedia.get(attachment.asset_id)?.media;
+        return uploaded ? [{ ...uploaded, alt: attachment.alt_text }] : [];
+      }),
       source: VERSION_SOURCES.HUMAN,
       created_by: session.user.id,
       created_by_name: session.user.full_name,
