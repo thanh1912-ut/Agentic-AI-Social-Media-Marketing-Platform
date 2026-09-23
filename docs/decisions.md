@@ -123,3 +123,11 @@ Ngày tạo: 2026-09-23. Trạng thái dưới đây được ghi từ audit đ�
 - Không chọn: tin forwarded IP header do client gửi hoặc đưa Redis key vào log; proxy IP chỉ hợp lệ khi được cấu hình trusted tại ASGI server.
 - Ảnh hưởng: Redis trở thành dependency của các route bị giới hạn trong production. Fixed window có burst ở boundary; edge/WAF và account-aware login controls chưa được kiểm chứng. Proxy IP behavior cần acceptance trên deployment.
 - Trạng thái: IMPLEMENTED trong `004020e`; 4 focused tests và full Python suite **96 passed, 1 skipped**; Redis/Compose/proxy production runtime chưa được nghiệm thu.
+
+## DEC-016 — AI revise là job dùng chung adapter và tạo version mới
+
+- Vấn đề: editor đã có contract nháp cho AI revise nhưng backend chưa có route/worker; gọi model trong HTTP request sẽ chặn API và có thể ghi đè phiên bản người dùng đang duyệt.
+- Quyết định: `POST /workspaces/{company_id}/posts/{post_id}/revise` tạo job `content_revise` có `Idempotency-Key`; dùng cùng DeepSeek adapter và tenant-filtered retrieval như content generation. Worker kiểm tra lại expected post, campaign và Brand Profile version trước khi lưu `PostVersion(source="ai_revised")`; chỉ field thuộc scope được đổi. Nếu bài đã từng được duyệt, version mới trở lại draft và cần duyệt lại. Không cho revise bài đã lên lịch/đã đăng.
+- Không chọn: gọi DeepSeek đồng bộ từ API, thay thế lịch sử version, tự gửi duyệt/đăng, hoặc xem AI tạo mô tả ảnh là tạo media.
+- Ảnh hưởng: thêm DTO/OpenAPI/TS type, worker job recovery/retry và editor UI; scope `media` chỉ cập nhật `image_brief`. Không thêm migration mới vì dùng job ledger và PostVersion schema hiện có.
+- Trạng thái: IMPLEMENTED; SQLite API/worker fixture, retry/recovery, OpenAPI generation/check và Playwright mock desktop/mobile pass. Live DeepSeek request và real-provider browser flow NOT_VERIFIED do chưa provision key.

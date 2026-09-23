@@ -123,7 +123,7 @@ async def dispatch_queued_jobs(db: AsyncSession) -> int:
     dispatch: list[tuple[str, str, list[str]]] = []
     content_dispatch: list[str] = []
     for job in jobs:
-        if job.kind == "content_generation" and job.result and job.result.get("campaign_id"):
+        if job.kind in {"content_generation", "content_revise"} and job.result and job.result.get("campaign_id"):
             if job.attempts >= settings.max_job_attempts:
                 job.status = "failed"
                 job.progress = 100

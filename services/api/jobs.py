@@ -11,7 +11,7 @@ from .config import settings
 from .db import get_db
 from .dependencies import current_user, membership_for, require_csrf
 from .errors import ApiProblem
-from .job_service import accepted_response, dispatch_document_job, serialize_job
+from .job_service import accepted_response, dispatch_content_generation_job, dispatch_document_job, serialize_job
 from .schemas import AcceptedResponse, JobEventOut, JobOut
 
 
@@ -53,10 +53,15 @@ async def cancel_job(job_id: str, user: User = Depends(current_user), db: AsyncS
 @router.post("/{job_id}/retry", response_model=AcceptedResponse, status_code=202, dependencies=[Depends(require_csrf)])
 async def retry_job(job_id: str, user: User = Depends(current_user), db: AsyncSession = Depends(get_db)):
     job = await _tenant_job(job_id, user, db)
-    if job.kind != "document_ingest" or job.status not in {"failed", "cancelled"}:
+    if job.status not in {"failed", "cancelled"}:
         raise ApiProblem(409, "state_conflict", "Job này không thể thử lại ở trạng thái hiện tại.")
+    if job.kind not in {"document_ingest", "content_generation", "content_revise"}:
+        raise ApiProblem(409, "state_conflict", "Loại job này chưa hỗ trợ thử lại.")
     document_id = (job.result or {}).get("document_id")
-    if not document_id:
+    has_content_payload = job.kind in {"content_generation", "content_revise"} and bool((job.result or {}).get("campaign_id"))
+    if job.kind == "document_ingest" and not document_id:
+        raise ApiProblem(409, "state_conflict", "Job không có dữ liệu để thử lại.")
+    if job.kind in {"content_generation", "content_revise"} and not has_content_payload:
         raise ApiProblem(409, "state_conflict", "Job không có dữ liệu để thử lại.")
     if job.attempts >= settings.max_job_attempts:
         raise ApiProblem(409, "retry_limit_exceeded", "Job đã hết số lần thử tự động.", details={"max_attempts": settings.max_job_attempts})
@@ -73,5 +78,8 @@ async def retry_job(job_id: str, user: User = Depends(current_user), db: AsyncSe
         step.started_at = None
         step.finished_at = None
     await db.commit()
-    await dispatch_document_job(job.id, str(document_id))
+    if job.kind == "document_ingest":
+        await dispatch_document_job(job.id, str(document_id))
+    else:
+        await dispatch_content_generation_job(job.id)
     return await accepted_response(db, job)

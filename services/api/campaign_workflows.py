@@ -48,6 +48,7 @@ from .campaign_schemas import (
     PostOut,
     PostVersionListOut,
     PostVersionOut,
+    ReviseWithAiRequest,
     SubmitApprovalRequest,
     UpdatePostRequest,
 )
@@ -57,6 +58,7 @@ from .errors import ApiProblem
 from .job_service import accepted_response, append_job_event, dispatch_content_generation_job
 from .permissions import has_permission
 from .rate_limits import rate_limit
+from .schemas import AcceptedResponse
 from .storage import S3ObjectStorage, storage
 
 
@@ -463,6 +465,112 @@ async def update_post(
     db.add(AuditEvent(company_id=company_id, actor_user_id=user.id, action="post.version.create", entity_type="post", entity_id=post.id, metadata_json={"version": version_number, "source": "human"}))
     await db.commit()
     return await _post_out(db, post)
+
+
+@router.post(
+    "/workspaces/{company_id}/posts/{post_id}/revise",
+    response_model=AcceptedResponse,
+    status_code=202,
+    dependencies=[
+        Depends(require_csrf),
+        Depends(rate_limit("content_revision", max_requests=20, window_seconds=3600)),
+    ],
+)
+async def revise_post_with_ai(
+    company_id: str,
+    post_id: str,
+    request: ReviseWithAiRequest,
+    idempotency_key: str | None = Header(default=None, alias="Idempotency-Key", min_length=8, max_length=200),
+    user: User = Depends(current_user),
+    membership: Membership = Depends(require_permission("post:generate")),
+    db: AsyncSession = Depends(get_db),
+):
+    if not idempotency_key:
+        raise ApiProblem(400, "idempotency_key_required", "Thiếu Idempotency-Key cho yêu cầu AI sửa.")
+    post = await _get_post(db, company_id, post_id)
+    _check_post_version(post, request.version)
+    if post.status in {"scheduled", "published"}:
+        raise ApiProblem(409, "post_not_revisable", "Không thể sửa AI bài đã lên lịch hoặc đã đăng.")
+    campaign = await db.scalar(select(Campaign).where(Campaign.company_id == company_id, Campaign.id == post.campaign_id))
+    brand = await db.scalar(select(Brand).where(Brand.company_id == company_id))
+    if campaign is None or brand is None:
+        raise ApiProblem(404, "not_found", "Không tìm thấy chiến dịch hoặc hồ sơ thương hiệu.")
+    revision = await db.scalar(select(BrandProfileRevision).where(
+        BrandProfileRevision.brand_id == brand.id,
+        BrandProfileRevision.company_id == company_id,
+        BrandProfileRevision.revision == brand.version,
+    ))
+    profile = brand.profile if isinstance(brand.profile, dict) else {}
+    if revision is None or revision.confirmed_at is None or not profile.get("confirmed_at"):
+        raise ApiProblem(409, "brand_profile_not_confirmed", "Hãy xác nhận phiên bản Brand Profile hiện tại trước khi yêu cầu AI sửa.")
+
+    request_payload = request.model_dump(mode="json")
+    fingerprint_payload = {
+        "request": request_payload,
+        "post_id": post.id,
+        "campaign_version": campaign.version,
+        "brand_version": brand.version,
+        "requested_by": user.id,
+    }
+    fingerprint = hashlib.sha256(json.dumps(fingerprint_payload, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+    existing = await db.scalar(select(Job).where(Job.company_id == company_id, Job.idempotency_key == idempotency_key))
+    if existing:
+        if existing.kind != "content_revise" or (existing.result or {}).get("request_fingerprint") != fingerprint:
+            raise ApiProblem(409, "idempotency_conflict", "Idempotency-Key này đã được dùng cho yêu cầu khác.")
+        return await accepted_response(db, existing)
+
+    now = utcnow()
+    job_id = new_id()
+    job_payload = {
+        "campaign_id": campaign.id,
+        "campaign_version": campaign.version,
+        "brand_id": brand.id,
+        "brand_version": brand.version,
+        "post_id": post.id,
+        "post_version": post.current_version,
+        "request": request_payload,
+        "request_fingerprint": fingerprint,
+    }
+    job = Job(
+        id=job_id,
+        company_id=company_id,
+        created_by=user.id,
+        kind="content_revise",
+        title=f"AI sửa bài · phiên bản {post.current_version}",
+        status="queued",
+        progress=0,
+        result=job_payload,
+        idempotency_key=idempotency_key,
+        created_at=now,
+        updated_at=now,
+    )
+    db.add(job)
+    for key, label in (
+        ("prepare_context", "Xác minh phiên bản và tìm nguồn phù hợp"),
+        ("generate_posts", "Sửa bản nháp bằng DeepSeek"),
+        ("save_posts", "Lưu phiên bản mới, chờ người dùng duyệt"),
+    ):
+        db.add(JobStep(id=new_id(), job_id=job_id, step_key=key, label=label, status="pending", created_at=now, updated_at=now))
+    db.add(AuditEvent(
+        company_id=company_id,
+        actor_user_id=user.id,
+        action="content.revise.requested",
+        entity_type="post",
+        entity_id=post.id,
+        metadata_json={"job_id": job_id, "version": post.current_version, "scope": request.scope, "provider": "deepseek"},
+    ))
+    await append_job_event(db, job, "queued", "Đã nhận yêu cầu AI sửa bản nháp.", 0)
+    try:
+        await db.commit()
+    except IntegrityError:
+        await db.rollback()
+        duplicate = await db.scalar(select(Job).where(Job.company_id == company_id, Job.idempotency_key == idempotency_key))
+        if duplicate is None or duplicate.kind != "content_revise" or (duplicate.result or {}).get("request_fingerprint") != fingerprint:
+            raise ApiProblem(409, "idempotency_conflict", "Idempotency-Key này đã được dùng cho yêu cầu khác.")
+        await dispatch_content_generation_job(duplicate.id)
+        return await accepted_response(db, duplicate)
+    await dispatch_content_generation_job(job_id)
+    return await accepted_response(db, job)
 
 
 @router.post(

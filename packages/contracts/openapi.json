@@ -3330,6 +3330,39 @@
         "title": "ResetPasswordRequest",
         "type": "object"
       },
+      "ReviseWithAiRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "instruction": {
+            "maxLength": 2000,
+            "minLength": 1,
+            "title": "Instruction",
+            "type": "string"
+          },
+          "scope": {
+            "default": "all",
+            "enum": [
+              "caption",
+              "hashtags",
+              "media",
+              "all"
+            ],
+            "title": "Scope",
+            "type": "string"
+          },
+          "version": {
+            "minimum": 1.0,
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "version",
+          "instruction"
+        ],
+        "title": "ReviseWithAiRequest",
+        "type": "object"
+      },
       "SaveRecommendationRequest": {
         "additionalProperties": false,
         "properties": {
@@ -7438,6 +7471,101 @@
           }
         },
         "summary": "Post Approval History",
+        "tags": [
+          "campaigns-content-approvals"
+        ]
+      }
+    },
+    "/api/v1/workspaces/{company_id}/posts/{post_id}/revise": {
+      "post": {
+        "operationId": "revise_post_with_ai_api_v1_workspaces__company_id__posts__post_id__revise_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "company_id",
+            "required": true,
+            "schema": {
+              "title": "Company Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "post_id",
+            "required": true,
+            "schema": {
+              "title": "Post Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 200,
+                  "minLength": 8,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReviseWithAiRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AcceptedResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Revise Post With Ai",
         "tags": [
           "campaigns-content-approvals"
         ]

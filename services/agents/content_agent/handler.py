@@ -1,11 +1,11 @@
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
-from typing import Any
+from typing import Any, Literal
 
 from packages.contracts import BrandProfile, CampaignBrief, GeneratedPost, GenerationMetadata
 from packages.contracts.validation import parse_with_one_repair
-from packages.prompts import CONTENT_POST_PROMPT_VERSION, CONTENT_POST_SYSTEM_PROMPT
+from packages.prompts import CONTENT_POST_SYSTEM_PROMPT, CONTENT_REVISE_SYSTEM_PROMPT
 
 from services.agents.model import StructuredModel, context_payload
 
@@ -26,6 +26,7 @@ class ContentAgent:
         context: Sequence[Mapping[str, str]],
         content_requirements: Mapping[str, Any] | None = None,
         channel: str | None = None,
+        operation: Literal["generate", "revise"] = "generate",
         repair=None,
     ) -> tuple[GeneratedPost, GenerationMetadata | None, int]:
         if profile.requires_confirmation:
@@ -33,7 +34,7 @@ class ContentAgent:
         if next_version < 1:
             raise ValueError("next_version must be positive")
         raw, metadata = self.model.generate(
-            system_prompt=CONTENT_POST_SYSTEM_PROMPT,
+            system_prompt=CONTENT_REVISE_SYSTEM_PROMPT if operation == "revise" else CONTENT_POST_SYSTEM_PROMPT,
             input_payload={
                 # The provider needs profile content, not the database brand ID.
                 "profile": profile.model_dump(mode="json") | {"brand_id": "confirmed-brand"},

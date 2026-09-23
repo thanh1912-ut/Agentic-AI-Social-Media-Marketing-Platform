@@ -2,13 +2,14 @@
 
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
-import { useEffect, useMemo, useState, type FormEvent } from 'react';
+import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 
 import {
   APPROVAL_DECISIONS,
   PERMISSIONS,
   POST_STATUS_LABELS,
   VERSION_SOURCES,
+  type ReviseWithAiRequest,
   type PostVersion,
 } from '@agentic/contracts';
 
@@ -31,6 +32,8 @@ import {
   useDecideApproval,
   usePost,
   usePostVersions,
+  useJob,
+  useRevisePostWithAi,
   useSubmitApproval,
   useUpdatePost,
 } from '@/lib/hooks';
@@ -53,6 +56,7 @@ export default function PostEditorPage() {
   const post = usePost(workspace ? workspaceId : '', postId);
   const versions = usePostVersions(workspace ? workspaceId : '', postId);
   const update = useUpdatePost(workspaceId, postId);
+  const reviseWithAi = useRevisePostWithAi(workspaceId, postId);
   const submitApproval = useSubmitApproval(workspaceId, postId);
   const decideApproval = useDecideApproval(workspaceId, postId);
   const mocksEnabled = useMocks();
@@ -61,6 +65,11 @@ export default function PostEditorPage() {
   const [note, setNote] = useState('');
   const [rejectionReason, setRejectionReason] = useState('');
   const [compareVersion, setCompareVersion] = useState<number | null>(null);
+  const [revisionInstruction, setRevisionInstruction] = useState('');
+  const [revisionScope, setRevisionScope] = useState<NonNullable<ReviseWithAiRequest['scope']>>('all');
+  const [revisionJobId, setRevisionJobId] = useState<string | null>(null);
+  const refreshedRevisionJob = useRef<string | null>(null);
+  const revisionJob = useJob(revisionJobId);
 
   useEffect(() => {
     if (!post.data) return;
@@ -74,6 +83,14 @@ export default function PostEditorPage() {
     [compareVersion, versions.data?.versions],
   );
 
+  useEffect(() => {
+    const job = revisionJob.data;
+    if (!job || job.status !== 'succeeded' || refreshedRevisionJob.current === job.id) return;
+    refreshedRevisionJob.current = job.id;
+    void post.refetch();
+    void versions.refetch();
+  }, [post, revisionJob.data, versions]);
+
   if (post.isPending || versions.isPending) return <LoadingBlock label="Đang tải bài viết và lịch sử phiên bản…" />;
   if (post.isError || versions.isError || !post.data) {
     return <ErrorPanel title="Không tải được bài viết" message="Không thể mở bài viết này. Hãy thử lại." retryable onRetry={() => { void post.refetch(); void versions.refetch(); }} />;
@@ -82,6 +99,7 @@ export default function PostEditorPage() {
   const current = post.data;
   const postStatus = POST_STATUS_LABELS[current.status];
   const canEdit = hasPermission(workspace, PERMISSIONS.POST_EDIT);
+  const canGenerate = hasPermission(workspace, PERMISSIONS.POST_GENERATE);
   const canApprove = hasPermission(workspace, PERMISSIONS.POST_APPROVE);
   const canSubmit = canEdit && (current.status === 'draft' || current.status === 'rejected' || current.requires_reapproval);
   const apiError = update.error instanceof ApiError ? update.error : null;
@@ -94,6 +112,15 @@ export default function PostEditorPage() {
       caption: caption.trim(),
       hashtags: hashtags.split(/\s+/).map((item) => item.trim()).filter(Boolean),
       note: note.trim() || undefined,
+    });
+  }
+
+  function requestAiRevision(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const instruction = revisionInstruction.trim();
+    if (!instruction) return;
+    reviseWithAi.mutate({ version: current.version, instruction, scope: revisionScope }, {
+      onSuccess: (accepted) => setRevisionJobId(accepted.job_id),
     });
   }
 
@@ -122,6 +149,34 @@ export default function PostEditorPage() {
 
       {hasBlockingError ? <VersionConflictNotice currentVersion={apiError?.currentVersion} onReload={() => { void post.refetch(); void versions.refetch(); }} /> : null}
       {update.error && !hasBlockingError ? <ErrorPanel title="Không lưu được phiên bản mới" message={apiError?.message ?? 'Hãy thử lại.'} code={apiError?.code} requestId={apiError?.requestId} retryable={apiError?.retryable} onRetry={() => update.reset()} /> : null}
+
+      <Card title="Yêu cầu AI sửa" description="AI dùng Brand Profile đã xác nhận và nguồn phù hợp để tạo phiên bản mới. Bài vẫn cần người dùng duyệt; AI không đăng bài.">
+        {canGenerate ? <form onSubmit={requestAiRevision} className="space-y-3">
+          <div>
+            <label htmlFor="ai-revision-instruction" className="block text-sm font-medium text-slate-700">Bạn muốn sửa thế nào?</label>
+            <textarea id="ai-revision-instruction" value={revisionInstruction} onChange={(event) => setRevisionInstruction(event.target.value)} maxLength={2000} required rows={3} placeholder="Ví dụ: viết ngắn hơn, giữ giọng thân thiện và kết thúc bằng lời mời ghé quán." className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900" />
+          </div>
+          <div>
+            <label htmlFor="ai-revision-scope" className="block text-sm font-medium text-slate-700">Phạm vi sửa</label>
+            <select id="ai-revision-scope" value={revisionScope} onChange={(event) => setRevisionScope(event.target.value as NonNullable<ReviseWithAiRequest['scope']>)} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900 sm:max-w-sm">
+              <option value="caption">Caption, hook và CTA</option>
+              <option value="hashtags">Hashtag</option>
+              <option value="media">Mô tả ảnh (không tạo hoặc thay ảnh)</option>
+              <option value="all">Tất cả nội dung AI hỗ trợ</option>
+            </select>
+          </div>
+          <Button type="submit" loading={reviseWithAi.isPending || revisionJob.data?.status === 'queued' || revisionJob.data?.status === 'running'} disabled={!revisionInstruction.trim() || current.status === 'scheduled' || current.status === 'published'} disabledReason={current.status === 'scheduled' || current.status === 'published' ? 'Bài đã lên lịch hoặc đã đăng.' : 'Nhập yêu cầu sửa trước.'}>Tạo phiên bản AI sửa</Button>
+          {!canGenerate ? <PermissionNotice message={permissionDeniedReason(workspace, PERMISSIONS.POST_GENERATE)} requiredPermission={PERMISSIONS.POST_GENERATE} /> : null}
+          {reviseWithAi.error ? <ErrorPanel title="Không gửi được yêu cầu AI sửa" message={reviseWithAi.error instanceof ApiError ? reviseWithAi.error.message : 'Hãy thử lại.'} code={reviseWithAi.error instanceof ApiError ? reviseWithAi.error.code : undefined} requestId={reviseWithAi.error instanceof ApiError ? reviseWithAi.error.requestId : undefined} retryable={reviseWithAi.error instanceof ApiError ? reviseWithAi.error.retryable : false} onRetry={() => reviseWithAi.reset()} /> : null}
+          {revisionJobId && revisionJob.data ? <div role="status" aria-live="polite" className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-3 text-sm text-slate-700">
+            <p className="font-medium">{revisionJob.data.title} · {revisionJob.data.status}</p>
+            {revisionJob.data.error ? <p className="mt-1 text-rose-700">{revisionJob.data.error.message}</p> : null}
+            {revisionJob.data.status === 'succeeded' ? <p className="mt-1">Phiên bản mới đã được tải vào trình biên tập. Kiểm tra nội dung rồi gửi duyệt.</p> : null}
+            <Link className="mt-2 inline-block underline" href={`/w/${workspaceId}/jobs/${revisionJobId}`}>Xem tiến trình tác vụ</Link>
+          </div> : null}
+          {revisionJob.isError ? <p role="alert" className="text-sm text-rose-700">Không theo dõi được tác vụ AI sửa. Hãy mở tác vụ hoặc tải lại trang.</p> : null}
+        </form> : <PermissionNotice message={permissionDeniedReason(workspace, PERMISSIONS.POST_GENERATE)} requiredPermission={PERMISSIONS.POST_GENERATE} />}
+      </Card>
 
       <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_360px]">
         <Card title="Nội dung bài viết" description="Mỗi lần lưu tạo phiên bản mới. Bản cũ vẫn giữ nguyên để đối chiếu.">

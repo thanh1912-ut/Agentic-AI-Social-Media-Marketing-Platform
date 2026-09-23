@@ -42,6 +42,20 @@ test.describe('lát cắt 2 — campaign và nội dung', () => {
     await expect(page.getByRole('button', { name: 'Duyệt bản 5' })).toBeVisible();
   });
 
+  test('AI revise tạo version demo mới rồi quay lại trạng thái draft', async ({ page }) => {
+    await login(page);
+    await page.goto('/w/ws_pho_bac/campaigns/cmp_khai_truong/posts/post_2');
+
+    await page.getByLabel('Bạn muốn sửa thế nào?').fill('Viết ngắn gọn hơn, giữ nguyên thông tin và hashtag.');
+    await page.getByLabel('Phạm vi sửa').selectOption('caption');
+    await page.getByRole('button', { name: 'Tạo phiên bản AI sửa' }).click();
+
+    await expect(page.getByText(/AI demo đã tạo phiên bản mới/)).toBeVisible();
+    await expect(page.getByText(/Bản 3 · AI sửa/)).toBeVisible();
+    await expect(page.getByRole('textbox', { name: 'Caption' })).toHaveValue(/Bản AI demo/);
+    await expect(page.getByText('Dữ liệu demo').first()).toBeVisible();
+  });
+
   test('tạo export đi qua job, không hiển thị là đã đăng', async ({ page }) => {
     await login(page);
     await page.goto('/w/ws_pho_bac/campaigns/cmp_khai_truong');

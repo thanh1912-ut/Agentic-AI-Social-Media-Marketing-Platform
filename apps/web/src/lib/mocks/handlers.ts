@@ -158,6 +158,7 @@ const demoRecommendationRecords: Record<string, Record<string, DemoRecommendatio
 const demoBriefRevisionDrafts: Record<string, Record<string, DemoBriefRevisionDraft>> = {};
 const demoExperimentOutcomes: Record<string, Record<string, ApiExperimentOutcome[]>> = {};
 const demoExperimentOutcomeFingerprints: Record<string, Record<string, Record<string, string>>> = {};
+const demoRevisionJobsByKey: Record<string, string> = {};
 
 const nowIso = (): string => new Date().toISOString();
 
@@ -702,6 +703,84 @@ export const handlers = [
     history.pending_approval_version = undefined;
     demoPostVersions[post.id] = history;
     return HttpResponse.json(post);
+  }),
+
+  http.post('*/api/v1/workspaces/:workspaceId/posts/:postId/revise', async ({ params, request }) => {
+    const session = currentSession();
+    if (!session) return unauthenticated();
+    const workspaceId = params.workspaceId as string;
+    const post = (demoPosts[workspaceId] ?? []).find((item) => item.id === params.postId);
+    if (!post) return notFound('bài viết');
+    const key = request.headers.get('Idempotency-Key');
+    if (!key) return fail(400, ERROR_CODES.VALIDATION_ERROR, 'Thiếu Idempotency-Key cho yêu cầu AI sửa.');
+    const fingerprint = `${workspaceId}:${post.id}:${key}`;
+    const existingJobId = demoRevisionJobsByKey[fingerprint];
+    if (existingJobId && demoJobs[existingJobId]) {
+      return HttpResponse.json({ job_id: existingJobId, job: demoJobs[existingJobId] }, { status: 202 });
+    }
+    const body = (await request.json()) as {
+      version?: number;
+      instruction?: string;
+      scope?: 'caption' | 'hashtags' | 'media' | 'all';
+    };
+    if (body.version !== post.version) {
+      return fail(409, ERROR_CODES.VERSION_CONFLICT, 'Bài viết vừa được cập nhật. Hãy tải bản mới nhất trước khi yêu cầu AI sửa.', {
+        current_version: post.version,
+        your_version: body.version ?? 0,
+      });
+    }
+    if (post.status === POST_STATUSES.SCHEDULED || post.status === POST_STATUSES.PUBLISHED) {
+      return fail(409, ERROR_CODES.STATE_CONFLICT, 'Không thể sửa AI bài đã lên lịch hoặc đã đăng.');
+    }
+    const scope = body.scope ?? 'all';
+    const nextVersion = post.version + 1;
+    const next: PostVersion = {
+      ...post.current,
+      version: nextVersion,
+      caption: scope === 'caption' || scope === 'all'
+        ? `${post.current.caption}\n\n[Bản AI demo] Đã mô phỏng yêu cầu: ${body.instruction ?? ''}`
+        : post.current.caption,
+      hashtags: post.current.hashtags,
+      source: VERSION_SOURCES.AI_REVISED,
+      created_by: session.user.id,
+      created_by_name: 'AI demo',
+      created_at: nowIso(),
+      note: `Mô phỏng AI demo · ${body.instruction ?? ''}`,
+      approved_at: undefined,
+      approved_by: undefined,
+    };
+    const wasApproved = post.status === POST_STATUSES.APPROVED || post.requires_reapproval;
+    post.current = next;
+    post.version = nextVersion;
+    post.updated_at = nowIso();
+    post.status = POST_STATUSES.DRAFT;
+    post.requires_reapproval = wasApproved;
+    post.rejection_reason = undefined;
+    const history = demoPostVersions[post.id] ?? { post_id: post.id, current_version: nextVersion, versions: [] };
+    history.current_version = nextVersion;
+    history.versions = [next, ...history.versions];
+    history.pending_approval_version = undefined;
+    demoPostVersions[post.id] = history;
+
+    const jobId = nextId('job_revise');
+    const createdAt = nowIso();
+    const job: Job = {
+      id: jobId,
+      kind: JOB_KINDS.CONTENT_REVISE,
+      status: JOB_STATUSES.SUCCEEDED,
+      title: 'AI demo đã tạo phiên bản mới',
+      progress: 100,
+      steps: [],
+      result: { post_id: post.id, version: nextVersion },
+      created_at: createdAt,
+      started_at: createdAt,
+      finished_at: createdAt,
+      cancellable: false,
+    };
+    demoJobs[jobId] = job;
+    demoRevisionJobsByKey[fingerprint] = jobId;
+    const accepted: AcceptedResponse = { job_id: jobId, job };
+    return HttpResponse.json(accepted, { status: 202 });
   }),
 
   http.post(

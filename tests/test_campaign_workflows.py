@@ -10,7 +10,7 @@ from datetime import datetime, timezone
 import pytest
 from fastapi.testclient import TestClient
 from openpyxl import load_workbook
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from sqlalchemy.pool import StaticPool
 
@@ -25,8 +25,10 @@ from database.models import (
     new_id,
 )
 from packages.contracts import GeneratedPost, SourceReference
+from packages.prompts import CONTENT_REVISE_SYSTEM_PROMPT
 from services.api import campaign_workflows
 from services.api import job_service
+from services.api import jobs as job_routes
 from services.api.db import get_db
 from services.api.main import app
 from services.api.storage import LocalObjectStorage
@@ -47,6 +49,89 @@ def test_job_dispatch_uses_dedicated_document_and_agent_queues(monkeypatch) -> N
         ("services.worker.tasks.ingest_document_task", {"args": ["doc-job", "doc-1", ["doc-1", "doc-2"]], "queue": "default"}),
         ("services.worker.content_tasks.content_generation_task", {"args": ["content-job"], "queue": "agent"}),
     ]
+
+
+def test_job_recovery_dispatches_queued_content_revision(workflow_api, monkeypatch) -> None:
+    from types import SimpleNamespace
+    import services.worker.celery_app as celery_module
+
+    _client, session_factory = workflow_api
+    owner = _register(_client, "content-recovery@example.com")
+    job_id = new_id()
+    now = datetime.now(timezone.utc)
+    dispatched = []
+
+    async def seed_job():
+        async with session_factory() as db:
+            db.add(Job(
+                id=job_id,
+                company_id=owner["active_workspace_id"],
+                created_by=owner["user"]["id"],
+                kind="content_revise",
+                title="AI sửa bài",
+                status="queued",
+                progress=0,
+                attempts=0,
+                result={"campaign_id": "campaign-for-recovery", "post_id": "post-for-recovery", "post_version": 1},
+                created_at=now,
+                updated_at=now,
+            ))
+            await db.commit()
+
+    asyncio.run(seed_job())
+    monkeypatch.setattr(job_service, "settings", SimpleNamespace(inline_jobs=False, max_job_attempts=3, job_lease_minutes=15))
+    monkeypatch.setattr(celery_module.celery_app, "send_task", lambda name, **kwargs: dispatched.append((name, kwargs)))
+
+    async def recover():
+        async with session_factory() as db:
+            return await job_service.dispatch_queued_jobs(db)
+
+    assert asyncio.run(recover()) == 1
+    assert dispatched == [
+        ("services.worker.content_tasks.content_generation_task", {"args": [job_id], "queue": "agent"}),
+    ]
+
+
+def test_failed_content_revision_job_can_be_retried(workflow_api, monkeypatch) -> None:
+    client, session_factory = workflow_api
+    owner = _register(client, "content-retry@example.com")
+    workspace_id = owner["active_workspace_id"]
+    job_id = new_id()
+    now = datetime.now(timezone.utc)
+
+    async def seed_job():
+        async with session_factory() as db:
+            db.add(Job(
+                id=job_id,
+                company_id=workspace_id,
+                created_by=owner["user"]["id"],
+                kind="content_revise",
+                title="AI sửa bài",
+                status="failed",
+                progress=100,
+                attempts=1,
+                result={"campaign_id": "campaign-for-retry", "post_id": "post-for-retry", "post_version": 1},
+                error={"code": "deepseek_request_failed", "message": "Provider timeout", "retryable": True},
+                created_at=now,
+                updated_at=now,
+            ))
+            await db.commit()
+
+    asyncio.run(seed_job())
+    dispatched: list[str] = []
+
+    async def dispatch(job_id: str) -> None:
+        dispatched.append(job_id)
+
+    monkeypatch.setattr(job_routes, "dispatch_content_generation_job", dispatch)
+    response = client.post(
+        f"/api/v1/jobs/{job_id}/retry",
+        headers={"X-CSRF-Token": client.cookies.get("agentic_csrf")},
+    )
+    assert response.status_code == 202, response.text
+    assert response.json()["job"]["kind"] == "content_revise"
+    assert response.json()["job"]["status"] == "queued"
+    assert dispatched == [job_id]
 
 
 @pytest.fixture
@@ -264,11 +349,18 @@ def test_content_generation_job_persists_cited_draft_and_is_idempotent(workflow_
     assert duplicate.json()["job_id"] == job_id
 
     class FixedModel:
+        last_system_prompt = ""
+        last_input_payload = None
+        omit_citations = False
+
         def generate(self, *, system_prompt, input_payload, response_model):
+            self.last_system_prompt = system_prompt
+            self.last_input_payload = input_payload
             source = input_payload["sources"][0]
             return GeneratedPost(
                 base_version="ignored", version=1, channel="ignored", caption="Cơm gà Bếp Mộc cho bữa cơm gia đình.",
-                citations=[SourceReference(
+                hashtags=["#ModelOutput"], image_brief="Mô tả ảnh do model tạo",
+                citations=[] if self.omit_citations else [SourceReference(
                     source_id=source["source_id"], document_id=source["document_id"],
                     source_version=source["source_version"], locator=source["locator"],
                     excerpt="Bếp Mộc phục vụ cơm gà",
@@ -276,7 +368,8 @@ def test_content_generation_job_persists_cited_draft_and_is_idempotent(workflow_
             ), None
 
     monkeypatch.setattr(content_tasks, "SessionLocal", session_factory)
-    asyncio.run(content_tasks.content_generation_task_async(job_id, agent=ContentAgent(FixedModel())))
+    fixed_model = FixedModel()
+    asyncio.run(content_tasks.content_generation_task_async(job_id, agent=ContentAgent(fixed_model)))
 
     async def check_saved_draft():
         async with session_factory() as db:
@@ -293,6 +386,73 @@ def test_content_generation_job_persists_cited_draft_and_is_idempotent(workflow_
     assert versions[0].generation_job_id == job_id
     assert posts[0].current_json["citations"][0]["document_id"] == document_id
     assert job.result["estimated_cost_available"] is False
+
+    post_url = f"/api/v1/workspaces/{workspace_id}/posts/{posts[0].id}"
+    submitted = client.post(f"{post_url}/submit-approval", headers=headers, json={"version": 1})
+    assert submitted.status_code == 200, submitted.text
+    approved = client.post(f"{post_url}/approval", headers=headers, json={"version": 1, "decision": "approved"})
+    assert approved.status_code == 200, approved.text
+
+    revise_headers = {**headers, "Idempotency-Key": "revise-content-0001"}
+    revise_body = {"version": 1, "instruction": "Rút gọn caption, giữ nguyên hashtag", "scope": "caption"}
+    revise_response = client.post(f"{post_url}/revise", headers=revise_headers, json=revise_body)
+    assert revise_response.status_code == 202, revise_response.text
+    revise_job_id = revise_response.json()["job_id"]
+    assert revise_response.json()["job"]["kind"] == "content_revise"
+    duplicate_revise = client.post(f"{post_url}/revise", headers=revise_headers, json=revise_body)
+    assert duplicate_revise.status_code == 202
+    assert duplicate_revise.json()["job_id"] == revise_job_id
+
+    asyncio.run(content_tasks.content_generation_task_async(revise_job_id, agent=ContentAgent(fixed_model)))
+
+    async def check_revised_post():
+        async with session_factory() as db:
+            revise_job = await db.get(Job, revise_job_id)
+            saved_post = await db.get(CampaignPost, posts[0].id)
+            saved_versions = (await db.scalars(select(PostVersion).where(
+                PostVersion.campaign_id == campaign_id,
+                PostVersion.post_id == posts[0].id,
+            ).order_by(PostVersion.version.desc()))).all()
+            return revise_job, saved_post, saved_versions
+
+    revise_job, revised_post, revised_versions = asyncio.run(check_revised_post())
+    assert revise_job.status == "succeeded", revise_job.error
+    assert revised_post.current_version == 2
+    assert revised_post.status == "draft"
+    assert revised_post.requires_reapproval is True
+    assert revised_post.current_json["hashtags"] == ["#ModelOutput"]
+    assert revised_post.current_json["image_brief"] == "Mô tả ảnh do model tạo"
+    assert revised_versions[0].source == "ai_revised"
+    assert revised_versions[0].generation_job_id == revise_job_id
+    assert revised_versions[1].content_json["caption"] == posts[0].current_json["caption"]
+    assert fixed_model.last_system_prompt == CONTENT_REVISE_SYSTEM_PROMPT
+    assert fixed_model.last_input_payload["content_requirements"]["existing_post"]["caption"] == posts[0].current_json["caption"]
+
+    fixed_model.omit_citations = True
+    ungrounded_response = client.post(
+        f"{post_url}/revise",
+        headers={**headers, "Idempotency-Key": "revise-content-0002"},
+        json={"version": 2, "instruction": "Thêm một tuyên bố mới", "scope": "caption"},
+    )
+    assert ungrounded_response.status_code == 202, ungrounded_response.text
+    ungrounded_job_id = ungrounded_response.json()["job_id"]
+    asyncio.run(content_tasks.content_generation_task_async(ungrounded_job_id, agent=ContentAgent(fixed_model)))
+
+    async def check_ungrounded_revision():
+        async with session_factory() as db:
+            ungrounded_job = await db.get(Job, ungrounded_job_id)
+            saved_post = await db.get(CampaignPost, posts[0].id)
+            saved_version_count = await db.scalar(select(func.count()).select_from(PostVersion).where(
+                PostVersion.campaign_id == campaign_id,
+                PostVersion.post_id == posts[0].id,
+            ))
+            return ungrounded_job, saved_post, saved_version_count
+
+    ungrounded_job, unchanged_post, saved_version_count = asyncio.run(check_ungrounded_revision())
+    assert ungrounded_job.status == "failed"
+    assert ungrounded_job.error["code"] == "content_citations_missing"
+    assert unchanged_post.current_version == 2
+    assert saved_version_count == 2
 
 
 def test_export_writes_downloadable_csv_and_is_idempotent(workflow_api, tmp_path, monkeypatch) -> None:

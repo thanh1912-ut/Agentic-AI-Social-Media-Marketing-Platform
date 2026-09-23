@@ -1,6 +1,6 @@
 # Báo cáo kiểm thử
 
-Cập nhật: 2026-09-24 01:59 (Asia/Ho_Chi_Minh). Branch `codex/product-v1-completion` có security fixes `d9cb6a8`, `1e1589f`, rate limits `004020e` và AI integration. Project owner đã chấp thuận data flow đoạn trích tài liệu + Brand Profile tới DeepSeek. Real-mode analytics smoke lịch sử chạy trên backend source `628efcb`; publishing route fix `c77720d` và contract-test adjustment `73ff4f7` là các commits trước đó.
+Cập nhật: 2026-09-24 02:39 (Asia/Ho_Chi_Minh). Branch `codex/product-v1-completion` được test trên working-tree snapshot có parent `00507dd` và các thay đổi AI revise trước commit. Branch đã có security fixes `d9cb6a8`, `1e1589f`, rate limits `004020e` và DeepSeek integration. Project owner đã chấp thuận data flow đoạn trích tài liệu + Brand Profile tới DeepSeek. Real-mode analytics smoke lịch sử chạy trên backend source `628efcb`; publishing route fix `c77720d` và contract-test adjustment `73ff4f7` là các commits trước đó.
 
 Môi trường: Python 3.11.16, Node.js 26.7.0, SQLite tạm, Chromium desktop/mobile. Bộ Playwright tự động dùng Next.js local và MSW; ngoài ra có một browser smoke thủ công qua Codex browser với Next.js + FastAPI real mode và DB SQLite hoàn toàn mới.
 
@@ -39,6 +39,12 @@ Môi trường: Python 3.11.16, Node.js 26.7.0, SQLite tạm, Chromium desktop/m
 | Frontend unit tests | **43 passed** | Vitest 4 files. |
 | Frontend typecheck | PASS | `npx tsc --noEmit --incremental false`; default project command could not write its protected `tsconfig.tsbuildinfo` cache. |
 | Frontend lint and production build | PASS | ESLint and Next.js production build completed. |
+| Latest full Python suite on AI-revise working tree | **103 passed, 1 skipped** | Python 3.11.16; fixture/API/worker tests include revise idempotency, exact expected-version recheck, scope preservation, `ai_revised` history, approval reset, failed-job retry and queued-job recovery. Skip is live DeepSeek smoke; one existing LangGraph pending-deprecation warning. |
+| Focused `tests/test_campaign_workflows.py` | **7 passed** | SQLite fixture integration; no external model calls. |
+| OpenAPI export/check and generated frontend schema | PASS | Added AI revise route, DTO and `202` job response; `scripts/export_openapi.py --check` is clean. |
+| `npx tsc --noEmit --incremental false`; `npx vitest run`; focused ESLint | PASS; **43 tests passed** | Frontend checks use the updated generated API schema. |
+| `npm run test:e2e -- slice2-campaign.spec.ts` | **8 passed** | Production Next.js + MSW demo; 4 desktop and 4 mobile tests, including AI revise UI/status/version. It does not call DeepSeek. |
+| Python `compileall` for database/services/packages/tests | PASS | Bytecode cache is written under `/private/tmp`; no test DB or provider used. |
 
 ## Chưa nghiệm thu
 
@@ -46,11 +52,11 @@ Môi trường: Python 3.11.16, Node.js 26.7.0, SQLite tạm, Chromium desktop/m
 - Docker Compose, worker/scheduler restart, MinIO/S3: Docker/Podman và MinIO không sẵn có.
 - DeepSeek live: user đã chấp thuận đoạn trích tài liệu và Brand Profile data flow, nhưng không có `DEEPSEEK_API_KEY`; live smoke đã skip. Chưa xác minh model list của tài khoản, latency/token/chi phí.
 - Meta publish/metrics: chưa có app/page/token/quyền/App Review.
-- Real-mode browser E2E đầy đủ: analytics/recommendation và manual campaign → post → approval → export đã qua browser/API thật trên SQLite. AI content path được kiểm tra qua API+worker fixture integration, chưa gọi DeepSeek hoặc chạy browser path với model thật; PostgreSQL/MinIO cũng chưa nghiệm thu.
+- Real-mode browser E2E đầy đủ: analytics/recommendation và manual campaign → post → approval → export đã qua browser/API thật trên SQLite. AI generation/revise path được kiểm tra qua API+worker fixtures và mock browser, chưa gọi DeepSeek hoặc chạy browser path với model thật; PostgreSQL/MinIO cũng chưa nghiệm thu.
 
 ## Phạm vi bằng chứng
 
-Campaign, manual post/version, approval, export and content generation have SQLite API/worker fixture tests; only manual post/export has a real-mode browser flow. These tests do not represent PostgreSQL or production deployment. Content-generation integration validates versioned workspace context, threshold-filtered active sources, exact citation metadata and an unapproved draft; the fake model never sends data to DeepSeek. User approved sending Brand Profile and document excerpts, and production workers now use the configured DeepSeek adapter; the API key is still absent. Backend-only company/brand database IDs are excluded from model prompts, and external embeddings remain separately gated. Manual metrics, recommendation feedback, Apply draft, accept/version conflict and REC-002 outcome persistence are checked by SQLite API tests; UI outcome flow uses MSW and is not performance evidence. Tenant tests are not a full security audit. Security review reproduced traversal through `LocalObjectStorage.put('../outside.txt')`; rate limits have fake-Redis unit tests but real Redis, reverse proxy and edge controls remain unverified. See [security-review.md](security-review.md).
+Campaign, manual post/version, approval, export, content generation and AI revise have SQLite API/worker fixture tests; only manual workflows have real-mode browser coverage. AI revise has mock browser coverage but no live-provider browser run. These tests do not represent PostgreSQL or production deployment. Content integration validates versioned workspace context, threshold-filtered active sources, exact citation metadata and unapproved draft/version behavior; fake models never send data to DeepSeek. User approved sending Brand Profile and document excerpts, and production workers use the configured DeepSeek adapter; the API key is still absent. Backend-only company/brand database IDs are excluded from model prompts, and external embeddings remain separately gated. Manual metrics, recommendation feedback, Apply draft, accept/version conflict and REC-002 outcome persistence are checked by SQLite API tests; UI outcome flow uses MSW and is not performance evidence. Tenant tests are not a full security audit. Security review reproduced traversal through `LocalObjectStorage.put('../outside.txt')`; rate limits have fake-Redis unit tests but real Redis, reverse proxy and edge controls remain unverified. See [security-review.md](security-review.md).
 
 ## Lệnh tái kiểm tra
 

@@ -345,9 +345,9 @@ export const postApi = {
 
   /** Yêu cầu AI sửa — sinh version MỚI, không ghi đè version hiện tại. */
   reviseWithAi: (workspaceId: string, postId: string, body: ReviseWithAiRequest) =>
-    apiRequest<AcceptedResponse>(
+    apiRequest<ApiAcceptedResponse>(
       v1(`/workspaces/${workspaceId}/posts/${postId}/revise`),
-      { method: 'POST', body },
+      { method: 'POST', body, headers: { 'Idempotency-Key': newIdempotencyKey('revise') } },
     ),
 
   /** Sinh tối đa 10 bài mỗi lần — trả job để theo dõi. */

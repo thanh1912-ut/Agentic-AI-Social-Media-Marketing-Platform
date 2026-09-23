@@ -793,6 +793,23 @@ export interface paths {
         readonly patch?: never;
         readonly trace?: never;
     };
+    readonly "/api/v1/workspaces/{company_id}/posts/{post_id}/revise": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get?: never;
+        readonly put?: never;
+        /** Revise Post With Ai */
+        readonly post: operations["revise_post_with_ai_api_v1_workspaces__company_id__posts__post_id__revise_post"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
     readonly "/api/v1/workspaces/{company_id}/posts/{post_id}/submit-approval": {
         readonly parameters: {
             readonly query?: never;
@@ -2013,6 +2030,19 @@ export interface components {
             /** Token */
             readonly token: string;
         };
+        /** ReviseWithAiRequest */
+        readonly ReviseWithAiRequest: {
+            /** Instruction */
+            readonly instruction: string;
+            /**
+             * Scope
+             * @default all
+             * @enum {string}
+             */
+            readonly scope: "caption" | "hashtags" | "media" | "all";
+            /** Version */
+            readonly version: number;
+        };
         /** SaveRecommendationRequest */
         readonly SaveRecommendationRequest: {
             /** Source Id */
@@ -2200,6 +2230,7 @@ export type SchemaRecommendationOut = components['schemas']['RecommendationOut']
 export type SchemaRecordExperimentOutcomeRequest = components['schemas']['RecordExperimentOutcomeRequest'];
 export type SchemaRegisterRequest = components['schemas']['RegisterRequest'];
 export type SchemaResetPasswordRequest = components['schemas']['ResetPasswordRequest'];
+export type SchemaReviseWithAiRequest = components['schemas']['ReviseWithAiRequest'];
 export type SchemaSaveRecommendationRequest = components['schemas']['SaveRecommendationRequest'];
 export type SchemaSelectWorkspaceRequest = components['schemas']['SelectWorkspaceRequest'];
 export type SchemaSessionResponse = components['schemas']['SessionResponse'];
@@ -4287,6 +4318,45 @@ export interface operations {
                 };
                 content: {
                     readonly "application/json": readonly components["schemas"]["ApprovalRecordOut"][];
+                };
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    readonly revise_post_with_ai_api_v1_workspaces__company_id__posts__post_id__revise_post: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: {
+                readonly "Idempotency-Key"?: string | null;
+                readonly authorization?: string | null;
+            };
+            readonly path: {
+                readonly company_id: string;
+                readonly post_id: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": components["schemas"]["ReviseWithAiRequest"];
+            };
+        };
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 202: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["AcceptedResponse"];
                 };
             };
             /** @description Validation Error */

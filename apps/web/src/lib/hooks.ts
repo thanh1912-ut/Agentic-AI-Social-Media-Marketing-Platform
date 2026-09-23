@@ -32,6 +32,7 @@ import type {
   PostVersionList,
   Publication,
   Recommendation,
+  ReviseWithAiRequest,
   SocialConnection,
   UpdatePostRequest,
 } from '@agentic/contracts';
@@ -411,6 +412,16 @@ export function useUpdatePost(workspaceId: string, postId: string) {
       queryClient.setQueryData(queryKeys.post(workspaceId, postId), post);
       void queryClient.invalidateQueries({ queryKey: queryKeys.postVersions(workspaceId, postId) });
       void queryClient.invalidateQueries({ queryKey: queryKeys.posts(workspaceId, post.campaign_id) });
+    },
+  });
+}
+
+export function useRevisePostWithAi(workspaceId: string, postId: string) {
+  const queryClient = useQueryClient();
+  return useMutation<AcceptedResponse, Error, ReviseWithAiRequest>({
+    mutationFn: (body) => api.post.reviseWithAi(workspaceId, postId, body),
+    onSuccess: (accepted) => {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.job(accepted.job_id) });
     },
   });
 }

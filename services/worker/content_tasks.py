@@ -22,13 +22,14 @@ from database.models import (
     Job,
     JobEvent,
     JobStep,
+    PostApproval,
     PostVersion,
     new_id,
     utcnow,
 )
 from packages.contracts import BrandProfile as InternalBrandProfile
 from packages.contracts import CampaignBrief
-from packages.prompts import CONTENT_POST_PROMPT_VERSION
+from packages.prompts import CONTENT_POST_PROMPT_VERSION, CONTENT_REVISE_PROMPT_VERSION
 from services.agents.content_agent import ContentAgent
 from services.agents.knowledge.interfaces import source_context
 from services.agents.providers.errors import ProviderError
@@ -123,12 +124,12 @@ def _confirmed_profile(brand: Brand, company: Company, revision: BrandProfileRev
     )
 
 
-def _safe_metadata(metadata, snapshot_id: str) -> dict[str, Any] | None:
+def _safe_metadata(metadata, snapshot_id: str, prompt_version: str = CONTENT_POST_PROMPT_VERSION) -> dict[str, Any] | None:
     if metadata is None:
         return None
     result = metadata.model_dump(mode="json")
     result.update({
-        "prompt_version": CONTENT_POST_PROMPT_VERSION,
+        "prompt_version": prompt_version,
         "input_snapshot_id": snapshot_id,
         "estimated_cost_usd": None,
         "estimated_cost_available": False,
@@ -177,7 +178,7 @@ async def content_generation_task_async(
     async with SessionLocal() as db:
         claimed = await db.execute(
             update(Job)
-            .where(Job.id == job_id, Job.kind == "content_generation", Job.status == "queued", Job.attempts < settings.max_job_attempts)
+            .where(Job.id == job_id, Job.kind.in_(("content_generation", "content_revise")), Job.status == "queued", Job.attempts < settings.max_job_attempts)
             .values(
                 status="running",
                 started_at=func.coalesce(Job.started_at, now),
@@ -193,6 +194,7 @@ async def content_generation_task_async(
         payload = dict(job.result or {}) if job else {}
         company_id = job.company_id if job else ""
         created_by = job.created_by if job else ""
+        job_kind = job.kind if job else "content_generation"
         attempts = (job.attempts if job else 0)
         await _set_step(db, job_id, "prepare_context", "running", 5, "Đang kiểm tra campaign, Brand Profile và tài liệu nguồn.")
         await _append_event(db, job, "progress", "Đã nhận job sinh nội dung.", 5)
@@ -202,6 +204,8 @@ async def content_generation_task_async(
         agent = agent or ContentAgent(configured_structured_model())
         embedder = embedder if embedder is not None else configured_embedding_provider()
         knowledge_index = index or PostgresKnowledgeIndex()
+        target_post = None
+        base_content: dict[str, Any] = {}
         async with SessionLocal() as db:
             campaign = await db.scalar(select(Campaign).where(Campaign.id == payload.get("campaign_id"), Campaign.company_id == company_id))
             brand = await db.scalar(select(Brand).where(Brand.company_id == company_id))
@@ -217,6 +221,26 @@ async def content_generation_task_async(
                 raise ContentGenerationFailure("brand_profile_not_confirmed", "Không tìm thấy phiên bản Brand Profile hiện tại.")
             if campaign.version != payload.get("campaign_version") or brand.version != payload.get("brand_version"):
                 raise ContentGenerationFailure("content_context_changed", "Campaign hoặc Brand Profile đã đổi sau khi gửi yêu cầu; hãy tạo job mới.")
+            if job_kind == "content_revise":
+                target_post = await db.scalar(select(CampaignPost).where(
+                    CampaignPost.id == payload.get("post_id"),
+                    CampaignPost.company_id == company_id,
+                    CampaignPost.campaign_id == campaign.id,
+                ))
+                if target_post is None:
+                    raise ContentGenerationFailure("post_not_found", "Không tìm thấy bài viết trong workspace.")
+                if target_post.current_version != payload.get("post_version"):
+                    raise ContentGenerationFailure("version_conflict", "Bài viết đã đổi phiên bản; hãy tải lại trước khi yêu cầu AI sửa.")
+                if target_post.status in {"scheduled", "published"}:
+                    raise ContentGenerationFailure("post_not_revisable", "Không thể sửa AI bài đã lên lịch hoặc đã đăng.")
+                base_version_row = await db.scalar(select(PostVersion).where(
+                    PostVersion.company_id == company_id,
+                    PostVersion.post_id == target_post.id,
+                    PostVersion.version == target_post.current_version,
+                ))
+                if base_version_row is None:
+                    raise ContentGenerationFailure("content_version_missing", "Không tìm thấy phiên bản nội dung cần sửa.")
+                base_content = dict(base_version_row.content_json)
             profile = _confirmed_profile(brand, company, revision)
             request_data = payload["request"]
             brief_data = campaign.brief_json
@@ -247,6 +271,8 @@ async def content_generation_task_async(
             brand_version = brand.version
             campaign_version = campaign.version
             query_parts = [campaign.name, brief.objective, brief.audience, brief.offer or "", *brief.user_requirements]
+            if target_post:
+                query_parts.extend([str(base_content.get("caption", "")), *request_data.get("instruction", "").split()])
             query = " ".join(part for part in query_parts if part).strip()[:2000]
             retrieved = await knowledge_index.retrieve(
                 db,
@@ -272,6 +298,7 @@ async def content_generation_task_async(
                 "campaign_version": campaign_version,
                 "brief": brief.model_dump(mode="json"),
                 "request": request_data,
+                "post_version": payload.get("post_version") if target_post else None,
                 "sources": [
                     {key: item.get(key) for key in ("source_id", "document_id", "source_version", "source_hash", "locator")}
                     for item in context
@@ -288,12 +315,30 @@ async def content_generation_task_async(
             await db.commit()
 
         generated: list[dict[str, Any]] = []
-        count = int(request_data["count"])
-        pillars = request_data["pillars"]
-        formats = request_data["formats"]
+        count = 1 if target_post else int(request_data["count"])
+        pillars = [target_post.pillar] if target_post else request_data["pillars"]
+        formats = [target_post.format] if target_post else request_data["formats"]
         for offset in range(count):
             pillar = pillars[offset % len(pillars)]
             content_format = formats[offset % len(formats)]
+            content_requirements = {
+                "pillar": pillar,
+                "format": content_format,
+                "instruction": request_data.get("instruction"),
+                "start_date": brief.start_date.isoformat() if brief.start_date else None,
+                "end_date": brief.end_date.isoformat() if brief.end_date else None,
+            }
+            if target_post:
+                content_requirements.update({
+                    "revision_scope": request_data.get("scope", "all"),
+                    "existing_post": {
+                        "caption": base_content.get("caption", ""),
+                        "hook": base_content.get("hook"),
+                        "cta": base_content.get("cta"),
+                        "hashtags": base_content.get("hashtags", []),
+                        "image_brief": base_content.get("image_brief"),
+                    },
+                })
             task_result = run_content_task(
                 job_id=job_id,
                 input_snapshot_id=snapshot_id,
@@ -301,17 +346,17 @@ async def content_generation_task_async(
                 profile=profile,
                 brief=brief,
                 base_version=f"campaign-{campaign_version}-brand-{brand_version}",
-                next_version=1,
+                next_version=(int(payload["post_version"]) + 1) if target_post else 1,
                 context=context,
-                content_requirements={
-                    "pillar": pillar,
-                    "format": content_format,
-                    "instruction": request_data.get("instruction"),
-                    "start_date": brief.start_date.isoformat() if brief.start_date else None,
-                    "end_date": brief.end_date.isoformat() if brief.end_date else None,
-                },
+                content_requirements=content_requirements,
                 channel=brief.channel,
+                operation="revise" if target_post else "generate",
             )
+            if target_post and request_data.get("scope", "all") in {"caption", "all"} and not task_result.payload.get("citations"):
+                raise ContentGenerationFailure(
+                    "content_citations_missing",
+                    "AI không trả nguồn xác minh cho caption đã sửa; phiên bản mới chưa được lưu.",
+                )
             generated.append({"payload": task_result.payload, "metadata": task_result.metadata, "pillar": pillar, "format": content_format, "repairs": task_result.repair_attempts})
             async with SessionLocal() as db:
                 job = await db.get(Job, job_id)
@@ -340,11 +385,12 @@ async def content_generation_task_async(
             metadata_items: list[dict[str, Any]] = []
             total_repairs = 0
             input_tokens = output_tokens = latency_ms = 0
+            prompt_version = CONTENT_REVISE_PROMPT_VERSION if target_post else CONTENT_POST_PROMPT_VERSION
             for item in generated:
                 generated_post = item["payload"]
-                post_id = new_id()
+                post_id = target_post.id if target_post else new_id()
                 now = utcnow()
-                metadata = _safe_metadata(item["metadata"], snapshot_id)
+                metadata = _safe_metadata(item["metadata"], snapshot_id, prompt_version)
                 if metadata:
                     metadata_items.append(metadata)
                     input_tokens += int(metadata["input_tokens"])
@@ -363,27 +409,69 @@ async def content_generation_task_async(
                     "evidence_ids": generated_post.get("evidence_ids", []),
                     "generation_metadata": metadata,
                 }
-                db.add(CampaignPost(
-                    id=post_id,
-                    company_id=company_id,
-                    campaign_id=campaign.id,
-                    channel=brief.channel,
-                    pillar=item["pillar"],
-                    format=item["format"],
-                    status="draft",
-                    current_version=1,
-                    current_json=content,
-                    created_at=now,
-                    updated_at=now,
-                ))
+                next_version = 1
+                version_source = "ai_generated"
+                if target_post:
+                    locked_post = await db.scalar(select(CampaignPost).where(
+                        CampaignPost.id == target_post.id,
+                        CampaignPost.company_id == company_id,
+                    ).with_for_update())
+                    if locked_post is None or locked_post.current_version != payload.get("post_version"):
+                        raise ContentGenerationFailure("version_conflict", "Bài viết đã đổi phiên bản trong lúc AI sửa; kết quả chưa được lưu.")
+                    if locked_post.status in {"scheduled", "published"}:
+                        raise ContentGenerationFailure("post_not_revisable", "Bài viết đã lên lịch hoặc đã đăng; kết quả chưa được lưu.")
+                    next_version = locked_post.current_version + 1
+                    scope = request_data.get("scope", "all")
+                    content = dict(locked_post.current_json)
+                    if scope in {"caption", "all"}:
+                        content.update({
+                            "caption": generated_post["caption"],
+                            "hook": generated_post.get("hook"),
+                            "cta": generated_post.get("cta"),
+                            "citations": citation_data,
+                            "evidence_ids": generated_post.get("evidence_ids", []),
+                        })
+                    if scope in {"hashtags", "all"}:
+                        content["hashtags"] = generated_post.get("hashtags", [])
+                    if scope in {"media", "all"}:
+                        # AI produces an image brief only; it cannot upload or replace media.
+                        content["image_brief"] = generated_post.get("image_brief")
+                    content["generation_metadata"] = metadata
+                    had_approval = bool(await db.scalar(select(PostApproval.id).where(
+                        PostApproval.company_id == company_id,
+                        PostApproval.post_id == locked_post.id,
+                        PostApproval.decision == "approved",
+                    ).limit(1)))
+                    locked_post.current_version = next_version
+                    locked_post.current_json = content
+                    locked_post.status = "draft"
+                    locked_post.pending_approval_version = None
+                    locked_post.requires_reapproval = had_approval
+                    locked_post.rejection_reason = None
+                    locked_post.updated_at = now
+                    version_source = "ai_revised"
+                else:
+                    db.add(CampaignPost(
+                        id=post_id,
+                        company_id=company_id,
+                        campaign_id=campaign.id,
+                        channel=brief.channel,
+                        pillar=item["pillar"],
+                        format=item["format"],
+                        status="draft",
+                        current_version=1,
+                        current_json=content,
+                        created_at=now,
+                        updated_at=now,
+                    ))
                 db.add(PostVersion(
                     id=new_id(),
                     company_id=company_id,
                     campaign_id=campaign.id,
                     post_id=post_id,
-                    version=1,
+                    version=next_version,
                     content_json=content,
-                    source="ai_generated",
+                    source=version_source,
                     created_by=created_by,
                     created_by_name="AI assistant",
                     generation_job_id=job_id,
@@ -400,7 +488,7 @@ async def content_generation_task_async(
                 run_metadata_json={
                     "provider": "deepseek",
                     "model": metadata_items[0]["model"] if metadata_items else settings.llm_default_model,
-                    "prompt_version": CONTENT_POST_PROMPT_VERSION,
+                    "prompt_version": prompt_version,
                     "schema_version": "GeneratedPost",
                     "input_tokens": input_tokens,
                     "output_tokens": output_tokens,
@@ -417,9 +505,9 @@ async def content_generation_task_async(
             db.add(AuditEvent(
                 company_id=company_id,
                 actor_user_id=created_by,
-                action="content.generate",
-                entity_type="campaign",
-                entity_id=campaign.id,
+                action="content.revise" if target_post else "content.generate",
+                entity_type="post" if target_post else "campaign",
+                entity_id=target_post.id if target_post else campaign.id,
                 metadata_json={"job_id": job_id, "post_ids": created_posts, "count": len(created_posts), "provider": "deepseek"},
             ))
             job.status = "succeeded"
@@ -439,9 +527,9 @@ async def content_generation_task_async(
                 "estimated_cost_usd": None,
                 "estimated_cost_available": False,
             }
-            await _set_step(db, job_id, "generate_posts", "succeeded", 100, f"Đã sinh {len(created_posts)} bản nháp.")
-            await _set_step(db, job_id, "save_posts", "succeeded", 100, "Đã lưu draft và phiên bản; chưa gửi duyệt hay đăng bài.")
-            await _append_event(db, job, "complete", "Đã lưu các bản nháp sinh bằng AI.", 100)
+            await _set_step(db, job_id, "generate_posts", "succeeded", 100, "Đã sửa bản nháp bằng AI." if target_post else f"Đã sinh {len(created_posts)} bản nháp.")
+            await _set_step(db, job_id, "save_posts", "succeeded", 100, "Đã lưu phiên bản mới, chờ người dùng duyệt; chưa đăng bài." if target_post else "Đã lưu draft và phiên bản; chưa gửi duyệt hay đăng bài.")
+            await _append_event(db, job, "complete", "Đã lưu phiên bản AI sửa; cần người dùng duyệt lại nếu cần." if target_post else "Đã lưu các bản nháp sinh bằng AI.", 100)
             await db.commit()
     except ContentGenerationFailure as failure:
         await _fail(job_id, failure, attempts=attempts)

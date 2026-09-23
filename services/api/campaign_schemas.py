@@ -105,6 +105,12 @@ class UpdatePostRequest(StrictModel):
         return self
 
 
+class ReviseWithAiRequest(StrictModel):
+    version: int = Field(ge=1)
+    instruction: str = Field(min_length=1, max_length=2000)
+    scope: Literal["caption", "hashtags", "media", "all"] = "all"
+
+
 class PostOut(StrictModel):
     id: str
     campaign_id: str
