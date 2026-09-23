@@ -40,12 +40,12 @@ Giữ kiến trúc modular monolith và stack đã có: Next.js/React/TypeScript
 | 3. Campaign/content/approval/export | Phase 2; DB schema/API/OpenAPI; chấp thuận data flow cho provider ngoài | Campaign/brief thật; generate/revise content job; immutable version; approval gắn hash/version; edit yêu cầu duyệt lại; CSV/XLSX download thật. Campaign/manual post/version/approval/export đã triển khai và có API evidence trên SQLite. AI generate/revise đang chờ chấp thuận; publish hash guard còn thiếu. |
 | 4. Meta/manual publishing | Approved version; credentials/Meta App Review | Khi chưa đủ quyền: manual export/publish state được ghi rõ. Connector chỉ DONE khi version, permission, token, scheduling và reconcile được live kiểm chứng. |
 | 5. Metrics/dashboard | Metrics contract; Meta hoặc manual import | Manual import lưu snapshot tenant-scoped, chặn duplicate, ghi source/time/post age; report định lượng bằng code giữ missing khác zero; dashboard hiển thị coverage/freshness và nhóm pillar/format. Đã có API, migration 0005 và UI; Meta auto-sync còn mở. |
-| 6. Recommendation loop | Phase 5 | API đề xuất deterministic có evidence ID, mô tả giới hạn và abstain khi mẫu nhỏ. Đã có đề xuất thử nghiệm; feedback/apply tạo brief/strategy revision và audit trail còn mở, không publish tự động. |
+| 6. Recommendation loop | Phase 5 | API đề xuất deterministic có evidence ID, mô tả giới hạn và abstain khi mẫu nhỏ. Feedback được lưu/audit; Apply tạo brief revision chờ owner duyệt; chấp nhận tăng campaign version theo optimistic concurrency. Đã có API/UI và test SQLite/mock. Theo dõi outcome thực tế của thử nghiệm còn mở; không publish tự động. |
 | 7. Hardening/bàn giao | Các phase trước | Tenant isolation, recovery, secrets, backup/restore, real-mode E2E, load smoke, docs và clean checkout được kiểm chứng. |
 
 ## Backlog ưu tiên
 
-Chi tiết theo ID và tiêu chí ở [task-board.md](task-board.md). Thứ tự còn lại: isolated PostgreSQL/Compose runtime → DeepSeek data-flow approval và live smoke → real API E2E → recommendation feedback/apply → Meta permissions → hardening. Manual metrics import, report và đề xuất thử nghiệm đã có fixture/API path; không coi đó là Meta sync hoặc recommendation loop hoàn chỉnh.
+Chi tiết theo ID và tiêu chí ở [task-board.md](task-board.md). Thứ tự còn lại: isolated PostgreSQL/Compose runtime → DeepSeek data-flow approval + live smoke → real API E2E → Meta permissions → hardening và theo dõi outcome thử nghiệm. Manual metrics import, report, feedback và brief revision đã có fixture/API path; không coi đó là Meta sync, live provider test hoặc production runtime.
 
 ## Để sau v1
 

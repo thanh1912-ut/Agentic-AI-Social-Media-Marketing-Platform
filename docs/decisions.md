@@ -76,4 +76,12 @@ Ngày tạo: 2026-09-23. Trạng thái dưới đây được ghi từ audit đ�
 - Quyết định: tính KPI và nhóm dữ liệu bằng code; chỉ đề xuất thử nghiệm deterministic khi đủ ít nhất 5 bài qua ít nhất 2 pillar, gắn evidence IDs, giới hạn, confidence thấp và bước đo lại. Nếu dữ liệu thiếu thì abstain.
 - Không chọn: để LLM tự khẳng định nguyên nhân hoặc tự áp dụng chiến lược/publish.
 - Ảnh hưởng: feedback, apply thành revision và theo dõi kết quả thử nghiệm là phần tiếp theo; UI phải giữ rõ đây là đề xuất mô tả.
-- Trạng thái: API/UI đề xuất cơ bản IMPLEMENTED; feedback/apply loop INCOMPLETE.
+- Trạng thái: API/UI recommendation, feedback và draft-apply IMPLEMENTED; post-experiment outcome tracking INCOMPLETE.
+
+## DEC-010 — Apply recommendation tạo brief revision cần duyệt
+
+- Vấn đề: áp dụng lời khuyên trực tiếp vào campaign đang chạy sẽ bỏ qua xác nhận của owner và có thể ghi đè brief đã đổi sau khi recommendation được tạo.
+- Quyết định: persist recommendation theo fingerprint evidence; ghi feedback/audit; Apply chỉ tạo `CampaignBriefRevisionDraft` ở trạng thái pending review. Owner accept mới cập nhật `Campaign.version`, và chỉ khi `base_version` vẫn khớp; nếu lệch trả `409`.
+- Không chọn: sửa campaign ngay khi nhấn Apply hoặc ghi đè draft cũ.
+- Ảnh hưởng: migration 0006; API/OpenAPI cho save/feedback/apply/decision; UI diff before/after. Không tự sinh content hay publish; bước AI generation vẫn phụ thuộc data-flow approval.
+- Trạng thái: IMPLEMENTED; SQLite API và desktop/mobile MSW E2E pass, PostgreSQL runtime chưa được xác minh.
