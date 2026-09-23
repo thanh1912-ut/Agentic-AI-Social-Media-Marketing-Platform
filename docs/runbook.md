@@ -13,7 +13,7 @@
 
 ## PostgreSQL migrations
 
-`alembic upgrade head` đã được xác minh từ migration 0001 đến 0009 trên PostgreSQL 18.3 cô lập, có pgvector 0.8.2; chạy lại `upgrade head` không thay đổi schema. Migration 0008 thêm `campaigns.content_plan_json`; migration 0009 thêm `media_assets` và hash nội dung đã duyệt. SQLite và PostgreSQL 18 đều đã chạy 0001→0009 sạch và rerun. Migration environment tự tạo/nâng `alembic_version.version_num` lên `VARCHAR(128)` trên PostgreSQL vì revision IDs dài hơn giới hạn mặc định 32 ký tự. Bằng chứng này chỉ xác nhận migrations trên DB test; chưa xác nhận toàn bộ API/worker/Redis/MinIO stack với PostgreSQL.
+`alembic upgrade head` đã được xác minh từ migration 0001 đến 0009 trên PostgreSQL 18.3 cô lập, có pgvector 0.8.2; chạy lại `upgrade head` không thay đổi schema. Migration 0008 thêm `campaigns.content_plan_json`; migration 0009 thêm `media_assets` và hash nội dung đã duyệt. SQLite và PostgreSQL 18 đều đã chạy 0001→0009 sạch và rerun. FastAPI/browser manual flow cũng pass trên PostgreSQL + local storage. Migration environment tự tạo/nâng `alembic_version.version_num` lên `VARCHAR(128)` trên PostgreSQL vì revision IDs dài hơn giới hạn mặc định 32 ký tự. Redis-backed API readiness và một Celery task smoke đã pass trên disposable services; Compose, scheduler process, document-ingestion task, restart recovery với job tồn tại và MinIO vẫn chưa được nghiệm thu.
 
 ## Cài local
 
@@ -57,6 +57,8 @@ celery -A services.worker.celery_app:celery_app worker --loglevel=INFO --queues=
 
 Scheduler entry point cần xác minh trong `services/worker/scheduled_jobs.py` trước khi dùng; chưa ghi lệnh scheduler như đã nghiệm thu.
 
+Runtime smoke đã chạy một disposable PostgreSQL 18 + Redis 8 + FastAPI + local storage: `/healthz` trả 200, `/readyz` xác nhận database/Redis/object storage sẵn sàng, Celery ping trả lời và `recover_due_jobs` được gửi qua broker rồi chạy xong trên DB rỗng. Smoke này chỉ chứng minh process kết nối và task consume cơ bản; chưa kiểm tra scheduler, ingestion, restart recovery, job lease hoặc Compose. Không giữ test account hay DB test sau lượt chạy.
+
 ## Tạo tài khoản và seed
 
 API hiện có register/login và workspace bootstrap. Tạo user test riêng; không dùng tài khoản/DB production. Invitation hiện chưa có email provider; link trả về phải được chuyển cho người nhận qua kênh riêng. Không có seed credentials mặc định được nghiệm thu.
@@ -72,7 +74,7 @@ Cookie-authenticated refresh/logout yêu cầu header `X-CSRF-Token` khớp cook
 - Dashboard uses latest per-post snapshots for the selected source and reports freshness, coverage, pillar/format groups and missing-value notes. Recommendations are deterministic test suggestions with evidence IDs; they abstain on small samples and do not establish causality. Save a proposal to persist its evidence fingerprint, then record useful/not useful/already done feedback. An owner can choose a campaign and Apply to create a pending brief revision; inspect before/after values, then accept or discard. Campaign changes only on accept; a stale base version returns `409` and needs a new revision.
 - After an accepted revision has run, choose that campaign and the recommendation's same source on Analytics. Record baseline and follow-up measurement windows, one metric, and a shared post-age range. Windows must not overlap and both cohorts need usable snapshots. The API persists computed values, coverage/sample size, outcome-specific evidence IDs, snapshot IDs and limitations; repeated identical submissions are idempotent. The comparison is observational and must not be presented as causal proof. Apply migration 0007 before using this feature on an existing database.
 - LLM fixture tests do not call DeepSeek. API+worker fixture integration verifies the confirmed-profile gate, idempotency, exact-source citations, saved draft/version, slot strategy/topic/date payload, slot retry/cancel handling, AI revise scope, expected-version guard, and reapproval. The live adapter smoke checks that the configured model appears in the account's model list, then makes one structured JSON request; it may incur charges. In a secured environment with the server key provisioned, run `RUN_DEEPSEEK_API_SMOKE=1 .venv/bin/python -m pytest -m api_smoke tests/test_deepseek_api_smoke.py -q`. The user-approved data flow covers Brand Profile, retrieved document excerpts, and selected slot strategy/topic/date; backend-only tenant/brand/content-slot database IDs are not sent in the prompt.
-- Real-mode smoke analytics/recommendation đã chạy trên API loopback với SQLite mới và dữ liệu giả lập. Thêm `tests/e2e/manual-workflows.real.spec.ts`: test tự tạo owner/campaign, viết bài thủ công, gửi và duyệt v1, tạo export rồi tải XLSX qua API thật; chạy với isolated SQLite migration 0001→0007 và local storage tạm, không gọi DeepSeek/Meta. Trang `Xuất bản` cũng được kiểm tra trên production build; khi Meta chưa kết nối, trang hướng dẫn export, đăng thủ công và nhập số liệu. Test account/database chỉ dùng trong môi trường tạm, không ghi vào repo. AI API+worker test dùng fake model; live DeepSeek/browser acceptance còn chờ secret và test runtime.
+- Real-mode smoke analytics/recommendation đã chạy trên API loopback với SQLite mới và dữ liệu giả lập. `tests/e2e/manual-workflows.real.spec.ts` tự tạo owner/campaign, viết bài, upload ảnh thật, lưu version 2, gửi/duyệt, đọc lại media SHA và approval hash qua API, tạo export và tải XLSX. Test đã pass riêng trên SQLite và PostgreSQL 18 + local storage; không dùng MSW, DeepSeek, Meta hoặc Redis. Trang `Xuất bản` hướng dẫn export/đăng thủ công/nhập số liệu khi Meta chưa kết nối. Các test account/database chỉ tồn tại trong môi trường disposable và được xóa sau test. AI API+worker fixture test không gọi DeepSeek; live acceptance vẫn chờ key.
 
 ## Test, OpenAPI và build
 
@@ -85,6 +87,14 @@ PYTHONPYCACHEPREFIX=/tmp/agentic-pycache .venv/bin/python -m compileall -q datab
 (cd apps/web && npm run test:e2e)
 ```
 
+Với API test đã chạy ở `http://127.0.0.1:8000`, CORS cần cho phép `http://127.0.0.1:3101`; chạy real-mode browser flow từ `apps/web` bằng:
+
+```bash
+E2E_REAL_API_BASE_URL=http://127.0.0.1:8000 npm run test:e2e:real -- manual-workflows.real.spec.ts --workers=1
+```
+
+Flow đăng ký account ngẫu nhiên mới, tạo campaign/post, upload ảnh, duyệt đúng version và tải XLSX. Dùng database test mới hoặc database cô lập; không trỏ vào production. Nó không gọi DeepSeek/Meta và không kiểm tra worker queue.
+
 Không chạy live smoke hoặc real E2E nếu credential chưa được provision. The build requires write access to `apps/web/.next`. Xem `docs/test-report.md` để tách fixture, integration, browser, live LLM và Meta results.
 
 ## Migration, backup và restore
@@ -96,7 +106,17 @@ alembic upgrade head
 alembic current
 ```
 
-Backup/restore cần thêm kiểm chứng với DB test trước khi dùng ở môi trường pilot. Quy trình dự kiến: `pg_dump -Fc` vào vị trí backup được bảo vệ; restore vào database mới; xác nhận schema revision, row counts/sample records và truy cập file storage trước khi cutover. Không chạy restore lên DB hiện hành.
+Trên disposable PostgreSQL, `pg_dump -Fc` rồi `pg_restore` sang database mới đã giữ nguyên counts của company/campaign/post/version/approval/media/export. Thư mục local object storage gồm media và XLSX cũng đã archive/restore, so sánh đường dẫn và SHA-256 của 2 object. Đây là smoke test thủ công; chưa có lịch backup tự động, MinIO/S3 recovery hoặc production cutover drill.
+
+Với PostgreSQL tools đã cấu hình qua `PGHOST`/`PGPORT`/`PGUSER` và secret store/pgpass:
+
+```bash
+pg_dump --format=custom --no-owner --no-acl --file="$BACKUP_DIR/agentic.dump" "$PGDATABASE"
+createdb "$RESTORE_DATABASE"
+pg_restore --exit-on-error --no-owner --no-privileges --dbname="$RESTORE_DATABASE" "$BACKUP_DIR/agentic.dump"
+```
+
+Xác nhận Alembic revision, row counts và dữ liệu mẫu trên database mới trước khi dùng. Với local storage, archive root đã cấu hình rồi restore vào root tạm và so checksum; với MinIO/S3, dùng công cụ backup riêng phù hợp bucket/versioning và thực hiện test restore độc lập. Không chạy restore đè lên database hiện hành.
 
 ## Job lỗi, token lỗi, provider lỗi
 

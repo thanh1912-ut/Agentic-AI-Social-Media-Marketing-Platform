@@ -1,8 +1,8 @@
 # Báo cáo kiểm thử
 
-Cập nhật: 2026-09-24 05:05 (Asia/Ho_Chi_Minh). Kết quả mới nhất chạy trên commit `43ab2d3` của branch `codex/product-v1-completion`. Project owner đã chấp thuận gửi đoạn trích tài liệu, Brand Profile và strategy/topic/date của slot đã chọn tới DeepSeek.
+Cập nhật: 2026-09-24 05:32 (Asia/Ho_Chi_Minh). Kết quả real-mode mới nhất chạy trên commit `4f9a97a` của branch `codex/product-v1-completion`. Backend full suite **105 passed, 1 skipped** và frontend **43 passed/typecheck/lint/build** được chạy trên implementation commit `43ab2d3`; `4f9a97a` chỉ mở rộng real-mode browser acceptance test. Project owner đã chấp thuận gửi đoạn trích tài liệu, Brand Profile và strategy/topic/date của slot đã chọn tới DeepSeek.
 
-Môi trường: Python 3.11.16, Node.js 26.7.0, SQLite tạm, Chromium desktop/mobile. Bộ Playwright tự động dùng Next.js local và MSW; ngoài ra có một browser smoke thủ công qua Codex browser với Next.js + FastAPI real mode và DB SQLite hoàn toàn mới.
+Môi trường: Python 3.11.16, Node.js 26.7.0, SQLite và PostgreSQL 18.3 disposable, local object storage, Chromium desktop/mobile. Bộ Playwright mock dùng MSW; real-mode Playwright kết nối FastAPI thật và đã chạy riêng với cả SQLite lẫn PostgreSQL.
 
 ## Snapshot nghiệm thu MEDIA-001 mới nhất
 
@@ -14,8 +14,14 @@ Môi trường: Python 3.11.16, Node.js 26.7.0, SQLite tạm, Chromium desktop/m
 | Fresh SQLite Alembic `upgrade head`, rerun, `current` | **PASS — `0009_media_assets_and_approval_hash (head)`** | DB disposable `/private/tmp/agentic-v1-media-migration-final.sqlite`; không dùng app/customer data. |
 | Fresh PostgreSQL 18.3 Alembic `upgrade head`, rerun | **PASS — migration 0001→0009; pgvector 0.8.2** | Cluster dùng một lần, bind loopback `127.0.0.1:55439`, dừng sau test; `media_assets` có 12 cột, `post_approvals.content_sha256` NOT NULL. Đây chỉ là migration test, không phải API/worker runtime acceptance trên PostgreSQL. |
 | `.venv/bin/python scripts/export_openapi.py --check`; Python `compileall`; `git diff --check` | **PASS** | OpenAPI/generated TypeScript đồng bộ; không phát hiện lỗi cú pháp hoặc whitespace. |
+| `E2E_REAL_API_BASE_URL=http://127.0.0.1:18000 E2E_REAL_PORT=13101 npm run test:e2e:real -- manual-workflows.real.spec.ts --workers=1` với SQLite 0001→0009 + local storage | **1 passed** | `NEXT_PUBLIC_USE_MOCKS=0`; tạo account mới, tạo campaign/post, upload ảnh qua FastAPI, lưu version 2, duyệt, đọc lại media SHA/approval hash qua API và download XLSX. Không MSW, DeepSeek, Meta hay Redis. |
+| Cùng real-mode browser test với PostgreSQL 18.3 + pgvector 0.8.2 mới migrate 0001→0009 + local storage | **1 passed** | Cùng luồng thật với DB PostgreSQL; không đại diện cho worker/Redis/MinIO hoặc LLM live. |
+| PostgreSQL `pg_dump -Fc` → `pg_restore` sang database mới | **PASS** | Counts trước/sau khớp theo thứ tự companies/campaigns/posts/versions/approvals/media_assets/exports: `1/1/1/2/1/1/1`; restored revision là `0009_media_assets_and_approval_hash`. Test DB hoàn toàn disposable. |
+| Local object storage archive/restore checksum roundtrip | **PASS — 2 objects** | Tệp media và export được tar vào thư mục test mới; danh sách đường dẫn và SHA-256 trước/sau giống nhau. Đây không phải MinIO/S3 backup acceptance. |
+| Disposable PostgreSQL + Redis + FastAPI runtime | **PASS — `/healthz` 200, `/readyz` ready** | PostgreSQL 18 test DB, Redis 8 và local object storage riêng; readiness báo `database`, `redis`, `object_storage` đều true. Không phải Compose/production deployment. |
+| Celery worker qua Redis | **PASS — ping và consume `recover_due_jobs`, kết quả 0** | Worker kết nối queue `default,agent`; task recovery đã được gửi qua broker và thực thi trên DB rỗng. Không kiểm tra scheduler, document-ingestion task, restart/lease recovery với job tồn tại hoặc race conditions. |
 
-Không có DeepSeek key nên không có model-list/live JSON request hoặc chi phí/latency thực. Không có Meta credentials và không đăng bài thật. Docker/Podman và MinIO không khả dụng, nên Compose/full worker runtime, Redis queue/restart và object store deployment chưa được kiểm tra. E2E MEDIA-001 ở trên là browser mock path; API/media behavior được kiểm tra riêng bởi backend fixture integration suite.
+Không có DeepSeek key nên không có model-list/live JSON request hoặc chi phí/latency thực. Không có Meta credentials và không đăng bài thật. Docker/Podman và MinIO không khả dụng, nên Compose, scheduler process, document-ingestion task, restart/lease recovery với job tồn tại và object store deployment chưa được kiểm tra. Redis queue đã được smoke-test với worker recovery task rỗng như bảng trên. 14 campaign-slice E2E dùng MSW; real-mode E2E riêng kết nối FastAPI và PostgreSQL/SQLite thật. Backend media integration tests dùng API fixture suite; các kiểu kiểm thử không gộp chung.
 
 ## Đã chạy
 
