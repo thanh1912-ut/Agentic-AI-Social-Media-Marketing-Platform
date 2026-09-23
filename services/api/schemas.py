@@ -143,10 +143,18 @@ class DocumentOut(StrictSchema):
     extracted: dict[str, Any] | None = None
     extraction_status: Literal["pending", "extracted", "metadata_only", "failed"] = "pending"
     knowledge_status: Literal["pending", "ready", "not_available", "failed"] = "pending"
+    retrieval_mode: Literal["lexical", "semantic_vector", "not_available"] = "not_available"
     profile_status: Literal["pending", "ready", "not_available", "failed"] = "pending"
     uploaded_by: str
     uploaded_at: datetime
     processed_at: datetime | None = None
+
+
+class JobErrorOut(StrictSchema):
+    code: str
+    message: str
+    hint: str | None = None
+    retryable: bool = False
 
 
 class JobStepOut(StrictSchema):
@@ -157,14 +165,7 @@ class JobStepOut(StrictSchema):
     message: str | None = None
     started_at: datetime | None = None
     finished_at: datetime | None = None
-    error: DocumentError | None = None
-
-
-class JobErrorOut(StrictSchema):
-    code: str
-    message: str
-    hint: str | None = None
-    retryable: bool = False
+    error: JobErrorOut | None = None
 
 
 class JobOut(StrictSchema):

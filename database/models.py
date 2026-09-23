@@ -156,6 +156,7 @@ class Document(Base, IdMixin, TimestampMixin):
     deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     normalized_json: Mapped[dict[str, Any] | None] = mapped_column(JSON)
     knowledge_status: Mapped[str] = mapped_column(String(30), default="pending", nullable=False)
+    retrieval_mode: Mapped[str] = mapped_column(String(30), default="not_available", nullable=False)
     profile_status: Mapped[str] = mapped_column(String(30), default="pending", nullable=False)
     error: Mapped[dict[str, Any] | None] = mapped_column(JSON)
     extracted: Mapped[dict[str, Any] | None] = mapped_column(JSON)
@@ -196,6 +197,10 @@ class KnowledgeChunk(Base, TimestampMixin):
     text: Mapped[str] = mapped_column(Text, nullable=False)
     token_count: Mapped[int] = mapped_column(Integer, nullable=False)
     kind: Mapped[str] = mapped_column(String(20), nullable=False)
+    parser_version: Mapped[str] = mapped_column(String(40), default="unknown", nullable=False)
+    chunker_version: Mapped[str] = mapped_column(String(80), default="unknown", nullable=False)
+    embedding_provider: Mapped[str] = mapped_column(String(40), default="none", nullable=False)
+    embedding_model_version: Mapped[str] = mapped_column(String(160), default="lexical-v1", nullable=False)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     embedding: Mapped[list[float] | None] = mapped_column(Vector(1536).with_variant(JSON(), "sqlite"))
 

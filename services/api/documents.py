@@ -50,6 +50,7 @@ def _document_out(document: Document) -> DocumentOut:
             else "pending"
         ),
         knowledge_status=document.knowledge_status,
+        retrieval_mode=document.retrieval_mode,
         profile_status=document.profile_status,
         uploaded_by=document.uploaded_by,
         uploaded_at=document.created_at,

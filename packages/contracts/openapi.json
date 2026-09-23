@@ -570,6 +570,16 @@
             ],
             "title": "Progress"
           },
+          "retrieval_mode": {
+            "default": "not_available",
+            "enum": [
+              "lexical",
+              "semantic_vector",
+              "not_available"
+            ],
+            "title": "Retrieval Mode",
+            "type": "string"
+          },
           "size": {
             "title": "Size",
             "type": "integer"
@@ -887,7 +897,7 @@
           "error": {
             "anyOf": [
               {
-                "$ref": "#/components/schemas/DocumentError"
+                "$ref": "#/components/schemas/JobErrorOut"
               },
               {
                 "type": "null"

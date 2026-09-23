@@ -21,11 +21,14 @@ from database.models import (
     JobStep,
     User,
     BrandProfileRevision,
+    new_id,
     utcnow,
 )
 from packages.contracts import BrandProfile as InternalBrandProfile
 from packages.contracts import NormalizedDocument, SourceReference, TableBlock, TextBlock
 from services.agents.brand_agent import BrandAgent
+from services.agents.brand_agent.result import run_brand_profile_handler
+from services.agents.knowledge.interfaces import source_context
 from services.api.config import settings
 from services.api.db import SessionLocal
 from services.api.job_service import append_job_event
@@ -34,12 +37,19 @@ from services.api.brand_profiles import _profile_revision, internal_profile_to_h
 from services.ingestion.knowledge_store import PostgresKnowledgeIndex
 from services.ingestion.parsers import ParseError, parse_document
 from .celery_app import celery_app
-from .model_provider import AIConfigurationError, OpenAIStructuredModel, configured_embedding_provider
-from .ai_tasks import run_brand_profile_task
+from services.ingestion.knowledge_store import embedding_identity
+from .model_provider import AIConfigurationError, configured_embedding_provider, configured_structured_model
 
 
 PROFILE_STEP = "create_brand_profile"
 MAX_CONTEXT_CHUNKS = 40
+
+
+class BrandProfileJobError(RuntimeError):
+    def __init__(self, code: str, message: str, *, retryable: bool) -> None:
+        super().__init__(message)
+        self.code = code
+        self.retryable = retryable
 
 
 async def _set_step(
@@ -242,10 +252,19 @@ async def _persist_normalized(
                 )
             )
             chunk_index += 1
-        knowledge_chunks = await index.upsert(db, normalized, embedder=embedder)
+        _embedding_provider, embedding_model_version = embedding_identity(embedder)
+        knowledge_chunks = await index.upsert(
+            db,
+            normalized,
+            embedder=embedder,
+            parser_version=document.parser_version,
+            chunker_version=settings.chunker_version,
+            embedding_model_version=embedding_model_version,
+        )
         document.status = "ready"
         document.normalized_json = normalized.model_dump(mode="json")
         document.knowledge_status = "ready"
+        document.retrieval_mode = settings.retrieval_mode
         document.profile_status = "pending"
         document.extracted = {
             **parsed.metadata,
@@ -253,6 +272,7 @@ async def _persist_normalized(
             "warnings": parsed.warnings,
             "normalized_blocks": chunk_index,
             "knowledge_chunks": knowledge_chunks,
+            "retrieval_mode": settings.retrieval_mode,
         }
         document.error = None
         document.processed_at = utcnow()
@@ -280,6 +300,7 @@ async def _record_image_metadata(company_id: str, document_id: str, parsed) -> N
             document.extracted = {**parsed.metadata, "warnings": parsed.warnings}
             document.normalized_json = None
             document.knowledge_status = "not_available"
+            document.retrieval_mode = "not_available"
             document.profile_status = "not_available"
             document.processed_at = utcnow()
             await db.commit()
@@ -341,6 +362,7 @@ async def _run_brand_profile(
     agent: BrandAgent | None,
     embedder=None,
 ) -> tuple[int, dict[str, Any], list[str]]:
+    _embedding_provider, embedding_model_version = embedding_identity(embedder)
     async with SessionLocal() as db:
         company = await db.get(Company, company_id)
         brand = await db.scalar(select(Brand).where(Brand.company_id == company_id).with_for_update())
@@ -350,34 +372,69 @@ async def _run_brand_profile(
             await db.scalars(
                 select(Document).where(
                     Document.company_id == company_id,
-                    Document.id.in_(document_ids),
                     Document.is_active.is_(True),
                     Document.deleted_at.is_(None),
                     Document.status == "ready",
                     Document.knowledge_status == "ready",
+                    Document.normalized_json.is_not(None),
                 )
             )
         ).all()
+        # Re-index active normalized sources when parser/chunker/embedder identity
+        # changes. Exact-version dedup makes this cheap when nothing changed.
+        for document in eligible:
+            normalized = NormalizedDocument.model_validate(document.normalized_json)
+            await index.upsert(
+                db,
+                normalized,
+                embedder=embedder,
+                parser_version=document.parser_version,
+                chunker_version=settings.chunker_version,
+                embedding_model_version=embedding_model_version,
+            )
+            document.retrieval_mode = settings.retrieval_mode
+            if document.extracted is not None:
+                document.extracted = {**document.extracted, "retrieval_mode": settings.retrieval_mode}
         retrieved = await index.retrieve(
             db,
-            "thương hiệu doanh nghiệp sản phẩm dịch vụ khách hàng mục tiêu giọng điệu",
+            " ".join(
+                value
+                for value in (
+                    company.name,
+                    company.industry or "",
+                    "sản phẩm khách hàng giọng điệu",
+                )
+                if value
+            ),
             company_id=company_id,
             brand_id=brand.id,
-            active_source_ids=None,
+            active_source_ids={document.source_id for document in eligible},
             embedder=embedder,
+            chunker_version=settings.chunker_version,
+            embedding_model_version=embedding_model_version,
+            minimum_score=settings.minimum_relevance_score,
+            minimum_semantic_score=settings.minimum_semantic_score,
             top_k=MAX_CONTEXT_CHUNKS,
         )
         # The adapter joins active documents under this tenant before ranking.
         # No credentials, upload metadata, or user/session tokens enter context.
         if not retrieved:
-            raise RuntimeError("no active normalized content is available for profile extraction")
-        context = [
-            {"source_id": item.chunk.source_id, "locator": item.chunk.locator, "text": item.chunk.text}
-            for item in retrieved
-        ]
+            raise BrandProfileJobError(
+                "no_relevant_context",
+                "No active source chunk met the configured relevance threshold.",
+                retryable=False,
+            )
+        context = source_context([item.chunk for item in retrieved])
         snapshot_payload = {
             "company_id": company_id,
             "brand_id": brand.id,
+            "retrieval_mode": settings.retrieval_mode,
+            "parser_versions": sorted({document.parser_version for document in eligible}),
+            "chunker_version": settings.chunker_version,
+            "embedding_provider": _embedding_provider,
+            "embedding_model_version": embedding_model_version,
+            "minimum_relevance_score": settings.minimum_relevance_score,
+            "minimum_semantic_score": settings.minimum_semantic_score,
             "documents": [
                 {
                     "document_id": document.id,
@@ -402,7 +459,7 @@ async def _run_brand_profile(
         snapshot_json = json.dumps(snapshot_payload, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
         input_snapshot_id = hashlib.sha256(snapshot_json.encode("utf-8")).hexdigest()
         if agent is None:
-            agent = BrandAgent(OpenAIStructuredModel())
+            agent = BrandAgent(configured_structured_model())
         await _set_step(db, job_id, PROFILE_STEP, status="running", progress=10, message="AI đang đề xuất hồ sơ thương hiệu từ các nguồn đang hoạt động.")
         job = await db.get(Job, job_id)
         if job:
@@ -418,33 +475,58 @@ async def _run_brand_profile(
         if existing_revision is not None:
             return existing_revision.revision, existing_revision.run_metadata_json or {}, existing_revision.warnings_json or []
 
-    result = await asyncio.to_thread(
-        run_brand_profile_task,
+    handler_result = await asyncio.to_thread(
+        run_brand_profile_handler,
+        company_id=company_id,
+        brand_id=brand.id,
+        document_ids=sorted({item["document_id"] for item in context}),
         job_id=job_id,
+        run_id=new_id(),
         input_snapshot_id=input_snapshot_id,
         agent=agent,
-        brand_id=brand.id,
         business_hint=f"{company.name}; {company.industry or ''}".strip("; "),
         context=context,
     )
-    profile = _sanitize_profile_evidence(InternalBrandProfile.model_validate(result.payload), retrieved)
+    if handler_result.status != "succeeded" or handler_result.profile is None:
+        failure = handler_result.error
+        raise BrandProfileJobError(
+            failure.code if failure else "brand_profile_failed",
+            failure.message if failure else "The M3 Brand Profile handler did not return a profile.",
+            retryable=failure.retryable if failure else False,
+        )
+    profile = _sanitize_profile_evidence(handler_result.profile, retrieved)
     warnings = list(ingestion_warnings) + list(profile.unknowns) + list(profile.contradictions)
     warnings.extend(
         warning
         for document in eligible
         for warning in (document.normalized_json or {}).get("extraction_warnings", [])
     )
-    meta = result.metadata
+    meta = handler_result.generation
     if meta:
         meta = meta.model_copy(update={"input_snapshot_id": input_snapshot_id})
     run_metadata = {
-        "task_name": result.task_name,
+        "task_name": "run_brand_profile_handler",
         "job_id": job_id,
-        "repair_attempts": result.repair_attempts,
+        "run_id": handler_result.run_id,
+        "repair_attempts": handler_result.repair_attempts,
         "generation": meta.model_dump(mode="json") if meta else None,
-        "estimated_cost_available": False,
+        "estimated_cost_available": handler_result.estimated_cost_available,
         "retrieved_chunks": len(retrieved),
+        "retrieval_mode": settings.retrieval_mode,
+        "embedding_provider": _embedding_provider,
+        "embedding_model_version": embedding_model_version,
+        "minimum_relevance_score": settings.minimum_relevance_score,
+        "minimum_semantic_score": settings.minimum_semantic_score,
+        "semantic_vector_rag_accepted": False,
+        "semantic_vector_rag_verification": "not_run",
+        "lexical_mode_notice": (
+            "Lexical-only smoke mode; semantic/vector RAG has not been accepted or verified."
+            if settings.retrieval_mode == "lexical"
+            else None
+        ),
     }
+    if settings.retrieval_mode == "lexical":
+        warnings.append("Lexical-only smoke mode; semantic/vector RAG has not been accepted or verified.")
     source_refs = [
         reference.model_dump(mode="json")
         for fact in profile.facts
@@ -669,11 +751,16 @@ async def ingest_document_task_batch_async(
             )
             warnings.extend(profile_warnings)
             return
-        except AIConfigurationError:
+        except AIConfigurationError as exc:
             retryable = False
             code = "ai_not_configured"
-            message = "Chưa cấu hình dịch vụ AI cho worker."
-            hint = "Quản trị viên cần cấu hình OPENAI_API_KEY ở server rồi chạy lại tài liệu."
+            message = str(exc)
+            hint = "Cấu hình provider và secret đã chọn trong môi trường server rồi chạy lại job. Không dùng NEXT_PUBLIC cho API key."
+        except BrandProfileJobError as exc:
+            retryable = exc.retryable
+            code = exc.code
+            message = str(exc)
+            hint = "Sửa cấu hình/model nếu cần; lỗi tạm thời sẽ được worker thử lại theo số lượt đã cấu hình."
         except Exception:
             retryable = True
             code = "brand_profile_generation_failed"

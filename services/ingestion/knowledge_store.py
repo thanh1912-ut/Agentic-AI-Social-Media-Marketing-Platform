@@ -10,14 +10,30 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from database.models import Document, KnowledgeChunk as KnowledgeChunkRow
 from packages.contracts import NormalizedDocument
+from services.api.config import settings
 from services.agents.knowledge.chunking import KnowledgeChunk, chunk_document
-from services.agents.knowledge.retrieval import RetrievedChunk, _cosine, _lexical_score
+from services.agents.knowledge.retrieval import (
+    EmbeddingProvider,
+    RetrievedChunk,
+    _cosine,
+    _lexical_score,
+    filter_relevant_chunks,
+)
+
+LEXICAL_EMBEDDING_VERSION = "lexical-v1"
 
 
-class EmbeddingProvider:
-    def embed(self, texts: Sequence[str]) -> Sequence[Sequence[float]]:
-        """Return one fixed-dimension embedding for each input string."""
-        raise NotImplementedError
+def embedding_identity(
+    embedder: EmbeddingProvider | None,
+    model_version: str | None = None,
+) -> tuple[str, str]:
+    if embedder is None:
+        return "none", model_version or LEXICAL_EMBEDDING_VERSION
+    provider = str(getattr(embedder, "provider_name", settings.embedding_provider))
+    model = str(getattr(embedder, "model_name", model_version or settings.embedding_model))
+    if not model:
+        raise ValueError("An embedding provider must expose its configured model name")
+    return provider, model
 
 
 class PostgresKnowledgeIndex:
@@ -33,10 +49,18 @@ class PostgresKnowledgeIndex:
         document: NormalizedDocument,
         *,
         embedder: EmbeddingProvider | None = None,
+        parser_version: str,
+        chunker_version: str,
+        embedding_model_version: str,
         batch_size: int = 32,
     ) -> int:
         if batch_size <= 0:
             raise ValueError("batch_size must be positive")
+        if not parser_version.strip() or not chunker_version.strip() or not embedding_model_version.strip():
+            raise ValueError("parser, chunker, and embedding model versions are required")
+        embedding_provider, resolved_model_version = embedding_identity(embedder, embedding_model_version)
+        if embedder is not None and resolved_model_version != embedding_model_version:
+            raise ValueError("configured embedding model version does not match the embedder")
         source_filter = (
             KnowledgeChunkRow.company_id == document.company_id,
             KnowledgeChunkRow.brand_id == document.brand_id,
@@ -47,13 +71,25 @@ class PostgresKnowledgeIndex:
                 select(KnowledgeChunkRow).where(
                     *source_filter,
                     KnowledgeChunkRow.source_hash == document.source_hash,
+                    KnowledgeChunkRow.parser_version == parser_version,
+                    KnowledgeChunkRow.chunker_version == chunker_version,
+                    KnowledgeChunkRow.embedding_provider == embedding_provider,
+                    KnowledgeChunkRow.embedding_model_version == embedding_model_version,
                 )
             )
         ).all()
         if existing:
+            await db.execute(update(KnowledgeChunkRow).where(*source_filter).values(is_active=False))
             await db.execute(
                 update(KnowledgeChunkRow)
-                .where(*source_filter, KnowledgeChunkRow.source_hash == document.source_hash)
+                .where(
+                    *source_filter,
+                    KnowledgeChunkRow.source_hash == document.source_hash,
+                    KnowledgeChunkRow.parser_version == parser_version,
+                    KnowledgeChunkRow.chunker_version == chunker_version,
+                    KnowledgeChunkRow.embedding_provider == embedding_provider,
+                    KnowledgeChunkRow.embedding_model_version == embedding_model_version,
+                )
                 .values(is_active=document.active)
             )
             return 0
@@ -63,7 +99,12 @@ class PostgresKnowledgeIndex:
             .where(*source_filter)
             .values(is_active=False)
         )
-        chunks = chunk_document(document)
+        chunks = chunk_document(
+            document,
+            parser_version=parser_version,
+            chunker_version=chunker_version,
+            embedding_model_version=embedding_model_version,
+        )
         if embedder:
             for start in range(0, len(chunks), batch_size):
                 batch = chunks[start : start + batch_size]
@@ -71,6 +112,10 @@ class PostgresKnowledgeIndex:
                 if len(vectors) != len(batch):
                     raise ValueError("embedding provider returned a mismatched batch length")
                 for offset, vector in enumerate(vectors):
+                    if len(vector) != settings.embedding_dimensions:
+                        raise ValueError(
+                            "embedding dimensions do not match the vector column; migration and full reindex required"
+                        )
                     chunks[start + offset] = replace(
                         batch[offset], embedding=tuple(float(value) for value in vector)
                     )
@@ -88,6 +133,10 @@ class PostgresKnowledgeIndex:
                     text=chunk.text,
                     token_count=chunk.token_count,
                     kind=chunk.kind,
+                    parser_version=parser_version,
+                    chunker_version=chunker_version,
+                    embedding_provider=embedding_provider,
+                    embedding_model_version=embedding_model_version,
                     is_active=chunk.active,
                     embedding=list(chunk.embedding) if chunk.embedding is not None else None,
                 )
@@ -105,12 +154,21 @@ class PostgresKnowledgeIndex:
         brand_id: str,
         active_source_ids: set[str] | None = None,
         embedder: EmbeddingProvider | None = None,
+        parser_version: str | None = None,
+        chunker_version: str | None = None,
+        embedding_model_version: str | None = None,
+        minimum_score: float = 0.12,
+        minimum_semantic_score: float = 0.72,
         top_k: int = 20,
     ) -> list[RetrievedChunk]:
         if not query.strip():
             return []
         if not 1 <= top_k <= self.max_context:
             raise ValueError(f"top_k must be between 1 and {self.max_context}")
+        embedding_provider, resolved_model_version = embedding_identity(embedder, embedding_model_version)
+        if embedder is not None and embedding_model_version is not None and embedding_model_version != resolved_model_version:
+            raise ValueError("configured embedding model version does not match the embedder")
+        embedding_model_version = embedding_model_version or resolved_model_version
         statement = (
             select(KnowledgeChunkRow)
             .join(Document, Document.id == KnowledgeChunkRow.document_id)
@@ -123,8 +181,14 @@ class PostgresKnowledgeIndex:
                 Document.deleted_at.is_(None),
                 Document.status == "ready",
                 Document.knowledge_status == "ready",
+                KnowledgeChunkRow.embedding_provider == embedding_provider,
+                KnowledgeChunkRow.embedding_model_version == embedding_model_version,
             )
         )
+        if parser_version is not None:
+            statement = statement.where(KnowledgeChunkRow.parser_version == parser_version)
+        if chunker_version is not None:
+            statement = statement.where(KnowledgeChunkRow.chunker_version == chunker_version)
         if active_source_ids is not None:
             if not active_source_ids:
                 return []
@@ -163,10 +227,18 @@ class PostgresKnowledgeIndex:
                 kind=row.kind,
                 active=row.is_active,
                 embedding=tuple(row.embedding) if row.embedding is not None else None,
+                parser_version=row.parser_version,
+                chunker_version=row.chunker_version,
+                embedding_model_version=row.embedding_model_version,
             )
             lexical = _lexical_score(query, chunk.text)
             semantic = _cosine(query_vector, chunk.embedding)
             score = lexical if query_vector is None else 0.65 * semantic + 0.35 * lexical
             ranked.append(RetrievedChunk(chunk, score, semantic, lexical))
         ranked.sort(key=lambda item: (-item.score, item.chunk.chunk_id))
-        return ranked[:top_k]
+        return filter_relevant_chunks(
+            ranked,
+            top_k=top_k,
+            minimum_score=minimum_score,
+            minimum_semantic_score=minimum_semantic_score,
+        )

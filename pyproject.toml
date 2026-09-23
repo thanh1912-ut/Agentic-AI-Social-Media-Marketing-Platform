@@ -41,6 +41,10 @@ dev = [
 testpaths = ["tests"]
 pythonpath = ["."]
 addopts = "-ra"
+markers = [
+  "fixture_integration: backend/API integration using deterministic model fixtures",
+  "api_smoke: explicit live provider smoke tests that may incur API cost",
+]
 
 [tool.setuptools.packages.find]
 include = ["database*", "packages*", "services*"]

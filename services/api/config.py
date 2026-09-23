@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import os
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 
@@ -47,9 +47,18 @@ class Settings:
     parser_version: str = os.getenv("PARSER_VERSION", "m2-parser-v1")
     auto_create_schema: bool = _bool("AUTO_CREATE_SCHEMA", False)
     inline_jobs: bool = _bool("INLINE_JOBS", False)
-    openai_api_key: str = os.getenv("OPENAI_API_KEY", "")
-    llm_default_model: str = os.getenv("LLM_DEFAULT_MODEL", "gpt-4o-mini")
-    embedding_model: str = os.getenv("EMBEDDING_MODEL", "")
+    llm_provider: str = os.getenv("LLM_PROVIDER", "deepseek").strip().casefold()
+    deepseek_api_key: str = field(default_factory=lambda: os.getenv("DEEPSEEK_API_KEY", ""), repr=False)
+    deepseek_base_url: str = os.getenv("DEEPSEEK_BASE_URL", "https://api.deepseek.com").strip()
+    llm_default_model: str = os.getenv("LLM_DEFAULT_MODEL", "deepseek-flash").strip()
+    embedding_provider: str = os.getenv("EMBEDDING_PROVIDER", "none").strip().casefold()
+    embedding_api_key: str = field(default_factory=lambda: os.getenv("EMBEDDING_API_KEY", ""), repr=False)
+    embedding_model: str = os.getenv("EMBEDDING_MODEL", "").strip()
+    embedding_dimensions: int = int(os.getenv("EMBEDDING_DIMENSIONS", "1536"))
+    retrieval_mode: str = os.getenv("RETRIEVAL_MODE", "lexical").strip().casefold()
+    chunker_version: str = os.getenv("CHUNKER_VERSION", "vi-token-window-v2").strip()
+    minimum_relevance_score: float = float(os.getenv("MINIMUM_RELEVANCE_SCORE", "0.12"))
+    minimum_semantic_score: float = float(os.getenv("MINIMUM_SEMANTIC_SCORE", "0.72"))
     ai_request_timeout_seconds: int = int(os.getenv("AI_REQUEST_TIMEOUT_SECONDS", "120"))
     max_job_attempts: int = int(os.getenv("MAX_JOB_ATTEMPTS", "3"))
     job_lease_minutes: int = int(os.getenv("JOB_LEASE_MINUTES", "30"))
@@ -60,3 +69,28 @@ if settings.cookie_samesite not in {"strict", "lax", "none"}:
     raise ValueError("COOKIE_SAMESITE must be strict, lax, or none")
 if settings.cookie_samesite == "none" and not settings.cookie_secure:
     raise ValueError("COOKIE_SECURE=1 is required when COOKIE_SAMESITE=none")
+if settings.llm_provider != "deepseek":
+    raise ValueError("LLM_PROVIDER must be deepseek; no implicit provider fallback is supported")
+if settings.embedding_provider not in {"none", "openai"}:
+    raise ValueError("EMBEDDING_PROVIDER must be none or openai")
+if settings.retrieval_mode not in {"lexical", "semantic_vector"}:
+    raise ValueError("RETRIEVAL_MODE must be lexical or semantic_vector")
+if settings.embedding_provider == "none" and settings.retrieval_mode != "lexical":
+    raise ValueError("RETRIEVAL_MODE=semantic_vector requires an embedding provider")
+if settings.embedding_provider != "none" and settings.retrieval_mode != "semantic_vector":
+    raise ValueError("A configured embedding provider requires RETRIEVAL_MODE=semantic_vector")
+if settings.embedding_dimensions != 1536:
+    raise ValueError(
+        "EMBEDDING_DIMENSIONS currently must be 1536; another dimension requires a database migration and full reindex"
+    )
+if not 0 <= settings.minimum_relevance_score <= 1 or not 0 <= settings.minimum_semantic_score <= 1:
+    raise ValueError("Relevance thresholds must be between 0 and 1")
+if not settings.llm_default_model:
+    raise ValueError("LLM_DEFAULT_MODEL must name a DeepSeek model")
+if not settings.deepseek_base_url.startswith(("https://", "http://")):
+    raise ValueError("DEEPSEEK_BASE_URL must be an HTTP(S) URL")
+if settings.embedding_provider == "openai":
+    if not settings.embedding_api_key:
+        raise ValueError("EMBEDDING_API_KEY is required when EMBEDDING_PROVIDER=openai")
+    if not settings.embedding_model:
+        raise ValueError("EMBEDDING_MODEL is required when EMBEDDING_PROVIDER=openai")
