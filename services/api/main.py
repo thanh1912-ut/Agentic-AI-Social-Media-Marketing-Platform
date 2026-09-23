@@ -24,10 +24,16 @@ logger = logging.getLogger(__name__)
 
 
 @asynccontextmanager
-async def lifespan(_app: FastAPI):
-    if settings.auto_create_schema:
-        await create_schema()
-    yield
+async def lifespan(app: FastAPI):
+    rate_limiter = Redis.from_url(settings.redis_url) if settings.rate_limits_enabled else None
+    app.state.rate_limiter = rate_limiter
+    try:
+        if settings.auto_create_schema:
+            await create_schema()
+        yield
+    finally:
+        if rate_limiter is not None:
+            await rate_limiter.aclose()
 
 
 app = FastAPI(

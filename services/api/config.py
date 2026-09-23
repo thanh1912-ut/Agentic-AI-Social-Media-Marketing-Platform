@@ -20,6 +20,10 @@ class Settings:
     app_env: str = os.getenv("APP_ENV", "development")
     database_url: str = os.getenv("DATABASE_URL", "sqlite+aiosqlite:///./.data/agentic-marketing.db")
     redis_url: str = os.getenv("REDIS_URL", "redis://localhost:6379/0")
+    rate_limits_enabled: bool = _bool(
+        "RATE_LIMITS_ENABLED",
+        os.getenv("APP_ENV", "development").strip().casefold() in {"prod", "production"},
+    )
     jwt_secret: str = os.getenv("JWT_SECRET", "change-me-in-development-only-secret")
     jwt_algorithm: str = os.getenv("JWT_ALGORITHM", "HS256")
     access_token_expire_minutes: int = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "15"))
@@ -74,6 +78,8 @@ if settings.app_env.casefold() in {"prod", "production"}:
         raise ValueError("Production requires a random JWT_SECRET with at least 32 bytes")
     if not settings.cookie_secure:
         raise ValueError("Production cookie authentication requires COOKIE_SECURE=1")
+    if not settings.rate_limits_enabled:
+        raise ValueError("Production requires RATE_LIMITS_ENABLED=1")
 if settings.llm_provider != "deepseek":
     raise ValueError("LLM_PROVIDER must be deepseek; no implicit provider fallback is supported")
 if settings.embedding_provider not in {"none", "openai"}:

@@ -15,6 +15,7 @@ from .db import get_db
 from .dependencies import ACCESS_COOKIE, CSRF_COOKIE, REFRESH_COOKIE, require_csrf
 from .errors import ApiProblem
 from .permissions import permissions_for
+from .rate_limits import rate_limit
 from .schemas import (
     ForgotPasswordRequest,
     AcceptInvitationRequest,
@@ -102,7 +103,12 @@ async def _session_response(db: AsyncSession, user: User, access_token: str, exp
     )
 
 
-@router.post("/register", response_model=LoginResponse, status_code=201)
+@router.post(
+    "/register",
+    response_model=LoginResponse,
+    status_code=201,
+    dependencies=[Depends(rate_limit("auth_register", max_requests=5, window_seconds=3600))],
+)
 async def register(payload: RegisterRequest, request: Request, response: Response, db: AsyncSession = Depends(get_db)):
     email = str(payload.email).lower()
     if await db.scalar(select(User).where(User.email == email)):
@@ -120,7 +126,11 @@ async def register(payload: RegisterRequest, request: Request, response: Respons
     return await _session_response(db, user, access_token, expires_at)
 
 
-@router.post("/login", response_model=LoginResponse)
+@router.post(
+    "/login",
+    response_model=LoginResponse,
+    dependencies=[Depends(rate_limit("auth_login", max_requests=15, window_seconds=900))],
+)
 async def login(payload: LoginRequest, request: Request, response: Response, db: AsyncSession = Depends(get_db)):
     user = await db.scalar(select(User).where(User.email == str(payload.email).lower()))
     if user is None or not user.is_active or not verify_password(payload.password, user.password_hash):
@@ -161,7 +171,10 @@ async def logout(request: Request, response: Response, db: AsyncSession = Depend
         response.delete_cookie(cookie, domain=settings.cookie_domain, path="/")
 
 
-@router.post("/forgot-password")
+@router.post(
+    "/forgot-password",
+    dependencies=[Depends(rate_limit("password_forgot", max_requests=5, window_seconds=3600))],
+)
 async def forgot_password(payload: ForgotPasswordRequest, db: AsyncSession = Depends(get_db)):
     user = await db.scalar(select(User).where(User.email == str(payload.email).lower()))
     if user:
@@ -173,7 +186,10 @@ async def forgot_password(payload: ForgotPasswordRequest, db: AsyncSession = Dep
     return {"sent": True, "message": "Nếu email này có tài khoản, hệ thống đã gửi hướng dẫn đặt lại mật khẩu."}
 
 
-@router.post("/reset-password")
+@router.post(
+    "/reset-password",
+    dependencies=[Depends(rate_limit("password_reset", max_requests=10, window_seconds=3600))],
+)
 async def reset_password(payload: ResetPasswordRequest, db: AsyncSession = Depends(get_db)):
     reset = await db.scalar(select(PasswordResetToken).where(PasswordResetToken.token_hash == token_hash(payload.token), PasswordResetToken.used_at.is_(None)))
     if reset is None or is_expired(reset.expires_at):
@@ -200,7 +216,11 @@ async def preview_invitation(token: str, db: AsyncSession = Depends(get_db)):
     return {"email": invitation.email, "workspace_name": company.name if company else "", "role": invitation.role}
 
 
-@router.post("/invitations/{token}/accept", response_model=LoginResponse)
+@router.post(
+    "/invitations/{token}/accept",
+    response_model=LoginResponse,
+    dependencies=[Depends(rate_limit("invitation_accept", max_requests=10, window_seconds=900))],
+)
 async def accept_invitation(token: str, payload: AcceptInvitationRequest, request: Request, response: Response, db: AsyncSession = Depends(get_db)):
     invitation = await db.scalar(select(Invitation).where(Invitation.token_hash == token_hash(token), Invitation.accepted_at.is_(None)))
     if invitation is None or is_expired(invitation.expires_at):

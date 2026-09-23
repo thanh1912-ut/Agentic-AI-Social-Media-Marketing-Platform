@@ -52,6 +52,7 @@ from .dependencies import current_user, membership_for, require_csrf, require_pe
 from .errors import ApiProblem
 from .job_service import accepted_response
 from .permissions import has_permission
+from .rate_limits import rate_limit
 from .storage import S3ObjectStorage, storage
 
 
@@ -706,7 +707,10 @@ async def download_export(
     "/workspaces/{company_id}/posts/generate",
     response_model=GenerateContentResponse,
     status_code=503,
-    dependencies=[Depends(require_csrf)],
+    dependencies=[
+        Depends(require_csrf),
+        Depends(rate_limit("content_generation", max_requests=20, window_seconds=3600)),
+    ],
 )
 async def generate_content(
     company_id: str,

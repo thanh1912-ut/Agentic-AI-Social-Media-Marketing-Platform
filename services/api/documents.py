@@ -16,6 +16,7 @@ from .db import get_db
 from .dependencies import current_user, membership_for, require_csrf, require_permission
 from .errors import ApiProblem
 from .job_service import STEP_LABELS, accepted_response, dispatch_document_job
+from .rate_limits import rate_limit
 from .schemas import AcceptedResponse, ApiErrorEnvelope, DocumentOut, UploadLimits
 from .storage import storage
 
@@ -89,7 +90,10 @@ async def get_document(company_id: str, document_id: str, user: User = Depends(c
     "/workspaces/{company_id}/documents",
     response_model=AcceptedResponse,
     status_code=202,
-    dependencies=[Depends(require_csrf)],
+    dependencies=[
+        Depends(require_csrf),
+        Depends(rate_limit("document_upload", max_requests=30, window_seconds=3600)),
+    ],
     responses={
         status: {"model": ApiErrorEnvelope, "description": "API error envelope"}
         for status in (400, 401, 403, 409, 413, 415, 422, 500)
