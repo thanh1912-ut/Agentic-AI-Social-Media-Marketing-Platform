@@ -6,7 +6,7 @@ import { useParams } from 'next/navigation';
 import { useSession } from '@/components/session-gate';
 import { EmptyState } from '@/components/ui';
 import { ApiError } from '@/lib/api';
-import type { ApiMetricImportRequest } from '@/lib/api/types';
+import type { ApiMetricImportRequest, ApiRecordExperimentOutcomeRequest } from '@/lib/api/types';
 import {
   useApplyManualRecommendation,
   useCampaigns,
@@ -17,9 +17,13 @@ import {
   useManualAnalyticsDashboard,
   useManualMetricRecommendation,
   usePosts,
+  useAcceptedRecommendationDrafts,
+  useRecommendationExperimentOutcomes,
+  useRecordRecommendationExperimentOutcome,
 } from '@/lib/hooks';
 
 type MetricPoint = ApiMetricImportRequest['points'][number];
+type ExperimentMetric = ApiRecordExperimentOutcomeRequest['metric'];
 
 function localDateTimeValue(): string {
   const date = new Date(Date.now() - new Date().getTimezoneOffset() * 60_000);
@@ -32,6 +36,15 @@ function formatMetric(value: number | null | undefined, percent = false): string
     style: percent ? 'percent' : 'decimal',
     maximumFractionDigits: percent ? 2 : 0,
   }).format(value);
+}
+
+function experimentMetricLabel(metric: ExperimentMetric): string {
+  switch (metric) {
+    case 'reach': return 'Lượt tiếp cận trung bình';
+    case 'views': return 'Lượt xem trung bình';
+    case 'engagement_rate_by_reach': return 'Tương tác / tiếp cận';
+    case 'click_rate_by_reach': return 'Nhấp / tiếp cận';
+  }
 }
 
 function shortError(error: unknown): string {
@@ -60,6 +73,15 @@ export default function AnalyticsPage() {
   const [pendingPoints, setPendingPoints] = useState<MetricPoint[]>([]);
   const [formError, setFormError] = useState<string | null>(null);
   const [targetCampaignId, setTargetCampaignId] = useState('');
+  const [selectedOutcomeDraftId, setSelectedOutcomeDraftId] = useState('');
+  const [experimentMetric, setExperimentMetric] = useState<ExperimentMetric>('engagement_rate_by_reach');
+  const [baselineWindowFrom, setBaselineWindowFrom] = useState('');
+  const [baselineWindowTo, setBaselineWindowTo] = useState('');
+  const [followupWindowFrom, setFollowupWindowFrom] = useState('');
+  const [followupWindowTo, setFollowupWindowTo] = useState('');
+  const [minExperimentPostAge, setMinExperimentPostAge] = useState('168');
+  const [maxExperimentPostAge, setMaxExperimentPostAge] = useState('168');
+  const [experimentFormError, setExperimentFormError] = useState<string | null>(null);
 
   useEffect(() => setMeasuredAt(localDateTimeValue()), []);
   useEffect(() => {
@@ -68,7 +90,6 @@ export default function AnalyticsPage() {
   useEffect(() => {
     if (!targetCampaignId && campaigns.data?.items[0]) setTargetCampaignId(campaigns.data.items[0].id);
   }, [campaigns.data, targetCampaignId]);
-
   const dashboard = useManualAnalyticsDashboard(workspace ? workspaceId : '', sourceId.trim());
   const recommendation = useManualMetricRecommendation(workspace ? workspaceId : '', sourceId.trim());
   const saveRecommendation = useSaveManualRecommendation(workspace ? workspaceId : '');
@@ -76,6 +97,27 @@ export default function AnalyticsPage() {
   const applyRecommendation = useApplyManualRecommendation(workspace ? workspaceId : '');
   const decideDraft = useDecideManualRecommendationDraft(workspace ? workspaceId : '');
   const importSnapshot = useImportMetricSnapshot(workspace ? workspaceId : '');
+  const acceptedOutcomeDrafts = useAcceptedRecommendationDrafts(
+    workspace ? workspaceId : '',
+    targetCampaignId,
+    sourceId.trim(),
+  );
+  const visibleOutcomeDraftId = (acceptedOutcomeDrafts.data?.items ?? []).some((item) => item.id === selectedOutcomeDraftId)
+    ? selectedOutcomeDraftId
+    : acceptedOutcomeDrafts.data?.items[0]?.id ?? '';
+  const experimentOutcomes = useRecommendationExperimentOutcomes(
+    workspace ? workspaceId : '',
+    visibleOutcomeDraftId,
+  );
+  const recordExperimentOutcome = useRecordRecommendationExperimentOutcome(
+    workspace ? workspaceId : '',
+    visibleOutcomeDraftId,
+  );
+  useEffect(() => {
+    if (visibleOutcomeDraftId && visibleOutcomeDraftId !== selectedOutcomeDraftId) {
+      setSelectedOutcomeDraftId(visibleOutcomeDraftId);
+    }
+  }, [selectedOutcomeDraftId, visibleOutcomeDraftId]);
   const postsById = useMemo(
     () => new Map((posts.data?.items ?? []).map((post) => [post.id, post])),
     [posts.data],
@@ -148,6 +190,43 @@ export default function AnalyticsPage() {
       points: pendingPoints,
     }, {
       onSuccess: () => setPendingPoints([]),
+    });
+  }
+
+  function submitExperimentOutcome() {
+    const windowValues = [baselineWindowFrom, baselineWindowTo, followupWindowFrom, followupWindowTo];
+    if (windowValues.some((value) => !value || Number.isNaN(new Date(value).getTime()))) {
+      setExperimentFormError('Chọn đủ bốn mốc thời gian đo trước và sau khi áp dụng recommendation.');
+      return;
+    }
+    const start = new Date(baselineWindowFrom);
+    const baselineEnd = new Date(baselineWindowTo);
+    const followupStart = new Date(followupWindowFrom);
+    const end = new Date(followupWindowTo);
+    if (baselineEnd < start || end < followupStart || baselineEnd >= followupStart) {
+      setExperimentFormError('Hai khoảng đo phải hợp lệ và không được chồng lấn.');
+      return;
+    }
+    const minAge = Number(minExperimentPostAge);
+    const maxAge = Number(maxExperimentPostAge);
+    if (!Number.isInteger(minAge) || !Number.isInteger(maxAge) || minAge < 0 || maxAge < minAge || maxAge > 24 * 365) {
+      setExperimentFormError('Khoảng tuổi bài phải là số giờ nguyên hợp lệ.');
+      return;
+    }
+    if (!visibleOutcomeDraftId || !sourceId.trim()) {
+      setExperimentFormError('Chọn campaign, nguồn số liệu và brief revision đã chấp nhận.');
+      return;
+    }
+    setExperimentFormError(null);
+    recordExperimentOutcome.mutate({
+      source_id: sourceId.trim(),
+      metric: experimentMetric,
+      baseline_window_from: start.toISOString(),
+      baseline_window_to: baselineEnd.toISOString(),
+      followup_window_from: followupStart.toISOString(),
+      followup_window_to: end.toISOString(),
+      min_post_age_hours: minAge,
+      max_post_age_hours: maxAge,
     });
   }
 
@@ -343,6 +422,81 @@ export default function AnalyticsPage() {
           </article>
         ) : null}
       </section>
+      {dashboard.data ? (
+        <section className="space-y-4 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm" aria-labelledby="experiment-outcome-heading">
+          <div>
+            <h2 id="experiment-outcome-heading" className="text-lg font-semibold text-slate-900">Theo dõi kết quả recommendation</h2>
+            <p className="mt-1 max-w-3xl text-sm leading-6 text-slate-600">
+              So sánh snapshot trước và sau khi chấp nhận brief revision, dùng cùng nguồn, cùng metric và cùng khoảng tuổi bài. Đây là số liệu quan sát, không chứng minh recommendation gây ra thay đổi.
+            </p>
+          </div>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <label className="space-y-1 text-sm font-medium text-slate-700">
+              Campaign
+              <select className="w-full rounded-lg border border-slate-300 px-3 py-2" value={targetCampaignId} onChange={(event) => { setTargetCampaignId(event.target.value); setSelectedOutcomeDraftId(''); }}>
+                <option value="">Chọn campaign</option>
+                {(campaigns.data?.items ?? []).map((campaign) => <option key={campaign.id} value={campaign.id}>{campaign.name}</option>)}
+              </select>
+            </label>
+            <label className="space-y-1 text-sm font-medium text-slate-700">
+              Brief revision đã chấp nhận
+              <select className="w-full rounded-lg border border-slate-300 px-3 py-2" value={visibleOutcomeDraftId} onChange={(event) => setSelectedOutcomeDraftId(event.target.value)}>
+                <option value="">Chọn revision</option>
+                {(acceptedOutcomeDrafts.data?.items ?? []).map((draft) => <option key={draft.id} value={draft.id}>Revision {draft.base_version} · {new Date(draft.created_at).toLocaleString('vi-VN')}</option>)}
+              </select>
+            </label>
+          </div>
+          {acceptedOutcomeDrafts.isError ? <p role="alert" className="text-sm text-rose-800">{shortError(acceptedOutcomeDrafts.error)}</p> : null}
+          {acceptedOutcomeDrafts.isLoading && sourceId.trim() && targetCampaignId ? <p className="text-sm text-slate-600">Đang tải revision đã chấp nhận…</p> : null}
+          {!acceptedOutcomeDrafts.isLoading && sourceId.trim() && targetCampaignId && acceptedOutcomeDrafts.data?.items.length === 0 ? (
+            <EmptyState title="Chưa có revision được chấp nhận" description="Chấp nhận một brief revision từ recommendation để bắt đầu theo dõi kết quả." />
+          ) : null}
+          {!sourceId.trim() ? <p className="text-sm text-slate-600">Nhập mã nguồn số liệu ở phần trên để tìm revision và đo cùng nguồn.</p> : null}
+          {visibleOutcomeDraftId ? (
+            <>
+              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                <label className="space-y-1 text-sm text-slate-700">Metric
+                  <select className="w-full rounded-lg border border-slate-300 px-3 py-2" value={experimentMetric} onChange={(event) => setExperimentMetric(event.target.value as ExperimentMetric)}>
+                    <option value="reach">Lượt tiếp cận trung bình</option>
+                    <option value="views">Lượt xem trung bình</option>
+                    <option value="engagement_rate_by_reach">Tương tác / tiếp cận</option>
+                    <option value="click_rate_by_reach">Nhấp / tiếp cận</option>
+                  </select>
+                </label>
+                <label className="space-y-1 text-sm text-slate-700">Tuổi bài tối thiểu (giờ)<input className="w-full rounded-lg border border-slate-300 px-3 py-2" type="number" min="0" max={24 * 365} step="1" value={minExperimentPostAge} onChange={(event) => setMinExperimentPostAge(event.target.value)} /></label>
+                <label className="space-y-1 text-sm text-slate-700">Tuổi bài tối đa (giờ)<input className="w-full rounded-lg border border-slate-300 px-3 py-2" type="number" min="0" max={24 * 365} step="1" value={maxExperimentPostAge} onChange={(event) => setMaxExperimentPostAge(event.target.value)} /></label>
+              </div>
+              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                <label className="space-y-1 text-sm text-slate-700">Bắt đầu baseline<input className="w-full rounded-lg border border-slate-300 px-3 py-2" type="datetime-local" value={baselineWindowFrom} onChange={(event) => setBaselineWindowFrom(event.target.value)} /></label>
+                <label className="space-y-1 text-sm text-slate-700">Kết thúc baseline<input className="w-full rounded-lg border border-slate-300 px-3 py-2" type="datetime-local" value={baselineWindowTo} onChange={(event) => setBaselineWindowTo(event.target.value)} /></label>
+                <label className="space-y-1 text-sm text-slate-700">Bắt đầu follow-up<input className="w-full rounded-lg border border-slate-300 px-3 py-2" type="datetime-local" value={followupWindowFrom} onChange={(event) => setFollowupWindowFrom(event.target.value)} /></label>
+                <label className="space-y-1 text-sm text-slate-700">Kết thúc follow-up<input className="w-full rounded-lg border border-slate-300 px-3 py-2" type="datetime-local" value={followupWindowTo} onChange={(event) => setFollowupWindowTo(event.target.value)} /></label>
+              </div>
+              <div className="flex flex-wrap items-center gap-3">
+                {canApplyRecommendation ? <button type="button" disabled={recordExperimentOutcome.isPending} onClick={submitExperimentOutcome} className="rounded-lg bg-slate-900 px-3 py-2 text-sm font-medium text-white disabled:opacity-50">{recordExperimentOutcome.isPending ? 'Đang tính và lưu…' : 'Ghi nhận kết quả'}</button> : <p className="text-sm text-slate-600">Chỉ chủ workspace có thể ghi nhận outcome.</p>}
+                {recordExperimentOutcome.isError ? <p role="alert" className="text-sm text-rose-800">{shortError(recordExperimentOutcome.error)}</p> : null}
+                {experimentFormError ? <p role="alert" className="text-sm text-rose-800">{experimentFormError}</p> : null}
+              </div>
+              {experimentOutcomes.isError ? <p role="alert" className="text-sm text-rose-800">{shortError(experimentOutcomes.error)}</p> : null}
+              {experimentOutcomes.data?.items.length ? (
+                <div className="space-y-3">
+                  <h3 className="font-semibold text-slate-900">Outcomes đã lưu</h3>
+                  {experimentOutcomes.data.items.map((outcome) => (
+                    <article key={outcome.id} className="rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm">
+                      <p className="font-semibold text-slate-900">{experimentMetricLabel(outcome.metric)} · baseline {formatMetric(outcome.baseline.value, outcome.metric.endsWith('_rate_by_reach'))} → follow-up {formatMetric(outcome.followup.value, outcome.metric.endsWith('_rate_by_reach'))}</p>
+                      <p className="mt-1">Thay đổi tuyệt đối: {formatMetric(outcome.absolute_change, outcome.metric.endsWith('_rate_by_reach'))}{outcome.metric.endsWith('_rate_by_reach') ? ' điểm %' : ''} · thay đổi tương đối: {outcome.relative_change == null ? 'không tính được (baseline bằng 0)' : formatMetric(outcome.relative_change, true)}</p>
+                      <p className="mt-1 text-slate-600">Mẫu: {outcome.baseline.sample_size} → {outcome.followup.sample_size} bài · độ phủ: {formatMetric(outcome.baseline.coverage, true)} → {formatMetric(outcome.followup.coverage, true)}</p>
+                      <p className="mt-1 text-xs text-slate-600">Khoảng đo baseline: {new Date(outcome.baseline.window_from).toLocaleString('vi-VN')} – {new Date(outcome.baseline.window_to).toLocaleString('vi-VN')}. Follow-up: {new Date(outcome.followup.window_from).toLocaleString('vi-VN')} – {new Date(outcome.followup.window_to).toLocaleString('vi-VN')}.</p>
+                      <p className="mt-1 break-words font-mono text-xs text-slate-600">Evidence IDs: {outcome.baseline.evidence_id} → {outcome.followup.evidence_id}. Snapshot IDs: {outcome.baseline.snapshot_ids.slice(0, 3).join(', ')} → {outcome.followup.snapshot_ids.slice(0, 3).join(', ')}{outcome.baseline.snapshot_ids.length > 3 || outcome.followup.snapshot_ids.length > 3 ? ' … (còn snapshot khác)' : ''}</p>
+                      <p className="mt-2 text-xs leading-5 text-slate-600">{outcome.limitations.join(' ')}</p>
+                    </article>
+                  ))}
+                </div>
+              ) : null}
+            </>
+          ) : null}
+        </section>
+      ) : null}
     </div>
   );
 }

@@ -69,12 +69,16 @@ import type {
   ApiAnalyticsRecommendationRecord,
   ApiApplyRecommendationRequest,
   ApiApplyRecommendationResponse,
+  ApiAcceptedRecommendationDraftList,
   ApiCampaignBriefRevisionDraft,
+  ApiExperimentOutcome,
+  ApiExperimentOutcomeList,
   ApiMetricImportRequest,
   ApiMetricImportResponse,
   ApiMetricRecommendation,
   ApiRecommendationDraftDecisionRequest,
   ApiRecommendationFeedbackRequest,
+  ApiRecordExperimentOutcomeRequest,
   ApiSaveRecommendationRequest,
 } from './types';
 
@@ -540,6 +544,33 @@ export const analyticsApi = {
   ) =>
     apiRequest<ApiCampaignBriefRevisionDraft>(
       v1(`/workspaces/${workspaceId}/analytics/recommendation-drafts/${draftId}/decision`),
+      { method: 'POST', body },
+    ),
+
+  acceptedRecommendationDrafts: (
+    workspaceId: string,
+    campaignId: string,
+    sourceId: string,
+    signal?: AbortSignal,
+  ) =>
+    apiRequest<ApiAcceptedRecommendationDraftList>(
+      v1(`/workspaces/${workspaceId}/analytics/recommendation-drafts`),
+      { query: { campaign_id: campaignId, source_id: sourceId }, signal },
+    ),
+
+  experimentOutcomes: (workspaceId: string, draftId: string, signal?: AbortSignal) =>
+    apiRequest<ApiExperimentOutcomeList>(
+      v1(`/workspaces/${workspaceId}/analytics/recommendation-drafts/${draftId}/outcomes`),
+      { signal },
+    ),
+
+  recordExperimentOutcome: (
+    workspaceId: string,
+    draftId: string,
+    body: ApiRecordExperimentOutcomeRequest,
+  ) =>
+    apiRequest<ApiExperimentOutcome>(
+      v1(`/workspaces/${workspaceId}/analytics/recommendation-drafts/${draftId}/outcomes`),
       { method: 'POST', body },
     ),
 

@@ -19,6 +19,7 @@ from database.models import (
     CampaignBriefRevisionDraft,
     CampaignPost,
     PostMetricSnapshot,
+    RecommendationExperimentOutcome,
     User,
     new_id,
     utcnow,
@@ -27,6 +28,7 @@ from services.agents.analytics.metrics import PostMetricInput, build_analytics_r
 from .analytics_schemas import (
     AnalyticsDashboardOut,
     AnalyticsRecommendationRecordOut,
+    AcceptedRecommendationDraftListOut,
     ApplyRecommendationRequest,
     ApplyRecommendationResponse,
     CampaignBriefChangeOut,
@@ -38,6 +40,10 @@ from .analytics_schemas import (
     RecommendationFeedbackOut,
     RecommendationFeedbackRequest,
     RecommendationOut,
+    RecordExperimentOutcomeRequest,
+    ExperimentOutcomeCohortOut,
+    ExperimentOutcomeListOut,
+    ExperimentOutcomeOut,
     SaveRecommendationRequest,
 )
 from .db import get_db
@@ -329,6 +335,88 @@ def _brief_revision_out(row: CampaignBriefRevisionDraft) -> CampaignBriefRevisio
     )
 
 
+def _experiment_outcome_out(row: RecommendationExperimentOutcome) -> ExperimentOutcomeOut:
+    return ExperimentOutcomeOut(
+        id=row.id,
+        campaign_id=row.campaign_id,
+        draft_id=row.draft_id,
+        source_id=row.source_id,
+        metric=row.metric,
+        min_post_age_hours=row.min_post_age_hours,
+        max_post_age_hours=row.max_post_age_hours,
+        baseline=ExperimentOutcomeCohortOut.model_validate(row.baseline_evidence_json),
+        followup=ExperimentOutcomeCohortOut.model_validate(row.followup_evidence_json),
+        absolute_change=float(row.absolute_change),
+        relative_change=float(row.relative_change) if row.relative_change is not None else None,
+        limitations=row.limitations_json,
+        created_at=row.created_at,
+    )
+
+
+def _utc_datetime(value: datetime) -> datetime:
+    return value.replace(tzinfo=timezone.utc) if value.tzinfo is None else value.astimezone(timezone.utc)
+
+
+async def _experiment_cohort(
+    db: AsyncSession,
+    *,
+    company_id: str,
+    campaign_id: str,
+    source_id: str,
+    metric: str,
+    window_from: datetime,
+    window_to: datetime,
+    min_post_age_hours: int,
+    max_post_age_hours: int,
+) -> ExperimentOutcomeCohortOut:
+    rows = await _latest_points(
+        db,
+        company_id,
+        source_id,
+        min_post_age_hours=min_post_age_hours,
+        max_post_age_hours=max_post_age_hours,
+        measured_from=window_from,
+        measured_to=window_to,
+    )
+    rows = [(snapshot, post) for snapshot, post in rows if post.campaign_id == campaign_id]
+    if not rows:
+        raise ApiProblem(409, "insufficient_evidence", "Trong khoảng đã chọn chưa có snapshot của campaign này.")
+
+    report = _dashboard(source_id, rows).report
+    observation = next((item for item in report.observations if item.metric == metric), None)
+    if observation is None or observation.value is None:
+        raise ApiProblem(409, "insufficient_evidence", "Metric đã chọn không có đủ số liệu hợp lệ trong khoảng này.")
+    evidence = next((item for item in report.evidence if metric in item.metric_names), None)
+    if evidence is None:
+        raise ApiProblem(500, "internal_error", "Không tạo được bằng chứng cho metric đã chọn.")
+
+    snapshot_ids = sorted(snapshot.id for snapshot, _post in rows)
+    evidence_material = "|".join([
+        company_id,
+        campaign_id,
+        source_id,
+        metric,
+        _utc_datetime(window_from).isoformat(),
+        _utc_datetime(window_to).isoformat(),
+        evidence.evidence_id,
+        *snapshot_ids,
+    ])
+    outcome_evidence_id = f"ev:{hashlib.sha256(evidence_material.encode('utf-8')).hexdigest()[:16]}"
+
+    return ExperimentOutcomeCohortOut(
+        window_from=_utc_datetime(window_from),
+        window_to=_utc_datetime(window_to),
+        measured_from=_utc_datetime(observation.measured_from),
+        measured_to=_utc_datetime(observation.measured_to),
+        value=observation.value,
+        sample_size=observation.sample_size,
+        coverage=observation.coverage,
+        evidence_id=outcome_evidence_id,
+        post_ids=sorted(evidence.post_ids),
+        snapshot_ids=snapshot_ids,
+    )
+
+
 @router.post(
     "/workspaces/{company_id}/analytics/recommendations",
     response_model=AnalyticsRecommendationRecordOut,
@@ -610,3 +698,189 @@ async def decide_recommendation_draft(
     await db.commit()
     await db.refresh(draft)
     return _brief_revision_out(draft)
+
+
+@router.get(
+    "/workspaces/{company_id}/analytics/recommendation-drafts",
+    response_model=AcceptedRecommendationDraftListOut,
+)
+async def list_accepted_recommendation_drafts(
+    company_id: str,
+    campaign_id: str = Query(min_length=1, max_length=36),
+    source_id: str = Query(min_length=1, max_length=160),
+    user: User = Depends(current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    await membership_for(company_id, user, db)
+    rows = (await db.execute(
+        select(CampaignBriefRevisionDraft)
+        .join(AnalyticsRecommendationRecord, AnalyticsRecommendationRecord.id == CampaignBriefRevisionDraft.recommendation_id)
+        .where(
+            CampaignBriefRevisionDraft.company_id == company_id,
+            CampaignBriefRevisionDraft.campaign_id == campaign_id,
+            CampaignBriefRevisionDraft.status == "accepted",
+            AnalyticsRecommendationRecord.source_id == source_id,
+        )
+        .order_by(CampaignBriefRevisionDraft.created_at.desc())
+    )).scalars().all()
+    return AcceptedRecommendationDraftListOut(items=[_brief_revision_out(row) for row in rows])
+
+
+@router.get(
+    "/workspaces/{company_id}/analytics/recommendation-drafts/{draft_id}/outcomes",
+    response_model=ExperimentOutcomeListOut,
+)
+async def list_recommendation_experiment_outcomes(
+    company_id: str,
+    draft_id: str,
+    user: User = Depends(current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    await membership_for(company_id, user, db)
+    draft = await db.scalar(select(CampaignBriefRevisionDraft).where(
+        CampaignBriefRevisionDraft.company_id == company_id,
+        CampaignBriefRevisionDraft.id == draft_id,
+        CampaignBriefRevisionDraft.status == "accepted",
+    ))
+    if draft is None:
+        raise ApiProblem(404, "not_found", "Không tìm thấy brief revision đã được chấp nhận.")
+    rows = (await db.scalars(select(RecommendationExperimentOutcome).where(
+        RecommendationExperimentOutcome.company_id == company_id,
+        RecommendationExperimentOutcome.draft_id == draft_id,
+    ).order_by(RecommendationExperimentOutcome.created_at.desc()))).all()
+    return ExperimentOutcomeListOut(items=[_experiment_outcome_out(row) for row in rows])
+
+
+@router.post(
+    "/workspaces/{company_id}/analytics/recommendation-drafts/{draft_id}/outcomes",
+    response_model=ExperimentOutcomeOut,
+    status_code=201,
+    dependencies=[Depends(require_csrf)],
+)
+async def record_recommendation_experiment_outcome(
+    company_id: str,
+    draft_id: str,
+    request: RecordExperimentOutcomeRequest,
+    user: User = Depends(current_user),
+    membership=Depends(require_permission("recommendation:apply")),
+    db: AsyncSession = Depends(get_db),
+):
+    draft = await db.scalar(select(CampaignBriefRevisionDraft).where(
+        CampaignBriefRevisionDraft.company_id == company_id,
+        CampaignBriefRevisionDraft.id == draft_id,
+    ))
+    if draft is None:
+        raise ApiProblem(404, "not_found", "Không tìm thấy brief revision.")
+    if draft.status != "accepted":
+        raise ApiProblem(409, "state_conflict", "Chỉ ghi nhận outcome cho brief revision đã được chấp nhận.")
+    recommendation = await db.scalar(select(AnalyticsRecommendationRecord).where(
+        AnalyticsRecommendationRecord.company_id == company_id,
+        AnalyticsRecommendationRecord.id == draft.recommendation_id,
+    ))
+    if recommendation is None or recommendation.source_id != request.source_id:
+        raise ApiProblem(422, "validation_error", "Nguồn số liệu phải trùng nguồn của recommendation.")
+
+    request_material = request.model_dump(mode="json")
+    fingerprint = hashlib.sha256(
+        json.dumps(request_material, ensure_ascii=False, sort_keys=True).encode("utf-8")
+    ).hexdigest()
+    existing = await db.scalar(select(RecommendationExperimentOutcome).where(
+        RecommendationExperimentOutcome.company_id == company_id,
+        RecommendationExperimentOutcome.draft_id == draft_id,
+        RecommendationExperimentOutcome.request_fingerprint == fingerprint,
+    ))
+    if existing:
+        return _experiment_outcome_out(existing)
+
+    baseline = await _experiment_cohort(
+        db,
+        company_id=company_id,
+        campaign_id=draft.campaign_id,
+        source_id=request.source_id,
+        metric=request.metric,
+        window_from=request.baseline_window_from,
+        window_to=request.baseline_window_to,
+        min_post_age_hours=request.min_post_age_hours,
+        max_post_age_hours=request.max_post_age_hours,
+    )
+    followup = await _experiment_cohort(
+        db,
+        company_id=company_id,
+        campaign_id=draft.campaign_id,
+        source_id=request.source_id,
+        metric=request.metric,
+        window_from=request.followup_window_from,
+        window_to=request.followup_window_to,
+        min_post_age_hours=request.min_post_age_hours,
+        max_post_age_hours=request.max_post_age_hours,
+    )
+    absolute_change = followup.value - baseline.value
+    relative_change = absolute_change / baseline.value if baseline.value != 0 else None
+    limitations = [
+        "So sánh này mang tính mô tả, không chứng minh recommendation gây ra thay đổi.",
+        "Mỗi cohort dùng snapshot mới nhất của từng bài trong cửa sổ đo đã chọn, cùng nguồn và cùng khoảng tuổi bài.",
+    ]
+    if baseline.sample_size < 5 or followup.sample_size < 5:
+        limitations.append("Có cohort dưới 5 bài; chỉ xem đây là tín hiệu thăm dò, không kết luận hiệu quả.")
+    if baseline.coverage < 1 or followup.coverage < 1:
+        limitations.append("Một số bài thiếu metric đã chọn; coverage được lưu riêng, giá trị thiếu không tính thành 0.")
+    if relative_change is None:
+        limitations.append("Không tính được phần trăm thay đổi vì baseline bằng 0.")
+
+    row = RecommendationExperimentOutcome(
+        id=new_id(),
+        company_id=company_id,
+        campaign_id=draft.campaign_id,
+        draft_id=draft.id,
+        source_id=request.source_id,
+        request_fingerprint=fingerprint,
+        metric=request.metric,
+        min_post_age_hours=request.min_post_age_hours,
+        max_post_age_hours=request.max_post_age_hours,
+        baseline_window_from=request.baseline_window_from,
+        baseline_window_to=request.baseline_window_to,
+        followup_window_from=request.followup_window_from,
+        followup_window_to=request.followup_window_to,
+        baseline_value=baseline.value,
+        followup_value=followup.value,
+        absolute_change=absolute_change,
+        relative_change=relative_change,
+        baseline_sample_size=baseline.sample_size,
+        followup_sample_size=followup.sample_size,
+        baseline_coverage=baseline.coverage,
+        followup_coverage=followup.coverage,
+        baseline_evidence_json=baseline.model_dump(mode="json"),
+        followup_evidence_json=followup.model_dump(mode="json"),
+        limitations_json=limitations,
+        recorded_by=user.id,
+    )
+    db.add(row)
+    db.add(AuditEvent(
+        company_id=company_id,
+        actor_user_id=user.id,
+        action="recommendation.experiment_outcome.record",
+        entity_type="recommendation_experiment_outcome",
+        entity_id=row.id,
+        metadata_json={
+            "draft_id": draft.id,
+            "campaign_id": draft.campaign_id,
+            "source_id": request.source_id,
+            "metric": request.metric,
+            "baseline_evidence_id": baseline.evidence_id,
+            "followup_evidence_id": followup.evidence_id,
+        },
+    ))
+    try:
+        await db.commit()
+    except IntegrityError:
+        await db.rollback()
+        existing = await db.scalar(select(RecommendationExperimentOutcome).where(
+            RecommendationExperimentOutcome.company_id == company_id,
+            RecommendationExperimentOutcome.draft_id == draft_id,
+            RecommendationExperimentOutcome.request_fingerprint == fingerprint,
+        ))
+        if existing is None:
+            raise ApiProblem(409, "state_conflict", "Không thể lưu outcome do xung đột đồng thời.")
+        return _experiment_outcome_out(existing)
+    await db.refresh(row)
+    return _experiment_outcome_out(row)

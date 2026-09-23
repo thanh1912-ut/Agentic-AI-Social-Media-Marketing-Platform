@@ -433,3 +433,37 @@ class CampaignBriefRevisionDraft(Base, IdMixin):
     note: Mapped[str | None] = mapped_column(Text)
     created_by: Mapped[str] = mapped_column(ForeignKey("users.id"), nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
+
+
+class RecommendationExperimentOutcome(Base, IdMixin):
+    __tablename__ = "recommendation_experiment_outcomes"
+    __table_args__ = (
+        UniqueConstraint("draft_id", "request_fingerprint", name="uq_experiment_outcome_request"),
+        Index("ix_experiment_outcome_company_draft", "company_id", "draft_id", "created_at"),
+    )
+
+    company_id: Mapped[str] = mapped_column(ForeignKey("companies.id", ondelete="CASCADE"), nullable=False)
+    campaign_id: Mapped[str] = mapped_column(ForeignKey("campaigns.id", ondelete="CASCADE"), nullable=False)
+    draft_id: Mapped[str] = mapped_column(ForeignKey("campaign_brief_revision_drafts.id", ondelete="CASCADE"), nullable=False)
+    source_id: Mapped[str] = mapped_column(String(160), nullable=False)
+    request_fingerprint: Mapped[str] = mapped_column(String(64), nullable=False)
+    metric: Mapped[str] = mapped_column(String(80), nullable=False)
+    min_post_age_hours: Mapped[int] = mapped_column(Integer, nullable=False)
+    max_post_age_hours: Mapped[int] = mapped_column(Integer, nullable=False)
+    baseline_window_from: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    baseline_window_to: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    followup_window_from: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    followup_window_to: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    baseline_value: Mapped[float] = mapped_column(Numeric(18, 8), nullable=False)
+    followup_value: Mapped[float] = mapped_column(Numeric(18, 8), nullable=False)
+    absolute_change: Mapped[float] = mapped_column(Numeric(18, 8), nullable=False)
+    relative_change: Mapped[float | None] = mapped_column(Numeric(18, 8))
+    baseline_sample_size: Mapped[int] = mapped_column(Integer, nullable=False)
+    followup_sample_size: Mapped[int] = mapped_column(Integer, nullable=False)
+    baseline_coverage: Mapped[float] = mapped_column(Numeric(8, 7), nullable=False)
+    followup_coverage: Mapped[float] = mapped_column(Numeric(8, 7), nullable=False)
+    baseline_evidence_json: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
+    followup_evidence_json: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
+    limitations_json: Mapped[list[str]] = mapped_column(JSON, default=list, nullable=False)
+    recorded_by: Mapped[str] = mapped_column(ForeignKey("users.id"), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)

@@ -30,6 +30,23 @@
         "title": "AcceptInvitationRequest",
         "type": "object"
       },
+      "AcceptedRecommendationDraftListOut": {
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/CampaignBriefRevisionDraftOut"
+            },
+            "title": "Items",
+            "type": "array"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "title": "AcceptedRecommendationDraftListOut",
+        "type": "object"
+      },
       "AcceptedResponse": {
         "additionalProperties": false,
         "properties": {
@@ -1369,6 +1386,181 @@
           "uploaded_at"
         ],
         "title": "DocumentOut",
+        "type": "object"
+      },
+      "ExperimentOutcomeCohortOut": {
+        "additionalProperties": false,
+        "properties": {
+          "coverage": {
+            "title": "Coverage",
+            "type": "number"
+          },
+          "evidence_id": {
+            "title": "Evidence Id",
+            "type": "string"
+          },
+          "measured_from": {
+            "format": "date-time",
+            "title": "Measured From",
+            "type": "string"
+          },
+          "measured_to": {
+            "format": "date-time",
+            "title": "Measured To",
+            "type": "string"
+          },
+          "post_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Post Ids",
+            "type": "array"
+          },
+          "sample_size": {
+            "title": "Sample Size",
+            "type": "integer"
+          },
+          "snapshot_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Snapshot Ids",
+            "type": "array"
+          },
+          "value": {
+            "title": "Value",
+            "type": "number"
+          },
+          "window_from": {
+            "format": "date-time",
+            "title": "Window From",
+            "type": "string"
+          },
+          "window_to": {
+            "format": "date-time",
+            "title": "Window To",
+            "type": "string"
+          }
+        },
+        "required": [
+          "window_from",
+          "window_to",
+          "measured_from",
+          "measured_to",
+          "value",
+          "sample_size",
+          "coverage",
+          "evidence_id",
+          "post_ids",
+          "snapshot_ids"
+        ],
+        "title": "ExperimentOutcomeCohortOut",
+        "type": "object"
+      },
+      "ExperimentOutcomeListOut": {
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ExperimentOutcomeOut"
+            },
+            "title": "Items",
+            "type": "array"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "title": "ExperimentOutcomeListOut",
+        "type": "object"
+      },
+      "ExperimentOutcomeOut": {
+        "additionalProperties": false,
+        "properties": {
+          "absolute_change": {
+            "title": "Absolute Change",
+            "type": "number"
+          },
+          "baseline": {
+            "$ref": "#/components/schemas/ExperimentOutcomeCohortOut"
+          },
+          "campaign_id": {
+            "title": "Campaign Id",
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "draft_id": {
+            "title": "Draft Id",
+            "type": "string"
+          },
+          "followup": {
+            "$ref": "#/components/schemas/ExperimentOutcomeCohortOut"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "limitations": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Limitations",
+            "type": "array"
+          },
+          "max_post_age_hours": {
+            "title": "Max Post Age Hours",
+            "type": "integer"
+          },
+          "metric": {
+            "enum": [
+              "reach",
+              "views",
+              "engagement_rate_by_reach",
+              "click_rate_by_reach"
+            ],
+            "title": "Metric",
+            "type": "string"
+          },
+          "min_post_age_hours": {
+            "title": "Min Post Age Hours",
+            "type": "integer"
+          },
+          "relative_change": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Relative Change"
+          },
+          "source_id": {
+            "title": "Source Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "campaign_id",
+          "draft_id",
+          "source_id",
+          "metric",
+          "min_post_age_hours",
+          "max_post_age_hours",
+          "baseline",
+          "followup",
+          "absolute_change",
+          "relative_change",
+          "limitations",
+          "created_at"
+        ],
+        "title": "ExperimentOutcomeOut",
         "type": "object"
       },
       "ExportOut": {
@@ -3001,6 +3193,71 @@
         "title": "RecommendationOut",
         "type": "object"
       },
+      "RecordExperimentOutcomeRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "baseline_window_from": {
+            "format": "date-time",
+            "title": "Baseline Window From",
+            "type": "string"
+          },
+          "baseline_window_to": {
+            "format": "date-time",
+            "title": "Baseline Window To",
+            "type": "string"
+          },
+          "followup_window_from": {
+            "format": "date-time",
+            "title": "Followup Window From",
+            "type": "string"
+          },
+          "followup_window_to": {
+            "format": "date-time",
+            "title": "Followup Window To",
+            "type": "string"
+          },
+          "max_post_age_hours": {
+            "maximum": 8760.0,
+            "minimum": 0.0,
+            "title": "Max Post Age Hours",
+            "type": "integer"
+          },
+          "metric": {
+            "enum": [
+              "reach",
+              "views",
+              "engagement_rate_by_reach",
+              "click_rate_by_reach"
+            ],
+            "title": "Metric",
+            "type": "string"
+          },
+          "min_post_age_hours": {
+            "maximum": 8760.0,
+            "minimum": 0.0,
+            "title": "Min Post Age Hours",
+            "type": "integer"
+          },
+          "source_id": {
+            "maxLength": 160,
+            "minLength": 1,
+            "title": "Source Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "source_id",
+          "metric",
+          "baseline_window_from",
+          "baseline_window_to",
+          "followup_window_from",
+          "followup_window_to",
+          "min_post_age_hours",
+          "max_post_age_hours"
+        ],
+        "title": "RecordExperimentOutcomeRequest",
+        "type": "object"
+      },
       "RegisterRequest": {
         "additionalProperties": false,
         "properties": {
@@ -4386,6 +4643,86 @@
         ]
       }
     },
+    "/api/v1/workspaces/{company_id}/analytics/recommendation-drafts": {
+      "get": {
+        "operationId": "list_accepted_recommendation_drafts_api_v1_workspaces__company_id__analytics_recommendation_drafts_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "company_id",
+            "required": true,
+            "schema": {
+              "title": "Company Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "campaign_id",
+            "required": true,
+            "schema": {
+              "maxLength": 36,
+              "minLength": 1,
+              "title": "Campaign Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "source_id",
+            "required": true,
+            "schema": {
+              "maxLength": 160,
+              "minLength": 1,
+              "title": "Source Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AcceptedRecommendationDraftListOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Accepted Recommendation Drafts",
+        "tags": [
+          "analytics"
+        ]
+      }
+    },
     "/api/v1/workspaces/{company_id}/analytics/recommendation-drafts/{draft_id}/decision": {
       "post": {
         "operationId": "decide_recommendation_draft_api_v1_workspaces__company_id__analytics_recommendation_drafts__draft_id__decision_post",
@@ -4458,6 +4795,148 @@
           }
         },
         "summary": "Decide Recommendation Draft",
+        "tags": [
+          "analytics"
+        ]
+      }
+    },
+    "/api/v1/workspaces/{company_id}/analytics/recommendation-drafts/{draft_id}/outcomes": {
+      "get": {
+        "operationId": "list_recommendation_experiment_outcomes_api_v1_workspaces__company_id__analytics_recommendation_drafts__draft_id__outcomes_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "company_id",
+            "required": true,
+            "schema": {
+              "title": "Company Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "draft_id",
+            "required": true,
+            "schema": {
+              "title": "Draft Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExperimentOutcomeListOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Recommendation Experiment Outcomes",
+        "tags": [
+          "analytics"
+        ]
+      },
+      "post": {
+        "operationId": "record_recommendation_experiment_outcome_api_v1_workspaces__company_id__analytics_recommendation_drafts__draft_id__outcomes_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "company_id",
+            "required": true,
+            "schema": {
+              "title": "Company Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "draft_id",
+            "required": true,
+            "schema": {
+              "title": "Draft Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RecordExperimentOutcomeRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExperimentOutcomeOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Record Recommendation Experiment Outcome",
         "tags": [
           "analytics"
         ]

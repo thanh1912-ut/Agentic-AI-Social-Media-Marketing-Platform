@@ -38,6 +38,7 @@ import type {
 
 import type {
   ApiAcceptedResponse as AcceptedResponse,
+  ApiAcceptedRecommendationDraftList,
   ApiAnalyticsDashboard,
   ApiApplyRecommendationRequest,
   ApiRecommendationDraftDecisionRequest,
@@ -54,6 +55,8 @@ import type {
   ApiWorkspace as Workspace,
   ApiMetricImportRequest,
   ApiMetricRecommendation,
+  ApiExperimentOutcomeList,
+  ApiRecordExperimentOutcomeRequest,
 } from '@/lib/api/types';
 import { api, useMocks } from '@/lib/api';
 import {
@@ -590,6 +593,47 @@ export function useDecideManualRecommendationDraft(workspaceId: string) {
     onSuccess: (draft) => {
       void queryClient.invalidateQueries({ queryKey: queryKeys.campaign(workspaceId, draft.campaign_id) });
       void queryClient.invalidateQueries({ queryKey: queryKeys.campaigns(workspaceId) });
+      void queryClient.invalidateQueries({
+        queryKey: ['workspaces', workspaceId, 'analytics'],
+      });
+    },
+  });
+}
+
+export function useAcceptedRecommendationDrafts(
+  workspaceId: string,
+  campaignId: string,
+  sourceId: string,
+): UseQueryResult<ApiAcceptedRecommendationDraftList> {
+  return useQuery({
+    queryKey: queryKeys.analytics(workspaceId, `accepted-drafts:${campaignId}:${sourceId}`),
+    queryFn: ({ signal }) => api.analytics.acceptedRecommendationDrafts(workspaceId, campaignId, sourceId, signal),
+    enabled: workspaceId !== '' && campaignId !== '' && sourceId.trim() !== '',
+    staleTime: 30_000,
+  });
+}
+
+export function useRecommendationExperimentOutcomes(
+  workspaceId: string,
+  draftId: string,
+): UseQueryResult<ApiExperimentOutcomeList> {
+  return useQuery({
+    queryKey: queryKeys.analytics(workspaceId, `experiment-outcomes:${draftId}`),
+    queryFn: ({ signal }) => api.analytics.experimentOutcomes(workspaceId, draftId, signal),
+    enabled: workspaceId !== '' && draftId !== '',
+    staleTime: 30_000,
+  });
+}
+
+export function useRecordRecommendationExperimentOutcome(workspaceId: string, draftId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (body: ApiRecordExperimentOutcomeRequest) =>
+      api.analytics.recordExperimentOutcome(workspaceId, draftId, body),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({
+        queryKey: queryKeys.analytics(workspaceId, `experiment-outcomes:${draftId}`),
+      });
     },
   });
 }

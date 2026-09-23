@@ -214,6 +214,81 @@ def test_manual_metrics_are_tenant_scoped_deduplicated_and_evidence_backed(analy
     campaign_after_accept = client.get(f"/api/v1/workspaces/{workspace_id}/campaigns/{campaign_id}")
     assert campaign_after_accept.json()["version"] == 2
     assert any("Thử nghiệm recommendation" in item for item in campaign_after_accept.json()["brief"]["must_include"])
+
+    accepted_drafts = client.get(
+        f"/api/v1/workspaces/{workspace_id}/analytics/recommendation-drafts",
+        params={"campaign_id": campaign_id, "source_id": "meta-page-main"},
+    )
+    assert accepted_drafts.status_code == 200, accepted_drafts.text
+    assert [item["id"] for item in accepted_drafts.json()["items"]] == [draft["id"]]
+
+    baseline_at = datetime(2026, 9, 22, 12, tzinfo=timezone.utc)
+    followup_at = datetime(2026, 9, 23, 12, tzinfo=timezone.utc)
+    for measured_at, reach_value in ((baseline_at, 1000), (followup_at, 1200)):
+        recorded = client.post(
+            f"/api/v1/workspaces/{workspace_id}/metrics/import",
+            headers=headers,
+            json={
+                "source_id": "meta-page-main",
+                "measured_at": measured_at.isoformat(),
+                "points": [
+                    {"post_id": post_id, "post_age_hours": 168, "reach": reach_value}
+                    for ids in post_ids.values()
+                    for post_id in ids
+                ],
+            },
+        )
+        assert recorded.status_code == 201, recorded.text
+
+    outcome_body = {
+        "source_id": "meta-page-main",
+        "metric": "reach",
+        "baseline_window_from": baseline_at.isoformat(),
+        "baseline_window_to": baseline_at.isoformat(),
+        "followup_window_from": followup_at.isoformat(),
+        "followup_window_to": followup_at.isoformat(),
+        "min_post_age_hours": 168,
+        "max_post_age_hours": 168,
+    }
+    outcome_url = f"/api/v1/workspaces/{workspace_id}/analytics/recommendation-drafts/{draft['id']}/outcomes"
+    outcome = client.post(outcome_url, headers=headers, json=outcome_body)
+    assert outcome.status_code == 201, outcome.text
+    outcome_data = outcome.json()
+    assert outcome_data["baseline"]["value"] == pytest.approx(1000)
+    assert outcome_data["followup"]["value"] == pytest.approx(1200)
+    assert outcome_data["absolute_change"] == pytest.approx(200)
+    assert outcome_data["relative_change"] == pytest.approx(0.2)
+    assert outcome_data["baseline"]["sample_size"] == 10
+    assert outcome_data["baseline"]["coverage"] == 1
+    assert outcome_data["baseline"]["snapshot_ids"]
+    assert outcome_data["baseline"]["evidence_id"].startswith("ev:")
+    assert outcome_data["baseline"]["evidence_id"] != outcome_data["followup"]["evidence_id"]
+    assert any("không chứng minh" in item for item in outcome_data["limitations"])
+
+    repeated_outcome = client.post(outcome_url, headers=headers, json=outcome_body)
+    assert repeated_outcome.status_code == 201
+    assert repeated_outcome.json()["id"] == outcome_data["id"]
+    stored_outcomes = client.get(outcome_url)
+    assert stored_outcomes.status_code == 200, stored_outcomes.text
+    assert [item["id"] for item in stored_outcomes.json()["items"]] == [outcome_data["id"]]
+
+    overlapping_windows = {**outcome_body, "followup_window_from": baseline_at.isoformat()}
+    invalid_window = client.post(outcome_url, headers=headers, json=overlapping_windows)
+    assert invalid_window.status_code == 422
+    wrong_source = client.post(
+        outcome_url,
+        headers=headers,
+        json={**outcome_body, "source_id": "another-page"},
+    )
+    assert wrong_source.status_code == 422
+
+    pending_outcome = client.post(
+        f"/api/v1/workspaces/{workspace_id}/analytics/recommendation-drafts/{newer_draft.json()['created_draft']['id']}/outcomes",
+        headers=headers,
+        json=outcome_body,
+    )
+    assert pending_outcome.status_code == 409
+
     stale_decision = client.post(
         f"/api/v1/workspaces/{workspace_id}/analytics/recommendation-drafts/{newer_draft.json()['created_draft']['id']}/decision",
         headers=headers,

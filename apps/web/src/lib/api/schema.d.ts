@@ -310,6 +310,23 @@ export interface paths {
         readonly patch?: never;
         readonly trace?: never;
     };
+    readonly "/api/v1/workspaces/{company_id}/analytics/recommendation-drafts": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /** List Accepted Recommendation Drafts */
+        readonly get: operations["list_accepted_recommendation_drafts_api_v1_workspaces__company_id__analytics_recommendation_drafts_get"];
+        readonly put?: never;
+        readonly post?: never;
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
     readonly "/api/v1/workspaces/{company_id}/analytics/recommendation-drafts/{draft_id}/decision": {
         readonly parameters: {
             readonly query?: never;
@@ -321,6 +338,24 @@ export interface paths {
         readonly put?: never;
         /** Decide Recommendation Draft */
         readonly post: operations["decide_recommendation_draft_api_v1_workspaces__company_id__analytics_recommendation_drafts__draft_id__decision_post"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/v1/workspaces/{company_id}/analytics/recommendation-drafts/{draft_id}/outcomes": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /** List Recommendation Experiment Outcomes */
+        readonly get: operations["list_recommendation_experiment_outcomes_api_v1_workspaces__company_id__analytics_recommendation_drafts__draft_id__outcomes_get"];
+        readonly put?: never;
+        /** Record Recommendation Experiment Outcome */
+        readonly post: operations["record_recommendation_experiment_outcome_api_v1_workspaces__company_id__analytics_recommendation_drafts__draft_id__outcomes_post"];
         readonly delete?: never;
         readonly options?: never;
         readonly head?: never;
@@ -842,6 +877,11 @@ export interface components {
             /** Password */
             readonly password: string;
         };
+        /** AcceptedRecommendationDraftListOut */
+        readonly AcceptedRecommendationDraftListOut: {
+            /** Items */
+            readonly items: readonly components["schemas"]["CampaignBriefRevisionDraftOut"][];
+        };
         /** AcceptedResponse */
         readonly AcceptedResponse: {
             readonly job: components["schemas"]["JobOut"];
@@ -1307,6 +1347,79 @@ export interface components {
             readonly uploaded_by: string;
             /** Workspace Id */
             readonly workspace_id: string;
+        };
+        /** ExperimentOutcomeCohortOut */
+        readonly ExperimentOutcomeCohortOut: {
+            /** Coverage */
+            readonly coverage: number;
+            /** Evidence Id */
+            readonly evidence_id: string;
+            /**
+             * Measured From
+             * Format: date-time
+             */
+            readonly measured_from: string;
+            /**
+             * Measured To
+             * Format: date-time
+             */
+            readonly measured_to: string;
+            /** Post Ids */
+            readonly post_ids: readonly string[];
+            /** Sample Size */
+            readonly sample_size: number;
+            /** Snapshot Ids */
+            readonly snapshot_ids: readonly string[];
+            /** Value */
+            readonly value: number;
+            /**
+             * Window From
+             * Format: date-time
+             */
+            readonly window_from: string;
+            /**
+             * Window To
+             * Format: date-time
+             */
+            readonly window_to: string;
+        };
+        /** ExperimentOutcomeListOut */
+        readonly ExperimentOutcomeListOut: {
+            /** Items */
+            readonly items: readonly components["schemas"]["ExperimentOutcomeOut"][];
+        };
+        /** ExperimentOutcomeOut */
+        readonly ExperimentOutcomeOut: {
+            /** Absolute Change */
+            readonly absolute_change: number;
+            readonly baseline: components["schemas"]["ExperimentOutcomeCohortOut"];
+            /** Campaign Id */
+            readonly campaign_id: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            readonly created_at: string;
+            /** Draft Id */
+            readonly draft_id: string;
+            readonly followup: components["schemas"]["ExperimentOutcomeCohortOut"];
+            /** Id */
+            readonly id: string;
+            /** Limitations */
+            readonly limitations: readonly string[];
+            /** Max Post Age Hours */
+            readonly max_post_age_hours: number;
+            /**
+             * Metric
+             * @enum {string}
+             */
+            readonly metric: "reach" | "views" | "engagement_rate_by_reach" | "click_rate_by_reach";
+            /** Min Post Age Hours */
+            readonly min_post_age_hours: number;
+            /** Relative Change */
+            readonly relative_change: number | null;
+            /** Source Id */
+            readonly source_id: string;
         };
         /** ExportOut */
         readonly ExportOut: {
@@ -1843,6 +1956,40 @@ export interface components {
             /** Threshold */
             readonly threshold?: string | null;
         };
+        /** RecordExperimentOutcomeRequest */
+        readonly RecordExperimentOutcomeRequest: {
+            /**
+             * Baseline Window From
+             * Format: date-time
+             */
+            readonly baseline_window_from: string;
+            /**
+             * Baseline Window To
+             * Format: date-time
+             */
+            readonly baseline_window_to: string;
+            /**
+             * Followup Window From
+             * Format: date-time
+             */
+            readonly followup_window_from: string;
+            /**
+             * Followup Window To
+             * Format: date-time
+             */
+            readonly followup_window_to: string;
+            /** Max Post Age Hours */
+            readonly max_post_age_hours: number;
+            /**
+             * Metric
+             * @enum {string}
+             */
+            readonly metric: "reach" | "views" | "engagement_rate_by_reach" | "click_rate_by_reach";
+            /** Min Post Age Hours */
+            readonly min_post_age_hours: number;
+            /** Source Id */
+            readonly source_id: string;
+        };
         /** RegisterRequest */
         readonly RegisterRequest: {
             /** Company Name */
@@ -1989,6 +2136,7 @@ export interface components {
     pathItems: never;
 }
 export type SchemaAcceptInvitationRequest = components['schemas']['AcceptInvitationRequest'];
+export type SchemaAcceptedRecommendationDraftListOut = components['schemas']['AcceptedRecommendationDraftListOut'];
 export type SchemaAcceptedResponse = components['schemas']['AcceptedResponse'];
 export type SchemaAnalyticsDashboardOut = components['schemas']['AnalyticsDashboardOut'];
 export type SchemaAnalyticsEvidence = components['schemas']['AnalyticsEvidence'];
@@ -2015,6 +2163,9 @@ export type SchemaCreateExportRequest = components['schemas']['CreateExportReque
 export type SchemaCreateManualPostRequest = components['schemas']['CreateManualPostRequest'];
 export type SchemaDocumentError = components['schemas']['DocumentError'];
 export type SchemaDocumentOut = components['schemas']['DocumentOut'];
+export type SchemaExperimentOutcomeCohortOut = components['schemas']['ExperimentOutcomeCohortOut'];
+export type SchemaExperimentOutcomeListOut = components['schemas']['ExperimentOutcomeListOut'];
+export type SchemaExperimentOutcomeOut = components['schemas']['ExperimentOutcomeOut'];
 export type SchemaExportOut = components['schemas']['ExportOut'];
 export type SchemaForgotPasswordRequest = components['schemas']['ForgotPasswordRequest'];
 export type SchemaGenerateContentRequest = components['schemas']['GenerateContentRequest'];
@@ -2046,6 +2197,7 @@ export type SchemaRecommendationDraftDecisionRequest = components['schemas']['Re
 export type SchemaRecommendationFeedbackOut = components['schemas']['RecommendationFeedbackOut'];
 export type SchemaRecommendationFeedbackRequest = components['schemas']['RecommendationFeedbackRequest'];
 export type SchemaRecommendationOut = components['schemas']['RecommendationOut'];
+export type SchemaRecordExperimentOutcomeRequest = components['schemas']['RecordExperimentOutcomeRequest'];
 export type SchemaRegisterRequest = components['schemas']['RegisterRequest'];
 export type SchemaResetPasswordRequest = components['schemas']['ResetPasswordRequest'];
 export type SchemaSaveRecommendationRequest = components['schemas']['SaveRecommendationRequest'];
@@ -2636,6 +2788,42 @@ export interface operations {
             };
         };
     };
+    readonly list_accepted_recommendation_drafts_api_v1_workspaces__company_id__analytics_recommendation_drafts_get: {
+        readonly parameters: {
+            readonly query: {
+                readonly campaign_id: string;
+                readonly source_id: string;
+            };
+            readonly header?: {
+                readonly authorization?: string | null;
+            };
+            readonly path: {
+                readonly company_id: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["AcceptedRecommendationDraftListOut"];
+                };
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     readonly decide_recommendation_draft_api_v1_workspaces__company_id__analytics_recommendation_drafts__draft_id__decision_post: {
         readonly parameters: {
             readonly query?: never;
@@ -2661,6 +2849,78 @@ export interface operations {
                 };
                 content: {
                     readonly "application/json": components["schemas"]["CampaignBriefRevisionDraftOut"];
+                };
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    readonly list_recommendation_experiment_outcomes_api_v1_workspaces__company_id__analytics_recommendation_drafts__draft_id__outcomes_get: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: {
+                readonly authorization?: string | null;
+            };
+            readonly path: {
+                readonly company_id: string;
+                readonly draft_id: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ExperimentOutcomeListOut"];
+                };
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    readonly record_recommendation_experiment_outcome_api_v1_workspaces__company_id__analytics_recommendation_drafts__draft_id__outcomes_post: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: {
+                readonly authorization?: string | null;
+            };
+            readonly path: {
+                readonly company_id: string;
+                readonly draft_id: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": components["schemas"]["RecordExperimentOutcomeRequest"];
+            };
+        };
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 201: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ExperimentOutcomeOut"];
                 };
             };
             /** @description Validation Error */

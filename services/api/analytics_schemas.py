@@ -145,3 +145,74 @@ class ApplyRecommendationResponse(StrictModel):
 
 class RecommendationDraftDecisionRequest(StrictModel):
     decision: Literal["accepted", "discarded"]
+
+
+ExperimentMetric = Literal["reach", "views", "engagement_rate_by_reach", "click_rate_by_reach"]
+
+
+class RecordExperimentOutcomeRequest(StrictModel):
+    source_id: str = Field(min_length=1, max_length=160)
+    metric: ExperimentMetric
+    baseline_window_from: datetime
+    baseline_window_to: datetime
+    followup_window_from: datetime
+    followup_window_to: datetime
+    min_post_age_hours: int = Field(ge=0, le=24 * 365)
+    max_post_age_hours: int = Field(ge=0, le=24 * 365)
+
+    @model_validator(mode="after")
+    def validate_windows(self) -> "RecordExperimentOutcomeRequest":
+        windows = (
+            self.baseline_window_from,
+            self.baseline_window_to,
+            self.followup_window_from,
+            self.followup_window_to,
+        )
+        if any(value.tzinfo is None or value.utcoffset() is None for value in windows):
+            raise ValueError("measurement windows must include a timezone")
+        if self.baseline_window_to < self.baseline_window_from:
+            raise ValueError("baseline window end must not precede its start")
+        if self.followup_window_to < self.followup_window_from:
+            raise ValueError("follow-up window end must not precede its start")
+        if self.baseline_window_to >= self.followup_window_from:
+            raise ValueError("baseline and follow-up windows must not overlap")
+        if self.max_post_age_hours < self.min_post_age_hours:
+            raise ValueError("max_post_age_hours must be greater than or equal to min_post_age_hours")
+        return self
+
+
+class AcceptedRecommendationDraftListOut(StrictModel):
+    items: list[CampaignBriefRevisionDraftOut]
+
+
+class ExperimentOutcomeCohortOut(StrictModel):
+    window_from: datetime
+    window_to: datetime
+    measured_from: datetime
+    measured_to: datetime
+    value: float
+    sample_size: int
+    coverage: float
+    evidence_id: str
+    post_ids: list[str]
+    snapshot_ids: list[str]
+
+
+class ExperimentOutcomeOut(StrictModel):
+    id: str
+    campaign_id: str
+    draft_id: str
+    source_id: str
+    metric: ExperimentMetric
+    min_post_age_hours: int
+    max_post_age_hours: int
+    baseline: ExperimentOutcomeCohortOut
+    followup: ExperimentOutcomeCohortOut
+    absolute_change: float
+    relative_change: float | None
+    limitations: list[str]
+    created_at: datetime
+
+
+class ExperimentOutcomeListOut(StrictModel):
+    items: list[ExperimentOutcomeOut]

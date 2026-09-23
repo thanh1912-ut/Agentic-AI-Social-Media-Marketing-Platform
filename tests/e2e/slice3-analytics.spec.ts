@@ -52,4 +52,13 @@ test('ghi feedback và áp dụng recommendation thành brief revision cần own
   await page.getByRole('button', { name: 'Chấp nhận revision' }).click();
   await expect(page.getByText('Trạng thái bản nháp:')).toContainText('accepted');
   await expect(page.getByText('Dữ liệu minh họa — không phải kết quả thật.', { exact: false }).first()).toBeVisible();
+
+  await expect(page.getByRole('heading', { name: 'Theo dõi kết quả recommendation' })).toBeVisible();
+  await page.getByLabel('Bắt đầu baseline').fill('2026-09-01T00:00');
+  await page.getByLabel('Kết thúc baseline').fill('2026-09-07T23:59');
+  await page.getByLabel('Bắt đầu follow-up').fill('2026-09-08T00:00');
+  await page.getByLabel('Kết thúc follow-up').fill('2026-09-15T23:59');
+  await page.getByRole('button', { name: 'Ghi nhận kết quả' }).click();
+  await expect(page.getByRole('heading', { name: 'Outcomes đã lưu' })).toBeVisible();
+  await expect(page.getByText(/So sánh mô tả không chứng minh recommendation gây ra thay đổi/)).toBeVisible();
 });

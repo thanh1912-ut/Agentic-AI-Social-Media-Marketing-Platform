@@ -37,8 +37,10 @@ import type {
   ApiAnalyticsRecommendationRecord,
   ApiApplyRecommendationRequest,
   ApiCampaignBriefRevisionDraft,
+  ApiExperimentOutcome,
   ApiMetricImportRequest,
   ApiRecommendationFeedbackRequest,
+  ApiRecordExperimentOutcomeRequest,
 } from '@/lib/api/types';
 
 import {
@@ -154,6 +156,8 @@ type DemoBriefRevisionDraft = {
 const demoMetricsByWorkspace: Record<string, Record<string, DemoMetricRow[]>> = {};
 const demoRecommendationRecords: Record<string, Record<string, DemoRecommendationRecord>> = {};
 const demoBriefRevisionDrafts: Record<string, Record<string, DemoBriefRevisionDraft>> = {};
+const demoExperimentOutcomes: Record<string, Record<string, ApiExperimentOutcome[]>> = {};
+const demoExperimentOutcomeFingerprints: Record<string, Record<string, Record<string, string>>> = {};
 
 const nowIso = (): string => new Date().toISOString();
 
@@ -1069,6 +1073,93 @@ export const handlers = [
     }
     draft.status = body.decision;
     return HttpResponse.json(draft);
+  }),
+
+  http.get('*/api/v1/workspaces/:workspaceId/analytics/recommendation-drafts', ({ params, request }) => {
+    if (!currentSession()) return unauthenticated();
+    const workspaceId = params.workspaceId as string;
+    const query = new URL(request.url).searchParams;
+    const campaignId = query.get('campaign_id');
+    const sourceId = query.get('source_id');
+    const items = Object.values(demoBriefRevisionDrafts[workspaceId] ?? {}).filter((draft) => {
+      const record = Object.values(demoRecommendationRecords[workspaceId] ?? {}).find(
+        (candidate) => candidate.id === draft.source_recommendation_id,
+      );
+      return draft.status === 'accepted'
+        && draft.campaign_id === campaignId
+        && record?.source_id === sourceId;
+    }).sort((left, right) => right.created_at.localeCompare(left.created_at));
+    return HttpResponse.json({ items });
+  }),
+
+  http.get('*/api/v1/workspaces/:workspaceId/analytics/recommendation-drafts/:draftId/outcomes', ({ params }) => {
+    if (!currentSession()) return unauthenticated();
+    const workspaceId = params.workspaceId as string;
+    const draftId = params.draftId as string;
+    const draft = Object.values(demoBriefRevisionDrafts[workspaceId] ?? {}).find((item) => item.id === draftId);
+    if (!draft || draft.status !== 'accepted') return notFound('brief revision đã chấp nhận');
+    return HttpResponse.json({ items: demoExperimentOutcomes[workspaceId]?.[draftId] ?? [] });
+  }),
+
+  http.post('*/api/v1/workspaces/:workspaceId/analytics/recommendation-drafts/:draftId/outcomes', async ({ params, request }) => {
+    if (!currentSession()) return unauthenticated();
+    const workspaceId = params.workspaceId as string;
+    const draftId = params.draftId as string;
+    const body = await request.json() as ApiRecordExperimentOutcomeRequest;
+    const draft = Object.values(demoBriefRevisionDrafts[workspaceId] ?? {}).find((item) => item.id === draftId);
+    if (!draft) return notFound('brief revision');
+    if (draft.status !== 'accepted') return fail(409, ERROR_CODES.STATE_CONFLICT, 'Chỉ ghi nhận outcome cho brief revision đã được chấp nhận.');
+    const recommendation = Object.values(demoRecommendationRecords[workspaceId] ?? {}).find(
+      (item) => item.id === draft.source_recommendation_id,
+    );
+    if (recommendation?.source_id !== body.source_id) {
+      return fail(422, ERROR_CODES.VALIDATION_ERROR, 'Nguồn số liệu phải trùng nguồn của recommendation.');
+    }
+    demoExperimentOutcomes[workspaceId] ??= {};
+    demoExperimentOutcomes[workspaceId][draftId] ??= [];
+    demoExperimentOutcomeFingerprints[workspaceId] ??= {};
+    demoExperimentOutcomeFingerprints[workspaceId][draftId] ??= {};
+    const fingerprint = JSON.stringify(body);
+    const existingId = demoExperimentOutcomeFingerprints[workspaceId][draftId][fingerprint];
+    const existing = demoExperimentOutcomes[workspaceId][draftId].find((item) => item.id === existingId);
+    if (existing) return HttpResponse.json(existing, { status: 201 });
+
+    const baseValue = body.metric === 'reach' ? 1000 : body.metric === 'views' ? 800 : 0.1;
+    const baselineValue = baseValue;
+    const followupValue = baseValue * 1.15;
+    const makeCohort = (windowFrom: string, windowTo: string, value: number, phase: string) => ({
+      window_from: windowFrom,
+      window_to: windowTo,
+      measured_from: windowFrom,
+      measured_to: windowTo,
+      value,
+      sample_size: 10,
+      coverage: 0.9,
+      evidence_id: `ev:demo:${draftId}:${body.metric}:${phase}`,
+      post_ids: Array.from({ length: 10 }, (_unused, index) => `demo-post-${String(index + 1).padStart(2, '0')}`),
+      snapshot_ids: [`demo-snapshot-${phase}`],
+    });
+    const outcome: ApiExperimentOutcome = {
+      id: nextId('demo-outcome'),
+      campaign_id: draft.campaign_id,
+      draft_id: draft.id,
+      source_id: body.source_id,
+      metric: body.metric,
+      min_post_age_hours: body.min_post_age_hours,
+      max_post_age_hours: body.max_post_age_hours,
+      baseline: makeCohort(body.baseline_window_from, body.baseline_window_to, baselineValue, 'baseline'),
+      followup: makeCohort(body.followup_window_from, body.followup_window_to, followupValue, 'followup'),
+      absolute_change: followupValue - baselineValue,
+      relative_change: 0.15,
+      limitations: [
+        'Dữ liệu minh họa — không phải kết quả thật.',
+        'So sánh mô tả không chứng minh recommendation gây ra thay đổi.',
+      ],
+      created_at: nowIso(),
+    };
+    demoExperimentOutcomes[workspaceId][draftId].unshift(outcome);
+    demoExperimentOutcomeFingerprints[workspaceId][draftId][fingerprint] = outcome.id;
+    return HttpResponse.json(outcome, { status: 201 });
   }),
 
   http.get('*/api/v1/workspaces/:workspaceId/analytics/recommendation', ({ params, request }) => {

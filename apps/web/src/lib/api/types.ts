@@ -43,3 +43,7 @@ export type ApiApplyRecommendationRequest = Schemas['ApplyRecommendationRequest'
 export type ApiApplyRecommendationResponse = Schemas['ApplyRecommendationResponse'];
 export type ApiRecommendationDraftDecisionRequest = Schemas['RecommendationDraftDecisionRequest'];
 export type ApiCampaignBriefRevisionDraft = Schemas['CampaignBriefRevisionDraftOut'];
+export type ApiAcceptedRecommendationDraftList = Schemas['AcceptedRecommendationDraftListOut'];
+export type ApiRecordExperimentOutcomeRequest = Schemas['RecordExperimentOutcomeRequest'];
+export type ApiExperimentOutcome = Schemas['ExperimentOutcomeOut'];
+export type ApiExperimentOutcomeList = Schemas['ExperimentOutcomeListOut'];
