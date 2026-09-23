@@ -4,9 +4,9 @@ Cập nhật gần nhất: 2026-09-24 00:08 (Asia/Ho_Chi_Minh)
 
 ## Trạng thái phiên
 
-- Branch: `codex/product-v1-completion`; latest code commit `72ad60a` bổ sung REC-002; base `origin/main` là `07938bd`. Tài liệu đang được đồng bộ trước khi push.
+- Branch: `codex/product-v1-completion`; latest code/test commit `bba034e` bổ sung real-mode acceptance cho manual campaign, approval và export; base `origin/main` là `07938bd`. Tài liệu đang được đồng bộ trước khi push.
 - Phase hiện tại: hardening/bàn giao. Recommendation có feedback/audit, Apply → brief revision chờ duyệt → owner accept/discard có version guard, và ghi nhận outcome baseline/follow-up.
-- Trạng thái: REC-002 và test report đã hoàn tất trên worktree; còn fetch remote và push branch bàn giao.
+- Trạng thái: REC-002, real-mode manual workflow test và cập nhật test report đã hoàn tất trên worktree; còn fetch remote và push branch bàn giao.
 - Snapshot source M1/M2/M3 đã được đưa vào worktree riêng; checkout và index gốc ở `/Users/lethanh/agent` được giữ nguyên.
 - Phase 0 (audit và sáu tài liệu) đã hoàn tất. Phase 1 có Python/npm dependencies; clean SQLite migration 0001→0007 pass. Chưa nghiệm thu stack PostgreSQL/Redis/MinIO bằng Docker.
 - Phase 3 có campaign CRUD, manual post/version, approval và CSV/XLSX export tenant-scoped. Content generation API đang fail-closed với `503 provider_approval_required`.
@@ -28,7 +28,7 @@ Cập nhật gần nhất: 2026-09-24 00:08 (Asia/Ho_Chi_Minh)
 | Meta | Chưa có connector/live publish; real-mode có trang hướng dẫn export và đăng thủ công | Trang publishing được xác minh trên production build; không gọi Meta | Cần Page/app/token/quyền và Meta App Review để bật kết nối tự động. |
 | Metrics/dashboard | Manual snapshots API + migration 0005 + dashboard response/UI; counts giữ null, có coverage/freshness, grouping | Analytics API tests pass; clean SQLite migration 0001→0007; OpenAPI hiện hành | Snapshot nhập tay là dữ liệu người dùng cung cấp, chưa có Meta sync/metrics ingestion tự động. |
 | Recommendation | Deterministic proposal/abstain; persisted lifecycle + feedback/audit; Apply tạo brief revision; accept/discard + version conflict; outcome baseline/follow-up theo source, metric và age range | API test cover cohort computation/evidence IDs/readback/idempotency, sai source/window và draft pending; Playwright outcome flow desktop/mobile pass | Cần nhập số liệu thực tế sau thời gian thử nghiệm; chênh lệch là mô tả, không chứng minh nhân quả. |
-| Frontend | Auth/workspace/docs/brand/campaign/manual post/export, metrics/recommendation/outcome tracker và trang hướng dẫn xuất bản thủ công | Typecheck/lint/build trên `72ad60a`; 41 unit tests; 32 prior desktop/mobile mock E2E; REC-002 browser flow pass 2/2 projects | Browser xác minh login, dashboard, recommendation lifecycle, owner accept/outcome UI và trang publishing; chưa chạy hết brand/content/approval/export. |
+| Frontend | Auth/workspace/docs/brand/campaign/manual post/export, metrics/recommendation/outcome tracker và trang hướng dẫn xuất bản thủ công | Typecheck/lint/build trên `72ad60a`; 41 unit tests; 32 prior desktop/mobile mock E2E; REC-002 browser flow pass 2/2 projects; real-mode manual workflow pass trên `bba034e` | Browser xác minh login, campaign, manual post, duyệt và tải export qua API thật/SQLite; brand extraction và AI content vẫn chưa xác minh do AI-001. |
 | Security/ops | Production JWT secret checks, Secure cookie, API docs tắt khi production | Security tests pass; `npm audit` reports 0 vulnerabilities | Cần full security review, PostgreSQL/Compose, backup/restore và real E2E. |
 
 ## Kiểm thử gần nhất
@@ -36,6 +36,7 @@ Cập nhật gần nhất: 2026-09-24 00:08 (Asia/Ho_Chi_Minh)
 - Python: `82 passed, 1 skipped`; analytics import/report/recommendation/tenant isolation tests pass, production worker fail-closed trước provider. Skip là live DeepSeek smoke.
 - Frontend: `41 passed`; typecheck, lint và production build pass.
 - Playwright mock E2E cũ: `32 passed` desktop/mobile; REC-002 test riêng chạy lại `2 passed` (desktop + mobile), gồm accept revision và lưu/hiển thị outcome qua MSW demo data, không phải live API.
+- Real-mode Playwright: `1 passed`; đăng ký account mới, login, tạo campaign, viết/duyệt bài thủ công, tạo export và tải XLSX qua FastAPI thật + SQLite tạm. Không gọi DeepSeek hoặc Meta.
 - OpenAPI `--check`, Python `compileall` và SQLite migration 0001→0007 pass.
 - `npm ls postcss --all` pass: PostCSS 8.5.24/8.5.28 trong cây dependency.
 - `npm audit --audit-level=high` pass: 0 vulnerabilities.
@@ -48,7 +49,7 @@ Chi tiết: [test-report.md](test-report.md).
 
 - **AI-001 — chờ bạn chấp thuận data flow:** auto-review từ chối worker gửi Brand Profile và đoạn trích tài liệu workspace tới DeepSeek. Cả upload-driven profile extraction worker lẫn content generation endpoint đều fail-closed; endpoint trả `503 provider_approval_required`, không gọi provider. Cũng chưa có `DEEPSEEK_API_KEY` để live smoke.
 - **DB/RUN-001 — runtime:** Docker/Podman và MinIO không có; PostgreSQL local đã lắng nghe nhưng chưa được xác minh là DB test riêng, nên không dùng để ghi migration.
-- **E2E-001 — phạm vi:** login và metrics/recommendation real-mode đã smoke pass trên account/DB tạm. Toàn luồng brand → content → approval → export chưa nghiệm thu; content còn phụ thuộc AI-001.
+- **E2E-001 — phạm vi:** real-mode đã kiểm tra analytics/recommendation và manual campaign → post → approval → export. Upload-driven Brand Profile extraction và AI content generation chưa nghiệm thu; phụ thuộc AI-001. Chưa chạy đầy đủ acceptance trên PostgreSQL/MinIO.
 - **META-001 — quyền bên ngoài:** chưa có Meta app/Page credentials, permission hoặc App Review evidence.
 - **RAG-001 — embedding:** DeepSeek chat không được mặc định coi là embedding API; hiện retrieval lexical.
 
@@ -56,4 +57,4 @@ Chi tiết: [test-report.md](test-report.md).
 
 1. Chờ chấp thuận rõ cho data flow DeepSeek; sau đó cấu hình key ở secret store và chạy live smoke có kiểm soát.
 2. Chạy PostgreSQL migration, Compose/runtime, backup/recovery và nghiệm thu Meta khi môi trường/quyền sẵn sàng.
-3. Hoàn thiện real-mode browser E2E cho brand/content/approval/export sau khi AI-001 được giải quyết; kiểm tra outcome bằng số liệu vận hành thật khi có snapshot baseline/follow-up.
+3. Chạy brand extraction/content E2E khi AI-001 được giải quyết; kiểm tra REC-002 bằng số liệu vận hành thật khi có snapshot baseline/follow-up.
