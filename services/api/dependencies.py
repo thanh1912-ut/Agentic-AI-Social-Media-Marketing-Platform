@@ -85,11 +85,14 @@ def require_permission(permission: str):
 
 
 async def require_csrf(request: Request) -> None:
-    # Bearer clients are not exposed to cookie CSRF. Browser clients use the
-    # access cookie and must echo the readable CSRF cookie on mutations.
-    if request.headers.get("Authorization"):
+    # Bearer-only clients are not exposed to cookie CSRF. If either session
+    # cookie is present, browser mutations must echo the readable CSRF cookie.
+    has_cookie_session = bool(
+        request.cookies.get(ACCESS_COOKIE) or request.cookies.get(REFRESH_COOKIE)
+    )
+    if request.headers.get("Authorization") and not has_cookie_session:
         return
-    if request.method in {"POST", "PUT", "PATCH", "DELETE"} and request.cookies.get(ACCESS_COOKIE):
+    if request.method in {"POST", "PUT", "PATCH", "DELETE"} and has_cookie_session:
         expected = request.cookies.get(CSRF_COOKIE)
         received = request.headers.get(CSRF_HEADER)
         if not expected or not received or expected != received:

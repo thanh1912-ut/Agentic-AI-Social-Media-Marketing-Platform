@@ -92,9 +92,13 @@ async function readBody(response: Response): Promise<unknown> {
 async function refreshSessionRequest(): Promise<void> {
   let response: Response;
   try {
+    const csrfToken = readCookie(CSRF_COOKIE_NAME);
     response = await fetch(apiUrl('/auth/refresh'), {
       method: 'POST',
-      headers: { Accept: 'application/json' },
+      headers: {
+        Accept: 'application/json',
+        ...(csrfToken ? { [CSRF_HEADER_NAME]: csrfToken } : {}),
+      },
       credentials: 'include',
       cache: 'no-store',
     });

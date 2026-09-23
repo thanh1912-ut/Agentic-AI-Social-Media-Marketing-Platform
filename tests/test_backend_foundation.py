@@ -99,6 +99,44 @@ def test_cors_preflight_allows_only_required_api_methods_and_headers(api_client:
     assert denied.status_code == 400
 
 
+def test_refresh_and_logout_require_csrf_for_cookie_sessions(api_client: TestClient) -> None:
+    registered = api_client.post(
+        "/api/v1/auth/register",
+        json={
+            "email": "csrf-owner@example.com",
+            "password": "secret123",
+            "full_name": "CSRF Owner",
+            "company_name": "CSRF Co",
+        },
+    )
+    assert registered.status_code == 201
+    csrf_token = api_client.cookies.get("agentic_csrf")
+
+    # Even a bogus bearer header cannot bypass CSRF when the route still uses
+    # its refresh cookie. This also covers the access-cookie-expired state.
+    api_client.cookies.delete("agentic_access")
+    refresh_url = "/api/v1/auth/refresh"
+    refused_refresh = api_client.post(refresh_url, headers={"Authorization": "Bearer unused"})
+    assert refused_refresh.status_code == 403
+    assert refused_refresh.json()["error"]["code"] == "csrf_failed"
+
+    refreshed = api_client.post(refresh_url, headers={"X-CSRF-Token": csrf_token})
+    assert refreshed.status_code == 200, refreshed.text
+    refreshed_csrf = api_client.cookies.get("agentic_csrf")
+
+    refused_logout = api_client.post(
+        "/api/v1/auth/logout",
+        headers={"Authorization": "Bearer unused"},
+    )
+    assert refused_logout.status_code == 403
+    logged_out = api_client.post(
+        "/api/v1/auth/logout",
+        headers={"X-CSRF-Token": refreshed_csrf},
+    )
+    assert logged_out.status_code == 204
+    assert api_client.post(refresh_url, headers={"X-CSRF-Token": refreshed_csrf}).status_code == 401
+
+
 def test_parser_returns_locators_and_rejects_scan_pdf(tmp_path) -> None:
     text_path = tmp_path / "brand.txt"
     text_path.write_text("Bếp Mộc phục vụ món Việt.", encoding="utf-8")

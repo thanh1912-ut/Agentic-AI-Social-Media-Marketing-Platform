@@ -12,7 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from database.models import Brand, Company, Invitation, Membership, PasswordResetToken, RefreshSession, User, utcnow
 from .config import settings
 from .db import get_db
-from .dependencies import CSRF_COOKIE, REFRESH_COOKIE, ACCESS_COOKIE
+from .dependencies import ACCESS_COOKIE, CSRF_COOKIE, REFRESH_COOKIE, require_csrf
 from .errors import ApiProblem
 from .permissions import permissions_for
 from .schemas import (
@@ -130,7 +130,7 @@ async def login(payload: LoginRequest, request: Request, response: Response, db:
     return await _session_response(db, user, access_token, expires_at)
 
 
-@router.post("/refresh", response_model=LoginResponse)
+@router.post("/refresh", response_model=LoginResponse, dependencies=[Depends(require_csrf)])
 async def refresh(request: Request, response: Response, db: AsyncSession = Depends(get_db)):
     raw = request.cookies.get(REFRESH_COOKIE)
     if not raw:
@@ -149,7 +149,7 @@ async def refresh(request: Request, response: Response, db: AsyncSession = Depen
     return await _session_response(db, user, access_token, expires_at)
 
 
-@router.post("/logout", status_code=204)
+@router.post("/logout", status_code=204, dependencies=[Depends(require_csrf)])
 async def logout(request: Request, response: Response, db: AsyncSession = Depends(get_db)):
     raw = request.cookies.get(REFRESH_COOKIE)
     if raw:
