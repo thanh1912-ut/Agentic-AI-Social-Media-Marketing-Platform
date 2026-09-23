@@ -1,10 +1,10 @@
 # Tiến độ triển khai
 
-Cập nhật gần nhất: 2026-09-24 02:40 (Asia/Ho_Chi_Minh)
+Cập nhật gần nhất: 2026-09-24 02:43 (Asia/Ho_Chi_Minh)
 
 ## Trạng thái phiên
 
-- Branch: `codex/product-v1-completion`; implementation commit `6f2f67c` đã qua bộ kiểm tra mới nhất; base `origin/main` là `07938bd`. Đang cập nhật PR và chuẩn bị push commit.
+- Branch: `codex/product-v1-completion`; implementation commit `6f2f67c` đã qua bộ kiểm tra mới nhất; base `origin/main` là `07938bd`. Commits đã push tới `17dfbb1`; PR #1 đang mở và mergeable.
 - Phase hiện tại: AI integration và bàn giao. Branch có REC-002, real-mode manual workflow, security fixes, rate limits, Brand Profile/DeepSeek worker flow, durable content-generation jobs và AI revise version workflow.
 - Trạng thái: data flow gửi đoạn trích tài liệu và Brand Profile tới DeepSeek đã được chủ dự án chấp thuận ngày 2026-09-24. Code path đã bật qua factory server-side; API key chưa có nên live request/model-account check chưa chạy.
 - Snapshot source M1/M2/M3 đã được đưa vào worktree riêng; checkout và index gốc ở `/Users/lethanh/agent` được giữ nguyên.
