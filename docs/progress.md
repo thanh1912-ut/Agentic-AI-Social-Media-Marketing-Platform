@@ -1,10 +1,12 @@
 # Tiến độ triển khai
 
-Cập nhật gần nhất: 2026-09-23 22:36 (Asia/Ho_Chi_Minh)
+Cập nhật gần nhất: 2026-09-23 22:45 (Asia/Ho_Chi_Minh)
 
 ## Trạng thái phiên
 
-- Branch: `codex/product-v1-completion`, tạo từ `origin/main` commit `07938bd` sau khi fetch.
+- Branch: `codex/product-v1-completion`, commit đã push và xác minh trên origin: `6f2aa55`; base `origin/main` là `07938bd`.
+- Phase hiện tại: hardening/bàn giao. Mốc gần nhất là manual metrics import + dashboard UI; metrics API, SQLite migration đến 0005, production build và desktop/mobile mock E2E đã pass.
+- Đang làm: chốt phạm vi còn thiếu và blocker môi trường/quyền; không có server live đang chạy từ task này.
 - Snapshot source M1/M2/M3 đã được đưa vào worktree riêng; checkout và index gốc ở `/Users/lethanh/agent` được giữ nguyên.
 - Phase 0 (audit và sáu tài liệu) đã hoàn tất. Phase 1 có Python/npm dependencies; clean SQLite migration 0001→0005 pass. Chưa nghiệm thu stack PostgreSQL/Redis/MinIO bằng Docker.
 - Phase 3 có campaign CRUD, manual post/version, approval và CSV/XLSX export tenant-scoped. Content generation API đang fail-closed với `503 provider_approval_required`.
@@ -53,4 +55,4 @@ Chi tiết: [test-report.md](test-report.md).
 
 1. Chờ chấp thuận rõ cho data flow DeepSeek; sau đó cấu hình key ở secret store và chạy live smoke có kiểm soát.
 2. Chạy PostgreSQL migration, Compose/runtime, real-mode Playwright, backup/recovery và nghiệm thu Meta khi môi trường/quyền sẵn sàng.
-3. Hoàn thiện recommendation feedback/apply và publish guard; metrics import/dashboard cùng đề xuất rule-based hiện đã chạy được trên SQLite/mock UI.
+3. Hoàn thiện feedback/apply thành brief revision và publish guard; metrics import/dashboard cùng đề xuất rule-based hiện chạy được trên SQLite/mock UI. Sau đó nghiệm thu PostgreSQL/real API khi có test DB và account riêng.

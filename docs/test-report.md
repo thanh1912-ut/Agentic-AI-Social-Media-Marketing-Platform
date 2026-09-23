@@ -1,6 +1,8 @@
 # Báo cáo kiểm thử
 
-Cập nhật: 2026-09-23, Asia/Ho_Chi_Minh. Branch `codex/product-v1-completion`, base `origin/main` tại `07938bd`. Kết quả dưới đây được chạy trên source của branch tích hợp.
+Cập nhật: 2026-09-23, Asia/Ho_Chi_Minh. Source được kiểm thử là commit `6f2aa55` trên branch `codex/product-v1-completion`, base `origin/main` tại `07938bd`.
+
+Môi trường: Python 3.11.16, Node.js 26.7.0, SQLite tạm, Chromium desktop/mobile qua Playwright. Frontend E2E dùng Next.js local và MSW; không kết nối API/DB thật.
 
 ## Đã chạy
 
