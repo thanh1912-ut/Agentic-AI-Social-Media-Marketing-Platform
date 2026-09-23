@@ -23,13 +23,15 @@ cp .env.example .env
 
 Sửa `.env` cục bộ trong editor, không paste key vào chat. Đặt `DEEPSEEK_API_KEY` và `LLM_DEFAULT_MODEL=deepseek-flash` hoặc model ID được tài khoản API liệt kê. `LLM_PROVIDER=deepseek`; không cần `OPENAI_API_KEY` cho LLM. Upload-driven Brand Profile extraction và content generation đều đang fail-closed cho provider ngoài. Generation API trả `503 provider_approval_required`; worker không tự khởi tạo DeepSeek khi không được truyền fake agent trong test. Chỉ sau khi chủ dự án chấp thuận rõ việc gửi Brand Profile và đoạn tài liệu tới DeepSeek mới triển khai lại các lời gọi live; thêm API key một mình không mở luồng. Để lexical mode, giữ `EMBEDDING_PROVIDER=none` và `RETRIEVAL_MODE=lexical`.
 
+`.env.example` để `RATE_LIMITS_ENABLED=0` cho local development. Production phải đặt `APP_ENV=production`, `RATE_LIMITS_ENABLED=1`, `COOKIE_SECURE=1` và một `REDIS_URL` khả dụng; cấu hình production từ chối limiter bị tắt. Auth, upload và content-generation routes dùng fixed-window Redis limits; production trả `503` cho các route này khi Redis không dùng được. Các mức hiện tại được ghi trong [security-review.md](security-review.md). Limit key dựa trên `request.client.host`: sau reverse proxy, cấu hình Uvicorn chỉ tin forwarded headers từ proxy thực tế và xác nhận API không truy cập trực tiếp từ nguồn không tin cậy. Không lấy `X-Forwarded-For` tùy ý làm client identity.
+
 ## Khởi động full stack
 
 ```bash
 docker compose up --build
 ```
 
-Compose chạy PostgreSQL/pgvector, Redis, MinIO, migration, storage init, API, worker và scheduler. Chờ health checks xong rồi xác nhận:
+Compose chạy PostgreSQL/pgvector, Redis, MinIO, migration, storage init, API, worker và scheduler. API phụ thuộc Redis health; rate limits ở production fail-closed nếu Redis mất kết nối sau startup. Chờ health checks xong rồi xác nhận:
 
 ```bash
 curl -fsS http://127.0.0.1:8000/healthz

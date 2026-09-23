@@ -1,6 +1,6 @@
 # Báo cáo kiểm thử
 
-Cập nhật: 2026-09-24 00:55 (Asia/Ho_Chi_Minh). Security fixes verified at `d9cb6a8` and `1e1589f` on branch `codex/product-v1-completion`, base `origin/main` at `07938bd`; both implementation commits are pushed. Real-mode analytics smoke lịch sử chạy trên backend source `628efcb`; publishing route fix `c77720d` và contract-test adjustment `73ff4f7` là các commits trước đó.
+Cập nhật: 2026-09-24 01:11 (Asia/Ho_Chi_Minh). Security fixes `d9cb6a8`, `1e1589f` và rate limits `004020e` trên branch `codex/product-v1-completion` đã được push; base `origin/main` là `07938bd`. Real-mode analytics smoke lịch sử chạy trên backend source `628efcb`; publishing route fix `c77720d` và contract-test adjustment `73ff4f7` là các commits trước đó.
 
 Môi trường: Python 3.11.16, Node.js 26.7.0, SQLite tạm, Chromium desktop/mobile. Bộ Playwright tự động dùng Next.js local và MSW; ngoài ra có một browser smoke thủ công qua Codex browser với Next.js + FastAPI real mode và DB SQLite hoàn toàn mới.
 
@@ -12,6 +12,9 @@ Môi trường: Python 3.11.16, Node.js 26.7.0, SQLite tạm, Chromium desktop/m
 | `.venv/bin/python -m pytest -q -p no:cacheprovider tests/test_storage_security.py tests/test_backend_foundation.py tests/test_brand_profile_integration.py` | **18 passed** | Traversal/absolute/Windows/empty-segment keys bị chặn; upload với filename `../../outside.txt` vẫn dùng basename metadata và object key server sinh; CORS preflight chỉ cho method/header cần thiết. |
 | `.venv/bin/python -m pytest -q -p no:cacheprovider tests/test_backend_foundation.py` | **4 passed** | Bao gồm refresh-only cookie, bogus bearer không bypass CSRF, logout và revoked refresh. |
 | `.venv/bin/python -m pytest -q -p no:cacheprovider` sau security hardening | **92 passed, 1 skipped** | Full Python suite trên code commit `1e1589f`; một cảnh báo pending-deprecation từ LangGraph serializer. Không gọi DeepSeek thật. |
+| `.venv/bin/python -m pytest -p no:cacheprovider tests/test_rate_limits.py tests/test_production_security_config.py::test_production_rejects_disabled_rate_limits -q` | **4 passed** | Hạn mức `429`, hashed IP key, Redis failure fail-closed ở production/fail-open ở development, và production không thể tắt limiter. |
+| `.venv/bin/python -m pytest -p no:cacheprovider -q` trên commit `004020e` | **96 passed, 1 skipped** | Full Python suite; skip là live DeepSeek smoke. LangGraph có một pending-deprecation warning. Không gọi provider thật. |
+| `.venv/bin/python scripts/export_openapi.py --check`; `compileall` cho database/services/packages/tests; `git diff --check` | PASS | OpenAPI không đổi; cú pháp Python và whitespace sạch. |
 | `.venv/bin/python scripts/export_openapi.py --check` | PASS | OpenAPI khớp generated contract sau khi thêm outcome API. |
 | `PYTHONPYCACHEPREFIX=/private/tmp/... .venv/bin/python -m compileall -q database services packages` | PASS | Kiểm tra cú pháp Python, bytecode được ghi ra cache tạm riêng. |
 | SQLite `alembic upgrade head` trên DB tạm mới | PASS | Đã áp dụng liên tiếp migration 0001→0007; không đại diện cho PostgreSQL/pgvector. |
@@ -29,7 +32,7 @@ Môi trường: Python 3.11.16, Node.js 26.7.0, SQLite tạm, Chromium desktop/m
 | `npm audit --audit-level=high` | PASS | Registry hiện trả 0 vulnerabilities. |
 | Runtime-config/CORS security regressions | PASS | Inline config test blocks `</script>` termination; API preflight test rejects unlisted request headers. |
 | Cookie refresh/logout CSRF regressions | PASS | API yêu cầu token khi refresh cookie còn nhưng access cookie mất; frontend refresh client gửi token; logout revoke refresh session. |
-| `git diff --check` | PASS | Kiểm tra working diff; vendored skills giữ nguyên line endings/hard breaks từ upstream commit nền. |
+| `git diff --check` | PASS | Kiểm tra working diff sạch sau rate-limit implementation. |
 
 ## Chưa nghiệm thu
 
@@ -41,7 +44,7 @@ Môi trường: Python 3.11.16, Node.js 26.7.0, SQLite tạm, Chromium desktop/m
 
 ## Phạm vi bằng chứng
 
-Campaign, manual post/version, approval và CSV/XLSX export có API tests SQLite và một real-mode browser flow riêng; không đại diện cho PostgreSQL hoặc triển khai production. Manual metrics, recommendation feedback, Apply draft, accept/version conflict và REC-002 outcome persistence được kiểm tra bằng SQLite API tests; UI outcome flow có MSW E2E và không tạo bằng chứng về hiệu suất thật. Real-mode smoke cũ xác minh analytics/recommendation; test mới xác minh manual campaign → post → approval → export/download. Tenant tests không phải full security audit. Security review tái hiện lỗi traversal bằng `LocalObjectStorage.put('../outside.txt')` trong thư mục tạm; focused tests và full Python suite pass. Chi tiết còn thiếu ở [security-review.md](security-review.md). Upload-driven profile extraction worker fail-closed trước khi khởi tạo provider; generation route trả `503 provider_approval_required`, nên không test nào gửi brand/document content tới DeepSeek.
+Campaign, manual post/version, approval và CSV/XLSX export có API tests SQLite và một real-mode browser flow riêng; không đại diện cho PostgreSQL hoặc triển khai production. Manual metrics, recommendation feedback, Apply draft, accept/version conflict và REC-002 outcome persistence được kiểm tra bằng SQLite API tests; UI outcome flow có MSW E2E và không tạo bằng chứng về hiệu suất thật. Real-mode smoke cũ xác minh analytics/recommendation; test mới xác minh manual campaign → post → approval → export/download. Tenant tests không phải full security audit. Security review tái hiện lỗi traversal bằng `LocalObjectStorage.put('../outside.txt')` trong thư mục tạm; focused tests và full Python suite pass. Rate-limit behavior hiện có fake-Redis unit tests, chưa xác minh Redis thật, reverse proxy hoặc edge. Chi tiết còn thiếu ở [security-review.md](security-review.md). Upload-driven profile extraction worker fail-closed trước khi khởi tạo provider; generation route trả `503 provider_approval_required`, nên không test nào gửi brand/document content tới DeepSeek.
 
 ## Lệnh tái kiểm tra
 

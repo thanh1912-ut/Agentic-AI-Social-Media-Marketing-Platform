@@ -115,3 +115,11 @@ Ngày tạo: 2026-09-23. Trạng thái dưới đây được ghi từ audit đ�
 - Quyết định: bảo vệ cả hai route bằng double-submit CSRF; mọi state-changing request có access hoặc refresh cookie phải gửi `X-CSRF-Token`, kể cả khi có Authorization header; bearer-only client được miễn khi không gửi session cookie. Refresh client đọc cookie `agentic_csrf` và gửi lại.
 - Ảnh hưởng: refresh và logout từ web vẫn hoạt động; stale/forged bearer không thể bỏ qua CSRF khi refresh cookie hiện diện.
 - Trạng thái: IMPLEMENTED; API test cover access-cookie-expired/refresh-only, bogus bearer, successful refresh, logout và revoked refresh; frontend client test xác nhận header được gửi.
+
+## DEC-015 — Redis fixed-window limits cho route nhạy cảm
+
+- Vấn đề: auth, upload và content-generation endpoints cần giới hạn chống brute force và lạm dụng; chưa có edge limiter được nghiệm thu.
+- Quyết định: dùng atomic Redis `INCR`/`EXPIRE` Lua fixed window theo operation scope và hash của ASGI client host. Production yêu cầu bật limiter, fail-closed với `503` khi Redis thiếu/lỗi; development mặc định tắt và fail-open nếu Redis lỗi. Mức theo route được ghi tại `docs/security-review.md`.
+- Không chọn: tin forwarded IP header do client gửi hoặc đưa Redis key vào log; proxy IP chỉ hợp lệ khi được cấu hình trusted tại ASGI server.
+- Ảnh hưởng: Redis trở thành dependency của các route bị giới hạn trong production. Fixed window có burst ở boundary; edge/WAF và account-aware login controls chưa được kiểm chứng. Proxy IP behavior cần acceptance trên deployment.
+- Trạng thái: IMPLEMENTED trong `004020e`; 4 focused tests và full Python suite **96 passed, 1 skipped**; Redis/Compose/proxy production runtime chưa được nghiệm thu.

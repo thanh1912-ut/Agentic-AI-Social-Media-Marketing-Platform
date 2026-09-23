@@ -1,12 +1,12 @@
 # Tiến độ triển khai
 
-Cập nhật gần nhất: 2026-09-24 00:55 (Asia/Ho_Chi_Minh)
+Cập nhật gần nhất: 2026-09-24 01:11 (Asia/Ho_Chi_Minh)
 
 ## Trạng thái phiên
 
-- Branch: `codex/product-v1-completion`; security code commits `d9cb6a8` (upload/CORS/runtime config) và `1e1589f` (refresh/logout CSRF) đã được push; base `origin/main` là `07938bd`.
+- Branch: `codex/product-v1-completion`; security commits `d9cb6a8` (upload/CORS/runtime config), `1e1589f` (refresh/logout CSRF) và `004020e` (Redis rate limits) đã được push; base `origin/main` là `07938bd`.
 - Phase hiện tại: hardening/bàn giao. Recommendation có feedback/audit, Apply → brief revision chờ duyệt → owner accept/discard có version guard, và ghi nhận outcome baseline/follow-up.
-- Trạng thái: REC-002, real-mode manual workflow và hai security hardening commits đã push. Python/frontend checks pass; docs security/test/progress đang phản ánh evidence ở `1e1589f`.
+- Trạng thái: REC-002, real-mode manual workflow và ba security hardening commits đã push. Python suite trên commit `004020e`: 96 pass/1 skip; OpenAPI check và compile pass. Security review, task board, runbook, decisions và test report phản ánh evidence mới nhất.
 - Snapshot source M1/M2/M3 đã được đưa vào worktree riêng; checkout và index gốc ở `/Users/lethanh/agent` được giữ nguyên.
 - Phase 0 (audit và sáu tài liệu) đã hoàn tất. Phase 1 có Python/npm dependencies; clean SQLite migration 0001→0007 pass. Chưa nghiệm thu stack PostgreSQL/Redis/MinIO bằng Docker.
 - Phase 3 có campaign CRUD, manual post/version, approval và CSV/XLSX export tenant-scoped. Content generation API đang fail-closed với `503 provider_approval_required`.
@@ -29,11 +29,11 @@ Cập nhật gần nhất: 2026-09-24 00:55 (Asia/Ho_Chi_Minh)
 | Metrics/dashboard | Manual snapshots, API/UI dashboard, null-aware counts, coverage/freshness | SQLite API, clean migrations 0001→0007, OpenAPI pass | `services/api/analytics.py`, analytics UI | Meta sync và nguồn số liệu thật chưa có. |
 | Recommendation | Rule-based evidence/abstain; feedback/audit; Apply draft, owner accept; outcome windows | API cohort/evidence/idempotency tests; desktop/mobile MSW flow pass | REC-001/REC-002 migrations and analytics API/UI | Nhập follow-up metrics thật; không diễn giải như bằng chứng nhân quả. |
 | Frontend | Auth/workspace/docs/brand/campaign/manual post/export/analytics/recommendations | Typecheck/lint/build pass; 43 unit tests; 32 mock E2E; real-mode manual workflow pass | `apps/web/src/**`, `tests/e2e/**` | Brand extraction và AI content real E2E còn chờ AI-001. |
-| Security/ops | JWT/docs protections, explicit CORS allowlist, safe inline config, upload traversal fix, refresh/logout CSRF | 92 Python pass/1 skip; 43 frontend tests; typecheck/lint/build pass | `docs/security-review.md`, storage/CORS/runtime-config/auth-CSRF regression tests | Rate-limit/host/edge review, PostgreSQL/Compose, backup/restore và deployment E2E còn mở. |
+| Security/ops | JWT/docs protections, explicit CORS allowlist, safe inline config, upload traversal fix, refresh/logout CSRF, Redis rate limits | 96 Python pass/1 skip; OpenAPI check, compile pass; 43 frontend tests/typecheck/lint/build từ đợt trước | `docs/security-review.md`, storage/CORS/runtime-config/auth-CSRF/rate-limit regressions | Trusted proxy/edge behavior, Redis/Compose, PostgreSQL, backup/restore và deployment E2E còn mở. |
 
 ## Kiểm thử gần nhất
 
-- Python: `92 passed, 1 skipped`; gồm storage traversal, uploaded filename, explicit CORS preflight, refresh-only CSRF and logout tests. Skip là live DeepSeek smoke.
+- Python: `96 passed, 1 skipped`; gồm storage traversal, uploaded filename, explicit CORS preflight, refresh-only CSRF/logout, Redis rate limit boundaries and fail-closed production config. Skip là live DeepSeek smoke.
 - Frontend: `43 passed`; typecheck, lint và production build pass.
 - Playwright mock E2E cũ: `32 passed` desktop/mobile; REC-002 test riêng chạy lại `2 passed` (desktop + mobile), gồm accept revision và lưu/hiển thị outcome qua MSW demo data, không phải live API.
 - Real-mode Playwright: `1 passed`; đăng ký account mới, login, tạo campaign, viết/duyệt bài thủ công, tạo export và tải XLSX qua FastAPI thật + SQLite tạm. Không gọi DeepSeek hoặc Meta.
@@ -58,4 +58,4 @@ Chi tiết: [test-report.md](test-report.md).
 
 1. Duy trì fail-closed cho AI tới khi data flow DeepSeek được chấp thuận và key được provision; sau đó chạy Brand Profile/content E2E.
 2. Khi môi trường test được provision: nghiệm thu PostgreSQL, Compose, worker/MinIO và backup/restore trên dịch vụ cô lập.
-3. Hoàn tất rate-limit/host/edge review và Meta feasibility khi credentials, Page permission và App Review sẵn sàng.
+3. Kiểm tra trusted proxy IP, Redis rate limiting và edge controls trên deployment; hoàn tất Meta feasibility khi credentials, Page permission và App Review sẵn sàng.
