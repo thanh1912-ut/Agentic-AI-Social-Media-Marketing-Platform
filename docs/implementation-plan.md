@@ -1,6 +1,6 @@
 # Kế hoạch triển khai sản phẩm v1
 
-Cập nhật: 2026-09-23 (Asia/Ho_Chi_Minh)
+Cập nhật: 2026-09-24 (Asia/Ho_Chi_Minh)
 
 ## Mục tiêu và phạm vi
 
@@ -14,7 +14,7 @@ Giữ kiến trúc modular monolith và stack đã có: Next.js/React/TypeScript
 - Snapshot local trước khi tiếp quản gồm thay đổi staged, unstaged và file untracked M1/M2/M3. Snapshot đã được chép sang worktree riêng; checkout/index gốc được giữ nguyên.
 - Backend có auth/session, workspace/membership, document upload/ingestion/jobs, Brand Profile/revision/confirmation API, campaign CRUD, manual post/version, approval history/decision, export creation/download. Campaign/content HTTP contract được sinh từ FastAPI OpenAPI.
 - Upload-driven profile extraction worker và content generation hiện fail-closed trước lời gọi LLM. Generation route trả `503 provider_approval_required`; không gửi Brand Profile/văn bản nguồn tenant sang DeepSeek cho tới khi data flow được chấp thuận. Agent/provider hiện chỉ được kiểm tra bằng fake clients.
-- Campaign/export và manual metrics endpoints có API tests trên SQLite. Frontend có form campaign/manual post, tải export và màn hình nhập snapshot/dashboard; typecheck, 41 unit tests và lint pass. Production build và mock browser E2E đang được chạy lại sau khi nối analytics.
+- Campaign/export và manual metrics endpoints có API tests trên SQLite. Frontend có form campaign/manual post, tải export, màn hình snapshot/dashboard và outcome tracker; typecheck, 41 unit tests, lint, production build và desktop/mobile flow cho recommendation outcome đều pass.
 - DeepSeek adapter đang dùng Chat Completions JSON mode, prompt có schema/example, parse/validate Pydantic và tối đa một lần sửa output. `deepseek-flash` hiện có trong danh sách model chính thức và JSON mode được tài liệu hóa; vẫn cần live request để xác nhận key/model của tài khoản. [Model list](https://api-docs.deepseek.com/api/list-models/), [JSON output](https://api-docs.deepseek.com/guides/json_mode/).
 - Embedding cấu hình độc lập; mặc định `EMBEDDING_PROVIDER=none`, `RETRIEVAL_MODE=lexical`. Đây là retrieval lexical pilot, chưa phải semantic/vector RAG hoàn chỉnh. Không mặc định DeepSeek có embeddings.
 - Python 3.11.16 và Node 26.7.0 có sẵn. PostgreSQL local chấp nhận kết nối ở `127.0.0.1:5432`, Redis trả `PONG`; Docker/Podman và MinIO không khả dụng trong môi trường này. Python và npm dependencies đã được cài trong worktree.
@@ -42,12 +42,12 @@ Giữ kiến trúc modular monolith và stack đã có: Next.js/React/TypeScript
 | 3. Campaign/content/approval/export | Phase 2; DB schema/API/OpenAPI; chấp thuận data flow cho provider ngoài | Campaign/brief thật; generate/revise content job; immutable version; approval gắn hash/version; edit yêu cầu duyệt lại; CSV/XLSX download thật. Campaign/manual post/version/approval/export đã triển khai và có API evidence trên SQLite. AI generate/revise đang chờ chấp thuận; publish hash guard còn thiếu. |
 | 4. Meta/manual publishing | Approved version; credentials/Meta App Review | Khi chưa đủ quyền: manual export/publish state được ghi rõ. Connector chỉ DONE khi version, permission, token, scheduling và reconcile được live kiểm chứng. |
 | 5. Metrics/dashboard | Metrics contract; Meta hoặc manual import | Manual import lưu snapshot tenant-scoped, chặn duplicate, ghi source/time/post age; report định lượng bằng code giữ missing khác zero; dashboard hiển thị coverage/freshness và nhóm pillar/format. Đã có API, migration 0005 và UI; Meta auto-sync còn mở. |
-| 6. Recommendation loop | Phase 5 | API đề xuất deterministic có evidence ID, mô tả giới hạn và abstain khi mẫu nhỏ. Feedback được lưu/audit; Apply tạo brief revision chờ owner duyệt; chấp nhận tăng campaign version theo optimistic concurrency. Đã có API/UI và test SQLite/mock. Theo dõi outcome thực tế của thử nghiệm còn mở; không publish tự động. |
+| 6. Recommendation loop | Phase 5 | API đề xuất deterministic có evidence ID, mô tả giới hạn và abstain khi mẫu nhỏ. Feedback được lưu/audit; Apply tạo brief revision chờ owner duyệt; chấp nhận tăng campaign version theo optimistic concurrency. REC-002 lưu và đọc lại kết quả baseline/follow-up từ cùng source, metric và khoảng tuổi bài, kèm evidence/snapshot IDs và giới hạn suy luận. SQLite API + desktop/mobile mock E2E pass; không publish tự động. |
 | 7. Hardening/bàn giao | Các phase trước | Tenant isolation, recovery, secrets, backup/restore, real-mode E2E, load smoke, docs và clean checkout được kiểm chứng. |
 
 ## Backlog ưu tiên
 
-Chi tiết theo ID và tiêu chí ở [task-board.md](task-board.md). Thứ tự còn lại: isolated PostgreSQL/Compose runtime → DeepSeek data-flow approval + live smoke → browser E2E cho các luồng chưa kiểm tra → Meta permissions → hardening và theo dõi outcome thử nghiệm. Manual metrics import, report, feedback và brief revision đã có fixture/API path cùng real-mode browser smoke một phần; không coi đó là Meta sync, live provider test hoặc production runtime.
+Chi tiết theo ID và tiêu chí ở [task-board.md](task-board.md). Thứ tự còn lại: isolated PostgreSQL/Compose runtime → DeepSeek data-flow approval + live smoke → browser E2E cho các luồng chưa kiểm tra → Meta permissions → hardening. Manual metrics import, report, feedback, brief revision và outcome comparison đã có fixture/API path; không coi đó là Meta sync, live provider test hoặc production runtime.
 
 ## Để sau v1
 

@@ -92,3 +92,11 @@ Ngày tạo: 2026-09-23. Trạng thái dưới đây được ghi từ audit đ�
 - Quyết định: hiển thị trang trạng thái trong real mode, nói rõ chưa kết nối Meta và hướng dẫn review → export → đăng thủ công → nhập metrics. Không giả lập trạng thái đăng hoặc gọi Meta API.
 - Ảnh hưởng: `apps/web/src/app/w/[workspaceId]/publishing/page.tsx`; bỏ guard chung che route real mode.
 - Trạng thái: IMPLEMENTED; typecheck, lint, production build và browser kiểm tra route pass; Meta connector vẫn BLOCKED_EXTERNAL.
+
+## DEC-012 — Theo dõi kết quả recommendation bằng cohort snapshots
+
+- Vấn đề: sau khi owner chấp nhận brief revision, sản phẩm cần lưu kết quả đo trước/sau để operator đối chiếu mà không gán quan hệ nhân quả.
+- Quyết định: chỉ ghi outcome cho revision đã accepted; người dùng chọn metric, hai cửa sổ không chồng lấn, source ID và cùng khoảng tuổi bài. API chọn snapshot mới nhất của từng bài trong mỗi cửa sổ, tính metric bằng module analytics, lưu coverage/sample size, snapshot IDs, evidence IDs, người ghi và audit event. Request lặp có fingerprint sẽ trả lại kết quả đã ghi.
+- Không chọn: sinh kết quả bằng LLM, tính từ mock/demo data ở real mode, hoặc diễn giải khác biệt như tác động nhân quả.
+- Ảnh hưởng: migration 0007; API GET/POST và UI lịch sử outcome; thiếu cohort/metric trả lỗi rõ, baseline bằng 0 thì không tính relative change; mẫu nhỏ hoặc coverage thấp được ghi vào limitations.
+- Trạng thái: IMPLEMENTED; SQLite API test, migration sạch 0001→0007, OpenAPI/TypeScript generation, desktop/mobile MSW E2E pass. PostgreSQL runtime và số liệu Meta thật chưa kiểm chứng.
