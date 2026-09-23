@@ -8,7 +8,7 @@ import { useState, type ReactNode } from 'react';
 import { ROLE_LABELS } from '@agentic/contracts';
 
 import { useSession } from '@/components/session-gate';
-import { Badge, Button, DemoBadge, UnavailableNotice } from '@/components/ui';
+import { Badge, Button, DemoBadge } from '@/components/ui';
 import { ApiError, api } from '@/lib/api';
 import { environmentLabel, useMocks } from '@/lib/api/config';
 import { useSelectWorkspace } from '@/lib/hooks';
@@ -29,10 +29,6 @@ const NAV_ITEMS: NavItem[] = [
   { href: '/analytics', label: 'Hiệu quả', description: 'Số liệu và nguồn dữ liệu' },
   { href: '/analytics#recommendation', label: 'Đề xuất', description: 'Thử nghiệm dựa trên số liệu nhập' },
   { href: '/settings', label: 'Cài đặt', description: 'Thành viên và kết nối' },
-];
-
-const REAL_MODE_DEFERRED_SECTIONS: readonly string[] = [
-  'publishing',
 ];
 
 /**
@@ -62,17 +58,6 @@ export function AppShell({ children }: { children: ReactNode }) {
   const base = `/w/${workspaceId}`;
   const mocksOn = useMocks();
   const envLabel = environmentLabel();
-  const workspaceSection = pathname?.split('/').filter(Boolean)[2] ?? '';
-  const deferredSection =
-    !mocksOn && REAL_MODE_DEFERRED_SECTIONS.includes(workspaceSection)
-      ? workspaceSection
-      : null;
-  const deferredLabel: Record<string, string> = {
-    campaigns: 'Chiến dịch, nội dung và duyệt bài',
-    publishing: 'Kết nối Facebook và xuất bản',
-    analytics: 'Hiệu quả và số liệu',
-    recommendations: 'Đề xuất',
-  };
 
   return (
     <div className="min-h-screen">
@@ -188,23 +173,7 @@ export function AppShell({ children }: { children: ReactNode }) {
       </header>
 
       <main className="mx-auto max-w-7xl px-4 py-6">
-        {deferredSection ? (
-          <UnavailableNotice
-            title={`${deferredLabel[deferredSection]} chưa được nối API thật`}
-            reason="Khu vực này hiện chỉ có giao diện/fixture demo; các request backend chưa được đối chiếu với OpenAPI nên đã bị chặn ở real mode."
-            remedy="Tiếp tục luồng pilot đã có contract: chọn Tài liệu, tải lên và theo dõi job."
-            action={
-              <Link
-                className="text-sm font-medium text-slate-900 underline"
-                href={`/w/${workspaceId}/documents`}
-              >
-                Mở tài liệu
-              </Link>
-            }
-          />
-        ) : (
-          children
-        )}
+        {children}
       </main>
 
       <footer className="mx-auto max-w-7xl px-4 pb-8 text-xs text-slate-500">
