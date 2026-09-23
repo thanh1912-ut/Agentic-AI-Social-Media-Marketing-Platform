@@ -17,8 +17,27 @@ class WorkflowState(TypedDict, total=False):
     node_runs: list[dict[str, Any]]
 
 
+class BrandProfileState(TypedDict, total=False):
+    """Knowledge-to-profile state carrying source data between its nodes."""
+
+    company_id: str
+    brand_id: str
+    document_ids: list[str]
+    job_id: str
+    run_id: str
+    input_snapshot_id: str
+    normalized_documents: list[dict[str, Any]]
+    active_source_ids: list[str]
+    indexed_sources: list[dict[str, Any]]
+    retrieved_context: list[dict[str, str]]
+    profile_result: dict[str, Any]
+    stage: str
+    node_runs: list[dict[str, Any]]
+
+
 Node = Callable[[WorkflowState], Mapping[str, Any]]
 WORKFLOW_NODES = ("brand", "strategy", "content", "review", "insight", "recommendation")
+BRAND_PROFILE_WORKFLOW_NODES = ("index", "retrieve", "brand_profile")
 
 
 def route_after_review(state: WorkflowState) -> Literal["revise", "insight"]:
@@ -53,6 +72,30 @@ def _tracked_node(name: str, node: Node) -> Node:
     return run
 
 
+def _tracked_brand_node(name: str, node: Callable[[BrandProfileState], Mapping[str, Any]]):
+    """Track a node without narrowing its state to the full-workflow schema."""
+
+    def run(state: BrandProfileState) -> Mapping[str, Any]:
+        started = datetime.now(timezone.utc)
+        result = dict(node(state))
+        ended = datetime.now(timezone.utc)
+        runs = list(state.get("node_runs", []))
+        runs.append(
+            {
+                "node": name,
+                "status": "succeeded",
+                "started_at": started.isoformat(),
+                "finished_at": ended.isoformat(),
+                "input_snapshot_id": state.get("input_snapshot_id"),
+            }
+        )
+        result["stage"] = name
+        result["node_runs"] = runs
+        return result
+
+    return run
+
+
 def build_graph(nodes: Mapping[str, Node], *, checkpointer: Any = None):
     """Build and compile the finite graph using LangGraph.
 
@@ -81,4 +124,32 @@ def build_graph(nodes: Mapping[str, Node], *, checkpointer: Any = None):
     graph.add_conditional_edges("review", route_after_review, {"revise": "content", "insight": "insight"})
     graph.add_edge("insight", "recommendation")
     graph.add_edge("recommendation", END)
+    return graph.compile(checkpointer=checkpointer)
+
+
+def build_brand_profile_graph(nodes: Mapping[str, Node], *, checkpointer: Any = None):
+    """Build the finite knowledge → Brand Profile workflow used by upload jobs.
+
+    Backend-owned IDs, normalized document payloads, active source IDs and the
+    actual retrieved context remain in graph state so the graph can checkpoint
+    and resume without reconstructing them from metadata alone.
+    """
+
+    missing = [name for name in BRAND_PROFILE_WORKFLOW_NODES if name not in nodes]
+    if missing:
+        raise ValueError(f"missing Brand Profile workflow nodes: {missing}")
+    if any(name.lower() == "publish" for name in nodes):
+        raise ValueError("Brand Profile workflow cannot contain a publish node")
+    try:
+        from langgraph.graph import END, START, StateGraph
+    except ImportError as error:  # pragma: no cover - worker image dependency
+        raise RuntimeError("LangGraph is required to build the production workflow") from error
+
+    graph = StateGraph(BrandProfileState)
+    for name in BRAND_PROFILE_WORKFLOW_NODES:
+        graph.add_node(name, _tracked_brand_node(name, nodes[name]))
+    graph.add_edge(START, "index")
+    graph.add_edge("index", "retrieve")
+    graph.add_edge("retrieve", "brand_profile")
+    graph.add_edge("brand_profile", END)
     return graph.compile(checkpointer=checkpointer)

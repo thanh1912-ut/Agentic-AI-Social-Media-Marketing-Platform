@@ -31,11 +31,12 @@ class StructuredModel(Protocol):
 def context_payload(context: list[Mapping[str, str]]) -> list[dict[str, str]]:
     """Copy only safe source context fields into a model payload."""
 
-    return [
-        {
-            "source_id": item["source_id"],
-            "locator": item["locator"],
-            "text": item["text"],
-        }
-        for item in context
-    ]
+    safe_fields = (
+        "source_id",
+        "document_id",
+        "source_version",
+        "source_hash",
+        "locator",
+        "text",
+    )
+    return [{field: item[field] for field in safe_fields if field in item} for item in context]

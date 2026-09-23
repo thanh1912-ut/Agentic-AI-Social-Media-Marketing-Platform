@@ -3,12 +3,14 @@
 from __future__ import annotations
 
 import re
+import hashlib
 import unicodedata
 from dataclasses import dataclass
 
 from packages.contracts import NormalizedDocument
 
 TOKEN_RE = re.compile(r"\w+|[^\w\s]", flags=re.UNICODE)
+CHUNKER_VERSION = "vi-token-window-v2"
 
 
 def normalize_text(value: str) -> str:
@@ -55,6 +57,9 @@ class KnowledgeChunk:
     kind: str = "text"
     active: bool = True
     embedding: tuple[float, ...] | None = None
+    parser_version: str = "unknown"
+    chunker_version: str = CHUNKER_VERSION
+    embedding_model_version: str | None = None
 
 
 def _windowed_chunks(
@@ -91,6 +96,9 @@ def chunk_document(
     *,
     max_tokens: int = 600,
     overlap_tokens: int = 80,
+    parser_version: str = "unknown",
+    chunker_version: str = CHUNKER_VERSION,
+    embedding_model_version: str | None = None,
 ) -> list[KnowledgeChunk]:
     """Chunk text by block and tables by header + row.
 
@@ -110,10 +118,21 @@ def chunk_document(
         nonlocal sequence
         sequence += 1
         return KnowledgeChunk(
-            chunk_id=(
-                f"{document.company_id}:{document.brand_id}:"
-                f"{document.source_id}:{document.source_hash}:{sequence}"
-            ),
+            chunk_id=hashlib.sha256(
+                "\0".join(
+                    (
+                        document.company_id,
+                        document.brand_id,
+                        document.source_id,
+                        document.source_hash,
+                        parser_version,
+                        chunker_version,
+                        embedding_model_version or "no-embedding",
+                        str(sequence),
+                        text,
+                    )
+                ).encode("utf-8")
+            ).hexdigest(),
             company_id=document.company_id,
             brand_id=document.brand_id,
             source_id=document.source_id,
@@ -125,6 +144,9 @@ def chunk_document(
             token_count=token_count,
             kind=kind,
             active=document.active,
+            parser_version=parser_version,
+            chunker_version=chunker_version,
+            embedding_model_version=embedding_model_version,
         )
 
     for block in document.text_blocks:

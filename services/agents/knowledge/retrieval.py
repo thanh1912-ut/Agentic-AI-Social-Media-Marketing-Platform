@@ -9,7 +9,7 @@ from typing import Protocol
 
 from packages.contracts import NormalizedDocument
 
-from .chunking import KnowledgeChunk, _tokens, chunk_document
+from .chunking import CHUNKER_VERSION, KnowledgeChunk, _tokens, chunk_document
 
 
 class EmbeddingProvider(Protocol):
@@ -31,6 +31,29 @@ class RetrievedChunk:
     @property
     def locator(self) -> str:
         return self.chunk.locator
+
+
+def filter_relevant_chunks(
+    candidates: Iterable[RetrievedChunk],
+    *,
+    top_k: int,
+    minimum_score: float = 0.12,
+    minimum_semantic_score: float = 0.72,
+) -> list[RetrievedChunk]:
+    """Rank and suppress low-evidence candidates before passing context to an LLM."""
+
+    if top_k < 1:
+        raise ValueError("top_k must be positive")
+    if not 0 <= minimum_score <= 1 or not 0 <= minimum_semantic_score <= 1:
+        raise ValueError("relevance thresholds must be between 0 and 1")
+    ranked = sorted(candidates, key=lambda item: (-item.score, item.chunk.chunk_id))
+    selected = [
+        item
+        for item in ranked
+        if item.score >= minimum_score
+        or (item.semantic_score >= minimum_semantic_score and item.semantic_score > 0)
+    ]
+    return selected[:top_k]
 
 
 def _lexical_score(query: str, text: str) -> float:
@@ -65,7 +88,7 @@ class InMemoryKnowledgeIndex:
         self.max_candidates = max_candidates
         self.max_context = max_context
         self._chunks: dict[str, KnowledgeChunk] = {}
-        self._source_hashes: dict[tuple[str, str, str], str] = {}
+        self._source_hashes: set[tuple[str, str, str, str, str, str, str]] = set()
 
     def upsert(
         self,
@@ -73,24 +96,40 @@ class InMemoryKnowledgeIndex:
         *,
         embedder: EmbeddingProvider | None = None,
         batch_size: int = 32,
+        parser_version: str = "unknown",
+        chunker_version: str = CHUNKER_VERSION,
+        embedding_model_version: str | None = None,
     ) -> int:
         """Index one document and return the number of newly embedded chunks."""
 
         if batch_size <= 0:
             raise ValueError("batch_size must be positive")
+        resolved_embedding_version = embedding_model_version or (
+            getattr(embedder, "model_name", None) if embedder is not None else None
+        )
         source_key = (document.company_id, document.brand_id, document.source_id)
-        if self._source_hashes.get(source_key) == document.source_hash:
+        dedupe_key = (
+            *source_key,
+            document.source_hash,
+            parser_version,
+            chunker_version,
+            resolved_embedding_version or "no-embedding",
+        )
+        if dedupe_key in self._source_hashes:
+            self._chunks = {
+                chunk_id: replace(chunk, active=document.active)
+                if (chunk.company_id, chunk.brand_id, chunk.source_id) == source_key
+                else chunk
+                for chunk_id, chunk in self._chunks.items()
+            }
             return 0
 
-        old_ids = [
-            chunk_id
-            for chunk_id, chunk in self._chunks.items()
-            if (chunk.company_id, chunk.brand_id, chunk.source_id) == source_key
-        ]
-        for chunk_id in old_ids:
-            del self._chunks[chunk_id]
-
-        chunks = chunk_document(document)
+        chunks = chunk_document(
+            document,
+            parser_version=parser_version,
+            chunker_version=chunker_version,
+            embedding_model_version=resolved_embedding_version,
+        )
         if embedder:
             for start in range(0, len(chunks), batch_size):
                 batch = chunks[start : start + batch_size]
@@ -101,8 +140,20 @@ class InMemoryKnowledgeIndex:
                     chunks[start + index] = replace(
                         batch[index], embedding=tuple(float(value) for value in vector)
                     )
+        # Replace only after all embeddings have succeeded so a provider error
+        # cannot destroy the previously indexed version.
+        old_ids = [
+            chunk_id
+            for chunk_id, chunk in self._chunks.items()
+            if (chunk.company_id, chunk.brand_id, chunk.source_id) == source_key
+        ]
+        for chunk_id in old_ids:
+            del self._chunks[chunk_id]
         self._chunks.update({chunk.chunk_id: chunk for chunk in chunks})
-        self._source_hashes[source_key] = document.source_hash
+        self._source_hashes = {
+            key for key in self._source_hashes if key[:3] != source_key
+        }
+        self._source_hashes.add(dedupe_key)
         return len(chunks)
 
     def upsert_many(
@@ -111,10 +162,20 @@ class InMemoryKnowledgeIndex:
         *,
         embedder: EmbeddingProvider | None = None,
         batch_size: int = 32,
+        parser_version: str = "unknown",
+        chunker_version: str = CHUNKER_VERSION,
+        embedding_model_version: str | None = None,
     ) -> int:
         embedded = 0
         for document in documents:
-            embedded += self.upsert(document, embedder=embedder, batch_size=batch_size)
+            embedded += self.upsert(
+                document,
+                embedder=embedder,
+                batch_size=batch_size,
+                parser_version=parser_version,
+                chunker_version=chunker_version,
+                embedding_model_version=embedding_model_version,
+            )
         return embedded
 
     def retrieve(
@@ -126,6 +187,8 @@ class InMemoryKnowledgeIndex:
         active_source_ids: set[str] | None = None,
         embedder: EmbeddingProvider | None = None,
         top_k: int = 6,
+        minimum_score: float = 0.12,
+        minimum_semantic_score: float = 0.72,
     ) -> list[RetrievedChunk]:
         if not query.strip():
             return []
@@ -156,5 +219,12 @@ class InMemoryKnowledgeIndex:
             else:
                 score = 0.65 * semantic + 0.35 * lexical
             ranked.append(RetrievedChunk(chunk, score, semantic, lexical))
-        ranked.sort(key=lambda item: (-item.score, item.chunk.chunk_id))
-        return ranked[: self.max_candidates][:top_k]
+        candidate_pool = sorted(ranked, key=lambda item: (-item.score, item.chunk.chunk_id))[
+            : self.max_candidates
+        ]
+        return filter_relevant_chunks(
+            candidate_pool,
+            top_k=top_k,
+            minimum_score=minimum_score,
+            minimum_semantic_score=minimum_semantic_score,
+        )
