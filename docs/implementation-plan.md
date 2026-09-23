@@ -18,7 +18,9 @@ Giữ kiến trúc modular monolith và stack đã có: Next.js/React/TypeScript
 - DeepSeek adapter đang dùng Chat Completions JSON mode, prompt có schema/example, parse/validate Pydantic và tối đa một lần sửa output. `deepseek-flash` hiện có trong danh sách model chính thức và JSON mode được tài liệu hóa; vẫn cần live request để xác nhận key/model của tài khoản. [Model list](https://api-docs.deepseek.com/api/list-models/), [JSON output](https://api-docs.deepseek.com/guides/json_mode/).
 - Embedding cấu hình độc lập; mặc định `EMBEDDING_PROVIDER=none`, `RETRIEVAL_MODE=lexical`. Đây là retrieval lexical pilot, chưa phải semantic/vector RAG hoàn chỉnh. Không mặc định DeepSeek có embeddings.
 - Python 3.11.16 và Node 26.7.0 có sẵn. PostgreSQL local chấp nhận kết nối ở `127.0.0.1:5432`, Redis trả `PONG`; Docker/Podman và MinIO không khả dụng trong môi trường này. Python và npm dependencies đã được cài trong worktree.
-- `DEEPSEEK_API_KEY`, LLM model override, E2E test account và `DATABASE_URL` chưa được cung cấp trong process môi trường. Không có `.env` trong worktree; không sao chép secrets từ checkout gốc.
+- `DEEPSEEK_API_KEY`, LLM model override và isolated PostgreSQL `DATABASE_URL` chưa được cung cấp trong process môi trường. Không có `.env` trong worktree; không sao chép secrets từ checkout gốc. Một account và SQLite DB E2E tạm thời đã được tạo trong `/private/tmp` để kiểm tra real-mode browser; không giữ lại credential trong repo.
+- Real-mode browser smoke đã xác minh login/workspace, metrics dashboard, save recommendation, feedback, Apply thành pending revision và owner accept. Campaign version tăng từ 1 lên 2; đây là dữ liệu tổng hợp, không gọi DeepSeek/Meta, không thay bằng chứng PostgreSQL hoặc đầy đủ luồng brand/content/approval/export.
+- Điều hướng `Xuất bản` trước đây dẫn tới 404 và bị guard real-mode che nội dung. Commit `c77720d` thêm trang giải thích rõ giới hạn Meta và quy trình export/đăng thủ công/nhập metrics; route được xác minh trong production build và browser. Commit `73ff4f7` chỉnh contract test để không yêu cầu trạng thái dữ liệu cho trang thông tin tĩnh.
 - Bằng chứng kiểm thử và giới hạn được ghi trong [test-report.md](test-report.md); kết quả SQLite không được xem là bằng chứng PostgreSQL hoặc live provider.
 
 ## Kiến trúc và quyết định chính
@@ -45,7 +47,7 @@ Giữ kiến trúc modular monolith và stack đã có: Next.js/React/TypeScript
 
 ## Backlog ưu tiên
 
-Chi tiết theo ID và tiêu chí ở [task-board.md](task-board.md). Thứ tự còn lại: isolated PostgreSQL/Compose runtime → DeepSeek data-flow approval + live smoke → real API E2E → Meta permissions → hardening và theo dõi outcome thử nghiệm. Manual metrics import, report, feedback và brief revision đã có fixture/API path; không coi đó là Meta sync, live provider test hoặc production runtime.
+Chi tiết theo ID và tiêu chí ở [task-board.md](task-board.md). Thứ tự còn lại: isolated PostgreSQL/Compose runtime → DeepSeek data-flow approval + live smoke → browser E2E cho các luồng chưa kiểm tra → Meta permissions → hardening và theo dõi outcome thử nghiệm. Manual metrics import, report, feedback và brief revision đã có fixture/API path cùng real-mode browser smoke một phần; không coi đó là Meta sync, live provider test hoặc production runtime.
 
 ## Để sau v1
 

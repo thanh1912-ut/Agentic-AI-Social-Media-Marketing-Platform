@@ -84,4 +84,11 @@ Ngày tạo: 2026-09-23. Trạng thái dưới đây được ghi từ audit đ�
 - Quyết định: persist recommendation theo fingerprint evidence; ghi feedback/audit; Apply chỉ tạo `CampaignBriefRevisionDraft` ở trạng thái pending review. Owner accept mới cập nhật `Campaign.version`, và chỉ khi `base_version` vẫn khớp; nếu lệch trả `409`.
 - Không chọn: sửa campaign ngay khi nhấn Apply hoặc ghi đè draft cũ.
 - Ảnh hưởng: migration 0006; API/OpenAPI cho save/feedback/apply/decision; UI diff before/after. Không tự sinh content hay publish; bước AI generation vẫn phụ thuộc data-flow approval.
-- Trạng thái: IMPLEMENTED; SQLite API và desktop/mobile MSW E2E pass, PostgreSQL runtime chưa được xác minh.
+- Trạng thái: IMPLEMENTED; SQLite API tests, desktop/mobile MSW E2E và real-mode browser smoke (metrics → feedback → pending revision → owner accept) đều pass; PostgreSQL runtime chưa được xác minh.
+
+## DEC-011 — Trang xuất bản minh bạch khi Meta chưa kết nối
+
+- Vấn đề: mục Xuất bản trên menu real mode từng bị guard ẩn và dẫn người dùng tới trang 404; chưa có Meta app/Page permission để tự đăng.
+- Quyết định: hiển thị trang trạng thái trong real mode, nói rõ chưa kết nối Meta và hướng dẫn review → export → đăng thủ công → nhập metrics. Không giả lập trạng thái đăng hoặc gọi Meta API.
+- Ảnh hưởng: `apps/web/src/app/w/[workspaceId]/publishing/page.tsx`; bỏ guard chung che route real mode.
+- Trạng thái: IMPLEMENTED; typecheck, lint, production build và browser kiểm tra route pass; Meta connector vẫn BLOCKED_EXTERNAL.
