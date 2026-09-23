@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import json
 from collections import defaultdict
 from datetime import datetime, timezone
 
@@ -11,14 +12,33 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from database.models import AuditEvent, CampaignPost, PostMetricSnapshot, User, new_id, utcnow
+from database.models import (
+    AnalyticsRecommendationRecord,
+    AuditEvent,
+    Campaign,
+    CampaignBriefRevisionDraft,
+    CampaignPost,
+    PostMetricSnapshot,
+    User,
+    new_id,
+    utcnow,
+)
 from services.agents.analytics.metrics import PostMetricInput, build_analytics_report
 from .analytics_schemas import (
     AnalyticsDashboardOut,
+    AnalyticsRecommendationRecordOut,
+    ApplyRecommendationRequest,
+    ApplyRecommendationResponse,
+    CampaignBriefChangeOut,
+    CampaignBriefRevisionDraftOut,
     MetricGroupOut,
     MetricImportRequest,
     MetricImportResponse,
+    RecommendationDraftDecisionRequest,
+    RecommendationFeedbackOut,
+    RecommendationFeedbackRequest,
     RecommendationOut,
+    SaveRecommendationRequest,
 )
 from .db import get_db
 from .dependencies import current_user, membership_for, require_csrf, require_permission
@@ -233,6 +253,13 @@ async def get_recommendation(
         measured_from=None,
         measured_to=None,
     )
+    return _build_recommendation(source_id, rows)
+
+
+def _build_recommendation(
+    source_id: str,
+    rows: list[tuple[PostMetricSnapshot, CampaignPost]],
+) -> RecommendationOut:
     dashboard = _dashboard(source_id, rows)
     candidates = [
         row for row in dashboard.groups
@@ -277,3 +304,309 @@ async def get_recommendation(
         limitations=["Đây là so sánh mô tả, không chứng minh nhân quả.", "Không dùng để dự báo kết quả hoặc tự động thay đổi campaign."],
         created_at=now,
     )
+
+
+def _recommendation_record_out(row: AnalyticsRecommendationRecord) -> AnalyticsRecommendationRecordOut:
+    return AnalyticsRecommendationRecordOut(
+        id=row.id,
+        source_id=row.source_id,
+        lifecycle_status=row.lifecycle_status,
+        recommendation=RecommendationOut.model_validate(row.recommendation_json),
+        feedback=(RecommendationFeedbackOut.model_validate(row.feedback_json) if row.feedback_json else None),
+        created_at=row.created_at,
+    )
+
+
+def _brief_revision_out(row: CampaignBriefRevisionDraft) -> CampaignBriefRevisionDraftOut:
+    return CampaignBriefRevisionDraftOut(
+        id=row.id,
+        campaign_id=row.campaign_id,
+        base_version=row.base_version,
+        changes=[CampaignBriefChangeOut.model_validate(item) for item in row.changes_json],
+        source_recommendation_id=row.recommendation_id,
+        status=row.status,
+        created_at=row.created_at,
+    )
+
+
+@router.post(
+    "/workspaces/{company_id}/analytics/recommendations",
+    response_model=AnalyticsRecommendationRecordOut,
+    status_code=201,
+    dependencies=[Depends(require_csrf)],
+)
+async def save_recommendation(
+    company_id: str,
+    request: SaveRecommendationRequest,
+    user: User = Depends(current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    await membership_for(company_id, user, db)
+    rows = await _latest_points(
+        db,
+        company_id,
+        request.source_id,
+        min_post_age_hours=0,
+        max_post_age_hours=24 * 30,
+        measured_from=None,
+        measured_to=None,
+    )
+    dashboard = _dashboard(request.source_id, rows)
+    recommendation = _build_recommendation(request.source_id, rows)
+    if recommendation.status != "proposed":
+        raise ApiProblem(409, "insufficient_evidence", "Chưa đủ bằng chứng để lưu đề xuất áp dụng.")
+
+    fingerprint_material = {
+        "report_id": dashboard.report.report_id,
+        "status": recommendation.status,
+        "hypothesis": recommendation.hypothesis,
+        "action": recommendation.action,
+        "evidence_ids": recommendation.evidence_ids,
+    }
+    fingerprint = hashlib.sha256(
+        json.dumps(fingerprint_material, ensure_ascii=False, sort_keys=True).encode("utf-8")
+    ).hexdigest()
+    existing = await db.scalar(select(AnalyticsRecommendationRecord).where(
+        AnalyticsRecommendationRecord.company_id == company_id,
+        AnalyticsRecommendationRecord.source_id == request.source_id,
+        AnalyticsRecommendationRecord.evidence_fingerprint == fingerprint,
+    ))
+    if existing:
+        return _recommendation_record_out(existing)
+
+    row = AnalyticsRecommendationRecord(
+        id=new_id(),
+        company_id=company_id,
+        source_id=request.source_id,
+        evidence_fingerprint=fingerprint,
+        recommendation_json=recommendation.model_dump(mode="json"),
+        lifecycle_status="new",
+    )
+    db.add(row)
+    db.add(AuditEvent(
+        company_id=company_id,
+        actor_user_id=user.id,
+        action="recommendation.save",
+        entity_type="analytics_recommendation",
+        entity_id=row.id,
+        metadata_json={"source_id": request.source_id, "evidence_ids": recommendation.evidence_ids},
+    ))
+    try:
+        await db.commit()
+    except IntegrityError:
+        await db.rollback()
+        existing = await db.scalar(select(AnalyticsRecommendationRecord).where(
+            AnalyticsRecommendationRecord.company_id == company_id,
+            AnalyticsRecommendationRecord.source_id == request.source_id,
+            AnalyticsRecommendationRecord.evidence_fingerprint == fingerprint,
+        ))
+        if existing is None:
+            raise ApiProblem(409, "state_conflict", "Không thể lưu đề xuất do xung đột đồng thời.")
+        return _recommendation_record_out(existing)
+    await db.refresh(row)
+    return _recommendation_record_out(row)
+
+
+@router.post(
+    "/workspaces/{company_id}/analytics/recommendations/{recommendation_id}/feedback",
+    response_model=AnalyticsRecommendationRecordOut,
+    dependencies=[Depends(require_csrf)],
+)
+async def record_recommendation_feedback(
+    company_id: str,
+    recommendation_id: str,
+    request: RecommendationFeedbackRequest,
+    user: User = Depends(current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    await membership_for(company_id, user, db)
+    row = await db.scalar(select(AnalyticsRecommendationRecord).where(
+        AnalyticsRecommendationRecord.company_id == company_id,
+        AnalyticsRecommendationRecord.id == recommendation_id,
+    ).with_for_update())
+    if row is None:
+        raise ApiProblem(404, "not_found", "Không tìm thấy đề xuất.")
+    if row.lifecycle_status == "applied":
+        raise ApiProblem(409, "state_conflict", "Đề xuất đã được áp dụng thành bản nháp; không thể đổi feedback.")
+    feedback = RecommendationFeedbackOut(
+        value=request.value,
+        note=request.note,
+        at=utcnow(),
+        by=user.id,
+    )
+    row.feedback_json = feedback.model_dump(mode="json")
+    row.lifecycle_status = "dismissed" if request.value == "not_useful" else "acknowledged"
+    row.updated_at = utcnow()
+    db.add(AuditEvent(
+        company_id=company_id,
+        actor_user_id=user.id,
+        action="recommendation.feedback",
+        entity_type="analytics_recommendation",
+        entity_id=row.id,
+        metadata_json={"value": request.value},
+    ))
+    await db.commit()
+    await db.refresh(row)
+    return _recommendation_record_out(row)
+
+
+@router.post(
+    "/workspaces/{company_id}/analytics/recommendations/{recommendation_id}/apply",
+    response_model=ApplyRecommendationResponse,
+    dependencies=[Depends(require_csrf)],
+)
+async def apply_recommendation(
+    company_id: str,
+    recommendation_id: str,
+    request: ApplyRecommendationRequest,
+    user: User = Depends(current_user),
+    membership=Depends(require_permission("recommendation:apply")),
+    db: AsyncSession = Depends(get_db),
+):
+    row = await db.scalar(select(AnalyticsRecommendationRecord).where(
+        AnalyticsRecommendationRecord.company_id == company_id,
+        AnalyticsRecommendationRecord.id == recommendation_id,
+    ).with_for_update())
+    if row is None:
+        raise ApiProblem(404, "not_found", "Không tìm thấy đề xuất.")
+    existing_draft = await db.scalar(select(CampaignBriefRevisionDraft).where(
+        CampaignBriefRevisionDraft.company_id == company_id,
+        CampaignBriefRevisionDraft.recommendation_id == row.id,
+    ))
+    if existing_draft:
+        return ApplyRecommendationResponse(
+            recommendation=_recommendation_record_out(row),
+            created_draft=_brief_revision_out(existing_draft),
+            notice="Đề xuất chỉ tạo bản nháp; campaign chỉ thay đổi sau khi chủ workspace chấp nhận.",
+        )
+    if row.lifecycle_status == "dismissed":
+        raise ApiProblem(409, "state_conflict", "Đề xuất đã bị từ chối, không thể áp dụng.")
+    recommendation = RecommendationOut.model_validate(row.recommendation_json)
+    if recommendation.status != "proposed":
+        raise ApiProblem(409, "insufficient_evidence", "Đề xuất chưa đủ bằng chứng để áp dụng.")
+    available_evidence = set(recommendation.evidence_ids)
+    selected_evidence = set(request.evidence_ids or recommendation.evidence_ids)
+    if not selected_evidence or not selected_evidence.issubset(available_evidence):
+        raise ApiProblem(422, "validation_error", "Danh sách bằng chứng không thuộc đề xuất này.")
+
+    campaign = await db.scalar(select(Campaign).where(
+        Campaign.company_id == company_id,
+        Campaign.id == request.campaign_id,
+    ).with_for_update())
+    if campaign is None:
+        raise ApiProblem(404, "not_found", "Không tìm thấy campaign trong workspace.")
+    brief = dict(campaign.brief_json)
+    previous = brief.get("must_include", [])
+    if not isinstance(previous, list) or any(not isinstance(item, str) for item in previous):
+        raise ApiProblem(409, "invalid_campaign_brief", "Không thể tạo revision vì brief hiện tại không hợp lệ.")
+    action = recommendation.action or ""
+    experiment_note = (
+        f"Thử nghiệm recommendation: {recommendation.hypothesis} "
+        f"{action} Theo dõi {recommendation.metric}; ngưỡng: {recommendation.threshold or 'so sánh cùng cửa sổ đo'}"
+    )
+    after = previous if experiment_note in previous else [*previous, experiment_note]
+    resulting_brief = {**brief, "must_include": after}
+    change = CampaignBriefChangeOut(
+        field="must_include",
+        label="Yêu cầu bắt buộc trong campaign",
+        before=previous,
+        after=after,
+        rationale=f"{recommendation.observation} Bằng chứng: {', '.join(sorted(selected_evidence))}.",
+    )
+    draft = CampaignBriefRevisionDraft(
+        id=new_id(),
+        company_id=company_id,
+        campaign_id=campaign.id,
+        recommendation_id=row.id,
+        base_version=campaign.version,
+        changes_json=[change.model_dump(mode="json")],
+        resulting_brief_json=resulting_brief,
+        status="pending_review",
+        note=request.note,
+        created_by=user.id,
+    )
+    row.lifecycle_status = "applied"
+    row.updated_at = utcnow()
+    db.add(draft)
+    db.add(AuditEvent(
+        company_id=company_id,
+        actor_user_id=user.id,
+        action="recommendation.apply_to_draft",
+        entity_type="campaign_brief_revision_draft",
+        entity_id=draft.id,
+        metadata_json={"campaign_id": campaign.id, "base_version": campaign.version, "evidence_ids": sorted(selected_evidence)},
+    ))
+    try:
+        await db.commit()
+    except IntegrityError:
+        await db.rollback()
+        existing_draft = await db.scalar(select(CampaignBriefRevisionDraft).where(
+            CampaignBriefRevisionDraft.company_id == company_id,
+            CampaignBriefRevisionDraft.recommendation_id == recommendation_id,
+        ))
+        if existing_draft is None:
+            raise ApiProblem(409, "state_conflict", "Không thể áp dụng do xung đột đồng thời.")
+        row = await db.scalar(select(AnalyticsRecommendationRecord).where(
+            AnalyticsRecommendationRecord.company_id == company_id,
+            AnalyticsRecommendationRecord.id == recommendation_id,
+        ))
+        return ApplyRecommendationResponse(
+            recommendation=_recommendation_record_out(row),
+            created_draft=_brief_revision_out(existing_draft),
+            notice="Đề xuất chỉ tạo bản nháp; campaign chỉ thay đổi sau khi chủ workspace chấp nhận.",
+        )
+    await db.refresh(draft)
+    return ApplyRecommendationResponse(
+        recommendation=_recommendation_record_out(row),
+        created_draft=_brief_revision_out(draft),
+        notice="Đề xuất đã tạo bản nháp để xem lại. Campaign chưa thay đổi cho tới khi bạn chấp nhận.",
+    )
+
+
+@router.post(
+    "/workspaces/{company_id}/analytics/recommendation-drafts/{draft_id}/decision",
+    response_model=CampaignBriefRevisionDraftOut,
+    dependencies=[Depends(require_csrf)],
+)
+async def decide_recommendation_draft(
+    company_id: str,
+    draft_id: str,
+    request: RecommendationDraftDecisionRequest,
+    user: User = Depends(current_user),
+    membership=Depends(require_permission("recommendation:apply")),
+    db: AsyncSession = Depends(get_db),
+):
+    draft = await db.scalar(select(CampaignBriefRevisionDraft).where(
+        CampaignBriefRevisionDraft.company_id == company_id,
+        CampaignBriefRevisionDraft.id == draft_id,
+    ).with_for_update())
+    if draft is None:
+        raise ApiProblem(404, "not_found", "Không tìm thấy bản nháp revision.")
+    if draft.status == request.decision:
+        return _brief_revision_out(draft)
+    if draft.status != "pending_review":
+        raise ApiProblem(409, "state_conflict", "Bản nháp đã được quyết định trước đó.")
+    campaign = await db.scalar(select(Campaign).where(
+        Campaign.company_id == company_id,
+        Campaign.id == draft.campaign_id,
+    ).with_for_update())
+    if campaign is None:
+        raise ApiProblem(404, "not_found", "Không tìm thấy campaign của bản nháp.")
+    if request.decision == "accepted":
+        if campaign.version != draft.base_version:
+            raise ApiProblem(409, "version_conflict", "Campaign đã thay đổi sau khi tạo bản nháp. Hãy tạo revision mới từ brief hiện tại.")
+        campaign.brief_json = draft.resulting_brief_json
+        campaign.version += 1
+        campaign.updated_at = utcnow()
+    draft.status = request.decision
+    db.add(AuditEvent(
+        company_id=company_id,
+        actor_user_id=user.id,
+        action=f"recommendation.brief_revision.{request.decision}",
+        entity_type="campaign_brief_revision_draft",
+        entity_id=draft.id,
+        metadata_json={"campaign_id": campaign.id, "campaign_version": campaign.version},
+    ))
+    await db.commit()
+    await db.refresh(draft)
+    return _brief_revision_out(draft)

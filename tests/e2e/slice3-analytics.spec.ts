@@ -31,7 +31,25 @@ test('mở dashboard số liệu và nhập snapshot demo có gắn nguồn', as
 
   await expect(page.getByRole('status')).toContainText('Đã lưu 1 dòng số liệu');
   await expect(page.getByRole('heading', { name: 'Báo cáo snapshot' })).toBeVisible();
-  await expect(page.getByText('Dữ liệu minh họa — không phải kết quả thật.')).toBeVisible();
+  await expect(page.getByText('Dữ liệu minh họa — không phải kết quả thật.', { exact: false }).first()).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Đề xuất thử nghiệm' })).toBeVisible();
   await expect(page.getByText(/Chưa đủ bằng chứng/)).toBeVisible();
+});
+
+test('ghi feedback và áp dụng recommendation thành brief revision cần owner duyệt', async ({ page }) => {
+  await login(page);
+  await page.getByRole('link', { name: 'Hiệu quả' }).click();
+  await page.waitForURL(/\/analytics$/);
+  await page.getByLabel('Mã nguồn / Facebook Page ID').fill('demo-source-eligible');
+  await expect(page.getByText('Có đề xuất')).toBeVisible();
+  await page.getByRole('button', { name: 'Lưu đề xuất có bằng chứng' }).click();
+  await expect(page.getByText('Trạng thái xử lý:')).toContainText('new');
+  await page.getByRole('button', { name: 'Hữu ích', exact: true }).click();
+  await expect(page.getByText('Trạng thái xử lý:')).toContainText('acknowledged');
+  await page.getByRole('button', { name: 'Tạo brief revision để xem lại' }).click();
+  await expect(page.getByText('Campaign chỉ đổi sau khi chấp nhận.')).toBeVisible();
+  await expect(page.getByText(/Bản nháp brief · phiên bản gốc/)).toBeVisible();
+  await page.getByRole('button', { name: 'Chấp nhận revision' }).click();
+  await expect(page.getByText('Trạng thái bản nháp:')).toContainText('accepted');
+  await expect(page.getByText('Dữ liệu minh họa — không phải kết quả thật.', { exact: false }).first()).toBeVisible();
 });

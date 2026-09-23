@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -86,3 +86,62 @@ class RecommendationOut(StrictModel):
     evidence_ids: list[str] = Field(default_factory=list)
     limitations: list[str] = Field(min_length=1)
     created_at: datetime
+
+
+class SaveRecommendationRequest(StrictModel):
+    source_id: str = Field(min_length=1, max_length=160)
+
+
+class RecommendationFeedbackRequest(StrictModel):
+    value: Literal["useful", "not_useful", "already_done"]
+    note: str | None = Field(default=None, max_length=1000)
+
+
+class RecommendationFeedbackOut(StrictModel):
+    value: Literal["useful", "not_useful", "already_done"]
+    note: str | None = None
+    at: datetime
+    by: str
+
+
+class AnalyticsRecommendationRecordOut(StrictModel):
+    id: str
+    source_id: str
+    lifecycle_status: Literal["new", "acknowledged", "dismissed", "applied"]
+    recommendation: RecommendationOut
+    feedback: RecommendationFeedbackOut | None = None
+    created_at: datetime
+
+
+class ApplyRecommendationRequest(StrictModel):
+    campaign_id: str = Field(min_length=1, max_length=36)
+    evidence_ids: list[str] | None = Field(default=None, max_length=50)
+    note: str | None = Field(default=None, max_length=1000)
+
+
+class CampaignBriefChangeOut(StrictModel):
+    field: str
+    label: str
+    before: Any
+    after: Any
+    rationale: str
+
+
+class CampaignBriefRevisionDraftOut(StrictModel):
+    id: str
+    campaign_id: str
+    base_version: int
+    changes: list[CampaignBriefChangeOut]
+    source_recommendation_id: str
+    status: Literal["pending_review", "accepted", "discarded"]
+    created_at: datetime
+
+
+class ApplyRecommendationResponse(StrictModel):
+    recommendation: AnalyticsRecommendationRecordOut
+    created_draft: CampaignBriefRevisionDraftOut
+    notice: str
+
+
+class RecommendationDraftDecisionRequest(StrictModel):
+    decision: Literal["accepted", "discarded"]

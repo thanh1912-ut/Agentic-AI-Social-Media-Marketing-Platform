@@ -128,6 +128,56 @@
         "title": "AnalyticsEvidence",
         "type": "object"
       },
+      "AnalyticsRecommendationRecordOut": {
+        "additionalProperties": false,
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "feedback": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RecommendationFeedbackOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "lifecycle_status": {
+            "enum": [
+              "new",
+              "acknowledged",
+              "dismissed",
+              "applied"
+            ],
+            "title": "Lifecycle Status",
+            "type": "string"
+          },
+          "recommendation": {
+            "$ref": "#/components/schemas/RecommendationOut"
+          },
+          "source_id": {
+            "title": "Source Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "source_id",
+          "lifecycle_status",
+          "recommendation",
+          "created_at"
+        ],
+        "title": "AnalyticsRecommendationRecordOut",
+        "type": "object"
+      },
       "AnalyticsReport": {
         "additionalProperties": false,
         "properties": {
@@ -261,6 +311,71 @@
           "message"
         ],
         "title": "ApiFieldErrorOut",
+        "type": "object"
+      },
+      "ApplyRecommendationRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "campaign_id": {
+            "maxLength": 36,
+            "minLength": 1,
+            "title": "Campaign Id",
+            "type": "string"
+          },
+          "evidence_ids": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "maxItems": 50,
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Evidence Ids"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "maxLength": 1000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          }
+        },
+        "required": [
+          "campaign_id"
+        ],
+        "title": "ApplyRecommendationRequest",
+        "type": "object"
+      },
+      "ApplyRecommendationResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "created_draft": {
+            "$ref": "#/components/schemas/CampaignBriefRevisionDraftOut"
+          },
+          "notice": {
+            "title": "Notice",
+            "type": "string"
+          },
+          "recommendation": {
+            "$ref": "#/components/schemas/AnalyticsRecommendationRecordOut"
+          }
+        },
+        "required": [
+          "recommendation",
+          "created_draft",
+          "notice"
+        ],
+        "title": "ApplyRecommendationResponse",
         "type": "object"
       },
       "ApprovalRecordOut": {
@@ -648,6 +763,38 @@
         "title": "BrandProfileRevisionOut",
         "type": "object"
       },
+      "CampaignBriefChangeOut": {
+        "additionalProperties": false,
+        "properties": {
+          "after": {
+            "title": "After"
+          },
+          "before": {
+            "title": "Before"
+          },
+          "field": {
+            "title": "Field",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "rationale": {
+            "title": "Rationale",
+            "type": "string"
+          }
+        },
+        "required": [
+          "field",
+          "label",
+          "before",
+          "after",
+          "rationale"
+        ],
+        "title": "CampaignBriefChangeOut",
+        "type": "object"
+      },
       "CampaignBriefIn": {
         "additionalProperties": false,
         "properties": {
@@ -733,6 +880,59 @@
           "end_date"
         ],
         "title": "CampaignBriefIn",
+        "type": "object"
+      },
+      "CampaignBriefRevisionDraftOut": {
+        "additionalProperties": false,
+        "properties": {
+          "base_version": {
+            "title": "Base Version",
+            "type": "integer"
+          },
+          "campaign_id": {
+            "title": "Campaign Id",
+            "type": "string"
+          },
+          "changes": {
+            "items": {
+              "$ref": "#/components/schemas/CampaignBriefChangeOut"
+            },
+            "title": "Changes",
+            "type": "array"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "source_recommendation_id": {
+            "title": "Source Recommendation Id",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "pending_review",
+              "accepted",
+              "discarded"
+            ],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "campaign_id",
+          "base_version",
+          "changes",
+          "source_recommendation_id",
+          "status",
+          "created_at"
+        ],
+        "title": "CampaignBriefRevisionDraftOut",
         "type": "object"
       },
       "CampaignCreateRequest": {
@@ -2615,6 +2815,96 @@
         "title": "ProfileProvenanceOut",
         "type": "object"
       },
+      "RecommendationDraftDecisionRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "decision": {
+            "enum": [
+              "accepted",
+              "discarded"
+            ],
+            "title": "Decision",
+            "type": "string"
+          }
+        },
+        "required": [
+          "decision"
+        ],
+        "title": "RecommendationDraftDecisionRequest",
+        "type": "object"
+      },
+      "RecommendationFeedbackOut": {
+        "additionalProperties": false,
+        "properties": {
+          "at": {
+            "format": "date-time",
+            "title": "At",
+            "type": "string"
+          },
+          "by": {
+            "title": "By",
+            "type": "string"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          },
+          "value": {
+            "enum": [
+              "useful",
+              "not_useful",
+              "already_done"
+            ],
+            "title": "Value",
+            "type": "string"
+          }
+        },
+        "required": [
+          "value",
+          "at",
+          "by"
+        ],
+        "title": "RecommendationFeedbackOut",
+        "type": "object"
+      },
+      "RecommendationFeedbackRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "note": {
+            "anyOf": [
+              {
+                "maxLength": 1000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          },
+          "value": {
+            "enum": [
+              "useful",
+              "not_useful",
+              "already_done"
+            ],
+            "title": "Value",
+            "type": "string"
+          }
+        },
+        "required": [
+          "value"
+        ],
+        "title": "RecommendationFeedbackRequest",
+        "type": "object"
+      },
       "RecommendationOut": {
         "additionalProperties": false,
         "properties": {
@@ -2780,6 +3070,22 @@
           "new_password"
         ],
         "title": "ResetPasswordRequest",
+        "type": "object"
+      },
+      "SaveRecommendationRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "source_id": {
+            "maxLength": 160,
+            "minLength": 1,
+            "title": "Source Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "source_id"
+        ],
+        "title": "SaveRecommendationRequest",
         "type": "object"
       },
       "SelectWorkspaceRequest": {
@@ -4075,6 +4381,305 @@
           }
         },
         "summary": "Get Recommendation",
+        "tags": [
+          "analytics"
+        ]
+      }
+    },
+    "/api/v1/workspaces/{company_id}/analytics/recommendation-drafts/{draft_id}/decision": {
+      "post": {
+        "operationId": "decide_recommendation_draft_api_v1_workspaces__company_id__analytics_recommendation_drafts__draft_id__decision_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "company_id",
+            "required": true,
+            "schema": {
+              "title": "Company Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "draft_id",
+            "required": true,
+            "schema": {
+              "title": "Draft Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RecommendationDraftDecisionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CampaignBriefRevisionDraftOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Decide Recommendation Draft",
+        "tags": [
+          "analytics"
+        ]
+      }
+    },
+    "/api/v1/workspaces/{company_id}/analytics/recommendations": {
+      "post": {
+        "operationId": "save_recommendation_api_v1_workspaces__company_id__analytics_recommendations_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "company_id",
+            "required": true,
+            "schema": {
+              "title": "Company Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SaveRecommendationRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AnalyticsRecommendationRecordOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Save Recommendation",
+        "tags": [
+          "analytics"
+        ]
+      }
+    },
+    "/api/v1/workspaces/{company_id}/analytics/recommendations/{recommendation_id}/apply": {
+      "post": {
+        "operationId": "apply_recommendation_api_v1_workspaces__company_id__analytics_recommendations__recommendation_id__apply_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "company_id",
+            "required": true,
+            "schema": {
+              "title": "Company Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "recommendation_id",
+            "required": true,
+            "schema": {
+              "title": "Recommendation Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ApplyRecommendationRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApplyRecommendationResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Apply Recommendation",
+        "tags": [
+          "analytics"
+        ]
+      }
+    },
+    "/api/v1/workspaces/{company_id}/analytics/recommendations/{recommendation_id}/feedback": {
+      "post": {
+        "operationId": "record_recommendation_feedback_api_v1_workspaces__company_id__analytics_recommendations__recommendation_id__feedback_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "company_id",
+            "required": true,
+            "schema": {
+              "title": "Company Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "recommendation_id",
+            "required": true,
+            "schema": {
+              "title": "Recommendation Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RecommendationFeedbackRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AnalyticsRecommendationRecordOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Record Recommendation Feedback",
         "tags": [
           "analytics"
         ]

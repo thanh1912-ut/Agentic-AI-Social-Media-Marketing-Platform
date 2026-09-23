@@ -139,6 +139,89 @@ def test_manual_metrics_are_tenant_scoped_deduplicated_and_evidence_backed(analy
     assert recommendation.json()["evidence_ids"]
     assert recommendation.json()["confidence"] < 0.5
 
+    saved = client.post(
+        f"/api/v1/workspaces/{workspace_id}/analytics/recommendations",
+        headers=headers,
+        json={"source_id": "meta-page-main"},
+    )
+    assert saved.status_code == 201, saved.text
+    saved_data = saved.json()
+    assert saved_data["lifecycle_status"] == "new"
+    recommendation_id = saved_data["id"]
+
+    repeated_save = client.post(
+        f"/api/v1/workspaces/{workspace_id}/analytics/recommendations",
+        headers=headers,
+        json={"source_id": "meta-page-main"},
+    )
+    assert repeated_save.status_code == 201
+    assert repeated_save.json()["id"] == recommendation_id
+
+    feedback = client.post(
+        f"/api/v1/workspaces/{workspace_id}/analytics/recommendations/{recommendation_id}/feedback",
+        headers=headers,
+        json={"value": "useful", "note": "Sẽ thử trên campaign tiếp theo."},
+    )
+    assert feedback.status_code == 200, feedback.text
+    assert feedback.json()["lifecycle_status"] == "acknowledged"
+    assert feedback.json()["feedback"]["value"] == "useful"
+
+    applied = client.post(
+        f"/api/v1/workspaces/{workspace_id}/analytics/recommendations/{recommendation_id}/apply",
+        headers=headers,
+        json={"campaign_id": campaign_id, "evidence_ids": saved_data["recommendation"]["evidence_ids"]},
+    )
+    assert applied.status_code == 200, applied.text
+    draft = applied.json()["created_draft"]
+    assert draft["status"] == "pending_review"
+    assert draft["base_version"] == 1
+    assert applied.json()["notice"]
+
+    campaign_before_accept = client.get(f"/api/v1/workspaces/{workspace_id}/campaigns/{campaign_id}")
+    assert campaign_before_accept.status_code == 200
+    assert campaign_before_accept.json()["version"] == 1
+    assert campaign_before_accept.json()["brief"]["must_include"] == []
+
+    later_measured_at = datetime(2026, 9, 21, 12, tzinfo=timezone.utc).isoformat()
+    later_import = client.post(
+        f"/api/v1/workspaces/{workspace_id}/metrics/import",
+        headers=headers,
+        json={"source_id": "meta-page-main", "measured_at": later_measured_at, "points": points},
+    )
+    assert later_import.status_code == 201, later_import.text
+    newer_recommendation = client.post(
+        f"/api/v1/workspaces/{workspace_id}/analytics/recommendations",
+        headers=headers,
+        json={"source_id": "meta-page-main"},
+    )
+    assert newer_recommendation.status_code == 201, newer_recommendation.text
+    assert newer_recommendation.json()["id"] != recommendation_id
+    newer_draft = client.post(
+        f"/api/v1/workspaces/{workspace_id}/analytics/recommendations/{newer_recommendation.json()['id']}/apply",
+        headers=headers,
+        json={"campaign_id": campaign_id},
+    )
+    assert newer_draft.status_code == 200, newer_draft.text
+    assert newer_draft.json()["created_draft"]["base_version"] == 1
+
+    accepted = client.post(
+        f"/api/v1/workspaces/{workspace_id}/analytics/recommendation-drafts/{draft['id']}/decision",
+        headers=headers,
+        json={"decision": "accepted"},
+    )
+    assert accepted.status_code == 200, accepted.text
+    assert accepted.json()["status"] == "accepted"
+    campaign_after_accept = client.get(f"/api/v1/workspaces/{workspace_id}/campaigns/{campaign_id}")
+    assert campaign_after_accept.json()["version"] == 2
+    assert any("Thử nghiệm recommendation" in item for item in campaign_after_accept.json()["brief"]["must_include"])
+    stale_decision = client.post(
+        f"/api/v1/workspaces/{workspace_id}/analytics/recommendation-drafts/{newer_draft.json()['created_draft']['id']}/decision",
+        headers=headers,
+        json={"decision": "accepted"},
+    )
+    assert stale_decision.status_code == 409
+    assert stale_decision.json()["error"]["code"] == "version_conflict"
+
 
 def test_recommendation_abstains_for_small_sample_and_tenant_cannot_import_foreign_post(analytics_api) -> None:
     client = analytics_api

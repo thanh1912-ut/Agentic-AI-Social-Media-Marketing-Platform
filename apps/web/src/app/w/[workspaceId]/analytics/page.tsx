@@ -8,6 +8,11 @@ import { EmptyState } from '@/components/ui';
 import { ApiError } from '@/lib/api';
 import type { ApiMetricImportRequest } from '@/lib/api/types';
 import {
+  useApplyManualRecommendation,
+  useCampaigns,
+  useDecideManualRecommendationDraft,
+  useManualRecommendationFeedback,
+  useSaveManualRecommendation,
   useImportMetricSnapshot,
   useManualAnalyticsDashboard,
   useManualMetricRecommendation,
@@ -40,6 +45,7 @@ export default function AnalyticsPage() {
   const { workspaces } = useSession();
   const workspace = workspaces.find((item) => item.id === workspaceId) ?? null;
   const posts = usePosts(workspace ? workspaceId : '');
+  const campaigns = useCampaigns(workspace ? workspaceId : '');
   const [sourceId, setSourceId] = useState('');
   const [measuredAt, setMeasuredAt] = useState('');
   const [selectedPostId, setSelectedPostId] = useState('');
@@ -53,19 +59,42 @@ export default function AnalyticsPage() {
   const [attributionValid, setAttributionValid] = useState(false);
   const [pendingPoints, setPendingPoints] = useState<MetricPoint[]>([]);
   const [formError, setFormError] = useState<string | null>(null);
+  const [targetCampaignId, setTargetCampaignId] = useState('');
 
   useEffect(() => setMeasuredAt(localDateTimeValue()), []);
   useEffect(() => {
     if (!selectedPostId && posts.data?.items[0]) setSelectedPostId(posts.data.items[0].id);
   }, [posts.data, selectedPostId]);
+  useEffect(() => {
+    if (!targetCampaignId && campaigns.data?.items[0]) setTargetCampaignId(campaigns.data.items[0].id);
+  }, [campaigns.data, targetCampaignId]);
 
   const dashboard = useManualAnalyticsDashboard(workspace ? workspaceId : '', sourceId.trim());
   const recommendation = useManualMetricRecommendation(workspace ? workspaceId : '', sourceId.trim());
+  const saveRecommendation = useSaveManualRecommendation(workspace ? workspaceId : '');
+  const feedbackRecommendation = useManualRecommendationFeedback(workspace ? workspaceId : '');
+  const applyRecommendation = useApplyManualRecommendation(workspace ? workspaceId : '');
+  const decideDraft = useDecideManualRecommendationDraft(workspace ? workspaceId : '');
   const importSnapshot = useImportMetricSnapshot(workspace ? workspaceId : '');
   const postsById = useMemo(
     () => new Map((posts.data?.items ?? []).map((post) => [post.id, post])),
     [posts.data],
   );
+  const savedRecommendation = saveRecommendation.data?.source_id === sourceId.trim()
+    ? saveRecommendation.data
+    : null;
+  const applyResult = applyRecommendation.data;
+  const appliedRecord = applyResult && applyResult.recommendation.id === savedRecommendation?.id
+    ? applyResult.recommendation
+    : null;
+  const recommendationRecord = appliedRecord ?? (feedbackRecommendation.data?.id === savedRecommendation?.id
+    ? feedbackRecommendation.data
+    : savedRecommendation);
+  const appliedDraft = applyResult && applyResult.recommendation.id === recommendationRecord?.id
+    ? applyResult.created_draft
+    : null;
+  const decidedDraft = decideDraft.data?.id === appliedDraft?.id ? decideDraft.data : appliedDraft;
+  const canApplyRecommendation = workspace?.permissions.includes('recommendation:apply') ?? false;
 
   function parseOptionalNumber(value: string, label: string, integer = false): number | null {
     if (value.trim() === '') return null;
@@ -229,7 +258,88 @@ export default function AnalyticsPage() {
             <h3 className="text-base font-semibold text-amber-950">Đề xuất thử nghiệm</h3>
             {recommendation.isLoading ? <p className="mt-2 text-sm text-amber-900">Đang đánh giá dữ liệu…</p> : null}
             {recommendation.isError ? <p role="alert" className="mt-2 text-sm text-rose-800">{shortError(recommendation.error)}</p> : null}
-            {recommendation.data ? <div className="mt-2 space-y-2 text-sm text-amber-950"><p><strong>{recommendation.data.status === 'proposed' ? 'Có đề xuất' : 'Chưa đủ bằng chứng'}</strong> · {recommendation.data.observation}</p>{recommendation.data.hypothesis ? <p>Giả thuyết: {recommendation.data.hypothesis}</p> : null}{recommendation.data.action ? <p>Thử nghiệm: {recommendation.data.action}</p> : null}{recommendation.data.threshold ? <p>Ngưỡng kiểm tra: {recommendation.data.threshold}</p> : null}<p>Mẫu: {recommendation.data.sample_size} bài · độ tin cậy: {formatMetric(recommendation.data.confidence, true)}</p><p>{recommendation.data.limitations.join(' ')}</p>{(recommendation.data.evidence_ids ?? []).map((evidenceId) => <p key={evidenceId} className="font-mono text-xs">Bằng chứng: {evidenceId}</p>)}</div> : null}
+            {recommendation.data ? (
+              <div className="mt-2 space-y-2 text-sm text-amber-950">
+                <p><strong>{recommendation.data.status === 'proposed' ? 'Có đề xuất' : 'Chưa đủ bằng chứng'}</strong> · {recommendation.data.observation}</p>
+                {recommendation.data.hypothesis ? <p>Giả thuyết: {recommendation.data.hypothesis}</p> : null}
+                {recommendation.data.action ? <p>Thử nghiệm: {recommendation.data.action}</p> : null}
+                {recommendation.data.threshold ? <p>Ngưỡng kiểm tra: {recommendation.data.threshold}</p> : null}
+                <p>Mẫu: {recommendation.data.sample_size} bài · độ tin cậy: {formatMetric(recommendation.data.confidence, true)}</p>
+                <p>{recommendation.data.limitations.join(' ')}</p>
+                {(recommendation.data.evidence_ids ?? []).map((evidenceId) => <p key={evidenceId} className="font-mono text-xs">Bằng chứng: {evidenceId}</p>)}
+                {recommendation.data.status === 'proposed' && !savedRecommendation ? (
+                  <button
+                    type="button"
+                    disabled={saveRecommendation.isPending}
+                    onClick={() => saveRecommendation.mutate({ source_id: sourceId.trim() })}
+                    className="mt-2 rounded-lg bg-amber-900 px-3 py-2 font-medium text-white disabled:opacity-50"
+                  >
+                    {saveRecommendation.isPending ? 'Đang lưu…' : 'Lưu đề xuất có bằng chứng'}
+                  </button>
+                ) : null}
+                {saveRecommendation.isError ? <p role="alert" className="text-rose-800">{shortError(saveRecommendation.error)}</p> : null}
+              </div>
+            ) : null}
+            {recommendationRecord ? (
+              <div className="mt-4 space-y-3 border-t border-amber-200 pt-4 text-sm text-amber-950">
+                <p>Trạng thái xử lý: <strong>{recommendationRecord.lifecycle_status}</strong></p>
+                {recommendationRecord.feedback ? <p>Feedback: {recommendationRecord.feedback.value}{recommendationRecord.feedback.note ? ` · ${recommendationRecord.feedback.note}` : ''}</p> : null}
+                {recommendationRecord.lifecycle_status !== 'applied' ? (
+                  <div className="flex flex-wrap gap-2">
+                    <button type="button" disabled={feedbackRecommendation.isPending} onClick={() => feedbackRecommendation.mutate({ recommendationId: recommendationRecord.id, body: { value: 'useful' } })} className="rounded-lg border border-amber-800 px-3 py-2 font-medium">Hữu ích</button>
+                    <button type="button" disabled={feedbackRecommendation.isPending} onClick={() => feedbackRecommendation.mutate({ recommendationId: recommendationRecord.id, body: { value: 'not_useful' } })} className="rounded-lg border border-amber-800 px-3 py-2 font-medium">Không hữu ích</button>
+                    <button type="button" disabled={feedbackRecommendation.isPending} onClick={() => feedbackRecommendation.mutate({ recommendationId: recommendationRecord.id, body: { value: 'already_done' } })} className="rounded-lg border border-amber-800 px-3 py-2 font-medium">Đã làm rồi</button>
+                  </div>
+                ) : null}
+                {feedbackRecommendation.isError ? <p role="alert" className="text-rose-800">{shortError(feedbackRecommendation.error)}</p> : null}
+                {canApplyRecommendation && recommendationRecord.lifecycle_status !== 'dismissed' && recommendationRecord.feedback?.value !== 'already_done' && !appliedDraft ? (
+                  <div className="flex flex-wrap items-end gap-3">
+                    <label className="min-w-64 flex-1 space-y-1">
+                      Campaign nhận bản nháp
+                      <select className="w-full rounded-lg border border-amber-300 bg-white px-3 py-2" value={targetCampaignId} onChange={(event) => setTargetCampaignId(event.target.value)}>
+                        <option value="">Chọn campaign</option>
+                        {(campaigns.data?.items ?? []).map((campaign) => <option key={campaign.id} value={campaign.id}>{campaign.name}</option>)}
+                      </select>
+                    </label>
+                    <button
+                      type="button"
+                      disabled={!targetCampaignId || applyRecommendation.isPending}
+                      onClick={() => applyRecommendation.mutate({
+                        recommendationId: recommendationRecord.id,
+                        body: { campaign_id: targetCampaignId, evidence_ids: recommendationRecord.recommendation.evidence_ids },
+                      })}
+                      className="rounded-lg bg-slate-900 px-3 py-2 font-medium text-white disabled:opacity-50"
+                    >
+                      {applyRecommendation.isPending ? 'Đang tạo bản nháp…' : 'Tạo brief revision để xem lại'}
+                    </button>
+                  </div>
+                ) : null}
+                {campaigns.isError ? <p role="alert" className="text-rose-800">Không tải được campaign để áp dụng đề xuất.</p> : null}
+                {!canApplyRecommendation ? <p>Chỉ chủ workspace có quyền tạo và chấp nhận brief revision.</p> : null}
+                {applyRecommendation.isError ? <p role="alert" className="text-rose-800">{shortError(applyRecommendation.error)}</p> : null}
+                {appliedDraft && decidedDraft ? (
+                  <div className="space-y-3 rounded-xl border border-amber-300 bg-white p-4">
+                    <div><strong>Bản nháp brief · phiên bản gốc {decidedDraft.base_version}</strong><p>{applyRecommendation.data?.notice}</p></div>
+                    {decidedDraft.changes.map((change) => (
+                      <div key={change.field} className="space-y-1 rounded-lg bg-amber-50 p-3">
+                        <p className="font-semibold">{change.label}</p>
+                        <p>Trước: {JSON.stringify(change.before)}</p>
+                        <p>Đề xuất: {JSON.stringify(change.after)}</p>
+                        <p>{change.rationale}</p>
+                      </div>
+                    ))}
+                    <p>Trạng thái bản nháp: <strong>{decidedDraft.status}</strong>. Campaign chỉ đổi sau khi chấp nhận.</p>
+                    {decidedDraft.status === 'pending_review' && canApplyRecommendation ? (
+                      <div className="flex gap-2">
+                        <button type="button" disabled={decideDraft.isPending} onClick={() => decideDraft.mutate({ draftId: decidedDraft.id, body: { decision: 'accepted' } })} className="rounded-lg bg-emerald-800 px-3 py-2 font-medium text-white disabled:opacity-50">Chấp nhận revision</button>
+                        <button type="button" disabled={decideDraft.isPending} onClick={() => decideDraft.mutate({ draftId: decidedDraft.id, body: { decision: 'discarded' } })} className="rounded-lg border border-slate-300 px-3 py-2 font-medium disabled:opacity-50">Bỏ bản nháp</button>
+                      </div>
+                    ) : null}
+                    {decideDraft.isError ? <p role="alert" className="text-rose-800">{shortError(decideDraft.error)}</p> : null}
+                  </div>
+                ) : null}
+              </div>
+            ) : null}
           </article>
         ) : null}
       </section>

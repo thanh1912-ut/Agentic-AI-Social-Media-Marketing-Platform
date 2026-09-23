@@ -66,9 +66,16 @@ import type {
   ApiUploadLimits,
   ApiWorkspace,
   ApiAnalyticsDashboard,
+  ApiAnalyticsRecommendationRecord,
+  ApiApplyRecommendationRequest,
+  ApiApplyRecommendationResponse,
+  ApiCampaignBriefRevisionDraft,
   ApiMetricImportRequest,
   ApiMetricImportResponse,
   ApiMetricRecommendation,
+  ApiRecommendationDraftDecisionRequest,
+  ApiRecommendationFeedbackRequest,
+  ApiSaveRecommendationRequest,
 } from './types';
 
 import { apiDownload, apiRequest, apiUpload, newIdempotencyKey } from './client';
@@ -498,6 +505,42 @@ export const analyticsApi = {
     apiRequest<ApiMetricRecommendation>(
       v1(`/workspaces/${workspaceId}/analytics/recommendation`),
       { query: { source_id: sourceId }, signal },
+    ),
+
+  saveRecommendation: (workspaceId: string, body: ApiSaveRecommendationRequest) =>
+    apiRequest<ApiAnalyticsRecommendationRecord>(
+      v1(`/workspaces/${workspaceId}/analytics/recommendations`),
+      { method: 'POST', body },
+    ),
+
+  recommendationFeedback: (
+    workspaceId: string,
+    recommendationId: string,
+    body: ApiRecommendationFeedbackRequest,
+  ) =>
+    apiRequest<ApiAnalyticsRecommendationRecord>(
+      v1(`/workspaces/${workspaceId}/analytics/recommendations/${recommendationId}/feedback`),
+      { method: 'POST', body },
+    ),
+
+  applyRecommendation: (
+    workspaceId: string,
+    recommendationId: string,
+    body: ApiApplyRecommendationRequest,
+  ) =>
+    apiRequest<ApiApplyRecommendationResponse>(
+      v1(`/workspaces/${workspaceId}/analytics/recommendations/${recommendationId}/apply`),
+      { method: 'POST', body },
+    ),
+
+  decideRecommendationDraft: (
+    workspaceId: string,
+    draftId: string,
+    body: ApiRecommendationDraftDecisionRequest,
+  ) =>
+    apiRequest<ApiCampaignBriefRevisionDraft>(
+      v1(`/workspaces/${workspaceId}/analytics/recommendation-drafts/${draftId}/decision`),
+      { method: 'POST', body },
     ),
 
   importSnapshot: (workspaceId: string, body: ApiMetricImportRequest) =>

@@ -399,3 +399,37 @@ class PostMetricSnapshot(Base, IdMixin):
     attributed_revenue: Mapped[float | None] = mapped_column(Numeric(14, 2))
     attribution_valid: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     imported_by: Mapped[str] = mapped_column(ForeignKey("users.id"), nullable=False)
+
+
+class AnalyticsRecommendationRecord(Base, IdMixin, TimestampMixin):
+    __tablename__ = "analytics_recommendations"
+    __table_args__ = (
+        UniqueConstraint("company_id", "source_id", "evidence_fingerprint", name="uq_recommendation_source_evidence"),
+        Index("ix_recommendation_company_status", "company_id", "lifecycle_status"),
+    )
+
+    company_id: Mapped[str] = mapped_column(ForeignKey("companies.id", ondelete="CASCADE"), nullable=False)
+    source_id: Mapped[str] = mapped_column(String(160), nullable=False)
+    evidence_fingerprint: Mapped[str] = mapped_column(String(64), nullable=False)
+    recommendation_json: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
+    lifecycle_status: Mapped[str] = mapped_column(String(20), default="new", nullable=False)
+    feedback_json: Mapped[dict[str, Any] | None] = mapped_column(JSON)
+
+
+class CampaignBriefRevisionDraft(Base, IdMixin):
+    __tablename__ = "campaign_brief_revision_drafts"
+    __table_args__ = (
+        UniqueConstraint("recommendation_id", name="uq_brief_revision_recommendation"),
+        Index("ix_brief_revision_company_campaign", "company_id", "campaign_id", "created_at"),
+    )
+
+    company_id: Mapped[str] = mapped_column(ForeignKey("companies.id", ondelete="CASCADE"), nullable=False)
+    campaign_id: Mapped[str] = mapped_column(ForeignKey("campaigns.id", ondelete="CASCADE"), nullable=False)
+    recommendation_id: Mapped[str] = mapped_column(ForeignKey("analytics_recommendations.id", ondelete="CASCADE"), nullable=False)
+    base_version: Mapped[int] = mapped_column(Integer, nullable=False)
+    changes_json: Mapped[list[dict[str, Any]]] = mapped_column(JSON, nullable=False)
+    resulting_brief_json: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
+    status: Mapped[str] = mapped_column(String(20), default="pending_review", nullable=False)
+    note: Mapped[str | None] = mapped_column(Text)
+    created_by: Mapped[str] = mapped_column(ForeignKey("users.id"), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)

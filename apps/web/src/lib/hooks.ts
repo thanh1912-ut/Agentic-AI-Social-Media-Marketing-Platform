@@ -39,6 +39,10 @@ import type {
 import type {
   ApiAcceptedResponse as AcceptedResponse,
   ApiAnalyticsDashboard,
+  ApiApplyRecommendationRequest,
+  ApiRecommendationDraftDecisionRequest,
+  ApiRecommendationFeedbackRequest,
+  ApiSaveRecommendationRequest,
   ApiBrandProfile,
   ApiConfirmBrandProfileRequest,
   ApiDocument as DocumentUpload,
@@ -538,6 +542,54 @@ export function useImportMetricSnapshot(workspaceId: string) {
       void queryClient.invalidateQueries({
         queryKey: queryKeys.recommendations(workspaceId, `manual:${body.source_id}`),
       });
+    },
+  });
+}
+
+export function useSaveManualRecommendation(workspaceId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (body: ApiSaveRecommendationRequest) => api.analytics.saveRecommendation(workspaceId, body),
+    onSuccess: (_record, body) => {
+      void queryClient.invalidateQueries({
+        queryKey: queryKeys.recommendations(workspaceId, `manual:${body.source_id}`),
+      });
+    },
+  });
+}
+
+export function useManualRecommendationFeedback(workspaceId: string) {
+  return useMutation({
+    mutationFn: ({ recommendationId, body }: {
+      recommendationId: string;
+      body: ApiRecommendationFeedbackRequest;
+    }) => api.analytics.recommendationFeedback(workspaceId, recommendationId, body),
+  });
+}
+
+export function useApplyManualRecommendation(workspaceId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ recommendationId, body }: {
+      recommendationId: string;
+      body: ApiApplyRecommendationRequest;
+    }) => api.analytics.applyRecommendation(workspaceId, recommendationId, body),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.campaigns(workspaceId) });
+    },
+  });
+}
+
+export function useDecideManualRecommendationDraft(workspaceId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ draftId, body }: {
+      draftId: string;
+      body: ApiRecommendationDraftDecisionRequest;
+    }) => api.analytics.decideRecommendationDraft(workspaceId, draftId, body),
+    onSuccess: (draft) => {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.campaign(workspaceId, draft.campaign_id) });
+      void queryClient.invalidateQueries({ queryKey: queryKeys.campaigns(workspaceId) });
     },
   });
 }

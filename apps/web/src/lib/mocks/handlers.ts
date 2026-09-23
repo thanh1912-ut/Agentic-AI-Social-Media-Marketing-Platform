@@ -33,7 +33,13 @@ import {
 } from '@agentic/contracts';
 
 import type { ApiDocument } from '@/lib/api/types';
-import type { ApiMetricImportRequest } from '@/lib/api/types';
+import type {
+  ApiAnalyticsRecommendationRecord,
+  ApiApplyRecommendationRequest,
+  ApiCampaignBriefRevisionDraft,
+  ApiMetricImportRequest,
+  ApiRecommendationFeedbackRequest,
+} from '@/lib/api/types';
 
 import {
   DEMO_ACCOUNTS,
@@ -128,7 +134,26 @@ type DemoMetricRow = ApiMetricImportRequest['points'][number] & {
   format: string;
   measured_at: string;
 };
+type DemoRecommendationRecord = {
+  id: string;
+  source_id: string;
+  lifecycle_status: 'new' | 'acknowledged' | 'dismissed' | 'applied';
+  recommendation: ApiAnalyticsRecommendationRecord['recommendation'];
+  feedback?: NonNullable<ApiAnalyticsRecommendationRecord['feedback']> | null;
+  created_at: string;
+};
+type DemoBriefRevisionDraft = {
+  id: string;
+  campaign_id: string;
+  base_version: number;
+  changes: ApiCampaignBriefRevisionDraft['changes'];
+  source_recommendation_id: string;
+  status: 'pending_review' | 'accepted' | 'discarded';
+  created_at: string;
+};
 const demoMetricsByWorkspace: Record<string, Record<string, DemoMetricRow[]>> = {};
+const demoRecommendationRecords: Record<string, Record<string, DemoRecommendationRecord>> = {};
+const demoBriefRevisionDrafts: Record<string, Record<string, DemoBriefRevisionDraft>> = {};
 
 const nowIso = (): string => new Date().toISOString();
 
@@ -922,11 +947,150 @@ export const handlers = [
     });
   }),
 
+  http.post('*/api/v1/workspaces/:workspaceId/analytics/recommendations', async ({ params, request }) => {
+    const session = currentSession();
+    if (!session) return unauthenticated();
+    const workspaceId = params.workspaceId as string;
+    const body = await request.json() as { source_id?: string };
+    const sourceId = body.source_id ?? '';
+    if (sourceId !== 'demo-source-eligible') {
+      return fail(409, ERROR_CODES.STATE_CONFLICT, 'Snapshot demo này chưa đủ bằng chứng để lưu đề xuất.');
+    }
+    demoRecommendationRecords[workspaceId] ??= {};
+    const existing = demoRecommendationRecords[workspaceId][sourceId];
+    if (existing) return HttpResponse.json(existing, { status: 201 });
+    const record: DemoRecommendationRecord = {
+      id: `demo-rec-${workspaceId}-${sourceId}`,
+      source_id: sourceId,
+      lifecycle_status: 'new',
+      recommendation: {
+        status: 'proposed',
+        observation: 'Trong bộ dữ liệu minh họa, trụ product có engagement rate cao hơn.',
+        hypothesis: 'Thử tăng tỷ trọng nội dung trụ product trong campaign tiếp theo.',
+        action: 'Chạy thử hai tuần với lịch đăng và định dạng tương đương.',
+        metric: 'engagement_rate_by_reach',
+        threshold: 'Đo cùng cửa sổ tuổi bài; ngưỡng tăng tương đối 10% chỉ là giả thuyết demo.',
+        confidence: 0.3,
+        sample_size: 10,
+        evidence_ids: ['ev:demo:engagement_rate_by_reach'],
+        limitations: ['Dữ liệu minh họa — không phải kết quả thật.', 'So sánh mô tả không chứng minh quan hệ nhân quả.'],
+        created_at: DEMO_NOW,
+      },
+      feedback: null,
+      created_at: DEMO_NOW,
+    };
+    demoRecommendationRecords[workspaceId][sourceId] = record;
+    return HttpResponse.json(record, { status: 201 });
+  }),
+
+  http.post('*/api/v1/workspaces/:workspaceId/analytics/recommendations/:recommendationId/feedback', async ({ params, request }) => {
+    const session = currentSession();
+    if (!session) return unauthenticated();
+    const workspaceId = params.workspaceId as string;
+    const recommendationId = params.recommendationId as string;
+    const record = Object.values(demoRecommendationRecords[workspaceId] ?? {}).find((item) => item.id === recommendationId);
+    if (!record) return notFound('đề xuất');
+    if (record.lifecycle_status === 'applied') return fail(409, ERROR_CODES.STATE_CONFLICT, 'Đề xuất đã được áp dụng thành bản nháp.');
+    const body = await request.json() as ApiRecommendationFeedbackRequest;
+    record.feedback = { value: body.value, note: body.note, at: nowIso(), by: session.user.id };
+    record.lifecycle_status = body.value === 'not_useful' ? 'dismissed' : 'acknowledged';
+    return HttpResponse.json(record);
+  }),
+
+  http.post('*/api/v1/workspaces/:workspaceId/analytics/recommendations/:recommendationId/apply', async ({ params, request }) => {
+    const session = currentSession();
+    if (!session) return unauthenticated();
+    const workspaceId = params.workspaceId as string;
+    const recommendationId = params.recommendationId as string;
+    const record = Object.values(demoRecommendationRecords[workspaceId] ?? {}).find((item) => item.id === recommendationId);
+    if (!record) return notFound('đề xuất');
+    const body = await request.json() as ApiApplyRecommendationRequest;
+    const campaigns = demoCampaigns[workspaceId] ?? [];
+    const campaign = campaigns.find((item) => item.id === body.campaign_id);
+    if (!campaign) return notFound('campaign');
+    demoBriefRevisionDrafts[workspaceId] ??= {};
+    const existing = demoBriefRevisionDrafts[workspaceId][recommendationId];
+    if (existing) return HttpResponse.json({
+      recommendation: record,
+      created_draft: existing,
+      notice: 'Bản demo: campaign chỉ thay đổi sau khi chủ workspace chấp nhận.',
+    });
+    if (record.lifecycle_status === 'dismissed') return fail(409, ERROR_CODES.STATE_CONFLICT, 'Đề xuất đã bị từ chối.');
+    if (body.evidence_ids?.some((id) => !record.recommendation.evidence_ids?.includes(id))) {
+      return fail(422, ERROR_CODES.VALIDATION_ERROR, 'Bằng chứng không thuộc đề xuất này.');
+    }
+    const before = campaign.brief.must_include ?? [];
+    const experiment = `${record.recommendation.hypothesis} ${record.recommendation.action ?? ''}`.trim();
+    const after = before.includes(experiment) ? before : [...before, experiment];
+    const draft: DemoBriefRevisionDraft = {
+      id: `demo-draft-${recommendationId}`,
+      campaign_id: campaign.id,
+      base_version: campaign.version,
+      changes: [{
+        field: 'must_include',
+        label: 'Yêu cầu trong campaign',
+        before,
+        after,
+        rationale: `${record.recommendation.observation} Bằng chứng demo: ${record.recommendation.evidence_ids?.join(', ') ?? ''}`,
+      }],
+      source_recommendation_id: recommendationId,
+      status: 'pending_review',
+      created_at: nowIso(),
+    };
+    demoBriefRevisionDrafts[workspaceId][recommendationId] = draft;
+    record.lifecycle_status = 'applied';
+    return HttpResponse.json({
+      recommendation: record,
+      created_draft: draft,
+      notice: 'Bản demo đã tạo revision để xem lại; campaign chưa đổi.',
+    });
+  }),
+
+  http.post('*/api/v1/workspaces/:workspaceId/analytics/recommendation-drafts/:draftId/decision', async ({ params, request }) => {
+    const session = currentSession();
+    if (!session) return unauthenticated();
+    const workspaceId = params.workspaceId as string;
+    const draftId = params.draftId as string;
+    const body = await request.json() as { decision: 'accepted' | 'discarded' };
+    const draft = Object.values(demoBriefRevisionDrafts[workspaceId] ?? {}).find((item) => item.id === draftId);
+    if (!draft) return notFound('bản nháp');
+    const campaign = (demoCampaigns[workspaceId] ?? []).find((item) => item.id === draft.campaign_id);
+    if (!campaign) return notFound('campaign');
+    if (draft.status === body.decision) return HttpResponse.json(draft);
+    if (draft.status !== 'pending_review') return fail(409, ERROR_CODES.STATE_CONFLICT, 'Bản nháp đã được quyết định.');
+    if (body.decision === 'accepted') {
+      if (campaign.version !== draft.base_version) return fail(409, ERROR_CODES.STATE_CONFLICT, 'Campaign đã thay đổi; cần revision mới.');
+      const change = draft.changes[0];
+      if (change?.field === 'must_include' && Array.isArray(change.after)) {
+        campaign.brief.must_include = change.after.filter((item): item is string => typeof item === 'string');
+      }
+      campaign.version += 1;
+      campaign.updated_at = nowIso();
+    }
+    draft.status = body.decision;
+    return HttpResponse.json(draft);
+  }),
+
   http.get('*/api/v1/workspaces/:workspaceId/analytics/recommendation', ({ params, request }) => {
     const session = currentSession();
     if (!session) return unauthenticated();
     const workspaceId = params.workspaceId as string;
     const sourceId = new URL(request.url).searchParams.get('source_id') ?? '';
+    if (sourceId === 'demo-source-eligible') {
+      return HttpResponse.json({
+        status: 'proposed',
+        observation: 'Trong bộ dữ liệu minh họa, trụ product có engagement rate cao hơn.',
+        hypothesis: 'Thử tăng tỷ trọng nội dung trụ product trong campaign tiếp theo.',
+        action: 'Chạy thử hai tuần với lịch đăng và định dạng tương đương.',
+        metric: 'engagement_rate_by_reach',
+        threshold: 'Đo cùng cửa sổ tuổi bài; ngưỡng tăng tương đối 10% chỉ là giả thuyết demo.',
+        confidence: 0.3,
+        sample_size: 10,
+        evidence_ids: ['ev:demo:engagement_rate_by_reach'],
+        limitations: ['Dữ liệu minh họa — không phải kết quả thật.', 'So sánh mô tả không chứng minh quan hệ nhân quả.'],
+        created_at: DEMO_NOW,
+      });
+    }
     const sampleSize = demoMetricsByWorkspace[workspaceId]?.[sourceId]?.length ?? (demoPosts[workspaceId] ?? []).length;
     return HttpResponse.json({
       status: 'abstain',
