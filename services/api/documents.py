@@ -9,7 +9,7 @@ from fastapi import APIRouter, Depends, File, Header, UploadFile
 from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from database.models import Document, Job, JobStep, KnowledgeChunk, Membership, RequestDeduplication, User, utcnow
+from database.models import Document, Job, JobStep, KnowledgeChunk, Membership, RequestDeduplication, User, new_id, utcnow
 from services.ingestion.parsers import SUPPORTED_MIME_TYPES, infer_kind
 from .config import settings
 from .db import get_db
@@ -120,7 +120,7 @@ async def upload_documents(
     document_ids: list[str] = []
     total_files = len(files)
     for upload in files:
-        filename = upload.filename or "untitled"
+        filename = (upload.filename or "untitled").replace("\\", "/").rsplit("/", 1)[-1] or "untitled"
         mime_type = (upload.content_type or "application/octet-stream").lower()
         kind = infer_kind(filename, mime_type)
         if kind is None:
@@ -165,7 +165,7 @@ async def upload_documents(
                 source_version = int(prior_version.source_version) + 1
             except (TypeError, ValueError):
                 source_version = 2
-        document = Document(company_id=company_id, filename=filename, kind=kind, mime_type=mime_type, size_bytes=len(content), source_hash=source_hash, parser_version=settings.parser_version, storage_key=f"{company_id}/{source_hash}/{filename}", status="pending", uploaded_by=user.id, source_version=str(source_version))
+        document = Document(company_id=company_id, filename=filename, kind=kind, mime_type=mime_type, size_bytes=len(content), source_hash=source_hash, parser_version=settings.parser_version, storage_key=f"{company_id}/{source_hash}/{new_id()}", status="pending", uploaded_by=user.id, source_version=str(source_version))
         if source_id:
             document.source_id = source_id
         db.add(document)

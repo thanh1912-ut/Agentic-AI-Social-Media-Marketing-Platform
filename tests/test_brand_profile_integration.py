@@ -133,6 +133,37 @@ def _upload(client: TestClient, workspace_id: str, csrf: dict[str, str], files):
 
 
 @pytest.mark.fixture_integration
+def test_upload_filename_is_not_used_as_storage_path(api_env, tmp_path):
+    client, sessions = api_env
+    workspace_id, csrf = _register(client, "filename-owner@example.com", "Filename Co")
+    body = b"Brand facts stored under a server-generated object key."
+    uploaded = _upload(
+        client,
+        workspace_id,
+        csrf,
+        [("../../outside.txt", body)],
+    )
+    assert uploaded.status_code == 202, uploaded.text
+    document_id = uploaded.json()["job"]["result"]["document_ids"][0]
+
+    async def stored_document():
+        from database.models import Document
+
+        async with sessions() as db:
+            document = await db.get(Document, document_id)
+            return document.filename, document.storage_key
+
+    filename, storage_key = asyncio.run(stored_document())
+    storage_root = (tmp_path / "objects").resolve()
+    stored_path = (storage_root / storage_key).resolve()
+    assert filename == "outside.txt"
+    assert filename not in storage_key
+    assert len(storage_key.split("/")) == 3
+    assert storage_root in stored_path.parents
+    assert stored_path.read_bytes() == body
+
+
+@pytest.mark.fixture_integration
 def test_upload_worker_profile_revision_confirm_and_tenant_isolation(api_env):
     client, sessions = api_env
     workspace_id, csrf = _register(client, "owner-one@example.com", "Bếp Mộc")

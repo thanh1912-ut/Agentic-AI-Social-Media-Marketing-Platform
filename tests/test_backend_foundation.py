@@ -74,6 +74,31 @@ def test_auth_and_tenant_isolation(api_client: TestClient) -> None:
     assert response.headers["x-request-id"].startswith("req_")
 
 
+def test_cors_preflight_allows_only_required_api_methods_and_headers(api_client: TestClient) -> None:
+    allowed = api_client.options(
+        "/api/v1/auth/login",
+        headers={
+            "Origin": "http://localhost:3000",
+            "Access-Control-Request-Method": "POST",
+            "Access-Control-Request-Headers": "content-type,x-csrf-token,idempotency-key",
+        },
+    )
+    assert allowed.status_code == 200
+    assert allowed.headers["access-control-allow-origin"] == "http://localhost:3000"
+    assert "*" not in allowed.headers["access-control-allow-methods"]
+    assert "*" not in allowed.headers["access-control-allow-headers"]
+
+    denied = api_client.options(
+        "/api/v1/auth/login",
+        headers={
+            "Origin": "http://localhost:3000",
+            "Access-Control-Request-Method": "POST",
+            "Access-Control-Request-Headers": "x-unlisted-header",
+        },
+    )
+    assert denied.status_code == 400
+
+
 def test_parser_returns_locators_and_rejects_scan_pdf(tmp_path) -> None:
     text_path = tmp_path / "brand.txt"
     text_path.write_text("Bếp Mộc phục vụ món Việt.", encoding="utf-8")
@@ -88,4 +113,3 @@ def test_parser_returns_locators_and_rejects_scan_pdf(tmp_path) -> None:
     with pytest.raises(ParseError) as error:
         parse_document(pdf_path, kind="pdf", mime_type="application/pdf", filename=pdf_path.name)
     assert error.value.code in {"corrupted", "pdf_no_text_layer"}
-
