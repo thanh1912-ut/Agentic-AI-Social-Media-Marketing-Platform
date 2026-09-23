@@ -6,7 +6,8 @@ from fastapi import APIRouter, Depends, Query
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from database.models import Job, JobEvent, User, utcnow
+from database.models import Job, JobEvent, JobStep, User, utcnow
+from .config import settings
 from .db import get_db
 from .dependencies import current_user, membership_for, require_csrf
 from .errors import ApiProblem
@@ -44,6 +45,7 @@ async def cancel_job(job_id: str, user: User = Depends(current_user), db: AsyncS
         raise ApiProblem(409, "state_conflict", "Job này không còn có thể huỷ.")
     job.status = "cancelled"
     job.finished_at = utcnow()
+    job.lease_until = None
     await db.commit()
     return await serialize_job(db, job)
 
@@ -56,12 +58,20 @@ async def retry_job(job_id: str, user: User = Depends(current_user), db: AsyncSe
     document_id = (job.result or {}).get("document_id")
     if not document_id:
         raise ApiProblem(409, "state_conflict", "Job không có dữ liệu để thử lại.")
+    if job.attempts >= settings.max_job_attempts:
+        raise ApiProblem(409, "retry_limit_exceeded", "Job đã hết số lần thử tự động.", details={"max_attempts": settings.max_job_attempts})
     job.status = "queued"
     job.progress = 0
     job.error = None
     job.finished_at = None
-    job.attempts += 1
+    job.lease_until = None
+    for step in (await db.scalars(select(JobStep).where(JobStep.job_id == job.id))).all():
+        step.status = "pending"
+        step.progress = None
+        step.message = None
+        step.error = None
+        step.started_at = None
+        step.finished_at = None
     await db.commit()
     await dispatch_document_job(job.id, str(document_id))
     return await accepted_response(db, job)
-

@@ -27,6 +27,15 @@ class Settings:
     password_reset_expire_minutes: int = int(os.getenv("PASSWORD_RESET_EXPIRE_MINUTES", "30"))
     cookie_secure: bool = _bool("COOKIE_SECURE", False)
     cookie_domain: str | None = os.getenv("COOKIE_DOMAIN") or None
+    cookie_samesite: str = os.getenv("COOKIE_SAMESITE", "lax").lower()
+    cors_allowed_origins: tuple[str, ...] = tuple(
+        origin.strip()
+        for origin in os.getenv(
+            "CORS_ALLOWED_ORIGINS",
+            "http://localhost:3000,http://127.0.0.1:3000",
+        ).split(",")
+        if origin.strip()
+    )
     storage_backend: str = os.getenv("STORAGE_BACKEND", "local")
     storage_root: Path = Path(os.getenv("STORAGE_ROOT", ".data/uploads"))
     s3_endpoint: str = os.getenv("S3_ENDPOINT", "http://localhost:9000")
@@ -38,6 +47,16 @@ class Settings:
     parser_version: str = os.getenv("PARSER_VERSION", "m2-parser-v1")
     auto_create_schema: bool = _bool("AUTO_CREATE_SCHEMA", False)
     inline_jobs: bool = _bool("INLINE_JOBS", False)
+    openai_api_key: str = os.getenv("OPENAI_API_KEY", "")
+    llm_default_model: str = os.getenv("LLM_DEFAULT_MODEL", "gpt-4o-mini")
+    embedding_model: str = os.getenv("EMBEDDING_MODEL", "")
+    ai_request_timeout_seconds: int = int(os.getenv("AI_REQUEST_TIMEOUT_SECONDS", "120"))
+    max_job_attempts: int = int(os.getenv("MAX_JOB_ATTEMPTS", "3"))
+    job_lease_minutes: int = int(os.getenv("JOB_LEASE_MINUTES", "30"))
 
 
 settings = Settings()
+if settings.cookie_samesite not in {"strict", "lax", "none"}:
+    raise ValueError("COOKIE_SAMESITE must be strict, lax, or none")
+if settings.cookie_samesite == "none" and not settings.cookie_secure:
+    raise ValueError("COOKIE_SECURE=1 is required when COOKIE_SAMESITE=none")

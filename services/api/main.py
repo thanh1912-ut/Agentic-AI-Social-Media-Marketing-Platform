@@ -10,11 +10,14 @@ from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from redis.asyncio import Redis
+from sqlalchemy import text
 
-from . import auth, documents, jobs, workspaces
+from . import auth, brand_profiles, documents, jobs, workspaces
 from .config import settings
-from .db import create_schema
+from .db import create_schema, engine
 from .errors import ApiProblem, api_problem_handler, error_body
+from .storage import storage_ready
 
 
 logger = logging.getLogger(__name__)
@@ -38,7 +41,7 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000", "http://127.0.0.1:3000"],
+    allow_origins=list(settings.cors_allowed_origins),
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*", "Authorization", "Idempotency-Key", "X-CSRF-Token"],
@@ -75,6 +78,7 @@ app.add_exception_handler(RequestValidationError, validation_exception_handler)
 app.include_router(auth.router, prefix="/api/v1")
 app.include_router(workspaces.router, prefix="/api/v1")
 app.include_router(documents.router, prefix="/api/v1")
+app.include_router(brand_profiles.router, prefix="/api/v1")
 app.include_router(jobs.router, prefix="/api/v1")
 
 
@@ -85,4 +89,27 @@ async def healthz():
 
 @app.get("/readyz", tags=["health"])
 async def readyz():
-    return {"status": "ready"}
+    components = {"database": False, "redis": False, "object_storage": False}
+    try:
+        async with engine.connect() as connection:
+            await connection.execute(text("SELECT 1"))
+        components["database"] = True
+    except Exception:
+        pass
+    redis = Redis.from_url(settings.redis_url, socket_connect_timeout=2, socket_timeout=2)
+    try:
+        await redis.ping()
+        components["redis"] = True
+    except Exception:
+        pass
+    finally:
+        await redis.aclose()
+    try:
+        components["object_storage"] = await storage_ready()
+    except Exception:
+        pass
+    ready = all(components.values())
+    return JSONResponse(
+        status_code=200 if ready else 503,
+        content={"status": "ready" if ready else "not_ready", "dependencies": components},
+    )

@@ -36,10 +36,24 @@ class S3ObjectStorage:
             aws_secret_access_key=settings.s3_secret_key,
             region_name="us-east-1",
         )
+
+    def ensure_bucket(self) -> None:
         try:
             self.client.head_bucket(Bucket=settings.s3_bucket)
-        except Exception:
+        except Exception as exc:
+            response = getattr(exc, "response", {})
+            status = response.get("ResponseMetadata", {}).get("HTTPStatusCode")
+            code = response.get("Error", {}).get("Code")
+            if status not in {404, 301} and code not in {"404", "NoSuchBucket", "NotFound"}:
+                raise
             self.client.create_bucket(Bucket=settings.s3_bucket)
+
+    def is_ready(self) -> bool:
+        try:
+            self.client.head_bucket(Bucket=settings.s3_bucket)
+            return True
+        except Exception:
+            return False
 
     async def put(self, key: str, content: bytes) -> None:
         await asyncio.to_thread(self.client.put_object, Bucket=settings.s3_bucket, Key=key, Body=content)
@@ -50,3 +64,9 @@ class S3ObjectStorage:
 
 
 storage = S3ObjectStorage() if settings.storage_backend == "s3" else LocalObjectStorage(settings.storage_root)
+
+
+async def storage_ready() -> bool:
+    if isinstance(storage, S3ObjectStorage):
+        return await asyncio.to_thread(storage.is_ready)
+    return True

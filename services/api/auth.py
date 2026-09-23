@@ -81,13 +81,13 @@ async def _issue_session(
     cookie_args = {
         "secure": settings.cookie_secure,
         "httponly": True,
-        "samesite": "lax",
+        "samesite": settings.cookie_samesite,
         "domain": settings.cookie_domain,
         "path": "/",
     }
     response.set_cookie(ACCESS_COOKIE, access_token, max_age=settings.access_token_expire_minutes * 60, **cookie_args)
     response.set_cookie(REFRESH_COOKIE, refresh_token, max_age=settings.refresh_token_expire_days * 86400, **cookie_args)
-    response.set_cookie(CSRF_COOKIE, csrf_token, max_age=settings.refresh_token_expire_days * 86400, httponly=False, secure=settings.cookie_secure, samesite="lax", domain=settings.cookie_domain, path="/")
+    response.set_cookie(CSRF_COOKIE, csrf_token, max_age=settings.refresh_token_expire_days * 86400, httponly=False, secure=settings.cookie_secure, samesite=settings.cookie_samesite, domain=settings.cookie_domain, path="/")
     return access_token, expires_at
 
 

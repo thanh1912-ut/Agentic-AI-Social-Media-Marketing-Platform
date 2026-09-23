@@ -74,7 +74,10 @@ def require_permission(permission: str):
                 403,
                 "forbidden",
                 "Bạn không có quyền thực hiện thao tác này.",
-                details={"required_permission": permission, "required_role": "owner" if permission in {"member:invite", "connection:manage", "publish:create"} else None},
+                details={
+                    "required_permission": permission,
+                    "required_role": "owner" if permission in {"member:invite", "brand:confirm", "connection:manage", "publish:create"} else None,
+                },
             )
         return membership
 
@@ -91,4 +94,3 @@ async def require_csrf(request: Request) -> None:
         received = request.headers.get(CSRF_HEADER)
         if not expected or not received or expected != received:
             raise ApiProblem(403, "csrf_failed", "Yêu cầu không hợp lệ. Hãy tải lại trang rồi thử lại.")
-

@@ -12,6 +12,7 @@ from typing import Any
 
 from sqlalchemy import Boolean, DateTime, ForeignKey, Index, Integer, JSON, String, Text, UniqueConstraint
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
+from pgvector.sqlalchemy import Vector
 
 
 def new_id() -> str:
@@ -110,6 +111,29 @@ class Brand(Base, IdMixin, TimestampMixin):
     version: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
 
 
+class BrandProfileRevision(Base, IdMixin, TimestampMixin):
+    __tablename__ = "brand_profile_revisions"
+    __table_args__ = (
+        UniqueConstraint("brand_id", "revision", name="uq_brand_profile_revision"),
+        UniqueConstraint("job_id", name="uq_brand_profile_revision_job"),
+        Index("ix_brand_profile_revision_current", "brand_id", "revision"),
+    )
+
+    brand_id: Mapped[str] = mapped_column(ForeignKey("brands.id", ondelete="CASCADE"), nullable=False)
+    company_id: Mapped[str] = mapped_column(ForeignKey("companies.id", ondelete="CASCADE"), nullable=False)
+    revision: Mapped[int] = mapped_column(Integer, nullable=False)
+    profile_json: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
+    internal_profile_json: Mapped[dict[str, Any] | None] = mapped_column(JSON)
+    source_refs_json: Mapped[list[dict[str, Any]]] = mapped_column(JSON, default=list, nullable=False)
+    warnings_json: Mapped[list[str]] = mapped_column(JSON, default=list, nullable=False)
+    input_snapshot_id: Mapped[str | None] = mapped_column(String(64))
+    input_snapshot_json: Mapped[dict[str, Any] | None] = mapped_column(JSON)
+    run_metadata_json: Mapped[dict[str, Any] | None] = mapped_column(JSON)
+    job_id: Mapped[str | None] = mapped_column(ForeignKey("jobs.id", ondelete="SET NULL"))
+    confirmed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    confirmed_by: Mapped[str | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+
+
 class Document(Base, IdMixin, TimestampMixin):
     __tablename__ = "documents"
     __table_args__ = (
@@ -118,6 +142,8 @@ class Document(Base, IdMixin, TimestampMixin):
     )
 
     company_id: Mapped[str] = mapped_column(ForeignKey("companies.id", ondelete="CASCADE"), nullable=False)
+    source_id: Mapped[str] = mapped_column(String(36), default=new_id, nullable=False, index=True)
+    source_version: Mapped[str] = mapped_column(String(40), default="1", nullable=False)
     filename: Mapped[str] = mapped_column(String(512), nullable=False)
     kind: Mapped[str] = mapped_column(String(20), nullable=False)
     mime_type: Mapped[str] = mapped_column(String(200), nullable=False)
@@ -126,6 +152,11 @@ class Document(Base, IdMixin, TimestampMixin):
     parser_version: Mapped[str] = mapped_column(String(40), nullable=False)
     storage_key: Mapped[str] = mapped_column(String(1024), nullable=False, unique=True)
     status: Mapped[str] = mapped_column(String(30), nullable=False, default="pending")
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    normalized_json: Mapped[dict[str, Any] | None] = mapped_column(JSON)
+    knowledge_status: Mapped[str] = mapped_column(String(30), default="pending", nullable=False)
+    profile_status: Mapped[str] = mapped_column(String(30), default="pending", nullable=False)
     error: Mapped[dict[str, Any] | None] = mapped_column(JSON)
     extracted: Mapped[dict[str, Any] | None] = mapped_column(JSON)
     uploaded_by: Mapped[str] = mapped_column(ForeignKey("users.id"), nullable=False)
@@ -144,6 +175,29 @@ class DocumentChunk(Base, IdMixin, TimestampMixin):
     text: Mapped[str] = mapped_column(Text, nullable=False)
     locator: Mapped[str] = mapped_column(String(500), nullable=False)
     metadata_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict, nullable=False)
+
+
+class KnowledgeChunk(Base, TimestampMixin):
+    __tablename__ = "knowledge_chunks"
+    __table_args__ = (
+        UniqueConstraint("company_id", "brand_id", "source_id", "source_hash", "chunk_id", name="uq_knowledge_chunk_identity"),
+        Index("ix_knowledge_chunks_scope_active", "company_id", "brand_id", "is_active"),
+        Index("ix_knowledge_chunks_source", "source_id", "source_hash"),
+    )
+
+    chunk_id: Mapped[str] = mapped_column(String(1200), primary_key=True)
+    company_id: Mapped[str] = mapped_column(ForeignKey("companies.id", ondelete="CASCADE"), nullable=False)
+    brand_id: Mapped[str] = mapped_column(ForeignKey("brands.id", ondelete="CASCADE"), nullable=False)
+    source_id: Mapped[str] = mapped_column(String(36), nullable=False)
+    document_id: Mapped[str] = mapped_column(ForeignKey("documents.id", ondelete="CASCADE"), nullable=False)
+    source_version: Mapped[str] = mapped_column(String(40), nullable=False)
+    source_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    locator: Mapped[str] = mapped_column(String(700), nullable=False)
+    text: Mapped[str] = mapped_column(Text, nullable=False)
+    token_count: Mapped[int] = mapped_column(Integer, nullable=False)
+    kind: Mapped[str] = mapped_column(String(20), nullable=False)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    embedding: Mapped[list[float] | None] = mapped_column(Vector(1536).with_variant(JSON(), "sqlite"))
 
 
 class Job(Base, IdMixin, TimestampMixin):

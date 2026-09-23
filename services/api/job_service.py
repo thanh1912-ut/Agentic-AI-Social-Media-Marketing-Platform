@@ -19,6 +19,7 @@ STEP_LABELS = {
     "extract_text": "Đọc nội dung văn bản",
     "normalize": "Chuẩn hoá nội dung và nguồn",
     "chunk_and_index": "Chia đoạn và lập chỉ mục tra cứu",
+    "create_brand_profile": "Tạo và lưu hồ sơ thương hiệu",
 }
 
 
@@ -91,11 +92,42 @@ async def dispatch_document_job(job_id: str, document_id: str, document_ids: lis
 
 async def dispatch_queued_jobs(db: AsyncSession) -> int:
     now = datetime.now(timezone.utc)
-    jobs = (await db.scalars(select(Job).where(Job.status == "queued", or_(Job.lease_until.is_(None), Job.lease_until <= now)).order_by(Job.created_at).limit(100))).all()
+    jobs = (
+        await db.scalars(
+            select(Job)
+            .where(Job.status == "queued", or_(Job.lease_until.is_(None), Job.lease_until <= now))
+            .order_by(Job.created_at)
+            .limit(100)
+            .with_for_update(skip_locked=True)
+        )
+    ).all()
     count = 0
+    dispatch: list[tuple[str, str, list[str]]] = []
     for job in jobs:
         if job.kind == "document_ingest" and job.result and job.result.get("document_id"):
-            job.lease_until = now + timedelta(minutes=15)
-            await dispatch_document_job(job.id, str(job.result["document_id"]), [str(item) for item in job.result.get("document_ids", [job.result["document_id"]])])
-            count += 1
+            if job.attempts >= settings.max_job_attempts:
+                job.status = "failed"
+                job.progress = 100
+                job.finished_at = now
+                job.lease_until = None
+                job.error = {
+                    "code": "retry_limit_exceeded",
+                    "message": "Job đã hết số lần thử tự động.",
+                    "hint": "Hãy kiểm tra tài liệu rồi gửi yêu cầu xử lý lại.",
+                    "retryable": False,
+                }
+                await append_job_event(db, job, "error", job.error["message"], 100)
+                continue
+            document_id = str(job.result["document_id"])
+            document_ids = [str(item) for item in job.result.get("document_ids", [document_id])]
+            job.lease_until = now + timedelta(minutes=settings.job_lease_minutes)
+            dispatch.append((job.id, document_id, document_ids))
+
+    # Persist the lease before queue delivery. If Redis is unavailable, the
+    # scheduler can safely retry after expiry without losing the DB job.
+    if jobs:
+        await db.commit()
+    for job_id, document_id, document_ids in dispatch:
+        await dispatch_document_job(job_id, document_id, document_ids)
+        count += 1
     return count
