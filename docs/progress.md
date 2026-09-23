@@ -4,9 +4,9 @@ Cập nhật gần nhất: 2026-09-24 05:32 (Asia/Ho_Chi_Minh)
 
 ## Trạng thái hiện tại
 
-- Branch: `codex/product-v1-completion`; implementation commit `43ab2d3`, real-mode E2E commit `4f9a97a`, trên PR #1. Backend/frontend suite chạy trên source implementation; real-mode E2E chạy trên test commit nêu trên. Docs tiến độ hiện cập nhật cho runtime smoke mới và sẽ được đẩy cùng branch.
+- Branch: `codex/product-v1-completion`; implementation commit `43ab2d3`, real-mode E2E commit `4f9a97a` và báo cáo runtime commit `16d41e9` đã được đẩy lên PR #1. Backend/frontend suite chạy trên source implementation; real-mode E2E chạy trên test commit nêu trên.
 - Phase hiện tại: Phase 7 — hardening và bàn giao core pilot. Mốc mới: real-mode browser manual flow pass riêng trên SQLite và PostgreSQL; database dump/restore counts khớp và archive/restore local object storage giữ nguyên SHA-256.
-- Công việc trong phiên: mở rộng real API E2E để upload ảnh, kiểm version/approval hash, export; nghiệm thu với PostgreSQL 18, chạy dump/restore, kiểm tra readiness với PostgreSQL/Redis/local storage, và xác nhận Celery worker nhận task recovery qua Redis. Các process và dữ liệu test tạm sẽ được dừng/xóa sau smoke; docs sẽ được đẩy lên PR #1.
+- Công việc trong phiên: mở rộng real API E2E để upload ảnh, kiểm version/approval hash, export; nghiệm thu với PostgreSQL 18, chạy dump/restore, kiểm tra readiness với PostgreSQL/Redis/local storage, và xác nhận Celery worker nhận task recovery qua Redis. Process/runtime và dữ liệu test tạm đã dừng/xóa; báo cáo đã được đẩy lên PR #1.
 - Checkout dùng cho task là `/private/tmp/agentic-v1-media`; working tree và index gốc tại `/Users/lethanh/agent` được giữ nguyên.
 - Chủ dự án đã chấp thuận gửi đoạn trích tài liệu, Brand Profile và strategy/topic/date của slot được chọn tới DeepSeek. Chưa có `DEEPSEEK_API_KEY`; không có live model call hay số liệu token/cost/latency.
 
