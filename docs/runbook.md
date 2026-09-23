@@ -59,6 +59,8 @@ API hiện có register/login và workspace bootstrap. Tạo user test riêng; k
 - Demo UI: `NEXT_PUBLIC_USE_MOCKS=1`; dữ liệu do MSW cung cấp, không phải API evidence.
 - Real mode: `NEXT_PUBLIC_USE_MOCKS=0`; UI gọi API, hiển thị lỗi khi backend lỗi, không dùng dữ liệu mock thay thế.
 - Campaign supports tenant-scoped create/list/detail, manual post creation/edit with immutable versions, approval decisions tied to the exact version, and CSV/XLSX export. Exported content still needs a human to publish it on Meta.
+- Analytics supports manual snapshots: choose a source ID and measurement timestamp, add one or more workspace posts, and enter age-at-measurement plus available metrics. Counts must be integers; cost/revenue may be decimal. Leave unavailable values blank. Duplicate `(workspace, post, source, measured_at)` snapshots return conflict. Only mark attribution valid when its method/window is verified.
+- Dashboard uses latest per-post snapshots for the selected source and reports freshness, coverage, pillar/format groups and missing-value notes. Recommendations are deterministic test suggestions with evidence IDs; they abstain on small samples and do not establish causality. Feedback/apply tracking is not implemented yet.
 - LLM fixture tests do not call DeepSeek. Upload-driven extraction and content generation remain paused. The live adapter smoke uses `tests/test_deepseek_api_smoke.py` and may incur charges; only run it in a secured environment after data-flow approval.
 - Real Playwright acceptance cần `E2E_REAL_API_BASE_URL`, tài khoản test riêng và workspace ID. Không đưa password vào docs hoặc output.
 

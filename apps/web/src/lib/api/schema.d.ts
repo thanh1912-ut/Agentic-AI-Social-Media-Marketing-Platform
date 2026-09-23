@@ -276,6 +276,40 @@ export interface paths {
         readonly patch?: never;
         readonly trace?: never;
     };
+    readonly "/api/v1/workspaces/{company_id}/analytics/dashboard": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /** Get Analytics Dashboard */
+        readonly get: operations["get_analytics_dashboard_api_v1_workspaces__company_id__analytics_dashboard_get"];
+        readonly put?: never;
+        readonly post?: never;
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/v1/workspaces/{company_id}/analytics/recommendation": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /** Get Recommendation */
+        readonly get: operations["get_recommendation_api_v1_workspaces__company_id__analytics_recommendation_get"];
+        readonly put?: never;
+        readonly post?: never;
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
     readonly "/api/v1/workspaces/{company_id}/approvals": {
         readonly parameters: {
             readonly query?: never;
@@ -553,6 +587,23 @@ export interface paths {
         readonly patch?: never;
         readonly trace?: never;
     };
+    readonly "/api/v1/workspaces/{company_id}/metrics/import": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get?: never;
+        readonly put?: never;
+        /** Import Metrics */
+        readonly post: operations["import_metrics_api_v1_workspaces__company_id__metrics_import_post"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
     readonly "/api/v1/workspaces/{company_id}/posts": {
         readonly parameters: {
             readonly query?: never;
@@ -728,6 +779,52 @@ export interface components {
             readonly job: components["schemas"]["JobOut"];
             /** Job Id */
             readonly job_id: string;
+        };
+        /** AnalyticsDashboardOut */
+        readonly AnalyticsDashboardOut: {
+            /** Freshness At */
+            readonly freshness_at?: string | null;
+            /** Groups */
+            readonly groups: readonly components["schemas"]["MetricGroupOut"][];
+            readonly report: components["schemas"]["AnalyticsReport"];
+            /** Source Id */
+            readonly source_id: string;
+            /** Source Label */
+            readonly source_label: string;
+        };
+        /** AnalyticsEvidence */
+        readonly AnalyticsEvidence: {
+            /** Description */
+            readonly description: string;
+            /** Evidence Id */
+            readonly evidence_id: string;
+            /** Metric Names */
+            readonly metric_names?: readonly string[];
+            /** Post Ids */
+            readonly post_ids?: readonly string[];
+        };
+        /** AnalyticsReport */
+        readonly AnalyticsReport: {
+            /** Evidence */
+            readonly evidence?: readonly components["schemas"]["AnalyticsEvidence"][];
+            /** Notes */
+            readonly notes?: readonly string[];
+            /** Observations */
+            readonly observations?: readonly components["schemas"]["MetricObservation"][];
+            /** Page Id */
+            readonly page_id: string;
+            /**
+             * Period End
+             * Format: date-time
+             */
+            readonly period_end: string;
+            /**
+             * Period Start
+             * Format: date-time
+             */
+            readonly period_start: string;
+            /** Report Id */
+            readonly report_id: string;
         };
         /** ApiErrorEnvelope */
         readonly ApiErrorEnvelope: {
@@ -1294,6 +1391,103 @@ export interface components {
             readonly status: "active" | "invited" | "suspended";
             readonly user?: components["schemas"]["UserOut"] | null;
         };
+        /** MetricGroupOut */
+        readonly MetricGroupOut: {
+            /** Average Reach */
+            readonly average_reach?: number | null;
+            /** Average Views */
+            readonly average_views?: number | null;
+            /** Click Rate By Reach */
+            readonly click_rate_by_reach?: number | null;
+            /**
+             * Dimension
+             * @enum {string}
+             */
+            readonly dimension: "pillar" | "format";
+            /** Engagement Rate By Reach */
+            readonly engagement_rate_by_reach?: number | null;
+            /** Name */
+            readonly name: string;
+            /** Post Count */
+            readonly post_count: number;
+        };
+        /** MetricImportRequest */
+        readonly MetricImportRequest: {
+            /**
+             * Measured At
+             * Format: date-time
+             */
+            readonly measured_at: string;
+            /** Points */
+            readonly points: readonly components["schemas"]["MetricPointIn"][];
+            /** Source Id */
+            readonly source_id: string;
+        };
+        /** MetricImportResponse */
+        readonly MetricImportResponse: {
+            /** Imported Count */
+            readonly imported_count: number;
+            /**
+             * Measured At
+             * Format: date-time
+             */
+            readonly measured_at: string;
+            /** Snapshot Fingerprint */
+            readonly snapshot_fingerprint: string;
+            /** Source Id */
+            readonly source_id: string;
+        };
+        /** MetricObservation */
+        readonly MetricObservation: {
+            /** Coverage */
+            readonly coverage: number;
+            /** Denominator */
+            readonly denominator?: number | null;
+            /**
+             * Measured From
+             * Format: date-time
+             */
+            readonly measured_from: string;
+            /**
+             * Measured To
+             * Format: date-time
+             */
+            readonly measured_to: string;
+            /** Metric */
+            readonly metric: string;
+            /** Numerator */
+            readonly numerator?: number | null;
+            /** Sample Size */
+            readonly sample_size: number;
+            /** Unavailable Reason */
+            readonly unavailable_reason?: string | null;
+            /** Value */
+            readonly value?: number | null;
+        };
+        /** MetricPointIn */
+        readonly MetricPointIn: {
+            /** Attributed Revenue */
+            readonly attributed_revenue?: number | null;
+            /**
+             * Attribution Valid
+             * @default false
+             */
+            readonly attribution_valid: boolean;
+            /** Clicks */
+            readonly clicks?: number | null;
+            /** Engagements */
+            readonly engagements?: number | null;
+            /** Post Age Hours */
+            readonly post_age_hours: number;
+            /** Post Id */
+            readonly post_id: string;
+            /** Reach */
+            readonly reach?: number | null;
+            /** Spend */
+            readonly spend?: number | null;
+            /** Views */
+            readonly views?: number | null;
+        };
         /** PaginatedCampaigns */
         readonly PaginatedCampaigns: {
             /** Items */
@@ -1444,6 +1638,37 @@ export interface components {
             /** Sheet */
             readonly sheet?: string | null;
         };
+        /** RecommendationOut */
+        readonly RecommendationOut: {
+            /** Action */
+            readonly action?: string | null;
+            /** Confidence */
+            readonly confidence: number;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            readonly created_at: string;
+            /** Evidence Ids */
+            readonly evidence_ids?: readonly string[];
+            /** Hypothesis */
+            readonly hypothesis?: string | null;
+            /** Limitations */
+            readonly limitations: readonly string[];
+            /** Metric */
+            readonly metric: string;
+            /** Observation */
+            readonly observation: string;
+            /** Sample Size */
+            readonly sample_size: number;
+            /**
+             * Status
+             * @enum {string}
+             */
+            readonly status: "abstain" | "proposed";
+            /** Threshold */
+            readonly threshold?: string | null;
+        };
         /** RegisterRequest */
         readonly RegisterRequest: {
             /** Company Name */
@@ -1586,6 +1811,9 @@ export interface components {
 }
 export type SchemaAcceptInvitationRequest = components['schemas']['AcceptInvitationRequest'];
 export type SchemaAcceptedResponse = components['schemas']['AcceptedResponse'];
+export type SchemaAnalyticsDashboardOut = components['schemas']['AnalyticsDashboardOut'];
+export type SchemaAnalyticsEvidence = components['schemas']['AnalyticsEvidence'];
+export type SchemaAnalyticsReport = components['schemas']['AnalyticsReport'];
 export type SchemaApiErrorEnvelope = components['schemas']['ApiErrorEnvelope'];
 export type SchemaApiErrorOut = components['schemas']['ApiErrorOut'];
 export type SchemaApiFieldErrorOut = components['schemas']['ApiFieldErrorOut'];
@@ -1617,6 +1845,11 @@ export type SchemaJobStepOut = components['schemas']['JobStepOut'];
 export type SchemaLoginRequest = components['schemas']['LoginRequest'];
 export type SchemaLoginResponse = components['schemas']['LoginResponse'];
 export type SchemaMemberOut = components['schemas']['MemberOut'];
+export type SchemaMetricGroupOut = components['schemas']['MetricGroupOut'];
+export type SchemaMetricImportRequest = components['schemas']['MetricImportRequest'];
+export type SchemaMetricImportResponse = components['schemas']['MetricImportResponse'];
+export type SchemaMetricObservation = components['schemas']['MetricObservation'];
+export type SchemaMetricPointIn = components['schemas']['MetricPointIn'];
 export type SchemaPaginatedCampaigns = components['schemas']['PaginatedCampaigns'];
 export type SchemaPaginatedPosts = components['schemas']['PaginatedPosts'];
 export type SchemaPostOut = components['schemas']['PostOut'];
@@ -1625,6 +1858,7 @@ export type SchemaPostVersionOut = components['schemas']['PostVersionOut'];
 export type SchemaProfileAlternativeOut = components['schemas']['ProfileAlternativeOut'];
 export type SchemaProfileFieldUpdate = components['schemas']['ProfileFieldUpdate'];
 export type SchemaProfileProvenanceOut = components['schemas']['ProfileProvenanceOut'];
+export type SchemaRecommendationOut = components['schemas']['RecommendationOut'];
 export type SchemaRegisterRequest = components['schemas']['RegisterRequest'];
 export type SchemaResetPasswordRequest = components['schemas']['ResetPasswordRequest'];
 export type SchemaSelectWorkspaceRequest = components['schemas']['SelectWorkspaceRequest'];
@@ -2125,6 +2359,82 @@ export interface operations {
                 };
                 content: {
                     readonly "application/json": components["schemas"]["WorkspaceOut"];
+                };
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    readonly get_analytics_dashboard_api_v1_workspaces__company_id__analytics_dashboard_get: {
+        readonly parameters: {
+            readonly query: {
+                readonly source_id: string;
+                readonly min_post_age_hours?: number;
+                readonly max_post_age_hours?: number;
+                readonly measured_from?: string | null;
+                readonly measured_to?: string | null;
+            };
+            readonly header?: {
+                readonly authorization?: string | null;
+            };
+            readonly path: {
+                readonly company_id: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["AnalyticsDashboardOut"];
+                };
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    readonly get_recommendation_api_v1_workspaces__company_id__analytics_recommendation_get: {
+        readonly parameters: {
+            readonly query: {
+                readonly source_id: string;
+                readonly min_post_age_hours?: number;
+                readonly max_post_age_hours?: number;
+            };
+            readonly header?: {
+                readonly authorization?: string | null;
+            };
+            readonly path: {
+                readonly company_id: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["RecommendationOut"];
                 };
             };
             /** @description Validation Error */
@@ -3122,6 +3432,43 @@ export interface operations {
                 };
                 content: {
                     readonly "application/json": components["schemas"]["InviteMemberResponse"];
+                };
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    readonly import_metrics_api_v1_workspaces__company_id__metrics_import_post: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: {
+                readonly authorization?: string | null;
+            };
+            readonly path: {
+                readonly company_id: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": components["schemas"]["MetricImportRequest"];
+            };
+        };
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 201: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["MetricImportResponse"];
                 };
             };
             /** @description Validation Error */

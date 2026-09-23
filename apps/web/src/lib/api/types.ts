@@ -32,3 +32,7 @@ export type ApiProfileFieldUpdate = Schemas['ProfileFieldUpdate'];
 export type ApiProfileProvenance = Schemas['ProfileProvenanceOut'];
 export type ApiUpdateBrandProfileRequest = Schemas['UpdateBrandProfileRequest'];
 export type ApiConfirmBrandProfileRequest = Schemas['ConfirmBrandProfileRequest'];
+export type ApiMetricImportRequest = Schemas['MetricImportRequest'];
+export type ApiMetricImportResponse = Schemas['MetricImportResponse'];
+export type ApiAnalyticsDashboard = Schemas['AnalyticsDashboardOut'];
+export type ApiMetricRecommendation = Schemas['RecommendationOut'];

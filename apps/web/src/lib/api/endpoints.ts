@@ -65,6 +65,10 @@ import type {
   ApiSessionResponse,
   ApiUploadLimits,
   ApiWorkspace,
+  ApiAnalyticsDashboard,
+  ApiMetricImportRequest,
+  ApiMetricImportResponse,
+  ApiMetricRecommendation,
 } from './types';
 
 import { apiDownload, apiRequest, apiUpload, newIdempotencyKey } from './client';
@@ -483,6 +487,25 @@ export const publishingApi = {
 // ---------------------------------------------------------------------------
 
 export const analyticsApi = {
+  /** Manual snapshot-based dashboard from the backend's current OpenAPI. */
+  dashboard: (workspaceId: string, sourceId: string, signal?: AbortSignal) =>
+    apiRequest<ApiAnalyticsDashboard>(
+      v1(`/workspaces/${workspaceId}/analytics/dashboard`),
+      { query: { source_id: sourceId }, signal },
+    ),
+
+  recommendation: (workspaceId: string, sourceId: string, signal?: AbortSignal) =>
+    apiRequest<ApiMetricRecommendation>(
+      v1(`/workspaces/${workspaceId}/analytics/recommendation`),
+      { query: { source_id: sourceId }, signal },
+    ),
+
+  importSnapshot: (workspaceId: string, body: ApiMetricImportRequest) =>
+    apiRequest<ApiMetricImportResponse>(
+      v1(`/workspaces/${workspaceId}/metrics/import`),
+      { method: 'POST', body },
+    ),
+
   /** Bảng hiệu suất + metadata nguồn/cửa sổ đo/độ mới. */
   query: (workspaceId: string, query: AnalyticsQuery, signal?: AbortSignal) =>
     apiRequest<AnalyticsResponse>(v1(`/workspaces/${workspaceId}/analytics`), {

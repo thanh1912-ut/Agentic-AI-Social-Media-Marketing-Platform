@@ -33,6 +33,7 @@ import {
 } from '@agentic/contracts';
 
 import type { ApiDocument } from '@/lib/api/types';
+import type { ApiMetricImportRequest } from '@/lib/api/types';
 
 import {
   DEMO_ACCOUNTS,
@@ -121,6 +122,13 @@ const nextId = (prefix: string): string => {
   sequence += 1;
   return `${prefix}_${sequence}`;
 };
+
+type DemoMetricRow = ApiMetricImportRequest['points'][number] & {
+  pillar: string;
+  format: string;
+  measured_at: string;
+};
+const demoMetricsByWorkspace: Record<string, Record<string, DemoMetricRow[]>> = {};
 
 const nowIso = (): string => new Date().toISOString();
 
@@ -780,6 +788,156 @@ export const handlers = [
     demoJobs[id] = job;
     const accepted: AcceptedResponse = { job_id: id, job };
     return HttpResponse.json(accepted, { status: 202 });
+  }),
+
+  // ----- Nhập số liệu & analytics manual-snapshot API -----
+  http.post('*/api/v1/workspaces/:workspaceId/metrics/import', async ({ params, request }) => {
+    const session = currentSession();
+    if (!session) return unauthenticated();
+    const workspaceId = params.workspaceId as string;
+    const body = (await request.json()) as ApiMetricImportRequest;
+    if (!body.source_id || !body.measured_at || !Array.isArray(body.points) || body.points.length === 0) {
+      return fail(422, ERROR_CODES.VALIDATION_ERROR, 'Snapshot số liệu chưa hợp lệ.');
+    }
+    const existingRows = (demoMetricsByWorkspace[workspaceId] ?? {})[body.source_id] ?? [];
+    const duplicates = body.points.some((point) => existingRows.some(
+      (row) => row.post_id === point.post_id && row.measured_at === body.measured_at,
+    ));
+    if (duplicates) return fail(409, ERROR_CODES.STATE_CONFLICT, 'Snapshot này đã được nhập.');
+    const postMap = new Map((demoPosts[workspaceId] ?? []).map((post) => [post.id, post]));
+    const imported = body.points.flatMap((point) => {
+      const post = postMap.get(point.post_id);
+      return post ? [{ ...point, pillar: post.pillar, format: post.format, measured_at: body.measured_at }] : [];
+    });
+    if (imported.length !== body.points.length) return notFound('bài viết');
+    demoMetricsByWorkspace[workspaceId] ??= {};
+    demoMetricsByWorkspace[workspaceId][body.source_id] = [...existingRows, ...imported];
+    return HttpResponse.json({
+      source_id: body.source_id,
+      imported_count: imported.length,
+      measured_at: body.measured_at,
+      snapshot_fingerprint: `demo:${workspaceId}:${body.source_id}:${body.measured_at}`.slice(0, 160),
+    }, { status: 201 });
+  }),
+
+  http.get('*/api/v1/workspaces/:workspaceId/analytics/dashboard', ({ params, request }) => {
+    const session = currentSession();
+    if (!session) return unauthenticated();
+    const workspaceId = params.workspaceId as string;
+    const sourceId = new URL(request.url).searchParams.get('source_id') ?? '';
+    const imported = demoMetricsByWorkspace[workspaceId]?.[sourceId] ?? [];
+    const latest = new Map<string, DemoMetricRow>();
+    for (const row of [...imported].sort((a, b) => b.measured_at.localeCompare(a.measured_at))) {
+      if (!latest.has(row.post_id)) latest.set(row.post_id, row);
+    }
+    const postById = new Map((demoPosts[workspaceId] ?? []).map((post) => [post.id, post]));
+    const rows: DemoMetricRow[] = imported.length > 0
+      ? [...latest.values()]
+      : (demoPosts[workspaceId] ?? []).map((post, index) => ({
+          post_id: post.id,
+          post_age_hours: 48 + index * 24,
+          reach: [5200, 4100, 6100][index] ?? 3000,
+          views: null,
+          engagements: [310, 205, 250][index] ?? 120,
+          clicks: null,
+          spend: null,
+          attributed_revenue: null,
+          attribution_valid: false,
+          pillar: post.pillar,
+          format: post.format,
+          measured_at: DEMO_NOW,
+        }));
+    const sampled = (key: 'reach' | 'views' | 'engagements' | 'clicks') => rows
+      .map((row) => row[key]).filter((value): value is number => value != null);
+    const values = (key: 'reach' | 'views' | 'engagements' | 'clicks') => sampled(key);
+    const reachValues = values('reach');
+    const sum = (items: number[]) => items.reduce((total, item) => total + item, 0);
+    const ratio = (numeratorKey: 'engagements' | 'clicks') => {
+      const pairs = rows.filter((row) => row[numeratorKey] != null && row.reach != null && row.reach > 0);
+      const denominator = sum(pairs.map((row) => row.reach as number));
+      return denominator > 0 ? sum(pairs.map((row) => row[numeratorKey] as number)) / denominator : null;
+    };
+    const period = rows.map((row) => row.measured_at).sort();
+    const start = period[0] ?? DEMO_NOW;
+    const end = period.at(-1) ?? DEMO_NOW;
+    const metricSpecs = [
+      { metric: 'reach', values: reachValues, value: reachValues.length ? sum(reachValues) / reachValues.length : null },
+      { metric: 'views', values: values('views'), value: values('views').length ? sum(values('views')) / values('views').length : null },
+      { metric: 'engagement_rate_by_reach', values: rows.filter((row) => row.engagements != null && row.reach != null), value: ratio('engagements') },
+      { metric: 'click_rate_by_reach', values: rows.filter((row) => row.clicks != null && row.reach != null), value: ratio('clicks') },
+      { metric: 'cpa', values: [], value: null },
+      { metric: 'roas', values: [], value: null },
+    ];
+    const observations = metricSpecs.map((spec) => ({
+      metric: spec.metric,
+      value: spec.value,
+      numerator: null,
+      denominator: null,
+      sample_size: rows.length,
+      coverage: rows.length ? spec.values.length / rows.length : 0,
+      measured_from: start,
+      measured_to: end,
+      unavailable_reason: spec.value == null ? 'insufficient_data' : null,
+    }));
+    const evidence = metricSpecs.map((spec) => ({
+      evidence_id: `ev:demo:${spec.metric}`,
+      description: `${spec.metric}: demo snapshot, n=${rows.length}`,
+      post_ids: rows.map((row) => row.post_id),
+      metric_names: [spec.metric],
+    }));
+    const dimensions = ['pillar', 'format'] as const;
+    const groups = dimensions.flatMap((dimension) => {
+      const names = [...new Set(rows.map((row) => row[dimension]))];
+      return names.map((name) => {
+        const group = rows.filter((row) => row[dimension] === name);
+        const reach = group.map((row) => row.reach).filter((value): value is number => value != null);
+        const engagementPairs = group.filter((row) => row.engagements != null && row.reach != null && row.reach > 0);
+        const clickPairs = group.filter((row) => row.clicks != null && row.reach != null && row.reach > 0);
+        return {
+          dimension,
+          name,
+          post_count: group.length,
+          average_reach: reach.length ? sum(reach) / reach.length : null,
+          average_views: null,
+          engagement_rate_by_reach: engagementPairs.length ? sum(engagementPairs.map((row) => row.engagements as number)) / sum(engagementPairs.map((row) => row.reach as number)) : null,
+          click_rate_by_reach: clickPairs.length ? sum(clickPairs.map((row) => row.clicks as number)) / sum(clickPairs.map((row) => row.reach as number)) : null,
+        };
+      });
+    });
+    void postById;
+    return HttpResponse.json({
+      source_id: sourceId,
+      source_label: imported.length ? 'Nhập thủ công (demo)' : 'Bản demo',
+      freshness_at: end,
+      groups,
+      report: {
+        report_id: `report:demo:${workspaceId}:${sourceId}`,
+        page_id: sourceId,
+        period_start: start,
+        period_end: end,
+        observations,
+        evidence,
+        notes: ['Dữ liệu minh họa — không phải kết quả thật.', 'Số liệu mô tả không chứng minh quan hệ nhân quả.'],
+      },
+    });
+  }),
+
+  http.get('*/api/v1/workspaces/:workspaceId/analytics/recommendation', ({ params, request }) => {
+    const session = currentSession();
+    if (!session) return unauthenticated();
+    const workspaceId = params.workspaceId as string;
+    const sourceId = new URL(request.url).searchParams.get('source_id') ?? '';
+    const sampleSize = demoMetricsByWorkspace[workspaceId]?.[sourceId]?.length ?? (demoPosts[workspaceId] ?? []).length;
+    return HttpResponse.json({
+      status: 'abstain',
+      observation: 'Bản demo chưa có đủ số bài trong mỗi trụ để đề xuất thử nghiệm.',
+      metric: 'engagement_rate_by_reach',
+      confidence: 0,
+      sample_size: sampleSize,
+      evidence_ids: [],
+      limitations: ['Dữ liệu minh họa; cần ít nhất 5 bài cho mỗi trụ được so sánh.'],
+      created_at: DEMO_NOW,
+    });
   }),
 
   // ----- Xuất bản (chưa có gì để demo ở lát cắt này) -----

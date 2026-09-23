@@ -38,6 +38,7 @@ import type {
 
 import type {
   ApiAcceptedResponse as AcceptedResponse,
+  ApiAnalyticsDashboard,
   ApiBrandProfile,
   ApiConfirmBrandProfileRequest,
   ApiDocument as DocumentUpload,
@@ -47,6 +48,8 @@ import type {
   ApiUploadLimits as UploadLimits,
   ApiUpdateBrandProfileRequest,
   ApiWorkspace as Workspace,
+  ApiMetricImportRequest,
+  ApiMetricRecommendation,
 } from '@/lib/api/types';
 import { api, useMocks } from '@/lib/api';
 import {
@@ -497,5 +500,44 @@ export function useRecommendations(
     queryKey: queryKeys.recommendations(workspaceId, campaignId),
     queryFn: () => api.recommendation.list(workspaceId, campaignId),
     enabled: workspaceId !== '',
+  });
+}
+
+export function useManualAnalyticsDashboard(
+  workspaceId: string,
+  sourceId: string,
+): UseQueryResult<ApiAnalyticsDashboard> {
+  return useQuery({
+    queryKey: queryKeys.analytics(workspaceId, `manual:${sourceId}`),
+    queryFn: ({ signal }) => api.analytics.dashboard(workspaceId, sourceId, signal),
+    enabled: workspaceId !== '' && sourceId.trim() !== '',
+    staleTime: 60_000,
+  });
+}
+
+export function useManualMetricRecommendation(
+  workspaceId: string,
+  sourceId: string,
+): UseQueryResult<ApiMetricRecommendation> {
+  return useQuery({
+    queryKey: queryKeys.recommendations(workspaceId, `manual:${sourceId}`),
+    queryFn: ({ signal }) => api.analytics.recommendation(workspaceId, sourceId, signal),
+    enabled: workspaceId !== '' && sourceId.trim() !== '',
+    staleTime: 60_000,
+  });
+}
+
+export function useImportMetricSnapshot(workspaceId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (body: ApiMetricImportRequest) => api.analytics.importSnapshot(workspaceId, body),
+    onSuccess: (_response, body) => {
+      void queryClient.invalidateQueries({
+        queryKey: ['workspaces', workspaceId, 'analytics'],
+      });
+      void queryClient.invalidateQueries({
+        queryKey: queryKeys.recommendations(workspaceId, `manual:${body.source_id}`),
+      });
+    },
   });
 }

@@ -13,7 +13,7 @@ from fastapi.responses import JSONResponse
 from redis.asyncio import Redis
 from sqlalchemy import text
 
-from . import auth, brand_profiles, campaign_workflows, documents, jobs, workspaces
+from . import analytics, auth, brand_profiles, campaign_workflows, documents, jobs, workspaces
 from .config import settings
 from .db import create_schema, engine
 from .errors import ApiProblem, api_problem_handler, error_body
@@ -81,6 +81,7 @@ app.include_router(workspaces.router, prefix="/api/v1")
 app.include_router(documents.router, prefix="/api/v1")
 app.include_router(brand_profiles.router, prefix="/api/v1")
 app.include_router(campaign_workflows.router, prefix="/api/v1")
+app.include_router(analytics.router, prefix="/api/v1")
 app.include_router(jobs.router, prefix="/api/v1")
 
 

@@ -112,7 +112,14 @@ function documentStatusMeta(status: string) {
  * `OnboardingState.steps[].href` do máy chủ trả về có thể trỏ tới màn hình của
  * lát cắt sau (vd `/campaigns`); khi đó hiện ghi chú thay vì một liên kết chết.
  */
-const AVAILABLE_SCREEN_SEGMENTS: readonly string[] = ['', 'brand', 'documents', 'settings'];
+const AVAILABLE_SCREEN_SEGMENTS: readonly string[] = [
+  '',
+  'brand',
+  'documents',
+  'campaigns',
+  'analytics',
+  'settings',
+];
 
 /**
  * Chuẩn hoá `href` của bước nhập liệu. Máy chủ có thể trả đường dẫn tương đối

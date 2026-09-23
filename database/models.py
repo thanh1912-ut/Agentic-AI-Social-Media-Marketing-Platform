@@ -10,7 +10,7 @@ import uuid
 from datetime import datetime, timezone
 from typing import Any
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, Index, Integer, JSON, String, Text, UniqueConstraint
+from sqlalchemy import Boolean, DateTime, ForeignKey, Index, Integer, JSON, Numeric, String, Text, UniqueConstraint
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 from pgvector.sqlalchemy import Vector
 
@@ -377,3 +377,25 @@ class ExportArtifact(Base, IdMixin, TimestampMixin):
     content_sha256: Mapped[str] = mapped_column(String(64), nullable=False)
     post_ids_json: Mapped[list[str]] = mapped_column(JSON, nullable=False)
     version_snapshot_json: Mapped[dict[str, int]] = mapped_column(JSON, nullable=False)
+
+
+class PostMetricSnapshot(Base, IdMixin):
+    __tablename__ = "post_metric_snapshots"
+    __table_args__ = (
+        UniqueConstraint("company_id", "post_id", "source_id", "measured_at", name="uq_metric_post_source_measured"),
+        Index("ix_metric_company_source_measured", "company_id", "source_id", "measured_at"),
+    )
+
+    company_id: Mapped[str] = mapped_column(ForeignKey("companies.id", ondelete="CASCADE"), nullable=False)
+    post_id: Mapped[str] = mapped_column(ForeignKey("campaign_posts.id", ondelete="CASCADE"), nullable=False)
+    source_id: Mapped[str] = mapped_column(String(160), nullable=False)
+    measured_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    post_age_hours: Mapped[int] = mapped_column(Integer, nullable=False)
+    reach: Mapped[int | None] = mapped_column(Integer)
+    views: Mapped[int | None] = mapped_column(Integer)
+    engagements: Mapped[int | None] = mapped_column(Integer)
+    clicks: Mapped[int | None] = mapped_column(Integer)
+    spend: Mapped[float | None] = mapped_column(Numeric(14, 2))
+    attributed_revenue: Mapped[float | None] = mapped_column(Numeric(14, 2))
+    attribution_valid: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    imported_by: Mapped[str] = mapped_column(ForeignKey("users.id"), nullable=False)

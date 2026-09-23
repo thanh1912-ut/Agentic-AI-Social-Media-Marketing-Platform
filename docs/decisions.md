@@ -67,5 +67,13 @@ Ngày tạo: 2026-09-23. Trạng thái dưới đây được ghi từ audit đ�
 ## DEC-008 — Cấu hình bảo mật production và PostCSS
 
 - Quyết định: production đòi hỏi JWT secret riêng tối thiểu 32 bytes và `COOKIE_SECURE=1`; API docs/OpenAPI UI tắt trong production. PostCSS được override tối thiểu lên nhánh vá hiện dùng trong lockfile.
-- Bằng chứng: production config tests pass; `npm ls postcss --all` cho 8.5.24/8.5.28. Lần audit mới nhất bị DNS chặn; lần audit trước khi dependency được chuẩn hóa trả 0 vulnerabilities.
-- Trạng thái: IMPLEMENTED; full security review và audit khi registry truy cập lại vẫn cần làm.
+- Bằng chứng: production config tests pass; `npm ls postcss --all` cho 8.5.24/8.5.28; npm audit trước đó trả 0 vulnerabilities.
+- Trạng thái: IMPLEMENTED; full security review vẫn cần làm.
+
+## DEC-009 — Recommendation là mô tả bằng chứng, không phải nhân quả
+
+- Vấn đề: snapshot quan sát được có thể lệch về pillar, format, tuổi bài hoặc cách thu thập; không đủ để kết luận một thay đổi gây ra hiệu quả.
+- Quyết định: tính KPI và nhóm dữ liệu bằng code; chỉ đề xuất thử nghiệm deterministic khi đủ ít nhất 5 bài qua ít nhất 2 pillar, gắn evidence IDs, giới hạn, confidence thấp và bước đo lại. Nếu dữ liệu thiếu thì abstain.
+- Không chọn: để LLM tự khẳng định nguyên nhân hoặc tự áp dụng chiến lược/publish.
+- Ảnh hưởng: feedback, apply thành revision và theo dõi kết quả thử nghiệm là phần tiếp theo; UI phải giữ rõ đây là đề xuất mô tả.
+- Trạng thái: API/UI đề xuất cơ bản IMPLEMENTED; feedback/apply loop INCOMPLETE.

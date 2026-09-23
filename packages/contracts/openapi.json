@@ -48,6 +48,141 @@
         "title": "AcceptedResponse",
         "type": "object"
       },
+      "AnalyticsDashboardOut": {
+        "additionalProperties": false,
+        "properties": {
+          "freshness_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Freshness At"
+          },
+          "groups": {
+            "items": {
+              "$ref": "#/components/schemas/MetricGroupOut"
+            },
+            "title": "Groups",
+            "type": "array"
+          },
+          "report": {
+            "$ref": "#/components/schemas/AnalyticsReport"
+          },
+          "source_id": {
+            "title": "Source Id",
+            "type": "string"
+          },
+          "source_label": {
+            "title": "Source Label",
+            "type": "string"
+          }
+        },
+        "required": [
+          "report",
+          "groups",
+          "source_id",
+          "source_label"
+        ],
+        "title": "AnalyticsDashboardOut",
+        "type": "object"
+      },
+      "AnalyticsEvidence": {
+        "additionalProperties": false,
+        "properties": {
+          "description": {
+            "minLength": 1,
+            "title": "Description",
+            "type": "string"
+          },
+          "evidence_id": {
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:/-]{0,127}$",
+            "title": "Evidence Id",
+            "type": "string"
+          },
+          "metric_names": {
+            "items": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "title": "Metric Names",
+            "type": "array"
+          },
+          "post_ids": {
+            "items": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "title": "Post Ids",
+            "type": "array"
+          }
+        },
+        "required": [
+          "evidence_id",
+          "description"
+        ],
+        "title": "AnalyticsEvidence",
+        "type": "object"
+      },
+      "AnalyticsReport": {
+        "additionalProperties": false,
+        "properties": {
+          "evidence": {
+            "items": {
+              "$ref": "#/components/schemas/AnalyticsEvidence"
+            },
+            "title": "Evidence",
+            "type": "array"
+          },
+          "notes": {
+            "items": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "title": "Notes",
+            "type": "array"
+          },
+          "observations": {
+            "items": {
+              "$ref": "#/components/schemas/MetricObservation"
+            },
+            "title": "Observations",
+            "type": "array"
+          },
+          "page_id": {
+            "minLength": 1,
+            "title": "Page Id",
+            "type": "string"
+          },
+          "period_end": {
+            "format": "date-time",
+            "title": "Period End",
+            "type": "string"
+          },
+          "period_start": {
+            "format": "date-time",
+            "title": "Period Start",
+            "type": "string"
+          },
+          "report_id": {
+            "minLength": 1,
+            "title": "Report Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "report_id",
+          "page_id",
+          "period_start",
+          "period_end"
+        ],
+        "title": "AnalyticsReport",
+        "type": "object"
+      },
       "ApiErrorEnvelope": {
         "additionalProperties": false,
         "properties": {
@@ -1702,6 +1837,324 @@
         "title": "MemberOut",
         "type": "object"
       },
+      "MetricGroupOut": {
+        "additionalProperties": false,
+        "properties": {
+          "average_reach": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Average Reach"
+          },
+          "average_views": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Average Views"
+          },
+          "click_rate_by_reach": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Click Rate By Reach"
+          },
+          "dimension": {
+            "enum": [
+              "pillar",
+              "format"
+            ],
+            "title": "Dimension",
+            "type": "string"
+          },
+          "engagement_rate_by_reach": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Engagement Rate By Reach"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "post_count": {
+            "title": "Post Count",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "dimension",
+          "name",
+          "post_count"
+        ],
+        "title": "MetricGroupOut",
+        "type": "object"
+      },
+      "MetricImportRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "measured_at": {
+            "format": "date-time",
+            "title": "Measured At",
+            "type": "string"
+          },
+          "points": {
+            "items": {
+              "$ref": "#/components/schemas/MetricPointIn"
+            },
+            "maxItems": 1000,
+            "minItems": 1,
+            "title": "Points",
+            "type": "array"
+          },
+          "source_id": {
+            "maxLength": 160,
+            "minLength": 1,
+            "title": "Source Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "source_id",
+          "measured_at",
+          "points"
+        ],
+        "title": "MetricImportRequest",
+        "type": "object"
+      },
+      "MetricImportResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "imported_count": {
+            "title": "Imported Count",
+            "type": "integer"
+          },
+          "measured_at": {
+            "format": "date-time",
+            "title": "Measured At",
+            "type": "string"
+          },
+          "snapshot_fingerprint": {
+            "title": "Snapshot Fingerprint",
+            "type": "string"
+          },
+          "source_id": {
+            "title": "Source Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "source_id",
+          "imported_count",
+          "measured_at",
+          "snapshot_fingerprint"
+        ],
+        "title": "MetricImportResponse",
+        "type": "object"
+      },
+      "MetricObservation": {
+        "additionalProperties": false,
+        "properties": {
+          "coverage": {
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Coverage",
+            "type": "number"
+          },
+          "denominator": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Denominator"
+          },
+          "measured_from": {
+            "format": "date-time",
+            "title": "Measured From",
+            "type": "string"
+          },
+          "measured_to": {
+            "format": "date-time",
+            "title": "Measured To",
+            "type": "string"
+          },
+          "metric": {
+            "minLength": 1,
+            "title": "Metric",
+            "type": "string"
+          },
+          "numerator": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Numerator"
+          },
+          "sample_size": {
+            "minimum": 0.0,
+            "title": "Sample Size",
+            "type": "integer"
+          },
+          "unavailable_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unavailable Reason"
+          },
+          "value": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Value"
+          }
+        },
+        "required": [
+          "metric",
+          "sample_size",
+          "coverage",
+          "measured_from",
+          "measured_to"
+        ],
+        "title": "MetricObservation",
+        "type": "object"
+      },
+      "MetricPointIn": {
+        "additionalProperties": false,
+        "properties": {
+          "attributed_revenue": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Attributed Revenue"
+          },
+          "attribution_valid": {
+            "default": false,
+            "title": "Attribution Valid",
+            "type": "boolean"
+          },
+          "clicks": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Clicks"
+          },
+          "engagements": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Engagements"
+          },
+          "post_age_hours": {
+            "maximum": 8760.0,
+            "minimum": 0.0,
+            "title": "Post Age Hours",
+            "type": "integer"
+          },
+          "post_id": {
+            "maxLength": 36,
+            "minLength": 1,
+            "title": "Post Id",
+            "type": "string"
+          },
+          "reach": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reach"
+          },
+          "spend": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Spend"
+          },
+          "views": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Views"
+          }
+        },
+        "required": [
+          "post_id",
+          "post_age_hours"
+        ],
+        "title": "MetricPointIn",
+        "type": "object"
+      },
       "PaginatedCampaigns": {
         "additionalProperties": false,
         "properties": {
@@ -2160,6 +2613,102 @@
           "quote"
         ],
         "title": "ProfileProvenanceOut",
+        "type": "object"
+      },
+      "RecommendationOut": {
+        "additionalProperties": false,
+        "properties": {
+          "action": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Action"
+          },
+          "confidence": {
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Confidence",
+            "type": "number"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "evidence_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Evidence Ids",
+            "type": "array"
+          },
+          "hypothesis": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Hypothesis"
+          },
+          "limitations": {
+            "items": {
+              "type": "string"
+            },
+            "minItems": 1,
+            "title": "Limitations",
+            "type": "array"
+          },
+          "metric": {
+            "title": "Metric",
+            "type": "string"
+          },
+          "observation": {
+            "title": "Observation",
+            "type": "string"
+          },
+          "sample_size": {
+            "minimum": 0.0,
+            "title": "Sample Size",
+            "type": "integer"
+          },
+          "status": {
+            "enum": [
+              "abstain",
+              "proposed"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "threshold": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Threshold"
+          }
+        },
+        "required": [
+          "status",
+          "observation",
+          "metric",
+          "confidence",
+          "sample_size",
+          "limitations",
+          "created_at"
+        ],
+        "title": "RecommendationOut",
         "type": "object"
       },
       "RegisterRequest": {
@@ -3308,6 +3857,226 @@
         "summary": "Get Workspace",
         "tags": [
           "workspaces"
+        ]
+      }
+    },
+    "/api/v1/workspaces/{company_id}/analytics/dashboard": {
+      "get": {
+        "operationId": "get_analytics_dashboard_api_v1_workspaces__company_id__analytics_dashboard_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "company_id",
+            "required": true,
+            "schema": {
+              "title": "Company Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "source_id",
+            "required": true,
+            "schema": {
+              "maxLength": 160,
+              "minLength": 1,
+              "title": "Source Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "min_post_age_hours",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "maximum": 8760,
+              "minimum": 0,
+              "title": "Min Post Age Hours",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "max_post_age_hours",
+            "required": false,
+            "schema": {
+              "default": 720,
+              "maximum": 8760,
+              "minimum": 0,
+              "title": "Max Post Age Hours",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "measured_from",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Measured From"
+            }
+          },
+          {
+            "in": "query",
+            "name": "measured_to",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Measured To"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AnalyticsDashboardOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Analytics Dashboard",
+        "tags": [
+          "analytics"
+        ]
+      }
+    },
+    "/api/v1/workspaces/{company_id}/analytics/recommendation": {
+      "get": {
+        "operationId": "get_recommendation_api_v1_workspaces__company_id__analytics_recommendation_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "company_id",
+            "required": true,
+            "schema": {
+              "title": "Company Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "source_id",
+            "required": true,
+            "schema": {
+              "maxLength": 160,
+              "minLength": 1,
+              "title": "Source Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "min_post_age_hours",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "maximum": 8760,
+              "minimum": 0,
+              "title": "Min Post Age Hours",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "max_post_age_hours",
+            "required": false,
+            "schema": {
+              "default": 720,
+              "maximum": 8760,
+              "minimum": 0,
+              "title": "Max Post Age Hours",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RecommendationOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Recommendation",
+        "tags": [
+          "analytics"
         ]
       }
     },
@@ -5045,6 +5814,74 @@
         "summary": "Invite Member",
         "tags": [
           "workspaces"
+        ]
+      }
+    },
+    "/api/v1/workspaces/{company_id}/metrics/import": {
+      "post": {
+        "operationId": "import_metrics_api_v1_workspaces__company_id__metrics_import_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "company_id",
+            "required": true,
+            "schema": {
+              "title": "Company Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MetricImportRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MetricImportResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Import Metrics",
+        "tags": [
+          "analytics"
         ]
       }
     },

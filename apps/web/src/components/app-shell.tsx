@@ -27,15 +27,12 @@ const NAV_ITEMS: NavItem[] = [
   { href: '/campaigns', label: 'Chiến dịch', description: 'Chiến dịch và lịch nội dung' },
   { href: '/publishing', label: 'Xuất bản', description: 'Kết nối Facebook và tình trạng đăng bài' },
   { href: '/analytics', label: 'Hiệu quả', description: 'Số liệu và nguồn dữ liệu' },
-  { href: '/recommendations', label: 'Đề xuất', description: 'Khuyến nghị dựa trên số liệu' },
+  { href: '/analytics#recommendation', label: 'Đề xuất', description: 'Thử nghiệm dựa trên số liệu nhập' },
   { href: '/settings', label: 'Cài đặt', description: 'Thành viên và kết nối' },
 ];
 
 const REAL_MODE_DEFERRED_SECTIONS: readonly string[] = [
-  'campaigns',
   'publishing',
-  'analytics',
-  'recommendations',
 ];
 
 /**
@@ -163,10 +160,11 @@ export function AppShell({ children }: { children: ReactNode }) {
             <ul className="table-scroll flex gap-1 pb-1">
               {NAV_ITEMS.map((item) => {
                 const href = `${base}${item.href}`;
+                const navPath = item.href.split('#')[0] ?? '';
                 const isActive =
-                  item.href === ''
+                  navPath === ''
                     ? pathname === base
-                    : pathname.startsWith(href);
+                    : pathname.startsWith(`${base}${navPath}`);
                 return (
                   <li key={item.href}>
                     <Link

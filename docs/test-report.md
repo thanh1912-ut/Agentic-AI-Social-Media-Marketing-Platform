@@ -1,23 +1,24 @@
 # Báo cáo kiểm thử
 
-Cập nhật: 2026-09-23, Asia/Ho_Chi_Minh. Branch `codex/product-v1-completion`, base `origin/main` tại `07938bd`. Kết quả dưới đây được chạy trên source của branch tích hợp trước khi push.
+Cập nhật: 2026-09-23, Asia/Ho_Chi_Minh. Branch `codex/product-v1-completion`, base `origin/main` tại `07938bd`. Kết quả dưới đây được chạy trên source của branch tích hợp.
 
 ## Đã chạy
 
 | Check | Kết quả | Giới hạn |
 |---|---|---|
-| `.venv/bin/python -m pytest -q` | **80 passed, 1 skipped** | Skip là `tests/test_deepseek_api_smoke.py`; fake-provider tests không phát sinh request thật. Có worker guard test, LangGraph deprecation warning và pytest cache warning. |
+| `.venv/bin/python -m pytest -q` | **82 passed, 1 skipped** | Skip là `tests/test_deepseek_api_smoke.py`; fake-provider tests không phát sinh request thật. Có worker guard, metrics import/report/recommendation/tenant tests, LangGraph deprecation warning và pytest cache warning. |
 | `.venv/bin/python scripts/export_openapi.py --check` | PASS | OpenAPI khớp generated contract. |
 | `.venv/bin/python -m compileall -q database services packages` | PASS | Kiểm tra cú pháp Python. |
-| SQLite `alembic upgrade head` trên DB tạm mới | PASS | Đã áp dụng liên tiếp migration 0001→0004; không đại diện cho PostgreSQL/pgvector. |
+| SQLite `alembic upgrade head` trên DB tạm mới | PASS | Đã áp dụng liên tiếp migration 0001→0005; không đại diện cho PostgreSQL/pgvector. |
+| `npm run gen:api -- --from ../../packages/contracts/openapi.json` | PASS | Generated TypeScript HTTP DTOs từ backend OpenAPI. |
 | `npm run typecheck` (trong `apps/web`) | PASS | TypeScript không phát hiện lỗi. |
-| `npm test` (trong `apps/web`) | **39 passed** | 2 test files. |
+| `npm test` (trong `apps/web`) | **41 passed** | 2 test files. |
 | `npm run lint` (trong `apps/web`) | PASS | ESLint hoàn tất; Vite in cảnh báo cấu hình loader không ảnh hưởng kết quả. |
-| `npm run build` (trong `apps/web`) | PASS | Optimized production build; Next cảnh báo `next start` không hỗ trợ standalone output, dù demo E2E dưới đây khởi động được. |
-| `npm run test:e2e` (trong `apps/web`) | **28 passed** | Desktop + mobile Chromium; chạy local Next + MSW fixtures, không phải real API. |
+| `npm run build` (trong `apps/web`) | PASS | Optimized production build; analytics route được tạo; Next cảnh báo `next start` không hỗ trợ standalone output, nhưng Playwright server vẫn chạy được. |
+| `npm run test:e2e` (trong `apps/web`) | **30 passed** | Desktop + mobile Chromium; gồm nhập snapshot/dashboard qua MSW fixtures, không phải real API. |
 | `npm ls postcss --all` | PASS | PostCSS 8.5.24 và 8.5.28 có trong dependency tree. |
 | `npm audit --audit-level=high` | PASS | Registry hiện trả 0 vulnerabilities. |
-| `git diff --cached --check` | PASS | Kiểm tra staged diff; vendored skills giữ nguyên line endings/hard breaks từ nguồn. |
+| `git diff --check` | PASS | Kiểm tra working diff; vendored skills giữ nguyên line endings/hard breaks từ upstream commit nền. |
 
 ## Chưa nghiệm thu
 
@@ -29,7 +30,7 @@ Cập nhật: 2026-09-23, Asia/Ho_Chi_Minh. Branch `codex/product-v1-completion`
 
 ## Phạm vi bằng chứng
 
-Campaign, manual post/version, approval và CSV/XLSX export được kiểm tra qua API tests dùng SQLite/fixtures; không đại diện cho PostgreSQL hoặc triển khai production. Test tenant isolation và version conflict không chứng minh toàn bộ API đã qua security audit. Upload-driven profile extraction worker fail-closed trước khi khởi tạo provider; generation route trả `503 provider_approval_required`, nên không test nào gửi brand/document content tới DeepSeek.
+Campaign, manual post/version, approval và CSV/XLSX export được kiểm tra qua API tests dùng SQLite/fixtures; không đại diện cho PostgreSQL hoặc triển khai production. Manual metrics import/dashboard/recommendation được kiểm tra riêng bằng SQLite API tests và MSW browser E2E; browser tests không chứng minh nguồn metrics Meta. Test tenant isolation và version conflict không chứng minh toàn bộ API đã qua security audit. Upload-driven profile extraction worker fail-closed trước khi khởi tạo provider; generation route trả `503 provider_approval_required`, nên không test nào gửi brand/document content tới DeepSeek.
 
 ## Lệnh tái kiểm tra
 
