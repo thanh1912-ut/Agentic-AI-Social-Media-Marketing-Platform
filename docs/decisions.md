@@ -32,11 +32,13 @@ Ngày tạo: 2026-09-23. Trạng thái dưới đây được ghi từ audit đ�
 ## DEC-004 — Embedding độc lập với DeepSeek chat
 
 - Vấn đề: DeepSeek chat docs không chứng minh embedding endpoint tương thích.
-- Quyết định: mặc định lexical retrieval (`EMBEDDING_PROVIDER=none`); chỉ bật vector mode với provider riêng, key/model/dimension rõ và reindex migration.
+- Quyết định: dùng FastEmbed chạy local với `intfloat/multilingual-e5-small` ONNX, revision `614241f622f53c4eeff9890bdc4f31cfecc418b3`, 384 chiều. Model dùng prefix `passage:` cho tài liệu và `query:` cho truy vấn. Nội dung workspace không gửi tới dịch vụ embedding; chỉ tải weights công khai một lần vào cache. Provider ngoài như OpenAI vẫn cần chấp thuận data flow riêng. `EMBEDDING_PROVIDER=none` là chế độ lexical fallback.
 - Lý do: không gửi DeepSeek key sang provider khác và không gắn nhãn lexical là semantic RAG.
 - Không chọn: giả định DeepSeek `/embeddings` hoặc service provider không được cấp quyền.
-- Ảnh hưởng: hiện semantic RAG chưa bật; vector dimension migration/reindex là điều kiện trước khi bật.
-- Trạng thái: lexical path configured; semantic path NOT_CONFIGURED.
+- Ảnh hưởng: pgvector lưu được nhiều dimension; provider/model version lọc các index riêng và migration `0010` giữ vectors cũ. Chunker v3 giới hạn cửa sổ ở 300 token, overlap 40 để chừa biên dưới context 512 token của model. Hybrid score dùng weight semantic 0.75/lexical 0.25 để xếp hạng, còn context gate kiểm tra lexical/semantic raw score riêng.
+- Bằng chứng: PostgreSQL migration thử trên schema legacy `vector(1536)` giữ vector cũ, nhận vector 384 mới và truy vấn chỉ lấy đúng model version. Bộ synthetic đánh giá nhỏ: holdout 12 truy vấn đạt Hit@1 75%, Hit@3 91.7%, MRR 0.850; chưa có SME corpus để nghiệm thu chất lượng pilot. Adapter unit tests pass; runtime download/encode qua adapter trong worktree chưa xác minh do môi trường hiện không phân giải được host tải model.
+- Nguồn triển khai: [FastEmbed chính thức của Qdrant](https://github.com/qdrant/fastembed), [multilingual E5 small model card](https://huggingface.co/intfloat/multilingual-e5-small) và [tokenizer config tại revision đã pin](https://huggingface.co/intfloat/multilingual-e5-small/blob/614241f622f53c4eeff9890bdc4f31cfecc418b3/tokenizer_config.json).
+- Trạng thái: IMPLEMENTED, local semantic path available; production retrieval quality and model-cache provisioning remain IN_PROGRESS.
 
 ## DEC-005 — OpenAPI là contract HTTP cho frontend
 

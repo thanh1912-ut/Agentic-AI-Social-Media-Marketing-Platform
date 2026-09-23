@@ -16,6 +16,7 @@ from services.agents.knowledge.retrieval import (
     EmbeddingProvider,
     RetrievedChunk,
     _cosine,
+    _embed_query,
     _lexical_score,
     filter_relevant_chunks,
 )
@@ -112,9 +113,12 @@ class PostgresKnowledgeIndex:
                 if len(vectors) != len(batch):
                     raise ValueError("embedding provider returned a mismatched batch length")
                 for offset, vector in enumerate(vectors):
-                    if len(vector) != settings.embedding_dimensions:
+                    expected_dimensions = int(
+                        getattr(embedder, "dimensions", settings.embedding_dimensions)
+                    )
+                    if len(vector) != expected_dimensions:
                         raise ValueError(
-                            "embedding dimensions do not match the vector column; migration and full reindex required"
+                            f"embedding dimensions ({len(vector)}) do not match the configured provider ({expected_dimensions})"
                         )
                     chunks[start + offset] = replace(
                         batch[offset], embedding=tuple(float(value) for value in vector)
@@ -196,10 +200,14 @@ class PostgresKnowledgeIndex:
 
         query_vector: Sequence[float] | None = None
         if embedder:
-            vectors = embedder.embed([query])
-            if len(vectors) != 1:
-                raise ValueError("embedding provider must return one query vector")
-            query_vector = vectors[0]
+            query_vector = _embed_query(embedder, query)
+            expected_dimensions = int(
+                getattr(embedder, "dimensions", settings.embedding_dimensions)
+            )
+            if len(query_vector) != expected_dimensions:
+                raise ValueError(
+                    f"query embedding dimensions ({len(query_vector)}) do not match the configured provider ({expected_dimensions})"
+                )
             # pgvector performs candidate ranking in Postgres; lexical score is
             # blended after tenant/active-source filtering.
             statement = (
@@ -233,7 +241,7 @@ class PostgresKnowledgeIndex:
             )
             lexical = _lexical_score(query, chunk.text)
             semantic = _cosine(query_vector, chunk.embedding)
-            score = lexical if query_vector is None else 0.65 * semantic + 0.35 * lexical
+            score = lexical if query_vector is None else 0.75 * semantic + 0.25 * lexical
             ranked.append(RetrievedChunk(chunk, score, semantic, lexical))
         ranked.sort(key=lambda item: (-item.score, item.chunk.chunk_id))
         return filter_relevant_chunks(

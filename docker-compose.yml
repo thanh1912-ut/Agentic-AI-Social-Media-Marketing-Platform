@@ -89,16 +89,22 @@ services:
       DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
       DEEPSEEK_BASE_URL: ${DEEPSEEK_BASE_URL:-https://api.deepseek.com}
       LLM_DEFAULT_MODEL: ${LLM_DEFAULT_MODEL:-deepseek-flash}
-      EMBEDDING_PROVIDER: ${EMBEDDING_PROVIDER:-none}
+      EMBEDDING_PROVIDER: ${EMBEDDING_PROVIDER:-fastembed}
       EMBEDDING_API_KEY: ${EMBEDDING_API_KEY:-}
-      EMBEDDING_MODEL: ${EMBEDDING_MODEL:-}
-      EMBEDDING_DIMENSIONS: ${EMBEDDING_DIMENSIONS:-1536}
-      RETRIEVAL_MODE: ${RETRIEVAL_MODE:-lexical}
+      EMBEDDING_MODEL: ${EMBEDDING_MODEL:-intfloat/multilingual-e5-small}
+      EMBEDDING_MODEL_REVISION: ${EMBEDDING_MODEL_REVISION:-614241f622f53c4eeff9890bdc4f31cfecc418b3}
+      EMBEDDING_DIMENSIONS: ${EMBEDDING_DIMENSIONS:-384}
+      EMBEDDING_CACHE_DIR: /model-cache
+      EMBEDDING_THREADS: ${EMBEDDING_THREADS:-2}
+      EMBEDDING_LOCAL_FILES_ONLY: ${EMBEDDING_LOCAL_FILES_ONLY:-0}
+      RETRIEVAL_MODE: ${RETRIEVAL_MODE:-semantic_vector}
       CHUNKER_VERSION: ${CHUNKER_VERSION:-vi-token-window-v2}
       MINIMUM_RELEVANCE_SCORE: ${MINIMUM_RELEVANCE_SCORE:-0.12}
       MINIMUM_SEMANTIC_SCORE: ${MINIMUM_SEMANTIC_SCORE:-0.72}
     ports:
       - "${API_PORT:-8000}:8000"
+    volumes:
+      - embedding_models:/model-cache
     depends_on:
       migrate:
         condition: service_completed_successfully
@@ -134,11 +140,15 @@ services:
       DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
       DEEPSEEK_BASE_URL: ${DEEPSEEK_BASE_URL:-https://api.deepseek.com}
       LLM_DEFAULT_MODEL: ${LLM_DEFAULT_MODEL:-deepseek-flash}
-      EMBEDDING_PROVIDER: ${EMBEDDING_PROVIDER:-none}
+      EMBEDDING_PROVIDER: ${EMBEDDING_PROVIDER:-fastembed}
       EMBEDDING_API_KEY: ${EMBEDDING_API_KEY:-}
-      EMBEDDING_MODEL: ${EMBEDDING_MODEL:-}
-      EMBEDDING_DIMENSIONS: ${EMBEDDING_DIMENSIONS:-1536}
-      RETRIEVAL_MODE: ${RETRIEVAL_MODE:-lexical}
+      EMBEDDING_MODEL: ${EMBEDDING_MODEL:-intfloat/multilingual-e5-small}
+      EMBEDDING_MODEL_REVISION: ${EMBEDDING_MODEL_REVISION:-614241f622f53c4eeff9890bdc4f31cfecc418b3}
+      EMBEDDING_DIMENSIONS: ${EMBEDDING_DIMENSIONS:-384}
+      EMBEDDING_CACHE_DIR: /model-cache
+      EMBEDDING_THREADS: ${EMBEDDING_THREADS:-2}
+      EMBEDDING_LOCAL_FILES_ONLY: ${EMBEDDING_LOCAL_FILES_ONLY:-0}
+      RETRIEVAL_MODE: ${RETRIEVAL_MODE:-semantic_vector}
       CHUNKER_VERSION: ${CHUNKER_VERSION:-vi-token-window-v2}
       MINIMUM_RELEVANCE_SCORE: ${MINIMUM_RELEVANCE_SCORE:-0.12}
       MINIMUM_SEMANTIC_SCORE: ${MINIMUM_SEMANTIC_SCORE:-0.72}
@@ -151,6 +161,8 @@ services:
         condition: service_healthy
       storage-init:
         condition: service_completed_successfully
+    volumes:
+      - embedding_models:/model-cache
 
   scheduler:
     build:
@@ -186,3 +198,4 @@ volumes:
   postgres_data:
   redis_data:
   minio_data:
+  embedding_models:

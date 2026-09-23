@@ -8,12 +8,18 @@
 - Node.js >=22 và npm, theo root package manifests/lockfile.
 - Docker Compose v2 cho stack đầy đủ; PostgreSQL có extension pgvector, Redis, MinIO.
 - DeepSeek API key server-side để chạy LLM thật. Chủ dự án đã chấp thuận gửi đoạn trích tài liệu, Brand Profile, cùng campaign strategy, slot topic và ngày đã chọn tới DeepSeek khi sinh theo slot.
-- Embedding bên ngoài là data flow riêng; `EMBEDDING_DATA_FLOW_APPROVED=0` mặc định chặn cấu hình provider embedding ngoài. Giữ `EMBEDDING_PROVIDER=none` và lexical mode cho tới khi có chấp thuận riêng.
+- Semantic retrieval mặc định trong `.env.example` dùng FastEmbed multilingual E5 chạy tại worker; text và query không rời runtime. Tải model weights cần mạng ở lần đầu và cache nằm ở `EMBEDDING_CACHE_DIR`. `EMBEDDING_PROVIDER=none` bật lexical-only. Embedding provider ngoài như OpenAI vẫn bị chặn khi chưa có chấp thuận riêng (`EMBEDDING_DATA_FLOW_APPROVED=1`).
 - Facebook Page/app/token/App Review chỉ cần khi bật connector tương ứng.
 
 ## PostgreSQL migrations
 
-`alembic upgrade head` đã được xác minh từ migration 0001 đến 0009 trên PostgreSQL 18.3 cô lập, có pgvector 0.8.2; chạy lại `upgrade head` không thay đổi schema. Migration 0008 thêm `campaigns.content_plan_json`; migration 0009 thêm `media_assets` và hash nội dung đã duyệt. SQLite và PostgreSQL 18 đều đã chạy 0001→0009 sạch và rerun. FastAPI/browser manual flow cũng pass trên PostgreSQL + local storage. Migration environment tự tạo/nâng `alembic_version.version_num` lên `VARCHAR(128)` trên PostgreSQL vì revision IDs dài hơn giới hạn mặc định 32 ký tự. Redis-backed API readiness và một Celery task smoke đã pass trên disposable services; Compose, scheduler process, document-ingestion task, restart recovery với job tồn tại và MinIO vẫn chưa được nghiệm thu.
+`alembic upgrade head` đã được xác minh tới migration 0010 trên PostgreSQL 18.3 cô lập, có pgvector 0.8.2. Migration 0010 đổi cột vector cố định thành flexible vector, giữ row cũ 1536 chiều; vector 384 chiều mới được insert và retrieval filter đúng model identity. SQLite upgrade 0001→0010 pass. PostgreSQL migration 0010 downgrade có chủ ý từ chối khi còn vector không phải 1536 chiều. FastAPI/browser manual flow cũng pass trên PostgreSQL + local storage. Migration environment tự tạo/nâng `alembic_version.version_num` lên `VARCHAR(128)` trên PostgreSQL vì revision IDs dài hơn giới hạn mặc định 32 ký tự. Redis-backed API readiness và một Celery task smoke đã pass trên disposable services; Compose runtime, scheduler process, document-ingestion job, restart recovery với job tồn tại và MinIO vẫn chưa được nghiệm thu.
+
+## Embedding local và đổi model
+
+`.env.example` chọn `EMBEDDING_PROVIDER=fastembed`, `EMBEDDING_MODEL=intfloat/multilingual-e5-small`, revision `614241f622f53c4eeff9890bdc4f31cfecc418b3`, 384 chiều và `RETRIEVAL_MODE=semantic_vector`. E5 cần prefix `passage:` cho text index và `query:` cho truy vấn; adapter thêm prefix tự động. Chunker `vi-token-window-v3-300` giữ cửa sổ 300 token với overlap 40, chừa khoảng an toàn so với tokenizer max 512. Lần đầu xử lý tài liệu, worker tải weights vào cache. Trong Compose, named volume `embedding_models` giữ model giữa các lần restart. Sau khi provision cache, đặt `EMBEDDING_LOCAL_FILES_ONLY=1` để cấm tải trong runtime.
+
+Khi đổi provider/model/chunker so với index hiện tại, nội dung cũ không được tự coi là đã index bằng cấu hình mới. Reprocess từng tài liệu đang hoạt động qua `POST /api/v1/workspaces/{workspace_id}/documents/{document_id}/reprocess`; worker sẽ chuẩn hóa/index lại bằng provider cấu hình và tạo Brand Profile run mới. Chỉ sinh bài semantic sau khi các nguồn liên quan đã reprocess thành công. Đánh giá hiện tại dùng corpus synthetic nhỏ; nghiệm thu retrieval cho pilot cần thêm truy vấn/tài liệu thật được workspace owner cho phép dùng.
 
 ## Cài local
 
@@ -123,7 +129,7 @@ Xác nhận Alembic revision, row counts và dữ liệu mẫu trên database m�
 - Job: xem `/api/v1/jobs/{job_id}` và events; retry chỉ khi job `retryable` và operation idempotent. Không blind retry publication có `outcome_unknown`.
 - Upload: tên file chỉ dùng làm metadata hiển thị và được lấy basename; storage key do server sinh, adapter từ chối key có traversal. Kiểm MIME/size/parser status; PDF scan/mật khẩu/unsupported phải báo trạng thái/hint thay vì tạo profile rỗng.
 - DeepSeek: kiểm provider/model, key ở secret store, timeout/rate limit/balance. Không in key hoặc response nhạy cảm. No implicit provider fallback.
-- Retrieval: kiểm active source, tenant/brand, parser/chunker/embed version, locator, relevance threshold. Lexical mode phải được gắn nhãn lexical.
+- Retrieval: kiểm active source, tenant/brand, parser/chunker/embed version, locator và hai relevance threshold. Nếu đổi embedding model, reprocess tài liệu trước khi tạo nội dung. `EMBEDDING_PROVIDER=none` là lexical-only.
 - MinIO/S3: xác nhận health, bucket và credentials; database chứa metadata, object storage chứa binary.
 
 ## Rollback và giới hạn

@@ -222,7 +222,9 @@ class KnowledgeChunk(Base, TimestampMixin):
     embedding_provider: Mapped[str] = mapped_column(String(40), default="none", nullable=False)
     embedding_model_version: Mapped[str] = mapped_column(String(160), default="lexical-v1", nullable=False)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
-    embedding: Mapped[list[float] | None] = mapped_column(Vector(1536).with_variant(JSON(), "sqlite"))
+    # The PostgreSQL vector column is intentionally dimension-flexible. Its
+    # provider/model/version fields isolate vectors with different dimensions.
+    embedding: Mapped[list[float] | None] = mapped_column(Vector().with_variant(JSON(), "sqlite"))
 
 
 class Job(Base, IdMixin, TimestampMixin):

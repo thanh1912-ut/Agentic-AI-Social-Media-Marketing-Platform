@@ -16,6 +16,7 @@ from .errors import (
     ProviderRequestError,
     ProviderTimeoutError,
 )
+from .fastembed import FastEmbedLocalEmbeddingProvider
 from .openai import (
     OpenAIEmbeddingProvider,
     OpenAIProviderError,
@@ -27,6 +28,7 @@ from .openai import (
 __all__ = [
     "DEEPSEEK_BASE_URL",
     "DeepSeekStructuredModel",
+    "FastEmbedLocalEmbeddingProvider",
     "OpenAIEmbeddingProvider",
     "OpenAIProviderError",
     "OpenAIStructuredModel",

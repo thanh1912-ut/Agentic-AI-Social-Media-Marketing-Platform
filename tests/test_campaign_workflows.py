@@ -32,6 +32,7 @@ from database.models import (
 from packages.contracts import GeneratedPost, SourceReference
 from packages.prompts import CONTENT_REVISE_SYSTEM_PROMPT
 from services.api import campaign_workflows
+from services.api.config import settings
 from services.api import media as media_api
 from services.api.content_integrity import content_sha256
 from services.api import job_service
@@ -479,7 +480,7 @@ def test_content_generation_job_persists_cited_draft_and_is_idempotent(workflow_
                 chunk_id=f"{workspace_id}:{source_id}:{source_hash}:chunk-1", company_id=workspace_id,
                 brand_id=brand.id, source_id=source_id, document_id=document_id, source_version="1",
                 source_hash=source_hash, locator="page=1", text=chunk_text, token_count=15, kind="text",
-                parser_version="m2-parser-v1", chunker_version="vi-token-window-v2",
+                    parser_version="m2-parser-v1", chunker_version=settings.chunker_version,
                 embedding_provider="none", embedding_model_version="lexical-v1", is_active=True,
                 created_at=now, updated_at=now,
             ))

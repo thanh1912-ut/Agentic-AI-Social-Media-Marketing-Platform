@@ -14,7 +14,20 @@ from .chunking import CHUNKER_VERSION, KnowledgeChunk, _tokens, chunk_document
 
 class EmbeddingProvider(Protocol):
     def embed(self, texts: Sequence[str]) -> Sequence[Sequence[float]]:
-        """Return one vector per input text."""
+        """Return one passage vector per input text."""
+
+    def embed_query(self, query: str) -> Sequence[float]:
+        """Return a search-query vector; providers without query prefixes may reuse embed()."""
+
+
+def _embed_query(embedder: EmbeddingProvider, query: str) -> Sequence[float]:
+    query_embedder = getattr(embedder, "embed_query", None)
+    if callable(query_embedder):
+        return query_embedder(query)
+    vectors = embedder.embed([query])
+    if len(vectors) != 1:
+        raise ValueError("embedding provider must return one query vector")
+    return vectors[0]
 
 
 @dataclass(frozen=True)
@@ -47,10 +60,13 @@ def filter_relevant_chunks(
     if not 0 <= minimum_score <= 1 or not 0 <= minimum_semantic_score <= 1:
         raise ValueError("relevance thresholds must be between 0 and 1")
     ranked = sorted(candidates, key=lambda item: (-item.score, item.chunk.chunk_id))
+    # For hybrid candidates, ``score`` is a weighted blend and can be positive
+    # even when neither signal is strong enough. Gate context using the raw
+    # lexical or semantic evidence; keep the blended score for ordering only.
     selected = [
         item
         for item in ranked
-        if item.score >= minimum_score
+        if item.lexical_score >= minimum_score
         or (item.semantic_score >= minimum_semantic_score and item.semantic_score > 0)
     ]
     return selected[:top_k]
@@ -205,10 +221,7 @@ class InMemoryKnowledgeIndex:
         ]
         query_vector = None
         if embedder and candidates:
-            vectors = embedder.embed([query])
-            if len(vectors) != 1:
-                raise ValueError("embedding provider must return one query vector")
-            query_vector = vectors[0]
+            query_vector = _embed_query(embedder, query)
 
         ranked: list[RetrievedChunk] = []
         for chunk in candidates:
@@ -217,7 +230,7 @@ class InMemoryKnowledgeIndex:
             if query_vector is None:
                 score = lexical
             else:
-                score = 0.65 * semantic + 0.35 * lexical
+                score = 0.75 * semantic + 0.25 * lexical
             ranked.append(RetrievedChunk(chunk, score, semantic, lexical))
         candidate_pool = sorted(ranked, key=lambda item: (-item.score, item.chunk.chunk_id))[
             : self.max_candidates

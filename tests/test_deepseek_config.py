@@ -87,6 +87,37 @@ def test_external_embedding_provider_requires_separate_data_flow_approval(monkey
         model_provider.configured_embedding_provider()
 
 
+def test_local_embedding_provider_does_not_require_external_data_flow_approval(monkeypatch, tmp_path):
+    from services.agents.providers import fastembed
+
+    class LocalProvider:
+        def __init__(self, **kwargs):
+            self.kwargs = kwargs
+
+    monkeypatch.setattr(
+        model_provider,
+        "settings",
+        SimpleNamespace(
+            embedding_provider="fastembed",
+            embedding_cache_dir=tmp_path,
+            embedding_threads=2,
+            embedding_model_revision=fastembed.LOCAL_E5_REVISION,
+            embedding_local_files_only=True,
+        ),
+    )
+    monkeypatch.setattr(fastembed, "FastEmbedLocalEmbeddingProvider", LocalProvider)
+
+    provider = model_provider.configured_embedding_provider()
+
+    assert isinstance(provider, LocalProvider)
+    assert provider.kwargs == {
+        "cache_dir": tmp_path,
+        "threads": 2,
+        "revision": fastembed.LOCAL_E5_REVISION,
+        "local_files_only": True,
+    }
+
+
 class _SmokeResponse(BaseModel):
     ok: bool
     provider: Literal["deepseek"]

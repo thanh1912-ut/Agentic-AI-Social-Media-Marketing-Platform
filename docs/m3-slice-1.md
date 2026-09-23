@@ -10,9 +10,10 @@ Trạng thái: hoàn thành phần nền tảng chạy độc lập với backen
   `Recommendation` và `Experiment`.
 - `packages/contracts/validation.py`: structured-output validation với tối đa
   một lần repair.
-- `services/agents/knowledge/`: NFC/whitespace normalization, chunk text
-  khoảng 600 token với overlap tối đa 80, table header + row, idempotent source
-  hash, batch embedding và hybrid retrieval.
+- `services/agents/knowledge/`: NFC/whitespace normalization, chunks 300 token
+  với overlap 40, table header + row, idempotent source hash, batch embedding
+  và hybrid retrieval. Chunker version v3 giữ input dưới context 512 token của
+  local multilingual E5 với khoảng đệm cho tokenizer.
 - `services/agents/brand_agent/` và `content_agent/`: provider-neutral handlers;
   Brand Profile luôn chờ human confirmation, Content luôn trả version mới.
 - `services/agents/orchestrator/`: finite LangGraph wiring, checkpoint-friendly

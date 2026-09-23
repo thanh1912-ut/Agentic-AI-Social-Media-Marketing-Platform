@@ -64,8 +64,14 @@ class Settings:
     embedding_api_key: str = field(default_factory=lambda: os.getenv("EMBEDDING_API_KEY", ""), repr=False)
     embedding_model: str = os.getenv("EMBEDDING_MODEL", "").strip()
     embedding_dimensions: int = int(os.getenv("EMBEDDING_DIMENSIONS", "1536"))
+    embedding_model_revision: str = os.getenv(
+        "EMBEDDING_MODEL_REVISION", "614241f622f53c4eeff9890bdc4f31cfecc418b3"
+    ).strip()
+    embedding_cache_dir: Path = Path(os.getenv("EMBEDDING_CACHE_DIR", ".data/embedding-models"))
+    embedding_threads: int = int(os.getenv("EMBEDDING_THREADS", "2"))
+    embedding_local_files_only: bool = _bool("EMBEDDING_LOCAL_FILES_ONLY", False)
     retrieval_mode: str = os.getenv("RETRIEVAL_MODE", "lexical").strip().casefold()
-    chunker_version: str = os.getenv("CHUNKER_VERSION", "vi-token-window-v2").strip()
+    chunker_version: str = os.getenv("CHUNKER_VERSION", "vi-token-window-v3-300").strip()
     minimum_relevance_score: float = float(os.getenv("MINIMUM_RELEVANCE_SCORE", "0.12"))
     minimum_semantic_score: float = float(os.getenv("MINIMUM_SEMANTIC_SCORE", "0.72"))
     ai_request_timeout_seconds: int = int(os.getenv("AI_REQUEST_TIMEOUT_SECONDS", "120"))
@@ -87,22 +93,20 @@ if settings.app_env.casefold() in {"prod", "production"}:
         raise ValueError("Production requires RATE_LIMITS_ENABLED=1")
 if settings.llm_provider != "deepseek":
     raise ValueError("LLM_PROVIDER must be deepseek; no implicit provider fallback is supported")
-if settings.embedding_provider not in {"none", "openai"}:
-    raise ValueError("EMBEDDING_PROVIDER must be none or openai")
+if settings.embedding_provider not in {"none", "openai", "fastembed"}:
+    raise ValueError("EMBEDDING_PROVIDER must be none, openai, or fastembed")
 if settings.retrieval_mode not in {"lexical", "semantic_vector"}:
     raise ValueError("RETRIEVAL_MODE must be lexical or semantic_vector")
 if settings.embedding_provider == "none" and settings.retrieval_mode != "lexical":
     raise ValueError("RETRIEVAL_MODE=semantic_vector requires an embedding provider")
 if settings.embedding_provider != "none" and settings.retrieval_mode != "semantic_vector":
     raise ValueError("A configured embedding provider requires RETRIEVAL_MODE=semantic_vector")
-if settings.embedding_provider != "none" and not settings.embedding_data_flow_approved:
+if settings.embedding_provider == "openai" and not settings.embedding_data_flow_approved:
     raise ValueError(
         "External embeddings send workspace document text to another provider; set EMBEDDING_DATA_FLOW_APPROVED=1 only after separate approval"
     )
-if settings.embedding_dimensions != 1536:
-    raise ValueError(
-        "EMBEDDING_DIMENSIONS currently must be 1536; another dimension requires a database migration and full reindex"
-    )
+if not 1 <= settings.embedding_dimensions <= 2000:
+    raise ValueError("EMBEDDING_DIMENSIONS must be between 1 and 2000")
 if settings.max_image_bytes < 1 or settings.max_image_pixels < 1:
     raise ValueError("Image upload byte and pixel limits must be positive")
 if not 0 <= settings.minimum_relevance_score <= 1 or not 0 <= settings.minimum_semantic_score <= 1:
@@ -118,3 +122,12 @@ if settings.embedding_provider == "openai":
         raise ValueError("EMBEDDING_API_KEY is required when EMBEDDING_PROVIDER=openai")
     if not settings.embedding_model:
         raise ValueError("EMBEDDING_MODEL is required when EMBEDDING_PROVIDER=openai")
+if settings.embedding_provider == "fastembed":
+    if settings.embedding_model != "intfloat/multilingual-e5-small":
+        raise ValueError("EMBEDDING_MODEL must be intfloat/multilingual-e5-small for fastembed")
+    if settings.embedding_model_revision != "614241f622f53c4eeff9890bdc4f31cfecc418b3":
+        raise ValueError("EMBEDDING_MODEL_REVISION must match the reviewed multilingual E5 weights")
+    if settings.embedding_dimensions != 384:
+        raise ValueError("EMBEDDING_DIMENSIONS must be 384 for intfloat/multilingual-e5-small")
+    if settings.embedding_threads < 1:
+        raise ValueError("EMBEDDING_THREADS must be positive")

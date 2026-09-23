@@ -1,5 +1,20 @@
 # Báo cáo kiểm thử
 
+Cập nhật: 2026-09-24 06:26 (Asia/Ho_Chi_Minh). Snapshot mới trên branch `codex/product-v1-completion` bổ sung local FastEmbed multilingual E5, hybrid relevance gating, chunker v3 và migration pgvector dimension-flexible. Full Python suite hiện tại: **112 passed, 1 skipped**; skip là smoke thật DeepSeek vì chưa có key. Kết quả dưới đây phân biệt adapter unit test, synthetic retrieval evaluation, migration test và live provider test.
+
+## RAG-001 — local multilingual E5
+
+| Check | Kết quả | Giới hạn |
+|---|---|---|
+| `tests/test_fastembed_provider.py`, `tests/test_knowledge.py`, `tests/test_deepseek_config.py` | **26 passed** | Fake ONNX output; xác nhận `passage:`/`query:` prefix, 384 chiều, vector hợp lệ, 300-token chunk window và local provider không cần external-data-flow approval. Không tải model thật. |
+| Synthetic retrieval calibration/holdout | E5, weight semantic 0.75: calibration Hit@1 75%, Hit@3 100%, MRR .875; separate holdout Hit@1 75%, Hit@3 91.7%, MRR .850. Trên Apple M2/16 GB, cold load ~17 giây; embed 12 passages + 12 queries ~0.11 giây; peak RSS ~1.05 GB. | Chỉ 24 truy vấn synthetic, không có SME/customer corpus; đây không phải quality SLA. [FastEmbed/Qdrant](https://github.com/qdrant/fastembed), [model card và prefix/dimension details](https://huggingface.co/intfloat/multilingual-e5-small). |
+| Runtime gọi adapter và tải pinned weights | **NOT VERIFIED trong worktree hiện tại** | Thử tải vào cache tạm bị lỗi DNS/network của sandbox; không gửi workspace text ra ngoài. Adapter fake tests pass. |
+| PostgreSQL 18.3 + pgvector 0.8.2 migration 0009→0010 | **PASS** | Test disposable bắt đầu từ schema `vector(1536)` như deployment cũ, chứa row 1536 chiều trước upgrade; sau migration giữ row đó, nhận row 384 chiều và Postgres retrieval chỉ trả model version khớp. Downgrade chủ động từ chối khi vector 384 còn tồn tại. |
+| SQLite migration 0001→0010 | **PASS** | JSON test representation cho vectors giữ được độ dài linh hoạt; SQLite không kiểm tra cosine/vector operator của pgvector. |
+| Full Python suite; OpenAPI check; `compileall`; Compose YAML; `git diff --check` | **112 passed, 1 skipped; PASS** cho các kiểm tra còn lại | Live DeepSeek smoke là skip duy nhất. Docker Compose runtime vẫn chưa chạy vì máy thiếu Docker/Podman. |
+
+Model choice là local `intfloat/multilingual-e5-small`, pinned revision `614241f622f53c4eeff9890bdc4f31cfecc418b3`, 384 dimensions. Tokenizer revision đó khai báo context 512; chunker v3 dùng cửa sổ 300 token/overlap 40 để chừa khoảng đệm. Chỉ public model weights được tải; workspace documents/queries được encode tại worker. Existing documents cần reprocess sau khi chuyển provider/model/chunker. `.env.example` bật local model; OpenAI embeddings vẫn cần data-flow approval riêng. Chất lượng retrieval cần kiểm chứng tiếp bằng tài liệu/query do SME pilot cung cấp. [Pinned tokenizer config](https://huggingface.co/intfloat/multilingual-e5-small/blob/614241f622f53c4eeff9890bdc4f31cfecc418b3/tokenizer_config.json).
+
 Cập nhật: 2026-09-24 05:32 (Asia/Ho_Chi_Minh). Kết quả real-mode mới nhất chạy trên commit `4f9a97a` của branch `codex/product-v1-completion`. Backend full suite **105 passed, 1 skipped** và frontend **43 passed/typecheck/lint/build** được chạy trên implementation commit `43ab2d3`; `4f9a97a` chỉ mở rộng real-mode browser acceptance test. Project owner đã chấp thuận gửi đoạn trích tài liệu, Brand Profile và strategy/topic/date của slot đã chọn tới DeepSeek.
 
 Môi trường: Python 3.11.16, Node.js 26.7.0, SQLite và PostgreSQL 18.3 disposable, local object storage, Chromium desktop/mobile. Bộ Playwright mock dùng MSW; real-mode Playwright kết nối FastAPI thật và đã chạy riêng với cả SQLite lẫn PostgreSQL.

@@ -10,7 +10,9 @@ from dataclasses import dataclass
 from packages.contracts import NormalizedDocument
 
 TOKEN_RE = re.compile(r"\w+|[^\w\s]", flags=re.UNICODE)
-CHUNKER_VERSION = "vi-token-window-v2"
+MAX_CHUNK_TOKENS = 300
+CHUNK_OVERLAP_TOKENS = 40
+CHUNKER_VERSION = "vi-token-window-v3-300"
 
 
 def normalize_text(value: str) -> str:
@@ -94,8 +96,8 @@ def _windowed_chunks(
 def chunk_document(
     document: NormalizedDocument,
     *,
-    max_tokens: int = 600,
-    overlap_tokens: int = 80,
+    max_tokens: int = MAX_CHUNK_TOKENS,
+    overlap_tokens: int = CHUNK_OVERLAP_TOKENS,
     parser_version: str = "unknown",
     chunker_version: str = CHUNKER_VERSION,
     embedding_model_version: str | None = None,

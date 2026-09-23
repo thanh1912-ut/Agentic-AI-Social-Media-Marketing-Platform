@@ -33,10 +33,21 @@ def configured_structured_model():
 
 
 def configured_embedding_provider():
-    """Embeddings require their own explicit data-flow approval."""
+    """Select the local model by config or require approval for external vectors."""
 
     if settings.embedding_provider == "none":
         return None
+    if settings.embedding_provider == "fastembed":
+        try:
+            from services.agents.providers.fastembed import FastEmbedLocalEmbeddingProvider
+        except ImportError as error:
+            raise AIConfigurationError("The local FastEmbed adapter is unavailable") from error
+        return FastEmbedLocalEmbeddingProvider(
+            cache_dir=settings.embedding_cache_dir,
+            threads=settings.embedding_threads,
+            revision=settings.embedding_model_revision,
+            local_files_only=settings.embedding_local_files_only,
+        )
     if settings.embedding_provider != "openai":
         raise AIConfigurationError(f"Unsupported EMBEDDING_PROVIDER: {settings.embedding_provider}")
     if not settings.embedding_data_flow_approved:
