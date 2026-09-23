@@ -73,7 +73,9 @@ class Settings:
     retrieval_mode: str = os.getenv("RETRIEVAL_MODE", "lexical").strip().casefold()
     chunker_version: str = os.getenv("CHUNKER_VERSION", "vi-token-window-v3-300").strip()
     minimum_relevance_score: float = float(os.getenv("MINIMUM_RELEVANCE_SCORE", "0.12"))
-    minimum_semantic_score: float = float(os.getenv("MINIMUM_SEMANTIC_SCORE", "0.72"))
+    minimum_semantic_score: float = float(os.getenv("MINIMUM_SEMANTIC_SCORE", "0.82"))
+    minimum_semantic_margin: float = float(os.getenv("MINIMUM_SEMANTIC_MARGIN", "0.04"))
+    minimum_hybrid_lexical_score: float = float(os.getenv("MINIMUM_HYBRID_LEXICAL_SCORE", "0.45"))
     ai_request_timeout_seconds: int = int(os.getenv("AI_REQUEST_TIMEOUT_SECONDS", "120"))
     max_job_attempts: int = int(os.getenv("MAX_JOB_ATTEMPTS", "3"))
     job_lease_minutes: int = int(os.getenv("JOB_LEASE_MINUTES", "30"))
@@ -109,7 +111,12 @@ if not 1 <= settings.embedding_dimensions <= 2000:
     raise ValueError("EMBEDDING_DIMENSIONS must be between 1 and 2000")
 if settings.max_image_bytes < 1 or settings.max_image_pixels < 1:
     raise ValueError("Image upload byte and pixel limits must be positive")
-if not 0 <= settings.minimum_relevance_score <= 1 or not 0 <= settings.minimum_semantic_score <= 1:
+if (
+    not 0 <= settings.minimum_relevance_score <= 1
+    or not 0 <= settings.minimum_semantic_score <= 1
+    or not 0 <= settings.minimum_semantic_margin <= 1
+    or not 0 <= settings.minimum_hybrid_lexical_score <= 1
+):
     raise ValueError("Relevance thresholds must be between 0 and 1")
 if settings.llm_max_tokens < 1 or settings.llm_max_input_chars < 1 or settings.ai_request_timeout_seconds < 1:
     raise ValueError("LLM token, input, and request-timeout limits must be positive")

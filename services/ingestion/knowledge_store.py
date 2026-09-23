@@ -162,7 +162,9 @@ class PostgresKnowledgeIndex:
         chunker_version: str | None = None,
         embedding_model_version: str | None = None,
         minimum_score: float = 0.12,
-        minimum_semantic_score: float = 0.72,
+        minimum_semantic_score: float = 0.82,
+        minimum_semantic_margin: float = 0.04,
+        minimum_hybrid_lexical_score: float = 0.45,
         top_k: int = 20,
     ) -> list[RetrievedChunk]:
         if not query.strip():
@@ -249,4 +251,6 @@ class PostgresKnowledgeIndex:
             top_k=top_k,
             minimum_score=minimum_score,
             minimum_semantic_score=minimum_semantic_score,
+            minimum_semantic_margin=minimum_semantic_margin,
+            minimum_hybrid_lexical_score=minimum_hybrid_lexical_score,
         )

@@ -417,6 +417,8 @@ async def _run_brand_profile(
             embedding_model_version=embedding_model_version,
             minimum_score=settings.minimum_relevance_score,
             minimum_semantic_score=settings.minimum_semantic_score,
+            minimum_semantic_margin=settings.minimum_semantic_margin,
+            minimum_hybrid_lexical_score=settings.minimum_hybrid_lexical_score,
             top_k=MAX_CONTEXT_CHUNKS,
         )
         # The adapter joins active documents under this tenant before ranking.
@@ -438,6 +440,8 @@ async def _run_brand_profile(
             "embedding_model_version": embedding_model_version,
             "minimum_relevance_score": settings.minimum_relevance_score,
             "minimum_semantic_score": settings.minimum_semantic_score,
+            "minimum_semantic_margin": settings.minimum_semantic_margin,
+            "minimum_hybrid_lexical_score": settings.minimum_hybrid_lexical_score,
             "documents": [
                 {
                     "document_id": document.id,
@@ -518,6 +522,8 @@ async def _run_brand_profile(
         "embedding_model_version": embedding_model_version,
         "minimum_relevance_score": settings.minimum_relevance_score,
         "minimum_semantic_score": settings.minimum_semantic_score,
+        "minimum_semantic_margin": settings.minimum_semantic_margin,
+        "minimum_hybrid_lexical_score": settings.minimum_hybrid_lexical_score,
         "semantic_vector_rag_accepted": False,
         "semantic_vector_rag_verification": "not_run",
         "lexical_mode_notice": (

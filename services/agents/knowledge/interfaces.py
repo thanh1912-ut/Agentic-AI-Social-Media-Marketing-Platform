@@ -46,7 +46,9 @@ class PersistentKnowledgeRepository(Protocol):
         chunker_version: str | None,
         embedding_model_version: str | None,
         minimum_score: float = 0.12,
-        minimum_semantic_score: float = 0.72,
+        minimum_semantic_score: float = 0.82,
+        minimum_semantic_margin: float = 0.04,
+        minimum_hybrid_lexical_score: float = 0.45,
         top_k: int = 20,
     ) -> list[RetrievedChunk]: ...
 

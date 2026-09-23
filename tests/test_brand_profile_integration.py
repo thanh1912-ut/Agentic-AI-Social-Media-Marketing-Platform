@@ -185,7 +185,9 @@ def test_upload_worker_profile_revision_confirm_and_tenant_isolation(api_env):
     assert job.json()["result"]["profile_run"]["semantic_vector_rag_accepted"] is False
     assert "not been accepted or verified" in job.json()["result"]["profile_run"]["lexical_mode_notice"]
     assert job.json()["result"]["profile_run"]["minimum_relevance_score"] == 0.12
-    assert job.json()["result"]["profile_run"]["minimum_semantic_score"] == 0.72
+    assert job.json()["result"]["profile_run"]["minimum_semantic_score"] == 0.82
+    assert job.json()["result"]["profile_run"]["minimum_semantic_margin"] == 0.04
+    assert job.json()["result"]["profile_run"]["minimum_hybrid_lexical_score"] == 0.45
 
     async def check_handler_context():
         from database.models import BrandProfileRevision

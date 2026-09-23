@@ -160,10 +160,15 @@ grounded evidence and retains contradictions only with evidence from at least
 two source locations.
 
 Retrieval relevance must be measured and filtered before generation. The
-current `filter_relevant_chunks` pilot defaults are `score >= 0.12` or, when
-embeddings are available, `semantic_score >= 0.72`; these are retrieval
-thresholds, not calibrated confidence probabilities. Include only bounded
-top-k results. Do not report an LLM-generated score as retrieval relevance.
+lexical-only default admits content-term overlap at `score >= 0.12`. With
+embeddings, a chunk can pass through lexical rescue at `0.45`; semantic
+retrieval requires a best source score of at least `0.82` and a `0.04` gap over
+the next source; with only one source, its score must be at least `0.86`. These
+are conservative pilot thresholds, not calibrated confidence probabilities.
+`scripts/evaluate_retrieval.py` runs a small local E5 positive/no-answer check;
+evaluate with approved SME queries before pilot acceptance. Include only
+bounded top-k results. Do not report an LLM-generated score as retrieval
+relevance.
 
 The M3 `PersistentKnowledgeRepository` interface expects M2 persistence to
 deduplicate using source content hash plus parser, chunker, and embedding model

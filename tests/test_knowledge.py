@@ -2,7 +2,7 @@ from dataclasses import dataclass
 
 from services.agents.knowledge import CHUNKER_VERSION, InMemoryKnowledgeIndex, chunk_document, normalize_text
 from services.agents.knowledge.chunking import MAX_CHUNK_TOKENS
-from services.agents.knowledge.retrieval import RetrievedChunk, filter_relevant_chunks
+from services.agents.knowledge.retrieval import RetrievedChunk, _lexical_score, filter_relevant_chunks
 
 
 @dataclass
@@ -86,9 +86,53 @@ def test_hybrid_retrieval_does_not_use_blended_score_as_relevance_gate(normalize
         top_k=3,
         minimum_score=0.12,
         minimum_semantic_score=0.72,
+        minimum_semantic_margin=0.0,
+        minimum_hybrid_lexical_score=0.12,
     )
 
     assert [item.chunk.chunk_id for item in selected] == [
         strong_semantic.chunk.chunk_id,
         exact_lexical.chunk.chunk_id,
     ]
+
+
+def test_semantic_retrieval_abstains_when_top_matches_are_ambiguous(normalized_document) -> None:
+    chunks = chunk_document(normalized_document, max_tokens=20, overlap_tokens=4)[:2]
+    close_matches = [
+        RetrievedChunk(chunks[0], score=0.84, semantic_score=0.84, lexical_score=0.0),
+        RetrievedChunk(chunks[1], score=0.81, semantic_score=0.81, lexical_score=0.0),
+    ]
+
+    assert filter_relevant_chunks(close_matches, top_k=2) == []
+
+
+def test_semantic_retrieval_keeps_a_clear_match(normalized_document) -> None:
+    chunks = chunk_document(normalized_document, max_tokens=20, overlap_tokens=4)[:2]
+    clear_match = RetrievedChunk(chunks[0], score=0.88, semantic_score=0.88, lexical_score=0.0)
+    weak_runner_up = RetrievedChunk(chunks[1], score=0.78, semantic_score=0.78, lexical_score=0.0)
+
+    assert filter_relevant_chunks([clear_match, weak_runner_up], top_k=2) == [clear_match]
+
+
+def test_semantic_confidence_compares_sources_and_keeps_matching_source_chunks(normalized_document) -> None:
+    chunks = chunk_document(normalized_document, max_tokens=20, overlap_tokens=4)[:3]
+    same_source = [
+        RetrievedChunk(chunks[0], score=0.90, semantic_score=0.90, lexical_score=0.0),
+        RetrievedChunk(chunks[1], score=0.89, semantic_score=0.89, lexical_score=0.0),
+    ]
+    other_source_chunk = chunks[2].__class__(
+        **{**chunks[2].__dict__, "source_id": "unrelated-source"}
+    )
+    other_source = RetrievedChunk(
+        other_source_chunk, score=0.83, semantic_score=0.83, lexical_score=0.0
+    )
+
+    assert filter_relevant_chunks([*same_source, other_source], top_k=3) == same_source
+
+
+def test_lexical_relevance_ignores_question_words_but_requires_content_overlap() -> None:
+    address = "Địa chỉ cửa hàng tại số 12 đường Nguyễn Huệ, Thành phố Hồ Chí Minh."
+    promotion = "Ưu đãi cuối tuần giảm giá cho khách đặt món trực tuyến."
+
+    assert _lexical_score("Cửa hàng ở đâu?", address) == 1.0
+    assert _lexical_score("Thời tiết Đà Lạt cuối tuần", promotion) < 0.45

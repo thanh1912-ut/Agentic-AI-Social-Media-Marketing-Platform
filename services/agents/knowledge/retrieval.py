@@ -12,6 +12,18 @@ from packages.contracts import NormalizedDocument
 from .chunking import CHUNKER_VERSION, KnowledgeChunk, _tokens, chunk_document
 
 
+# Vietnamese question particles and grammatical words add little evidence that
+# a chunk answers the query. Keep domain words such as "nhà", "hàng", and
+# "món" so exact product and location queries still match.
+_LEXICAL_STOP_WORDS = frozenset(
+    "a à ạ á ả ã ă ằ ắ ẳ ẵ ặ â ầ ấ ẩ ẫ ậ các cái của cho có đã đang để được đâu "
+    "gì khi là mà mỗi một mấy nào nên nếu những như ở ra sẽ thì trong từ tại theo "
+    "vào và với vì về bị bởi qua trên dưới sau trước nhưng hãy giúp mình tôi bạn "
+    "chúng họ này đó kia ấy vậy bao nhiêu"
+    .split()
+)
+
+
 class EmbeddingProvider(Protocol):
     def embed(self, texts: Sequence[str]) -> Sequence[Sequence[float]]:
         """Return one passage vector per input text."""
@@ -51,29 +63,66 @@ def filter_relevant_chunks(
     *,
     top_k: int,
     minimum_score: float = 0.12,
-    minimum_semantic_score: float = 0.72,
+    minimum_semantic_score: float = 0.82,
+    minimum_semantic_margin: float = 0.04,
+    minimum_hybrid_lexical_score: float = 0.45,
 ) -> list[RetrievedChunk]:
     """Rank and suppress low-evidence candidates before passing context to an LLM."""
 
     if top_k < 1:
         raise ValueError("top_k must be positive")
-    if not 0 <= minimum_score <= 1 or not 0 <= minimum_semantic_score <= 1:
+    if (
+        not 0 <= minimum_score <= 1
+        or not 0 <= minimum_semantic_score <= 1
+        or not 0 <= minimum_semantic_margin <= 1
+        or not 0 <= minimum_hybrid_lexical_score <= 1
+    ):
         raise ValueError("relevance thresholds must be between 0 and 1")
     ranked = sorted(candidates, key=lambda item: (-item.score, item.chunk.chunk_id))
-    # For hybrid candidates, ``score`` is a weighted blend and can be positive
-    # even when neither signal is strong enough. Gate context using the raw
-    # lexical or semantic evidence; keep the blended score for ordering only.
+    best_by_source: dict[str, float] = {}
+    for item in ranked:
+        if item.semantic_score > best_by_source.get(item.source_id, 0.0):
+            best_by_source[item.source_id] = item.semantic_score
+    semantic_ranked = sorted(
+        ((score, source_id) for source_id, score in best_by_source.items() if score > 0),
+        reverse=True,
+    )
+    semantic_margin = (
+        semantic_ranked[0][0] - semantic_ranked[1][0]
+        if len(semantic_ranked) > 1
+        else semantic_ranked[0][0] - minimum_semantic_score
+        if semantic_ranked
+        else 0.0
+    )
+    semantic_confident = bool(
+        semantic_ranked
+        and semantic_ranked[0][0] >= minimum_semantic_score
+        and semantic_margin >= minimum_semantic_margin
+    )
+    best_semantic_source = semantic_ranked[0][1] if semantic_confident else None
+    lexical_threshold = minimum_hybrid_lexical_score if semantic_ranked else minimum_score
+    # A high E5 cosine alone is not enough for Vietnamese no-answer queries.
+    # Require the best semantic match to separate from its runner-up. Lexical
+    # evidence can still admit a precise match after question words are removed.
     selected = [
         item
         for item in ranked
-        if item.lexical_score >= minimum_score
-        or (item.semantic_score >= minimum_semantic_score and item.semantic_score > 0)
+        if item.lexical_score >= lexical_threshold
+        or (
+            semantic_confident
+            and item.source_id == best_semantic_source
+            and item.semantic_score >= minimum_semantic_score
+        )
     ]
     return selected[:top_k]
 
 
 def _lexical_score(query: str, text: str) -> float:
-    query_terms = {term.casefold() for term in _tokens(query) if term.isalnum()}
+    query_terms = {
+        term.casefold()
+        for term in _tokens(query)
+        if term.isalnum() and term.casefold() not in _LEXICAL_STOP_WORDS
+    }
     text_terms = {term.casefold() for term in _tokens(text) if term.isalnum()}
     if not query_terms:
         return 0.0
@@ -204,7 +253,9 @@ class InMemoryKnowledgeIndex:
         embedder: EmbeddingProvider | None = None,
         top_k: int = 6,
         minimum_score: float = 0.12,
-        minimum_semantic_score: float = 0.72,
+        minimum_semantic_score: float = 0.82,
+        minimum_semantic_margin: float = 0.04,
+        minimum_hybrid_lexical_score: float = 0.45,
     ) -> list[RetrievedChunk]:
         if not query.strip():
             return []
@@ -240,4 +291,6 @@ class InMemoryKnowledgeIndex:
             top_k=top_k,
             minimum_score=minimum_score,
             minimum_semantic_score=minimum_semantic_score,
+            minimum_semantic_margin=minimum_semantic_margin,
+            minimum_hybrid_lexical_score=minimum_hybrid_lexical_score,
         )

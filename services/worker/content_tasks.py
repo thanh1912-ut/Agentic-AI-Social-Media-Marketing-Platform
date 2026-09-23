@@ -323,6 +323,8 @@ async def content_generation_task_async(
                 embedding_model_version="lexical-v1" if embedder is None else None,
                 minimum_score=settings.minimum_relevance_score,
                 minimum_semantic_score=settings.minimum_semantic_score,
+                minimum_semantic_margin=settings.minimum_semantic_margin,
+                minimum_hybrid_lexical_score=settings.minimum_hybrid_lexical_score,
                 top_k=min(20, knowledge_index.max_context),
             )
             context = source_context([item.chunk for item in retrieved])
