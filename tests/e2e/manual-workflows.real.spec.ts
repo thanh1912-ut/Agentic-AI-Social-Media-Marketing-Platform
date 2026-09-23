@@ -44,10 +44,48 @@ test('real mode: campaign → manual post → approval → export and download',
   await page.locator('form').filter({ has: page.getByRole('textbox', { name: 'Nội dung' }) })
     .getByRole('button', { name: 'Tạo bản nháp' }).click();
   await expect(page.getByRole('heading', { name: 'Biên tập bài viết' })).toBeVisible();
-  await page.getByRole('button', { name: 'Gửi duyệt bản 1' }).click();
-  await expect(page.getByRole('button', { name: 'Duyệt bản 1' })).toBeVisible();
-  await page.getByRole('button', { name: 'Duyệt bản 1' }).click();
+  const mediaAltText = `Ảnh món ăn của ${runId}`;
+  await page.getByLabel('Mô tả ảnh (alt text)').fill(mediaAltText);
+  await page.getByLabel('Tải ảnh JPEG, PNG hoặc WebP').setInputFiles({
+    name: `pilot-menu-${runId}.png`,
+    mimeType: 'image/png',
+    buffer: Buffer.from(
+      'iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAIAAAD91JpzAAAAEklEQVR4nGNcp2XMwMDAxAAGAA0pAQ+YLm8TAAAAAElFTkSuQmCC',
+      'base64',
+    ),
+  });
+  await expect(page.getByText(`Mô tả: ${mediaAltText}`).first()).toBeVisible();
+  await page.getByRole('button', { name: 'Lưu thành phiên bản mới' }).click();
+  await expect(page.getByText(/Phiên bản 2 · cập nhật/)).toBeVisible();
+  await page.getByRole('button', { name: 'Gửi duyệt bản 2' }).click();
+  await expect(page.getByRole('button', { name: 'Duyệt bản 2' })).toBeVisible();
+  await page.getByRole('button', { name: 'Duyệt bản 2' }).click();
   await expect(page.getByText('Đã duyệt', { exact: true })).toBeVisible();
+
+  const postId = new URL(page.url()).pathname.split('/posts/')[1];
+  const postResponse = await page.request.get(
+    `${apiOrigin}/api/v1/workspaces/${encodeURIComponent(workspaceId)}/posts/${encodeURIComponent(postId)}`,
+  );
+  expect(postResponse.ok()).toBeTruthy();
+  const savedPost = await postResponse.json() as {
+    version: number;
+    current: { version: number; media: Array<{ filename?: string; sha256?: string; source: string }> };
+  };
+  expect(savedPost.version).toBe(2);
+  const savedImage = savedPost.current.media.find((item) => item.source === 'uploaded');
+  expect(savedImage?.filename).toBe(`pilot-menu-${runId}.png`);
+  expect(savedImage?.sha256).toMatch(/^[a-f0-9]{64}$/);
+  const approvalResponse = await page.request.get(
+    `${apiOrigin}/api/v1/workspaces/${encodeURIComponent(workspaceId)}/posts/${encodeURIComponent(postId)}/approvals`,
+  );
+  expect(approvalResponse.ok()).toBeTruthy();
+  const approvals = await approvalResponse.json() as Array<{
+    version: number;
+    decision: string;
+    content_sha256: string;
+  }>;
+  expect(approvals).toContainEqual(expect.objectContaining({ version: 2, decision: 'approved' }));
+  expect(approvals.find((item) => item.version === 2)?.content_sha256).toMatch(/^[a-f0-9]{64}$/);
 
   const campaignUrl = new URL(page.url()).pathname.split('/posts/')[0];
   await page.goto(campaignUrl);
