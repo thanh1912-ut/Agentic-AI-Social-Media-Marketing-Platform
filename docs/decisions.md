@@ -100,3 +100,18 @@ Ngày tạo: 2026-09-23. Trạng thái dưới đây được ghi từ audit đ�
 - Không chọn: sinh kết quả bằng LLM, tính từ mock/demo data ở real mode, hoặc diễn giải khác biệt như tác động nhân quả.
 - Ảnh hưởng: migration 0007; API GET/POST và UI lịch sử outcome; thiếu cohort/metric trả lỗi rõ, baseline bằng 0 thì không tính relative change; mẫu nhỏ hoặc coverage thấp được ghi vào limitations.
 - Trạng thái: IMPLEMENTED; SQLite API test, migration sạch 0001→0007, OpenAPI/TypeScript generation, desktop/mobile MSW E2E pass. PostgreSQL runtime và số liệu Meta thật chưa kiểm chứng.
+
+## DEC-013 — Tên file upload không tham gia object key
+
+- Vấn đề: tên file do client gửi không phải đường dẫn an toàn. Ghép nguyên tên vào key local đã cho phép ghi ra ngoài storage root.
+- Quyết định: chỉ lưu basename đã chuẩn hóa làm metadata; tạo object key từ tenant, content hash và UUID do server sinh. Local và S3 adapter đều từ chối key tuyệt đối, rỗng, có dấu phân cách Windows, NUL hoặc segment `.`/`..`; local adapter còn xác nhận đường dẫn resolve vẫn nằm trong root.
+- Lý do: giới hạn đường biên filesystem/object namespace tại adapter, kể cả khi một caller truyền key lỗi.
+- Ảnh hưởng: key mới không còn phụ thuộc tên file. Key legacy bất thường bị từ chối và cần upload lại từ nguồn gốc nếu được phát hiện.
+- Trạng thái: IMPLEMENTED; kiểm thử tái hiện trước sửa và regression tests pass. Full PostgreSQL/MinIO runtime chưa được kiểm chứng.
+
+## DEC-014 — Refresh và logout của cookie session cần CSRF token
+
+- Vấn đề: refresh/logout thay đổi session bằng refresh cookie nhưng chưa dùng dependency CSRF; refresh client cũng bỏ qua header token. Access cookie hết hạn còn refresh cookie hợp lệ là trạng thái phổ biến nên chỉ kiểm access cookie không đủ.
+- Quyết định: bảo vệ cả hai route bằng double-submit CSRF; mọi state-changing request có access hoặc refresh cookie phải gửi `X-CSRF-Token`, kể cả khi có Authorization header; bearer-only client được miễn khi không gửi session cookie. Refresh client đọc cookie `agentic_csrf` và gửi lại.
+- Ảnh hưởng: refresh và logout từ web vẫn hoạt động; stale/forged bearer không thể bỏ qua CSRF khi refresh cookie hiện diện.
+- Trạng thái: IMPLEMENTED; API test cover access-cookie-expired/refresh-only, bogus bearer, successful refresh, logout và revoked refresh; frontend client test xác nhận header được gửi.

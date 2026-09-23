@@ -54,6 +54,8 @@ Scheduler entry point cần xác minh trong `services/worker/scheduled_jobs.py` 
 
 API hiện có register/login và workspace bootstrap. Tạo user test riêng; không dùng tài khoản/DB production. Invitation hiện chưa có email provider; link trả về phải được chuyển cho người nhận qua kênh riêng. Không có seed credentials mặc định được nghiệm thu.
 
+Cookie-authenticated refresh/logout yêu cầu header `X-CSRF-Token` khớp cookie `agentic_csrf`; web client gửi token khi refresh session. Bearer-only clients không cần CSRF token nếu không gửi kèm session cookies.
+
 ## Mocks và real mode
 
 - Demo UI: `NEXT_PUBLIC_USE_MOCKS=1`; dữ liệu do MSW cung cấp, không phải API evidence.
@@ -92,7 +94,7 @@ Backup/restore cần thêm kiểm chứng với DB test trước khi dùng ở m
 ## Job lỗi, token lỗi, provider lỗi
 
 - Job: xem `/api/v1/jobs/{job_id}` và events; retry chỉ khi job `retryable` và operation idempotent. Không blind retry publication có `outcome_unknown`.
-- Upload: kiểm filename/MIME/size/parser status; PDF scan/mật khẩu/unsupported phải báo trạng thái/hint thay vì tạo profile rỗng.
+- Upload: tên file chỉ dùng làm metadata hiển thị và được lấy basename; storage key do server sinh, adapter từ chối key có traversal. Kiểm MIME/size/parser status; PDF scan/mật khẩu/unsupported phải báo trạng thái/hint thay vì tạo profile rỗng.
 - DeepSeek: kiểm provider/model, key ở secret store, timeout/rate limit/balance. Không in key hoặc response nhạy cảm. No implicit provider fallback.
 - Retrieval: kiểm active source, tenant/brand, parser/chunker/embed version, locator, relevance threshold. Lexical mode phải được gắn nhãn lexical.
 - MinIO/S3: xác nhận health, bucket và credentials; database chứa metadata, object storage chứa binary.
