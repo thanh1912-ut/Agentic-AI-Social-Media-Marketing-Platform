@@ -1,6 +1,6 @@
 # Báo cáo kiểm thử
 
-Cập nhật: 2026-09-24 10:14 (Asia/Ho_Chi_Minh). PR branch head `64d663e9e0b8e03fdba830e94a66fb0d3dd9f1a8`; GitHub hosted backend check `test` pass trên commit này. Bằng chứng mới nhất là upload TXT qua API/PostgreSQL/Redis/Celery, idempotent replay và xử lý rõ trạng thái thiếu DeepSeek.
+Cập nhật: 2026-09-24 10:14 (Asia/Ho_Chi_Minh). Code commit `64d663e9e0b8e03fdba830e94a66fb0d3dd9f1a8` đã được GitHub hosted backend check `test` xác nhận pass. Bằng chứng mới nhất là upload TXT qua API/PostgreSQL/Redis/Celery, idempotent replay và xử lý rõ trạng thái thiếu DeepSeek.
 
 ## Upload và Celery worker trên PostgreSQL/Redis — 2026-09-24 10:10
 

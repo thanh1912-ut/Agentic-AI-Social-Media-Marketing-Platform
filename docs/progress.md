@@ -4,7 +4,7 @@ Cập nhật gần nhất: 2026-09-24 10:14 (Asia/Ho_Chi_Minh)
 
 ## Trạng thái hiện tại
 
-- Snapshot hiện tại: branch `codex/product-v1-completion` ở `64d663e9e0b8e03fdba830e94a66fb0d3dd9f1a8`; PR #1 còn mở, base `main` ở `07938bd2d0a9793baff86711b39c8d181c0121ca`, mergeable; hosted backend check `test` pass trên đúng commit. Lượt này nghiệm thu upload TXT qua FastAPI/PostgreSQL/Redis/Celery.
+- Commit code mới nhất đã kiểm thử là `64d663e9e0b8e03fdba830e94a66fb0d3dd9f1a8`; PR #1 còn mở, base `main` ở `07938bd2d0a9793baff86711b39c8d181c0121ca`, mergeable; hosted backend check `test` pass trên commit này. Phần bổ sung sau đó chỉ cập nhật evidence trong docs.
 - Phase hiện tại: Phase 7 — hardening và bàn giao core pilot. Real-mode browser flow trên PostgreSQL 18.3/pgvector 0.8.2 gồm campaign/bài thủ công, media, approval, XLSX, metrics snapshot, dashboard readback và recommendation abstention. Kiểm tra bổ sung xác nhận tài khoản/campaign còn đọc được sau khi dừng rồi khởi động lại cả FastAPI và PostgreSQL. Readiness chịu tải nhẹ; database dump/restore counts khớp và archive/restore local object storage giữ nguyên SHA-256.
 - Runtime trước đó: Celery `solo` phục hồi job có lease hết hạn qua queue `default`. Lượt mới chạy upload TXT thật qua FastAPI → PostgreSQL/Redis → Celery worker: duplicate idempotency key trả cùng job, tài liệu được chuẩn hóa và lưu một knowledge chunk. Vì thiếu DeepSeek key, job và profile step kết thúc rõ ràng ở `ai_not_configured`; document/knowledge vẫn ready. Không gọi DeepSeek.
 - Hosted CI backend `test` pass trên `64d663e`. PostgreSQL 18.3/pgvector 0.8.2 restart persistence, migration, readiness load và Redis outage/recovery đều có bằng chứng từ lượt trước; upload/worker runtime mới đã chạy riêng trên DB thử nghiệm sạch.
