@@ -164,3 +164,13 @@ Ngày tạo: 2026-09-23. Trạng thái dưới đây được ghi từ audit đ�
 - Không chọn: URL public cho asset, sửa version tại chỗ, tự xóa asset đang có reference, hoặc tự publish ảnh lên Meta khi chưa có connector/quyền.
 - Ảnh hưởng: migration 0009; endpoint upload/content mới; OpenAPI và TypeScript client cập nhật; file binary dùng object storage local/S3 adapter hiện tại. Asset được giữ lại để version cũ còn tham chiếu. Approval fingerprint đã lưu; connector tương lai phải đối chiếu hash trước khi publish.
 - Trạng thái: IMPLEMENTED; backend suite 105 passed/1 live-provider skip; 14 desktop/mobile MSW Playwright tests, real-mode API/browser test pass riêng trên SQLite và PostgreSQL, frontend 43 tests/typecheck/lint/build và SQLite/PostgreSQL migration 0001→0009 đều pass. pg_dump/restore và local object archive checksum roundtrip cũng pass. Chưa có Meta image publishing hoặc live DeepSeek. Chi tiết ở `docs/test-report.md`.
+
+## DEC-021 — Recovery chạy trên queue worker và dùng một event loop theo process
+
+- Ngày: 2026-09-24.
+- Vấn đề: Compose worker chỉ nghe queue `default,agent`, trong khi Celery Beat có thể gửi recovery task vào queue mặc định `celery`. Ngoài ra, `asyncio.run` tạo rồi đóng loop mỗi lần gọi; asyncpg pool có thể giữ connection gắn với loop đã đóng.
+- Quyết định: route `services.worker.scheduled_jobs.recover_due_jobs` tới queue `default` ở cả task router và Beat entry. Các entrypoint đồng bộ của Celery dùng một event loop sống theo process; sau fork, PID mới tạo loop riêng.
+- Lý do: worker Compose phải nhận recovery task và các task trong process cần dùng cùng event loop để tái sử dụng connection pool an toàn.
+- Ảnh hưởng: không đổi schema/database. Entry point đóng coroutine rồi báo lỗi nếu được gọi khi loop đang chạy, vì worker sync xử lý task tuần tự.
+- Bằng chứng: router/Beat unit test xác nhận queue `default`; unit test xác nhận loop reuse. PostgreSQL 18.3 + Redis 8.6.3 với Celery 5.6.3 `solo` đã nhận task recovery không chỉ định queue, khôi phục một stale lease và xử lý lại content job. Không có DeepSeek request; lỗi `ai_not_configured` là kết quả dự kiến khi thiếu key.
+- Trạng thái: IMPLEMENTED tại `380ac6c`; Beat process, upload ingestion, worker process restart, Compose và prefork Linux còn cần nghiệm thu.

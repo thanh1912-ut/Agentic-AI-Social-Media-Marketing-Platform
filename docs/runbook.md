@@ -13,7 +13,7 @@
 
 ## PostgreSQL migrations
 
-`alembic upgrade head` đã được xác minh tới migration 0010 trên PostgreSQL 18.3 cô lập, có pgvector 0.8.2. Migration 0010 đổi cột vector cố định thành flexible vector, giữ row cũ 1536 chiều; vector 384 chiều mới được insert và retrieval filter đúng model identity. SQLite upgrade 0001→0010 pass. PostgreSQL migration 0010 downgrade có chủ ý từ chối khi còn vector không phải 1536 chiều. FastAPI/browser manual flow cũng pass trên PostgreSQL + local storage. Migration environment tự tạo/nâng `alembic_version.version_num` lên `VARCHAR(128)` trên PostgreSQL vì revision IDs dài hơn giới hạn mặc định 32 ký tự. Redis-backed API readiness và một Celery task smoke đã pass trên disposable services; Compose runtime, scheduler process, document-ingestion job, restart recovery với job tồn tại và MinIO vẫn chưa được nghiệm thu.
+`alembic upgrade head` đã được xác minh tới migration 0010 trên PostgreSQL 18.3 cô lập, có pgvector 0.8.2. Migration 0010 đổi cột vector cố định thành flexible vector, giữ row cũ 1536 chiều; vector 384 chiều mới được insert và retrieval filter đúng model identity. SQLite upgrade 0001→0010 pass. PostgreSQL migration 0010 downgrade có chủ ý từ chối khi còn vector không phải 1536 chiều. FastAPI/browser manual flow cũng pass trên PostgreSQL + local storage. Migration environment tự tạo/nâng `alembic_version.version_num` lên `VARCHAR(128)` trên PostgreSQL vì revision IDs dài hơn giới hạn mặc định 32 ký tự. Runtime recovery đã được xác minh trên PostgreSQL/Redis cô lập với Celery `solo`, gồm job có lease hết hạn. Compose, Beat process, upload ingestion, worker process restart, prefork Linux và MinIO vẫn chưa được nghiệm thu.
 
 ## Embedding local và đổi model
 
@@ -61,9 +61,9 @@ python -m services.api
 celery -A services.worker.celery_app:celery_app worker --loglevel=INFO --queues=default,agent --concurrency=2
 ```
 
-Scheduler entry point cần xác minh trong `services/worker/scheduled_jobs.py` trước khi dùng; chưa ghi lệnh scheduler như đã nghiệm thu.
+Scheduler task `services.worker.scheduled_jobs.recover_due_jobs` được route tới queue `default`, queue mà Compose worker consume. Celery Beat process chưa được nghiệm thu. Dùng worker command trên đây sau khi PostgreSQL/Redis health checks pass.
 
-Runtime smoke đã chạy một disposable PostgreSQL 18 + Redis 8 + FastAPI + local storage: `/healthz` trả 200, `/readyz` xác nhận database/Redis/object storage sẵn sàng, Celery ping trả lời và `recover_due_jobs` được gửi qua broker rồi chạy xong trên DB rỗng. Smoke này chỉ chứng minh process kết nối và task consume cơ bản; chưa kiểm tra scheduler, ingestion, restart recovery, job lease hoặc Compose. Không giữ test account hay DB test sau lượt chạy.
+Runtime smoke riêng đã chạy trên PostgreSQL 18.3 và Redis 8.6.3 cô lập với Celery 5.6.3 `solo`. Lệnh `send_task` không chỉ định queue; routing đưa `recover_due_jobs` tới `default`. Recovery phát hiện job có lease hết hạn, đưa job về queue và xóa lease. Worker sau đó xử lý job content; vì môi trường không có `DEEPSEEK_API_KEY`, job ghi lỗi dự kiến `ai_not_configured` ở attempt 2. Không có request tới DeepSeek. Test xác nhận recovery có trạng thái thật và worker xử lý nhiều task trên cùng process. Test không chạy Beat, upload ingestion, worker process restart, Compose hoặc MinIO; prefork cần nghiệm thu trên Linux vì lần thử macOS dừng bên trong Celery/Billiard. Các dịch vụ disposable đã được dừng sau lượt chạy; PostgreSQL dùng chung trên máy không bị chạm.
 
 ## Tạo tài khoản và seed
 
