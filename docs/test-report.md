@@ -1,6 +1,6 @@
 # Báo cáo kiểm thử
 
-Cập nhật: 2026-09-24 09:45 (Asia/Ho_Chi_Minh). Recheck frontend/Python trên source code commit `9d3dd6d`; PR branch head trước lượt này là `bb9665c`. GitHub xác nhận hosted check `test` thành công trên snapshot `bb9665c`; lượt này mở rộng real-mode API/browser test trên PostgreSQL để bao gồm metrics/dashboard/recommendation abstention.
+Cập nhật: 2026-09-24 09:57 (Asia/Ho_Chi_Minh). PR branch head `09a53864694a3ee57331d8d59351ad93e44627a0`; GitHub hosted backend check `test` pass trên commit này. Lượt trước đã mở rộng real-mode browser trên PostgreSQL cho metrics/dashboard/recommendation; lượt hiện tại xác minh campaign còn tồn tại sau clean restart của FastAPI và PostgreSQL.
 
 ## Recheck trên source 9d3dd6d — 2026-09-24 09:04
 
@@ -35,6 +35,15 @@ GitHub check-run `test` là hosted check trên source commit `9d3dd6d` và có k
 | `npm run lint --workspace @agentic/web` | **PASS** | ESLint frontend sau khi sửa real-mode test. |
 
 Một snapshot đơn chỉ xác nhận nhập liệu và phép tổng hợp hoạt động trên PostgreSQL; nó không đủ dữ liệu để đưa recommendation có căn cứ. Vì vậy test yêu cầu giao diện abstain, và không xem kết quả là xác nhận hiệu quả marketing.
+
+## PostgreSQL/API restart persistence smoke — 2026-09-24
+
+| Check | Kết quả | Giới hạn |
+|---|---|---|
+| Fresh PostgreSQL 18.3/pgvector 0.8.2 database; Alembic `upgrade head`; FastAPI thật trên `127.0.0.1:18102` | **PASS** | Database `agentic_v1_restart` trên cụm test port 55433, migration 0001→0010. Test tạo user/workspace qua `POST /api/v1/auth/register` và campaign qua `POST /api/v1/workspaces/{workspace_id}/campaigns`; cả hai trả 201. |
+| Clean restart và readback | **PASS** | Dừng Uvicorn; PostgreSQL `pg_ctl -m fast -w stop`, rồi khởi động PostgreSQL và FastAPI lại. Login lại trả 200; `GET /api/v1/workspaces/{workspace_id}/campaigns?page_size=100` trả 200 và chứa cùng campaign ID/tên đã tạo trước restart. Test dùng local storage và không gọi DeepSeek/Meta/SMTP. |
+
+Phép thử này chứng minh dữ liệu account/workspace/campaign còn trong PostgreSQL qua clean restart API và database process. Nó không chứng minh Celery worker process restart, Redis queue durability, Beat, MinIO, Compose hay restart khi có transaction/job đang chạy; các hạng mục đó vẫn mở.
 
 ### Scenario chi phí DeepSeek, không phải usage thực
 
