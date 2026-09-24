@@ -1,10 +1,10 @@
 # Tiến độ triển khai
 
-Cập nhật gần nhất: 2026-09-24 08:30 (Asia/Ho_Chi_Minh)
+Cập nhật gần nhất: 2026-09-24 08:35 (Asia/Ho_Chi_Minh)
 
 ## Trạng thái hiện tại
 
-- Branch: `codex/product-v1-completion`; PR #1 đang mở. Phiên này bổ sung account lifecycle/SMTP optional và cập nhật test/runbook evidence trên worktree cô lập.
+- Branch: `codex/product-v1-completion`; commit `c0251a4` đã push, PR #1 đang mở và trỏ đúng commit này. Phiên này bổ sung account lifecycle/SMTP optional và cập nhật test/runbook evidence trên worktree cô lập.
 - Phase hiện tại: Phase 7 — hardening và bàn giao core pilot. Mốc mới: real-mode browser manual flow pass riêng trên SQLite và PostgreSQL; database dump/restore counts khớp và archive/restore local object storage giữ nguyên SHA-256.
 - Công việc trong phiên: kiểm tra Celery recovery trên PostgreSQL 18.3 và Redis 8.6.3 cô lập. Worker `solo` nhận recovery task qua queue `default`, phục hồi job có lease hết hạn, rồi xử lý job content tới lỗi cấu hình DeepSeek dự kiến vì môi trường không có key. Đã dừng process và dịch vụ thử nghiệm; không gọi DeepSeek.
 - Mốc RAG: local FastEmbed multilingual E5 small pinned 384d đã chạy qua adapter; gate yêu cầu semantic margin hoặc lexical evidence mạnh. PostgreSQL migration legacy `vector(1536)` giữ dữ liệu cũ, nhận vector 384 và lọc theo model identity. Full Python suite hiện **123 passed, 1 skipped**.
@@ -13,6 +13,7 @@ Cập nhật gần nhất: 2026-09-24 08:30 (Asia/Ho_Chi_Minh)
 - Chủ dự án đã chấp thuận gửi đoạn trích tài liệu, Brand Profile và strategy/topic/date của slot được chọn tới DeepSeek. Chưa có `DEEPSEEK_API_KEY`; không có live model call hay số liệu token/cost/latency.
 - Công việc mới trong phiên: hoàn tất password reset và lời mời thành viên end-to-end ở mức fixture/test. API có SMTP adapter tùy chọn, token reset một lần, thu hồi reset tokens và refresh sessions, vô hiệu access token theo password version, preview/accept invitation và resend xoay token; giao diện có mời/resend, trang tạo tài khoản từ link và đặt lại mật khẩu. Khi SMTP chưa cấu hình, lời mời trả link thủ công rõ ràng và reset password vẫn trả thông báo trung tính nhưng không giả nhận đã gửi.
 - SMTP thật chưa được cấu hình hoặc gọi. `.env.example` chỉ khai báo các biến SMTP tùy chọn; không có secret nào được thêm vào repo. Email tests dùng fake SMTP và test local không gửi thư ra ngoài.
+- Sau khi push, GitHub PR metadata xác nhận `head_sha=c0251a4`; combined status không trả status check nào và workflow-runs API không trả run nào tại thời điểm kiểm tra.
 - Kiểm tra sau thay đổi: **123 pytest pass, 1 skip** (live DeepSeek cần secret); **45 Vitest pass**, typecheck, lint, production build và OpenAPI check pass. Playwright account flow chạy trên Chromium desktop/mobile: **2/2 pass**, gồm tạo lời mời, gửi lại với token mới và trang chấp nhận lời mời. Compose/MinIO/production SMTP/runtime vẫn chưa được nghiệm thu.
 
 ## Tiến độ theo subsystem

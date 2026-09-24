@@ -1,6 +1,6 @@
 # Báo cáo kiểm thử
 
-Cập nhật: 2026-09-24 08:30 (Asia/Ho_Chi_Minh). Trên worktree cô lập của branch `codex/product-v1-completion`, account lifecycle bổ sung password reset và invitation/email. Full Python suite mới nhất: **123 passed, 1 skipped**; skip là live DeepSeek smoke do chưa có key. Frontend: **45 Vitest pass**, typecheck, ESLint, production build pass; Playwright invite flow **2 passed** trên desktop/mobile Chromium. Runtime recovery đã pass trước đó trên PostgreSQL/Redis cô lập với Celery `solo`; Compose, Beat process, ingestion worker và prefork Linux vẫn chưa được nghiệm thu. Các kết quả này được ghi nhận trên worktree trước bước push.
+Cập nhật: 2026-09-24 08:35 (Asia/Ho_Chi_Minh). Trên worktree cô lập của branch `codex/product-v1-completion`, account lifecycle bổ sung password reset và invitation/email. Full Python suite mới nhất: **123 passed, 1 skipped**; skip là live DeepSeek smoke do chưa có key. Frontend: **45 Vitest pass**, typecheck, ESLint, production build pass; Playwright invite flow **2 passed** trên desktop/mobile Chromium. Runtime recovery đã pass trước đó trên PostgreSQL/Redis cô lập với Celery `solo`; Compose, Beat process, ingestion worker và prefork Linux vẫn chưa được nghiệm thu. Commit `c0251a4` đã push lên PR #1; khi kiểm tra, GitHub combined status chưa trả status checks và workflow-runs API chưa trả run nào. Test evidence ở trên được chạy trên snapshot trước push.
 
 ## Account lifecycle và SMTP tùy chọn
 
