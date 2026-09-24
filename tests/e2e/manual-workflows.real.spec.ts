@@ -12,7 +12,7 @@ async function login(page: Page, email: string, password: string): Promise<void>
   await expect(page.getByRole('button', { name: 'Đăng xuất' })).toBeVisible();
 }
 
-test('real mode: campaign → manual post → approval → export and download', async ({ page, request }) => {
+test('real mode: campaign → manual post → media → approval → export → metrics', async ({ page, request }) => {
   const runId = `${Date.now()}-${Math.floor(Math.random() * 1_000_000)}`;
   const email = `pilot-${runId}@example.com`;
   const password = `Pilot-${runId}-safe-pass`;
@@ -101,4 +101,29 @@ test('real mode: campaign → manual post → approval → export and download',
   const download = await downloadReady;
   expect(download.suggestedFilename()).toMatch(/\.xlsx$/);
   expect(await download.failure()).toBeNull();
+
+  await page.goto(`/w/${encodeURIComponent(workspaceId)}/analytics`);
+  await expect(page.getByRole('heading', { name: 'Hiệu quả nội dung' })).toBeVisible();
+  const sourceId = `pilot-page-${runId}`;
+  await page.getByLabel('Mã nguồn / Facebook Page ID').fill(sourceId);
+  await page.getByLabel('Lượt tiếp cận').fill('250');
+  await page.getByLabel('Tương tác').fill('25');
+  await page.getByRole('button', { name: 'Thêm bài vào snapshot' }).click();
+  await expect(page.getByText(/Tiếp cận: 250 · tương tác: 25/)).toBeVisible();
+  await page.getByRole('button', { name: 'Lưu 1 bài' }).click();
+  await expect(page.getByRole('status')).toContainText('Đã lưu 1 dòng số liệu');
+  await expect(page.getByRole('heading', { name: 'Báo cáo snapshot' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Đề xuất thử nghiệm' })).toBeVisible();
+  await expect(page.getByText(/Chưa đủ bằng chứng/)).toBeVisible();
+
+  const dashboardUrl = new URL(`${apiOrigin}/api/v1/workspaces/${encodeURIComponent(workspaceId)}/analytics/dashboard`);
+  dashboardUrl.searchParams.set('source_id', sourceId);
+  const dashboardResponse = await page.request.get(dashboardUrl.toString());
+  expect(dashboardResponse.ok()).toBeTruthy();
+  const dashboard = await dashboardResponse.json() as {
+    report: { observations: Array<{ metric: string; value: number | null; sample_size: number; coverage: number }> };
+  };
+  expect(dashboard.report.observations).toContainEqual(expect.objectContaining({
+    metric: 'reach', value: 250, sample_size: 1, coverage: 1,
+  }));
 });

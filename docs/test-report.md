@@ -1,6 +1,6 @@
 # Báo cáo kiểm thử
 
-Cập nhật: 2026-09-24 09:39 (Asia/Ho_Chi_Minh). Recheck frontend/Python trên source code commit `9d3dd6d`; PR branch head trước lượt này là `121b567`. GitHub đã xác nhận hosted `test` check thành công trên `9d3dd6d`; lượt bổ sung dưới đây chạy real-mode API/browser và load script trên code snapshot của `121b567`.
+Cập nhật: 2026-09-24 09:45 (Asia/Ho_Chi_Minh). Recheck frontend/Python trên source code commit `9d3dd6d`; PR branch head trước lượt này là `bb9665c`. GitHub xác nhận hosted check `test` thành công trên snapshot `bb9665c`; lượt này mở rộng real-mode API/browser test trên PostgreSQL để bao gồm metrics/dashboard/recommendation abstention.
 
 ## Recheck trên source 9d3dd6d — 2026-09-24 09:04
 
@@ -13,11 +13,11 @@ Cập nhật: 2026-09-24 09:39 (Asia/Ho_Chi_Minh). Recheck frontend/Python trên
 | SQLite migration + real `manual-workflows.real.spec.ts` | **1 passed** | Database mới trong `/private/tmp`, migration 0001→0010, FastAPI thật, local object storage, `INLINE_JOBS=1`; login/register → campaign → manual post → upload ảnh → version 2 → approve → XLSX download. Không MSW, Redis, DeepSeek, SMTP hoặc Meta; API process đã dừng sau lượt chạy. Next standalone dùng cùng helper với mock E2E. |
 | DeepSeek API smoke | **SKIPPED** | Không có `DEEPSEEK_API_KEY`; không gửi request hoặc phát sinh chi phí. |
 | Meta documentation/API smoke | **NOT VERIFIED** | Bốn trang developer chính thức được thử nhưng trả HTTP 429; không gọi Meta API. Giữ `VERIFY CURRENT META API` và `BLOCKED_EXTERNAL`. |
-| Full Compose/MinIO/Beat/prefork runtime, SMTP delivery, SME retrieval acceptance | **NOT VERIFIED** | Docker/Podman/MinIO không có; PostgreSQL server không chạy; local Redis không truy cập được; thiếu SMTP/mailbox, DeepSeek key và corpus SME được phép dùng. |
+| Full Compose/MinIO/Beat/prefork runtime, SMTP delivery, SME retrieval acceptance | **NOT VERIFIED** | Docker/Podman/MinIO không có; thiếu SMTP/mailbox, DeepSeek key và corpus SME được phép dùng. Disposable PostgreSQL/browser checks được ghi riêng bên dưới; chúng không xác nhận Compose hay deployment runtime. |
 
 GitHub check-run `test` là hosted check trên source commit `9d3dd6d` và có kết luận success; không gộp workflow runs cũ vào con số test local. Trong lượt sửa test harness, lần thử đầu dùng standalone server nhưng thiếu public/static assets nên login form không render; `apps/web/scripts/prepare-standalone.mjs` nay chuẩn bị các asset giống `infra/docker/web.Dockerfile`, và kết quả 42 + 1 pass ở trên là lượt chạy sau khi sửa. Test local không gọi DeepSeek/SMTP/Meta. Các kết quả PostgreSQL recovery, migration cũ 1536 chiều và PostgreSQL real browser smoke bên dưới là những lượt trước đó, không phải runtime PostgreSQL của lần recheck này.
 
-## Runtime và load smoke bổ sung — 2026-09-24, branch snapshot `121b567`
+## Runtime và load smoke bổ sung — 2026-09-24, branch snapshot `bb9665c`
 
 | Check | Kết quả | Giới hạn |
 |---|---|---|
@@ -26,6 +26,15 @@ GitHub check-run `test` là hosted check trên source commit `9d3dd6d` và có k
 | `python scripts/load_smoke.py --url http://127.0.0.1:18100/readyz --requests 100 --concurrency 10` | **100/100 HTTP 200**, mọi response báo database/Redis/object storage ready; 0 lỗi, 0 retry; 852.77 req/s, p50 7.83 ms, p95 38.05 ms, max 40.54 ms | Chỉ endpoint readiness trên API một process, PG 18.3/pgvector, Redis 8.6.3 và local storage trên máy phát triển. Không đo campaign/write path, job queue, provider, multi-process hay production capacity. |
 | Redis readiness outage/recovery | **PASS** | Dừng đúng Redis cô lập tại port 56379 làm `/readyz` trả 503 và `redis=false`; bật lại Redis thì `/readyz` trả 200/ready ở probe kế tiếp. Không retry request ngầm. Đây không phải retry/recovery của Celery job. |
 | `scripts/load_smoke.py` syntax + loopback guard | **PASS** | Python compile và kiểm tra hostname/IP loopback; script từ chối target ngoài loopback, không nhận query/fragment và không retry. |
+
+## Real-mode metrics E2E bổ sung — 2026-09-24
+
+| Check | Kết quả | Giới hạn |
+|---|---|---|
+| `E2E_REAL_API_BASE_URL=http://127.0.0.1:18101 E2E_REAL_PORT=13102 npm run test:e2e:real --workspace @agentic/web -- manual-workflows.real.spec.ts --workers=1` | **1 passed** trên Chromium, FastAPI thật và PostgreSQL 18.3/pgvector 0.8.2 | Cụm/database mới dưới `/private/tmp/agentic-v1-metrics.KpVJtB`, port 55433; migration 0001→0010. Test không dùng MSW: campaign → manual post → media → approval → XLSX → lưu một dòng metrics snapshot → dashboard API readback xác nhận `reach=250`, `sample_size=1`, `coverage=1`; UI recommendation abstains với “Chưa đủ bằng chứng”. API và PostgreSQL đã dừng sau lượt chạy. Không gọi DeepSeek, SMTP hoặc Meta. |
+| `npm run lint --workspace @agentic/web` | **PASS** | ESLint frontend sau khi sửa real-mode test. |
+
+Một snapshot đơn chỉ xác nhận nhập liệu và phép tổng hợp hoạt động trên PostgreSQL; nó không đủ dữ liệu để đưa recommendation có căn cứ. Vì vậy test yêu cầu giao diện abstain, và không xem kết quả là xác nhận hiệu quả marketing.
 
 ### Scenario chi phí DeepSeek, không phải usage thực
 
