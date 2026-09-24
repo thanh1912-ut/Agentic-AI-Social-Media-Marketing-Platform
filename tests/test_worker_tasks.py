@@ -8,6 +8,8 @@ from packages.contracts import BrandProfile, CampaignBrief, GeneratedPost
 from services.agents.brand_agent import BrandAgent
 from services.agents.content_agent import ContentAgent
 from services.worker.ai_tasks import run_brand_profile_task, run_content_task
+from services.worker.async_runtime import run_worker_coroutine
+from services.worker.celery_app import celery_app
 from services.worker import tasks
 
 
@@ -71,3 +73,31 @@ def test_runtime_brand_profile_uses_configured_deepseek_adapter(monkeypatch) -> 
                 agent=None,
             )
         )
+
+
+def test_recovery_beat_task_routes_to_compose_worker_queue() -> None:
+    beat_entry = celery_app.conf.beat_schedule["recover-due-jobs-every-minute"]
+    routed = celery_app.amqp.router.route(
+        {},
+        "services.worker.scheduled_jobs.recover_due_jobs",
+        args=(),
+        kwargs={},
+    )
+
+    assert beat_entry["options"]["queue"] == "default"
+    assert routed["queue"].name == "default"
+
+
+def test_worker_coroutines_reuse_the_process_event_loop() -> None:
+    loop_ids: list[int] = []
+
+    async def current_loop_id() -> int:
+        loop_id = id(asyncio.get_running_loop())
+        loop_ids.append(loop_id)
+        return loop_id
+
+    first = run_worker_coroutine(current_loop_id())
+    second = run_worker_coroutine(current_loop_id())
+
+    assert first == second
+    assert loop_ids == [first, second]

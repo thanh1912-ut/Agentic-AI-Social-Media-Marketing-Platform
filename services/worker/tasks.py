@@ -36,6 +36,7 @@ from services.api.storage import storage
 from services.api.brand_profiles import _profile_revision, internal_profile_to_http
 from services.ingestion.knowledge_store import PostgresKnowledgeIndex
 from services.ingestion.parsers import ParseError, parse_document
+from services.worker.async_runtime import run_worker_coroutine
 from .celery_app import celery_app
 from services.ingestion.knowledge_store import embedding_identity
 from .model_provider import AIConfigurationError, configured_embedding_provider, configured_structured_model
@@ -806,4 +807,4 @@ async def ingest_document_task_batch_async(
 
 @celery_app.task(bind=True, autoretry_for=(), acks_late=True, time_limit=1500, soft_time_limit=1400)
 def ingest_document_task(self, job_id: str, document_id: str, document_ids: list[str] | None = None) -> None:
-    asyncio.run(ingest_document_task_batch_async(job_id, document_ids or [document_id]))
+    run_worker_coroutine(ingest_document_task_batch_async(job_id, document_ids or [document_id]))

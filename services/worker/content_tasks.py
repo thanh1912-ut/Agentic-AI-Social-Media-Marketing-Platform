@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import asyncio
 import hashlib
 import json
 from datetime import timedelta
@@ -37,6 +36,7 @@ from services.api.config import settings
 from services.api.db import SessionLocal
 from services.ingestion.knowledge_store import PostgresKnowledgeIndex
 from services.worker.ai_tasks import run_content_task
+from services.worker.async_runtime import run_worker_coroutine
 from services.worker.celery_app import celery_app
 from services.worker.model_provider import AIConfigurationError, configured_embedding_provider, configured_structured_model
 
@@ -619,4 +619,4 @@ async def content_generation_task_async(
 
 @celery_app.task(bind=True, autoretry_for=(), acks_late=True, time_limit=1500, soft_time_limit=1400)
 def content_generation_task(self, job_id: str) -> None:
-    asyncio.run(content_generation_task_async(job_id))
+    run_worker_coroutine(content_generation_task_async(job_id))

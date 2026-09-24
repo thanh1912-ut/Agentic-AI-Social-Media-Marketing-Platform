@@ -1,6 +1,5 @@
 """Recovery scheduler. Durable due work is scanned from PostgreSQL."""
 
-import asyncio
 from datetime import datetime, timezone
 
 from sqlalchemy import select
@@ -9,6 +8,7 @@ from database.models import Job
 from services.api.config import settings
 from services.api.db import SessionLocal
 from services.api.job_service import dispatch_queued_jobs
+from .async_runtime import run_worker_coroutine
 from .celery_app import celery_app
 
 
@@ -42,4 +42,4 @@ def recover_due_jobs() -> int:
             await db.commit()
             return count
 
-    return asyncio.run(run())
+    return run_worker_coroutine(run())
