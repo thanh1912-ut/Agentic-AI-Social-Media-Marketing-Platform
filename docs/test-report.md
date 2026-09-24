@@ -1,6 +1,21 @@
 # Báo cáo kiểm thử
 
-Cập nhật: 2026-09-24 08:35 (Asia/Ho_Chi_Minh). Trên worktree cô lập của branch `codex/product-v1-completion`, account lifecycle bổ sung password reset và invitation/email. Full Python suite mới nhất: **123 passed, 1 skipped**; skip là live DeepSeek smoke do chưa có key. Frontend: **45 Vitest pass**, typecheck, ESLint, production build pass; Playwright invite flow **2 passed** trên desktop/mobile Chromium. Runtime recovery đã pass trước đó trên PostgreSQL/Redis cô lập với Celery `solo`; Compose, Beat process, ingestion worker và prefork Linux vẫn chưa được nghiệm thu. Commit `c0251a4` đã push lên PR #1; khi kiểm tra, GitHub combined status chưa trả status checks và workflow-runs API chưa trả run nào. Test evidence ở trên được chạy trên snapshot trước push.
+Cập nhật: 2026-09-24 09:09 (Asia/Ho_Chi_Minh). Recheck trên branch `codex/product-v1-completion`, source commit `9d3dd6dc97c4a2fa100fdc8c37b03e08ecce4d58` (`fix(e2e): use the standalone web server`). GitHub xác nhận commit này đã push; lúc 09:04, PR #1 mở/mergeable/clean và check run `test` trên source commit hoàn tất thành công.
+
+## Recheck trên source 9d3dd6d — 2026-09-24 09:04
+
+| Check | Kết quả | Giới hạn |
+|---|---|---|
+| `/Users/lethanh/.codex/worktrees/product-v1-completion/agent/.venv/bin/python -m pytest -q -p no:cacheprovider` | **123 passed, 1 skipped** | Lệnh chạy tại `/private/tmp/agentic-v1-media` với Python 3.11.16; interpreter mượn từ worktree Codex trước đó vì checkout hiện tại không có `.venv`. Skip duy nhất là live DeepSeek smoke do không có key. Một LangGraph pending-deprecation warning. |
+| Python 3.11.16 interpreter: `scripts/export_openapi.py --check` và `-m compileall -q database services packages tests`; Python 3.13 YAML parse; `git diff --check` | **PASS** | Python bytecode cache ghi vào `/private/tmp`; YAML parse chỉ đọc cấu hình, không chạy Compose services. |
+| Frontend `typecheck`, `npm test`, `lint`, `build` | **PASS; 45 Vitest passed** | Node 26.7.0/npm 11.19.0; Vite native-loader warning; build hoàn tất. |
+| `E2E_PORT=3102 npm run test:e2e --workspace @agentic/web -- --workers=1` | **42 passed** (desktop/mobile Chromium) | MSW/mock API; webServer chạy generated standalone server như Docker image, sau khi copy `public/` và `.next/static/` vào standalone tree. Cần quyền sandbox mở rộng cho loopback. |
+| SQLite migration + real `manual-workflows.real.spec.ts` | **1 passed** | Database mới trong `/private/tmp`, migration 0001→0010, FastAPI thật, local object storage, `INLINE_JOBS=1`; login/register → campaign → manual post → upload ảnh → version 2 → approve → XLSX download. Không MSW, Redis, DeepSeek, SMTP hoặc Meta; API process đã dừng sau lượt chạy. Next standalone dùng cùng helper với mock E2E. |
+| DeepSeek API smoke | **SKIPPED** | Không có `DEEPSEEK_API_KEY`; không gửi request hoặc phát sinh chi phí. |
+| Meta documentation/API smoke | **NOT VERIFIED** | Bốn trang developer chính thức được thử nhưng trả HTTP 429; không gọi Meta API. Giữ `VERIFY CURRENT META API` và `BLOCKED_EXTERNAL`. |
+| Full Compose/MinIO/Beat/prefork runtime, SMTP delivery, SME retrieval acceptance | **NOT VERIFIED** | Docker/Podman/MinIO không có; PostgreSQL server không chạy; local Redis không truy cập được; thiếu SMTP/mailbox, DeepSeek key và corpus SME được phép dùng. |
+
+GitHub check-run `test` là hosted check trên source commit `9d3dd6d` và có kết luận success; không gộp workflow runs cũ vào con số test local. Trong lượt sửa test harness, lần thử đầu dùng standalone server nhưng thiếu public/static assets nên login form không render; `apps/web/scripts/prepare-standalone.mjs` nay chuẩn bị các asset giống `infra/docker/web.Dockerfile`, và kết quả 42 + 1 pass ở trên là lượt chạy sau khi sửa. Test local không gọi DeepSeek/SMTP/Meta. Các kết quả PostgreSQL recovery, migration cũ 1536 chiều và PostgreSQL real browser smoke bên dưới là những lượt trước đó, không phải runtime PostgreSQL của lần recheck này.
 
 ## Account lifecycle và SMTP tùy chọn
 

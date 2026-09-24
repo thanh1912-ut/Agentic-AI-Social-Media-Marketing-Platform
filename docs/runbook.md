@@ -11,6 +11,8 @@
 - Semantic retrieval mặc định trong `.env.example` dùng FastEmbed multilingual E5 chạy tại worker; text và query không rời runtime. Tải model weights cần mạng ở lần đầu và cache nằm ở `EMBEDDING_CACHE_DIR`. `EMBEDDING_PROVIDER=none` bật lexical-only. Embedding provider ngoài như OpenAI vẫn bị chặn khi chưa có chấp thuận riêng (`EMBEDDING_DATA_FLOW_APPROVED=1`).
 - Facebook Page/app/token/App Review chỉ cần khi bật connector tương ứng.
 
+DeepSeek docs được xem lại ngày 2026-09-24: Chat Completions liệt kê `deepseek-flash`/`deepseek-v4-pro`; alias `deepseek-chat`/`deepseek-reasoner` đã qua mốc ngừng 2026-07-24 theo changelog. Repo mặc định `LLM_DEFAULT_MODEL=deepseek-flash`; trước khi vận hành cần chạy smoke list-model với key của account cụ thể. Xem [DEC-003](decisions.md#dec-003--deepseek-làm-provider-llm-duy-nhất). Meta docs chưa được xác minh: các URL Page Feed, Page Insights, permissions và access-token guide trả HTTP 429 trong lần truy cập 2026-09-24. Giữ `META-001` ở `BLOCKED_EXTERNAL` và `VERIFY CURRENT META API` cho đến khi kiểm tra lại version, permissions, tokens, publishing, metrics, rate limits, webhooks và App Review trên tài liệu/app được cấp quyền.
+
 ## Password reset, invitation và email delivery
 
 Account lifecycle có endpoint/UI cho yêu cầu reset mật khẩu, đặt mật khẩu mới, preview/chấp nhận lời mời và gửi lại lời mời. Email là tùy chọn. Reset link dùng một lần và hết hạn theo `PASSWORD_RESET_EXPIRE_MINUTES`; reset thành công sẽ thu hồi mọi reset token đang mở, refresh session và access token của tài khoản. Access tokens có password-version claim; token cũ do phiên bản trước phát hành được kiểm tra bằng thời điểm `iat` đến khi tự hết hạn. Invitation link hết hạn sau 7 ngày.
@@ -106,6 +108,8 @@ Với API test đã chạy ở `http://127.0.0.1:8000`, CORS cần cho phép `ht
 ```bash
 E2E_REAL_API_BASE_URL=http://127.0.0.1:8000 npm run test:e2e:real -- manual-workflows.real.spec.ts --workers=1
 ```
+
+Hai Playwright configs build `output: standalone`, copy `public/` và `.next/static/` vào standalone tree giống Dockerfile, rồi chạy `node .next/standalone/apps/web/server.js`. `apps/web/scripts/prepare-standalone.mjs` thực hiện bước copy; vì vậy E2E kiểm tra cùng kiểu server production thay vì `next start`.
 
 Flow đăng ký account ngẫu nhiên mới, tạo campaign/post, upload ảnh, duyệt đúng version và tải XLSX. Dùng database test mới hoặc database cô lập; không trỏ vào production. Nó không gọi DeepSeek/Meta và không kiểm tra worker queue.
 

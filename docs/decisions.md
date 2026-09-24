@@ -24,10 +24,10 @@ Ngày tạo: 2026-09-23. Trạng thái dưới đây được ghi từ audit đ�
 
 - Vấn đề: người vận hành dùng DeepSeek API; OpenAI `parse()` không được giả định tương thích chỉ do SDK chung.
 - Quyết định: một adapter trong `services/agents/providers/deepseek.py`, worker lấy qua factory; dùng Chat Completions JSON mode + schema/example trong prompt + Pydantic validation, tối đa một repair.
-- Lý do: DeepSeek hiện tài liệu hóa `response_format={"type":"json_object"}`; docs hiện liệt kê `deepseek-flash` và `deepseek-v4-pro`. [JSON Output](https://api-docs.deepseek.com/guides/json_mode/), [Models](https://api-docs.deepseek.com/api/list-models/).
+- Lý do: tài liệu chính thức được kiểm tra lại 2026-09-24; Chat Completions hiện liệt kê `deepseek-flash` và `deepseek-v4-pro`, JSON mode dùng `response_format={"type":"json_object"}`. Pricing hiện gọi model version của `deepseek-flash` là DeepSeek-V4.1-Flash. Changelog ghi alias cũ `deepseek-chat`/`deepseek-reasoner` đã đến hạn ngừng 2026-07-24; vì vậy default repo là `deepseek-flash`. [JSON Output](https://api-docs.deepseek.com/guides/json_mode/), [Model list](https://api-docs.deepseek.com/api/list-models/), [Models & Pricing](https://api-docs.deepseek.com/quick_start/pricing/), [Changelog](https://api-docs.deepseek.com/updates/).
 - Không chọn: fallback âm thầm sang OpenAI hoặc gọi structured-output helper chưa xác minh.
 - Ảnh hưởng: `LLM_PROVIDER`, `DEEPSEEK_API_KEY`, `DEEPSEEK_BASE_URL`, `LLM_DEFAULT_MODEL` cấu hình server-side; lỗi token/model/timeout phải chuẩn hóa; chi phí hiện unavailable khi không có giá/usage được kiểm chứng.
-- Trạng thái: adapter IMPLEMENTED; model-account availability và live request NOT_VERIFIED.
+- Trạng thái: adapter IMPLEMENTED; model ID hiện hành được xác nhận từ docs, nhưng account-specific availability và live request NOT_VERIFIED do chưa có `DEEPSEEK_API_KEY`.
 
 ## DEC-004 — Embedding độc lập với DeepSeek chat
 
@@ -56,7 +56,8 @@ Ngày tạo: 2026-09-23. Trạng thái dưới đây được ghi từ audit đ�
 - Lý do: tránh blind retry POST gây đăng trùng và tránh claim quyền chưa có.
 - Không chọn: scraping/browser automation để lách permission.
 - Ảnh hưởng: Meta connector trạng thái BLOCKED_EXTERNAL cho tới khi có credentials, quyền và live evidence; user vẫn phân biệt export với publish.
-- Trạng thái: cần kiểm tra tài liệu Meta hiện hành và app thực trước khi thiết kế connector.
+- Bằng chứng: ngày 2026-09-24 đã thử đọc [Page Feed](https://developers.facebook.com/docs/graph-api/reference/page/feed/), [Page Insights](https://developers.facebook.com/docs/graph-api/reference/page/insights/), [permissions](https://developers.facebook.com/docs/permissions/) và [access-token guide](https://developers.facebook.com/docs/facebook-login/guides/access-tokens/); cả bốn trang trả HTTP 429. Đây không phải xác minh nội dung tài liệu hiện hành.
+- Trạng thái: `BLOCKED_EXTERNAL`; `VERIFY CURRENT META API` cho version, permission, token, publish/schedule, metrics, rate limits và webhooks khi docs truy cập được. Không thiết kế/claim connector tự động trước bước này và app/Page/token/App Review.
 
 ## DEC-007 — DeepSeek xử lý trích đoạn tài liệu và Brand Profile sau chấp thuận
 
