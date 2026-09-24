@@ -1,6 +1,6 @@
 # Báo cáo kiểm thử
 
-Cập nhật: 2026-09-24 09:09 (Asia/Ho_Chi_Minh). Recheck trên branch `codex/product-v1-completion`, source commit `9d3dd6dc97c4a2fa100fdc8c37b03e08ecce4d58` (`fix(e2e): use the standalone web server`). GitHub xác nhận commit này đã push; lúc 09:04, PR #1 mở/mergeable/clean và check run `test` trên source commit hoàn tất thành công.
+Cập nhật: 2026-09-24 09:39 (Asia/Ho_Chi_Minh). Recheck frontend/Python trên source code commit `9d3dd6d`; PR branch head trước lượt này là `121b567`. GitHub đã xác nhận hosted `test` check thành công trên `9d3dd6d`; lượt bổ sung dưới đây chạy real-mode API/browser và load script trên code snapshot của `121b567`.
 
 ## Recheck trên source 9d3dd6d — 2026-09-24 09:04
 
@@ -16,6 +16,24 @@ Cập nhật: 2026-09-24 09:09 (Asia/Ho_Chi_Minh). Recheck trên branch `codex/p
 | Full Compose/MinIO/Beat/prefork runtime, SMTP delivery, SME retrieval acceptance | **NOT VERIFIED** | Docker/Podman/MinIO không có; PostgreSQL server không chạy; local Redis không truy cập được; thiếu SMTP/mailbox, DeepSeek key và corpus SME được phép dùng. |
 
 GitHub check-run `test` là hosted check trên source commit `9d3dd6d` và có kết luận success; không gộp workflow runs cũ vào con số test local. Trong lượt sửa test harness, lần thử đầu dùng standalone server nhưng thiếu public/static assets nên login form không render; `apps/web/scripts/prepare-standalone.mjs` nay chuẩn bị các asset giống `infra/docker/web.Dockerfile`, và kết quả 42 + 1 pass ở trên là lượt chạy sau khi sửa. Test local không gọi DeepSeek/SMTP/Meta. Các kết quả PostgreSQL recovery, migration cũ 1536 chiều và PostgreSQL real browser smoke bên dưới là những lượt trước đó, không phải runtime PostgreSQL của lần recheck này.
+
+## Runtime và load smoke bổ sung — 2026-09-24, branch snapshot `121b567`
+
+| Check | Kết quả | Giới hạn |
+|---|---|---|
+| PostgreSQL 18.3 + pgvector 0.8.2, Alembic upgrade 0001→0010 | **PASS**, head `0010_flexible_embedding_dimensions` | Cluster/database mới dưới `/private/tmp/agentic-v1-runtime.opiIsx`, port 55432; không đụng PostgreSQL dùng chung. |
+| `E2E_REAL_API_BASE_URL=http://127.0.0.1:18100 E2E_REAL_PORT=13102 npm run test:e2e:real --workspace @agentic/web -- manual-workflows.real.spec.ts --workers=1` | **1 passed** trên Chromium, API FastAPI thật và PostgreSQL 18.3; campaign → manual post → upload media → version 2 → approval → XLSX download | `NEXT_PUBLIC_USE_MOCKS=0`; local storage; không MSW, không DeepSeek, SMTP hay Meta. Worker queue không tham gia flow này. Dữ liệu ở DB thử nghiệm tạm. |
+| `python scripts/load_smoke.py --url http://127.0.0.1:18100/readyz --requests 100 --concurrency 10` | **100/100 HTTP 200**, mọi response báo database/Redis/object storage ready; 0 lỗi, 0 retry; 852.77 req/s, p50 7.83 ms, p95 38.05 ms, max 40.54 ms | Chỉ endpoint readiness trên API một process, PG 18.3/pgvector, Redis 8.6.3 và local storage trên máy phát triển. Không đo campaign/write path, job queue, provider, multi-process hay production capacity. |
+| Redis readiness outage/recovery | **PASS** | Dừng đúng Redis cô lập tại port 56379 làm `/readyz` trả 503 và `redis=false`; bật lại Redis thì `/readyz` trả 200/ready ở probe kế tiếp. Không retry request ngầm. Đây không phải retry/recovery của Celery job. |
+| `scripts/load_smoke.py` syntax + loopback guard | **PASS** | Python compile và kiểm tra hostname/IP loopback; script từ chối target ngoài loopback, không nhận query/fragment và không retry. |
+
+### Scenario chi phí DeepSeek, không phải usage thực
+
+Ngày 2026-09-24, bảng giá DeepSeek ghi `deepseek-flash` (DeepSeek-V4.1-Flash) ở peak là **$0.30/1M input token cache miss**, **$0.006/1M input token cache hit**, **$1.20/1M output token**; off-peak bằng nửa. Từ 2026-09-14, request dùng `deepseek-v4-pro` cũng được route sang Flash và tính giá Flash cho đến V4.1-Pro. Peak theo giờ Việt Nam là thứ Hai–thứ Sáu 08:00–11:00 và 13:00–17:00. [DeepSeek Models & Pricing](https://api-docs.deepseek.com/quick_start/pricing/), [V4.1-Flash release](https://api-docs.deepseek.com/news/news260910/).
+
+Stress scenario: **5 SME × 200 job sinh/sửa bài = 1.000 job/tháng**; giả định mỗi lần gọi dùng 48.000 input token (coi trần 48.000 ký tự của adapter như 48.000 token), 8.192 output token, toàn bộ input cache miss và peak pricing. Một lần gọi tối đa tốn khoảng **$0.02423**; nếu mọi job đều cần thêm một lần repair cùng mức tối đa, ước tính là **$48.46 ≈ 1.269.188 đồng/tháng**, dùng tỷ giá bán USD 26.190 VND của Vietcombank cuối ngày 2026-09-23. [VOV, tỷ giá ngày 24/09/2026](https://vov.vn/thi-truong/ty-gia-usd-hom-nay-249-chi-so-usd-index-tang-len-10112-diem-post1335364.vov).
+
+Con số này là scenario bảo thủ cho content generation/revision, không phải quote hay bảo đảm ngân sách: 48.000 ký tự không tương đương chính xác 48.000 token; chưa có `DEEPSEEK_API_KEY`/usage thực; chưa cộng Brand extraction, số lần gọi ngoài scenario, hosting, database, Redis, object storage, email, thuế hoặc vận hành. Vì vậy chưa thể kết luận tổng OPEX đạt 2–5 triệu đồng/tháng; cần lấy token usage thật và báo giá hạ tầng trước pilot.
 
 ## Account lifecycle và SMTP tùy chọn
 
@@ -124,15 +142,14 @@ Không có DeepSeek key nên chưa có model-list/live JSON request hoặc chi p
 
 ## Chưa nghiệm thu
 
-- PostgreSQL migration: clean migration path is verified on a disposable PostgreSQL 18/pgvector cluster; full API/worker integration against PostgreSQL and the shared PostgreSQL 15 service remain unverified.
-- Docker Compose, worker/scheduler restart, MinIO/S3: Docker/Podman và MinIO không sẵn có.
-- DeepSeek live: user đã chấp thuận đoạn trích tài liệu, Brand Profile, campaign strategy và slot topic/date đã chọn, nhưng không có `DEEPSEEK_API_KEY`; live smoke đã skip. Chưa xác minh model list của tài khoản, latency/token/chi phí.
+- PostgreSQL/Redis: migration 0001→0010, manual API/browser flow và readiness failure/recovery đã chạy trên PostgreSQL/Redis cô lập; chưa kiểm tra full Compose, Celery job path/restart trong lượt này, MinIO/S3, production pool/proxy hoặc shared PostgreSQL service.
+- DeepSeek live: user đã chấp thuận đoạn trích tài liệu, Brand Profile, campaign strategy và slot topic/date đã chọn, nhưng không có `DEEPSEEK_API_KEY`; live smoke đã skip. Account model-list, latency/token/cost thực và full Brand→content browser path chưa xác minh.
 - Meta publish/metrics: chưa có app/page/token/quyền/App Review.
-- Real-mode browser E2E đầy đủ: analytics/recommendation và manual campaign → post → approval → export đã qua browser/API thật trên SQLite. AI generation/revise path được kiểm tra qua API+worker fixtures và mock browser, chưa gọi DeepSeek hoặc chạy browser path với model thật; PostgreSQL/MinIO cũng chưa nghiệm thu.
+- Real-mode browser E2E đầy đủ: campaign → post → media → approval → export đã chạy trên SQLite và PostgreSQL bằng API thật. Analytics/recommendation real browser smoke trước đó chạy trên SQLite; AI generation/revise vẫn chỉ có API/worker fixture và mock browser, chưa gọi DeepSeek hay kiểm tra real-provider browser path. MinIO chưa nghiệm thu.
 
 ## Phạm vi bằng chứng
 
-Campaign, manual post/version, approval, export, content generation and AI revise have SQLite API/worker fixture tests; only manual workflows have real-mode browser coverage. Strategy/slot editing and click-through to a slot-specific job have desktop/mobile MSW coverage. AI revise and generation have mock browser coverage but no live-provider browser run. These tests do not represent full PostgreSQL or production deployment. Content integration validates versioned workspace context, threshold-filtered active sources, exact citation metadata, slot strategy/topic/date, and unapproved draft/version behavior; fake models never send data to DeepSeek. User approved sending Brand Profile, document excerpts and the selected slot strategy/topic/date; the API key is still absent. Backend-only company/brand/slot database IDs are excluded from model prompts, and external embeddings remain separately gated. Manual metrics, recommendation feedback, Apply draft, accept/version conflict and REC-002 outcome persistence are checked by SQLite API tests; UI outcome flow uses MSW and is not performance evidence. Tenant tests are not a full security audit. Security review reproduced traversal through `LocalObjectStorage.put('../outside.txt')`; rate limits have fake-Redis unit tests but real Redis, reverse proxy and edge controls remain unverified. See [security-review.md](security-review.md).
+Campaign, manual post/version, approval and export have SQLite/real-mode PostgreSQL browser coverage; generation and AI revise have SQLite API/worker fixture tests; live-provider browser run is outstanding. Strategy/slot editing and click-through to a slot-specific job have desktop/mobile MSW coverage. Content fixtures validate versioned workspace context, relevance-filtered active sources, exact citation metadata, slot strategy/topic/date and unapproved draft/version behavior; fake models never send data to DeepSeek. User approved sending Brand Profile, document excerpts and selected slot strategy/topic/date; the API key is still absent. Backend-only company/brand/slot database IDs are excluded from model prompts, and external embeddings remain separately gated. Manual metrics, recommendation feedback, Apply draft, accept/version conflict and REC-002 outcome persistence are checked by SQLite API tests; UI outcome flow uses MSW. Tenant tests are not a full security audit. The previously reproduced path traversal was fixed and has regression coverage; this turn's Redis readiness outage check does not verify rate-limit behavior. Reverse proxy and edge controls remain unverified. See [security-review.md](security-review.md).
 
 ## Lệnh tái kiểm tra
 

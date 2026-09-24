@@ -11,7 +11,7 @@
 - Semantic retrieval mặc định trong `.env.example` dùng FastEmbed multilingual E5 chạy tại worker; text và query không rời runtime. Tải model weights cần mạng ở lần đầu và cache nằm ở `EMBEDDING_CACHE_DIR`. `EMBEDDING_PROVIDER=none` bật lexical-only. Embedding provider ngoài như OpenAI vẫn bị chặn khi chưa có chấp thuận riêng (`EMBEDDING_DATA_FLOW_APPROVED=1`).
 - Facebook Page/app/token/App Review chỉ cần khi bật connector tương ứng.
 
-DeepSeek docs được xem lại ngày 2026-09-24: Chat Completions liệt kê `deepseek-flash`/`deepseek-v4-pro`; alias `deepseek-chat`/`deepseek-reasoner` đã qua mốc ngừng 2026-07-24 theo changelog. Repo mặc định `LLM_DEFAULT_MODEL=deepseek-flash`; trước khi vận hành cần chạy smoke list-model với key của account cụ thể. Xem [DEC-003](decisions.md#dec-003--deepseek-làm-provider-llm-duy-nhất). Meta docs chưa được xác minh: các URL Page Feed, Page Insights, permissions và access-token guide trả HTTP 429 trong lần truy cập 2026-09-24. Giữ `META-001` ở `BLOCKED_EXTERNAL` và `VERIFY CURRENT META API` cho đến khi kiểm tra lại version, permissions, tokens, publishing, metrics, rate limits, webhooks và App Review trên tài liệu/app được cấp quyền.
+DeepSeek docs được xem lại ngày 2026-09-24: dùng `deepseek-flash` (V4.1-Flash); `deepseek-v4-pro` được route sang Flash và tính giá Flash từ 14/9 cho đến khi V4.1-Pro ra mắt. Giá peak hiện tại là $0.30/M input cache miss, $0.006/M cache hit, $1.20/M output; off-peak bằng một nửa. Repo mặc định `LLM_DEFAULT_MODEL=deepseek-flash`; trước khi vận hành cần chạy smoke list-model với key của account cụ thể và đo usage thật. Xem [DEC-003](decisions.md#dec-003--deepseek-làm-provider-llm-duy-nhất) và scenario có giả định tại [test-report.md](test-report.md). Meta docs chưa được xác minh: các URL Page Feed, Page Insights, permissions và access-token guide trả HTTP 429 trong lần truy cập 2026-09-24. Giữ `META-001` ở `BLOCKED_EXTERNAL` và `VERIFY CURRENT META API` cho đến khi kiểm tra lại version, permissions, tokens, publishing, metrics, rate limits, webhooks và App Review trên tài liệu/app được cấp quyền.
 
 ## Password reset, invitation và email delivery
 
@@ -112,6 +112,14 @@ E2E_REAL_API_BASE_URL=http://127.0.0.1:8000 npm run test:e2e:real -- manual-work
 Hai Playwright configs build `output: standalone`, copy `public/` và `.next/static/` vào standalone tree giống Dockerfile, rồi chạy `node .next/standalone/apps/web/server.js`. `apps/web/scripts/prepare-standalone.mjs` thực hiện bước copy; vì vậy E2E kiểm tra cùng kiểu server production thay vì `next start`.
 
 Flow đăng ký account ngẫu nhiên mới, tạo campaign/post, upload ảnh, duyệt đúng version và tải XLSX. Dùng database test mới hoặc database cô lập; không trỏ vào production. Nó không gọi DeepSeek/Meta và không kiểm tra worker queue.
+
+Với API local đã sẵn sàng trên PostgreSQL + Redis + object storage, chạy readiness smoke giới hạn loopback:
+
+```bash
+.venv/bin/python scripts/load_smoke.py --url http://127.0.0.1:8000/readyz --requests 100 --concurrency 10
+```
+
+Script từ chối URL không phải loopback, không retry và không thay cho load test campaign/write path hay production capacity test. Chỉ chạy trên stack cô lập; xem kết quả, scope và giá model trong `docs/test-report.md`.
 
 Không chạy live smoke hoặc real E2E nếu credential chưa được provision. The build requires write access to `apps/web/.next`. Xem `docs/test-report.md` để tách fixture, integration, browser, live LLM và Meta results.
 
