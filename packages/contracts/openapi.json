@@ -10,24 +10,53 @@
             "type": "string"
           },
           "full_name": {
-            "maxLength": 200,
-            "minLength": 1,
-            "title": "Full Name",
-            "type": "string"
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Full Name"
           },
           "password": {
-            "maxLength": 200,
-            "minLength": 8,
-            "title": "Password",
-            "type": "string"
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "minLength": 8,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Password"
           }
         },
         "required": [
-          "email",
-          "password",
-          "full_name"
+          "email"
         ],
         "title": "AcceptInvitationRequest",
+        "type": "object"
+      },
+      "AcceptedRecommendationDraftListOut": {
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/CampaignBriefRevisionDraftOut"
+            },
+            "title": "Items",
+            "type": "array"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "title": "AcceptedRecommendationDraftListOut",
         "type": "object"
       },
       "AcceptedResponse": {
@@ -48,6 +77,437 @@
         "title": "AcceptedResponse",
         "type": "object"
       },
+      "AnalyticsDashboardOut": {
+        "additionalProperties": false,
+        "properties": {
+          "freshness_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Freshness At"
+          },
+          "groups": {
+            "items": {
+              "$ref": "#/components/schemas/MetricGroupOut"
+            },
+            "title": "Groups",
+            "type": "array"
+          },
+          "report": {
+            "$ref": "#/components/schemas/AnalyticsReport"
+          },
+          "source_id": {
+            "title": "Source Id",
+            "type": "string"
+          },
+          "source_label": {
+            "title": "Source Label",
+            "type": "string"
+          }
+        },
+        "required": [
+          "report",
+          "groups",
+          "source_id",
+          "source_label"
+        ],
+        "title": "AnalyticsDashboardOut",
+        "type": "object"
+      },
+      "AnalyticsEvidence": {
+        "additionalProperties": false,
+        "properties": {
+          "description": {
+            "minLength": 1,
+            "title": "Description",
+            "type": "string"
+          },
+          "evidence_id": {
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:/-]{0,127}$",
+            "title": "Evidence Id",
+            "type": "string"
+          },
+          "metric_names": {
+            "items": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "title": "Metric Names",
+            "type": "array"
+          },
+          "post_ids": {
+            "items": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "title": "Post Ids",
+            "type": "array"
+          }
+        },
+        "required": [
+          "evidence_id",
+          "description"
+        ],
+        "title": "AnalyticsEvidence",
+        "type": "object"
+      },
+      "AnalyticsRecommendationRecordOut": {
+        "additionalProperties": false,
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "feedback": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RecommendationFeedbackOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "lifecycle_status": {
+            "enum": [
+              "new",
+              "acknowledged",
+              "dismissed",
+              "applied"
+            ],
+            "title": "Lifecycle Status",
+            "type": "string"
+          },
+          "recommendation": {
+            "$ref": "#/components/schemas/RecommendationOut"
+          },
+          "source_id": {
+            "title": "Source Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "source_id",
+          "lifecycle_status",
+          "recommendation",
+          "created_at"
+        ],
+        "title": "AnalyticsRecommendationRecordOut",
+        "type": "object"
+      },
+      "AnalyticsReport": {
+        "additionalProperties": false,
+        "properties": {
+          "evidence": {
+            "items": {
+              "$ref": "#/components/schemas/AnalyticsEvidence"
+            },
+            "title": "Evidence",
+            "type": "array"
+          },
+          "notes": {
+            "items": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "title": "Notes",
+            "type": "array"
+          },
+          "observations": {
+            "items": {
+              "$ref": "#/components/schemas/MetricObservation"
+            },
+            "title": "Observations",
+            "type": "array"
+          },
+          "page_id": {
+            "minLength": 1,
+            "title": "Page Id",
+            "type": "string"
+          },
+          "period_end": {
+            "format": "date-time",
+            "title": "Period End",
+            "type": "string"
+          },
+          "period_start": {
+            "format": "date-time",
+            "title": "Period Start",
+            "type": "string"
+          },
+          "report_id": {
+            "minLength": 1,
+            "title": "Report Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "report_id",
+          "page_id",
+          "period_start",
+          "period_end"
+        ],
+        "title": "AnalyticsReport",
+        "type": "object"
+      },
+      "ApiErrorEnvelope": {
+        "additionalProperties": false,
+        "properties": {
+          "error": {
+            "$ref": "#/components/schemas/ApiErrorOut"
+          }
+        },
+        "required": [
+          "error"
+        ],
+        "title": "ApiErrorEnvelope",
+        "type": "object"
+      },
+      "ApiErrorOut": {
+        "additionalProperties": false,
+        "properties": {
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "details": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Details"
+          },
+          "field_errors": {
+            "items": {
+              "$ref": "#/components/schemas/ApiFieldErrorOut"
+            },
+            "title": "Field Errors",
+            "type": "array"
+          },
+          "message": {
+            "title": "Message",
+            "type": "string"
+          },
+          "request_id": {
+            "title": "Request Id",
+            "type": "string"
+          },
+          "retryable": {
+            "default": false,
+            "title": "Retryable",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "code",
+          "message",
+          "request_id"
+        ],
+        "title": "ApiErrorOut",
+        "type": "object"
+      },
+      "ApiFieldErrorOut": {
+        "additionalProperties": false,
+        "properties": {
+          "field": {
+            "title": "Field",
+            "type": "string"
+          },
+          "message": {
+            "title": "Message",
+            "type": "string"
+          }
+        },
+        "required": [
+          "field",
+          "message"
+        ],
+        "title": "ApiFieldErrorOut",
+        "type": "object"
+      },
+      "ApplyRecommendationRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "campaign_id": {
+            "maxLength": 36,
+            "minLength": 1,
+            "title": "Campaign Id",
+            "type": "string"
+          },
+          "evidence_ids": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "maxItems": 50,
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Evidence Ids"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "maxLength": 1000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          }
+        },
+        "required": [
+          "campaign_id"
+        ],
+        "title": "ApplyRecommendationRequest",
+        "type": "object"
+      },
+      "ApplyRecommendationResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "created_draft": {
+            "$ref": "#/components/schemas/CampaignBriefRevisionDraftOut"
+          },
+          "notice": {
+            "title": "Notice",
+            "type": "string"
+          },
+          "recommendation": {
+            "$ref": "#/components/schemas/AnalyticsRecommendationRecordOut"
+          }
+        },
+        "required": [
+          "recommendation",
+          "created_draft",
+          "notice"
+        ],
+        "title": "ApplyRecommendationResponse",
+        "type": "object"
+      },
+      "ApprovalRecordOut": {
+        "additionalProperties": false,
+        "properties": {
+          "content_sha256": {
+            "title": "Content Sha256",
+            "type": "string"
+          },
+          "decided_at": {
+            "format": "date-time",
+            "title": "Decided At",
+            "type": "string"
+          },
+          "decided_by": {
+            "title": "Decided By",
+            "type": "string"
+          },
+          "decided_by_name": {
+            "title": "Decided By Name",
+            "type": "string"
+          },
+          "decision": {
+            "enum": [
+              "approved",
+              "rejected"
+            ],
+            "title": "Decision",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "post_id": {
+            "title": "Post Id",
+            "type": "string"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "version": {
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "post_id",
+          "version",
+          "decision",
+          "decided_by",
+          "decided_by_name",
+          "decided_at",
+          "content_sha256"
+        ],
+        "title": "ApprovalRecordOut",
+        "type": "object"
+      },
+      "ApprovalRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "decision": {
+            "enum": [
+              "approved",
+              "rejected"
+            ],
+            "title": "Decision",
+            "type": "string"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "maxLength": 2000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "version": {
+            "minimum": 1.0,
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "version",
+          "decision"
+        ],
+        "title": "ApprovalRequest",
+        "type": "object"
+      },
       "Body_upload_documents_api_v1_workspaces__company_id__documents_post": {
         "properties": {
           "files": {
@@ -64,6 +524,983 @@
           "files"
         ],
         "title": "Body_upload_documents_api_v1_workspaces__company_id__documents_post",
+        "type": "object"
+      },
+      "Body_upload_media_asset_api_v1_workspaces__company_id__media_post": {
+        "properties": {
+          "alt_text": {
+            "default": "",
+            "maxLength": 500,
+            "title": "Alt Text",
+            "type": "string"
+          },
+          "file": {
+            "contentMediaType": "application/octet-stream",
+            "title": "File",
+            "type": "string"
+          }
+        },
+        "required": [
+          "file"
+        ],
+        "title": "Body_upload_media_asset_api_v1_workspaces__company_id__media_post",
+        "type": "object"
+      },
+      "BrandProfileFieldOut": {
+        "additionalProperties": false,
+        "properties": {
+          "alternatives": {
+            "items": {
+              "$ref": "#/components/schemas/ProfileAlternativeOut"
+            },
+            "title": "Alternatives",
+            "type": "array"
+          },
+          "confidence": {
+            "anyOf": [
+              {
+                "maximum": 1.0,
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Confidence"
+          },
+          "key": {
+            "enum": [
+              "business_name",
+              "industry",
+              "description",
+              "products",
+              "target_audience",
+              "brand_voice",
+              "tone_keywords",
+              "do_not_use",
+              "competitors",
+              "contact"
+            ],
+            "title": "Key",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "provenance": {
+            "items": {
+              "$ref": "#/components/schemas/ProfileProvenanceOut"
+            },
+            "title": "Provenance",
+            "type": "array"
+          },
+          "state": {
+            "enum": [
+              "suggested",
+              "confirmed",
+              "edited",
+              "missing",
+              "conflict"
+            ],
+            "title": "State",
+            "type": "string"
+          },
+          "updated_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated At"
+          },
+          "updated_by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated By"
+          },
+          "value": {
+            "title": "Value"
+          }
+        },
+        "required": [
+          "key",
+          "label",
+          "state"
+        ],
+        "title": "BrandProfileFieldOut",
+        "type": "object"
+      },
+      "BrandProfileOut": {
+        "additionalProperties": false,
+        "properties": {
+          "brand_voice": {
+            "$ref": "#/components/schemas/BrandProfileFieldOut"
+          },
+          "business_name": {
+            "$ref": "#/components/schemas/BrandProfileFieldOut"
+          },
+          "competitors": {
+            "$ref": "#/components/schemas/BrandProfileFieldOut"
+          },
+          "completeness": {
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Completeness",
+            "type": "number"
+          },
+          "confirmed_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Confirmed At"
+          },
+          "confirmed_by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Confirmed By"
+          },
+          "contact": {
+            "$ref": "#/components/schemas/BrandProfileFieldOut"
+          },
+          "description": {
+            "$ref": "#/components/schemas/BrandProfileFieldOut"
+          },
+          "do_not_use": {
+            "$ref": "#/components/schemas/BrandProfileFieldOut"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "industry": {
+            "$ref": "#/components/schemas/BrandProfileFieldOut"
+          },
+          "products": {
+            "$ref": "#/components/schemas/BrandProfileFieldOut"
+          },
+          "target_audience": {
+            "$ref": "#/components/schemas/BrandProfileFieldOut"
+          },
+          "tone_keywords": {
+            "$ref": "#/components/schemas/BrandProfileFieldOut"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          },
+          "version": {
+            "title": "Version",
+            "type": "integer"
+          },
+          "workspace_id": {
+            "title": "Workspace Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "workspace_id",
+          "version",
+          "business_name",
+          "industry",
+          "description",
+          "products",
+          "target_audience",
+          "brand_voice",
+          "tone_keywords",
+          "do_not_use",
+          "competitors",
+          "contact",
+          "completeness",
+          "updated_at"
+        ],
+        "title": "BrandProfileOut",
+        "type": "object"
+      },
+      "BrandProfileRevisionOut": {
+        "additionalProperties": false,
+        "properties": {
+          "confirmed_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Confirmed At"
+          },
+          "confirmed_by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Confirmed By"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "input_snapshot_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Input Snapshot Id"
+          },
+          "profile": {
+            "$ref": "#/components/schemas/BrandProfileOut"
+          },
+          "version": {
+            "title": "Version",
+            "type": "integer"
+          },
+          "warnings": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Warnings",
+            "type": "array"
+          },
+          "workspace_id": {
+            "title": "Workspace Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "workspace_id",
+          "version",
+          "profile",
+          "created_at"
+        ],
+        "title": "BrandProfileRevisionOut",
+        "type": "object"
+      },
+      "CampaignBriefChangeOut": {
+        "additionalProperties": false,
+        "properties": {
+          "after": {
+            "title": "After"
+          },
+          "before": {
+            "title": "Before"
+          },
+          "field": {
+            "title": "Field",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "rationale": {
+            "title": "Rationale",
+            "type": "string"
+          }
+        },
+        "required": [
+          "field",
+          "label",
+          "before",
+          "after",
+          "rationale"
+        ],
+        "title": "CampaignBriefChangeOut",
+        "type": "object"
+      },
+      "CampaignBriefIn": {
+        "additionalProperties": false,
+        "properties": {
+          "audience": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 20,
+            "minItems": 1,
+            "title": "Audience",
+            "type": "array"
+          },
+          "end_date": {
+            "format": "date",
+            "title": "End Date",
+            "type": "string"
+          },
+          "key_message": {
+            "maxLength": 2000,
+            "minLength": 1,
+            "title": "Key Message",
+            "type": "string"
+          },
+          "must_avoid": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 30,
+            "title": "Must Avoid",
+            "type": "array"
+          },
+          "must_include": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 30,
+            "title": "Must Include",
+            "type": "array"
+          },
+          "objective": {
+            "enum": [
+              "awareness",
+              "engagement",
+              "traffic",
+              "leads",
+              "sales",
+              "retention"
+            ],
+            "title": "Objective",
+            "type": "string"
+          },
+          "objective_note": {
+            "anyOf": [
+              {
+                "maxLength": 1000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Objective Note"
+          },
+          "product_ids": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 100,
+            "title": "Product Ids",
+            "type": "array"
+          },
+          "start_date": {
+            "format": "date",
+            "title": "Start Date",
+            "type": "string"
+          }
+        },
+        "required": [
+          "objective",
+          "audience",
+          "key_message",
+          "start_date",
+          "end_date"
+        ],
+        "title": "CampaignBriefIn",
+        "type": "object"
+      },
+      "CampaignBriefRevisionDraftOut": {
+        "additionalProperties": false,
+        "properties": {
+          "base_version": {
+            "title": "Base Version",
+            "type": "integer"
+          },
+          "campaign_id": {
+            "title": "Campaign Id",
+            "type": "string"
+          },
+          "changes": {
+            "items": {
+              "$ref": "#/components/schemas/CampaignBriefChangeOut"
+            },
+            "title": "Changes",
+            "type": "array"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "source_recommendation_id": {
+            "title": "Source Recommendation Id",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "pending_review",
+              "accepted",
+              "discarded"
+            ],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "campaign_id",
+          "base_version",
+          "changes",
+          "source_recommendation_id",
+          "status",
+          "created_at"
+        ],
+        "title": "CampaignBriefRevisionDraftOut",
+        "type": "object"
+      },
+      "CampaignContentPlanIn": {
+        "additionalProperties": false,
+        "properties": {
+          "slots": {
+            "items": {
+              "$ref": "#/components/schemas/CampaignContentSlotIn"
+            },
+            "maxItems": 60,
+            "title": "Slots",
+            "type": "array"
+          },
+          "strategy_summary": {
+            "default": "",
+            "maxLength": 2000,
+            "title": "Strategy Summary",
+            "type": "string"
+          }
+        },
+        "title": "CampaignContentPlanIn",
+        "type": "object"
+      },
+      "CampaignContentPlanOut": {
+        "additionalProperties": false,
+        "properties": {
+          "slots": {
+            "items": {
+              "$ref": "#/components/schemas/CampaignContentSlotOut"
+            },
+            "title": "Slots",
+            "type": "array"
+          },
+          "strategy_summary": {
+            "title": "Strategy Summary",
+            "type": "string"
+          }
+        },
+        "required": [
+          "strategy_summary",
+          "slots"
+        ],
+        "title": "CampaignContentPlanOut",
+        "type": "object"
+      },
+      "CampaignContentSlotIn": {
+        "additionalProperties": false,
+        "properties": {
+          "format": {
+            "enum": [
+              "text",
+              "image",
+              "carousel",
+              "video",
+              "reel",
+              "story"
+            ],
+            "title": "Format",
+            "type": "string"
+          },
+          "id": {
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Id",
+            "type": "string"
+          },
+          "pillar": {
+            "enum": [
+              "education",
+              "entertainment",
+              "inspiration",
+              "promotion",
+              "community",
+              "behind_the_scenes",
+              "product",
+              "testimonial"
+            ],
+            "title": "Pillar",
+            "type": "string"
+          },
+          "scheduled_date": {
+            "format": "date",
+            "title": "Scheduled Date",
+            "type": "string"
+          },
+          "topic": {
+            "maxLength": 500,
+            "minLength": 1,
+            "title": "Topic",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "scheduled_date",
+          "pillar",
+          "format",
+          "topic"
+        ],
+        "title": "CampaignContentSlotIn",
+        "type": "object"
+      },
+      "CampaignContentSlotOut": {
+        "additionalProperties": false,
+        "properties": {
+          "format": {
+            "enum": [
+              "text",
+              "image",
+              "carousel",
+              "video",
+              "reel",
+              "story"
+            ],
+            "title": "Format",
+            "type": "string"
+          },
+          "generated_post_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Generated Post Id"
+          },
+          "generation_job_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Generation Job Id"
+          },
+          "id": {
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Id",
+            "type": "string"
+          },
+          "pillar": {
+            "enum": [
+              "education",
+              "entertainment",
+              "inspiration",
+              "promotion",
+              "community",
+              "behind_the_scenes",
+              "product",
+              "testimonial"
+            ],
+            "title": "Pillar",
+            "type": "string"
+          },
+          "scheduled_date": {
+            "format": "date",
+            "title": "Scheduled Date",
+            "type": "string"
+          },
+          "topic": {
+            "maxLength": 500,
+            "minLength": 1,
+            "title": "Topic",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "scheduled_date",
+          "pillar",
+          "format",
+          "topic"
+        ],
+        "title": "CampaignContentSlotOut",
+        "type": "object"
+      },
+      "CampaignCreateRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "brief": {
+            "$ref": "#/components/schemas/CampaignBriefIn"
+          },
+          "channels": {
+            "items": {
+              "const": "facebook_page",
+              "type": "string"
+            },
+            "minItems": 1,
+            "title": "Channels",
+            "type": "array"
+          },
+          "content_plan": {
+            "$ref": "#/components/schemas/CampaignContentPlanIn"
+          },
+          "name": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          },
+          "pillars": {
+            "items": {
+              "enum": [
+                "education",
+                "entertainment",
+                "inspiration",
+                "promotion",
+                "community",
+                "behind_the_scenes",
+                "product",
+                "testimonial"
+              ],
+              "type": "string"
+            },
+            "maxItems": 8,
+            "title": "Pillars",
+            "type": "array"
+          }
+        },
+        "required": [
+          "name",
+          "brief"
+        ],
+        "title": "CampaignCreateRequest",
+        "type": "object"
+      },
+      "CampaignOut": {
+        "additionalProperties": false,
+        "properties": {
+          "approved_count": {
+            "title": "Approved Count",
+            "type": "integer"
+          },
+          "brief": {
+            "additionalProperties": true,
+            "title": "Brief",
+            "type": "object"
+          },
+          "channels": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Channels",
+            "type": "array"
+          },
+          "content_plan": {
+            "$ref": "#/components/schemas/CampaignContentPlanOut"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "created_by": {
+            "title": "Created By",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "pillars": {
+            "items": {
+              "enum": [
+                "education",
+                "entertainment",
+                "inspiration",
+                "promotion",
+                "community",
+                "behind_the_scenes",
+                "product",
+                "testimonial"
+              ],
+              "type": "string"
+            },
+            "title": "Pillars",
+            "type": "array"
+          },
+          "post_count": {
+            "title": "Post Count",
+            "type": "integer"
+          },
+          "published_count": {
+            "title": "Published Count",
+            "type": "integer"
+          },
+          "status": {
+            "enum": [
+              "draft",
+              "active",
+              "completed",
+              "archived"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          },
+          "version": {
+            "title": "Version",
+            "type": "integer"
+          },
+          "workspace_id": {
+            "title": "Workspace Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "workspace_id",
+          "name",
+          "status",
+          "brief",
+          "content_plan",
+          "pillars",
+          "channels",
+          "version",
+          "post_count",
+          "approved_count",
+          "published_count",
+          "created_by",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "CampaignOut",
+        "type": "object"
+      },
+      "CampaignUpdateRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "brief": {
+            "$ref": "#/components/schemas/CampaignBriefIn"
+          },
+          "channels": {
+            "items": {
+              "const": "facebook_page",
+              "type": "string"
+            },
+            "minItems": 1,
+            "title": "Channels",
+            "type": "array"
+          },
+          "content_plan": {
+            "$ref": "#/components/schemas/CampaignContentPlanIn"
+          },
+          "name": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          },
+          "pillars": {
+            "items": {
+              "enum": [
+                "education",
+                "entertainment",
+                "inspiration",
+                "promotion",
+                "community",
+                "behind_the_scenes",
+                "product",
+                "testimonial"
+              ],
+              "type": "string"
+            },
+            "maxItems": 8,
+            "title": "Pillars",
+            "type": "array"
+          },
+          "version": {
+            "minimum": 1.0,
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "name",
+          "brief",
+          "content_plan",
+          "version"
+        ],
+        "title": "CampaignUpdateRequest",
+        "type": "object"
+      },
+      "ConfirmBrandProfileRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "version": {
+            "minimum": 1.0,
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "version"
+        ],
+        "title": "ConfirmBrandProfileRequest",
+        "type": "object"
+      },
+      "CreateExportRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "campaign_id": {
+            "title": "Campaign Id",
+            "type": "string"
+          },
+          "columns": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "maxItems": 30,
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Columns"
+          },
+          "format": {
+            "enum": [
+              "csv",
+              "xlsx"
+            ],
+            "title": "Format",
+            "type": "string"
+          },
+          "post_ids": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "maxItems": 1000,
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Post Ids"
+          }
+        },
+        "required": [
+          "campaign_id",
+          "format"
+        ],
+        "title": "CreateExportRequest",
+        "type": "object"
+      },
+      "CreateManualPostRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "caption": {
+            "maxLength": 10000,
+            "minLength": 1,
+            "title": "Caption",
+            "type": "string"
+          },
+          "format": {
+            "default": "text",
+            "enum": [
+              "text",
+              "image",
+              "carousel",
+              "video",
+              "reel",
+              "story"
+            ],
+            "title": "Format",
+            "type": "string"
+          },
+          "hashtags": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 50,
+            "title": "Hashtags",
+            "type": "array"
+          },
+          "pillar": {
+            "enum": [
+              "education",
+              "entertainment",
+              "inspiration",
+              "promotion",
+              "community",
+              "behind_the_scenes",
+              "product",
+              "testimonial"
+            ],
+            "title": "Pillar",
+            "type": "string"
+          }
+        },
+        "required": [
+          "pillar",
+          "caption"
+        ],
+        "title": "CreateManualPostRequest",
         "type": "object"
       },
       "DocumentError": {
@@ -121,6 +1558,17 @@
             ],
             "title": "Extracted"
           },
+          "extraction_status": {
+            "default": "pending",
+            "enum": [
+              "pending",
+              "extracted",
+              "metadata_only",
+              "failed"
+            ],
+            "title": "Extraction Status",
+            "type": "string"
+          },
           "filename": {
             "title": "Filename",
             "type": "string"
@@ -144,6 +1592,17 @@
             "title": "Kind",
             "type": "string"
           },
+          "knowledge_status": {
+            "default": "pending",
+            "enum": [
+              "pending",
+              "ready",
+              "not_available",
+              "failed"
+            ],
+            "title": "Knowledge Status",
+            "type": "string"
+          },
           "mime_type": {
             "title": "Mime Type",
             "type": "string"
@@ -160,6 +1619,17 @@
             ],
             "title": "Processed At"
           },
+          "profile_status": {
+            "default": "pending",
+            "enum": [
+              "pending",
+              "ready",
+              "not_available",
+              "failed"
+            ],
+            "title": "Profile Status",
+            "type": "string"
+          },
           "progress": {
             "anyOf": [
               {
@@ -170,6 +1640,16 @@
               }
             ],
             "title": "Progress"
+          },
+          "retrieval_mode": {
+            "default": "not_available",
+            "enum": [
+              "lexical",
+              "semantic_vector",
+              "not_available"
+            ],
+            "title": "Retrieval Mode",
+            "type": "string"
           },
           "size": {
             "title": "Size",
@@ -208,6 +1688,236 @@
         "title": "DocumentOut",
         "type": "object"
       },
+      "ExperimentOutcomeCohortOut": {
+        "additionalProperties": false,
+        "properties": {
+          "coverage": {
+            "title": "Coverage",
+            "type": "number"
+          },
+          "evidence_id": {
+            "title": "Evidence Id",
+            "type": "string"
+          },
+          "measured_from": {
+            "format": "date-time",
+            "title": "Measured From",
+            "type": "string"
+          },
+          "measured_to": {
+            "format": "date-time",
+            "title": "Measured To",
+            "type": "string"
+          },
+          "post_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Post Ids",
+            "type": "array"
+          },
+          "sample_size": {
+            "title": "Sample Size",
+            "type": "integer"
+          },
+          "snapshot_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Snapshot Ids",
+            "type": "array"
+          },
+          "value": {
+            "title": "Value",
+            "type": "number"
+          },
+          "window_from": {
+            "format": "date-time",
+            "title": "Window From",
+            "type": "string"
+          },
+          "window_to": {
+            "format": "date-time",
+            "title": "Window To",
+            "type": "string"
+          }
+        },
+        "required": [
+          "window_from",
+          "window_to",
+          "measured_from",
+          "measured_to",
+          "value",
+          "sample_size",
+          "coverage",
+          "evidence_id",
+          "post_ids",
+          "snapshot_ids"
+        ],
+        "title": "ExperimentOutcomeCohortOut",
+        "type": "object"
+      },
+      "ExperimentOutcomeListOut": {
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ExperimentOutcomeOut"
+            },
+            "title": "Items",
+            "type": "array"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "title": "ExperimentOutcomeListOut",
+        "type": "object"
+      },
+      "ExperimentOutcomeOut": {
+        "additionalProperties": false,
+        "properties": {
+          "absolute_change": {
+            "title": "Absolute Change",
+            "type": "number"
+          },
+          "baseline": {
+            "$ref": "#/components/schemas/ExperimentOutcomeCohortOut"
+          },
+          "campaign_id": {
+            "title": "Campaign Id",
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "draft_id": {
+            "title": "Draft Id",
+            "type": "string"
+          },
+          "followup": {
+            "$ref": "#/components/schemas/ExperimentOutcomeCohortOut"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "limitations": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Limitations",
+            "type": "array"
+          },
+          "max_post_age_hours": {
+            "title": "Max Post Age Hours",
+            "type": "integer"
+          },
+          "metric": {
+            "enum": [
+              "reach",
+              "views",
+              "engagement_rate_by_reach",
+              "click_rate_by_reach"
+            ],
+            "title": "Metric",
+            "type": "string"
+          },
+          "min_post_age_hours": {
+            "title": "Min Post Age Hours",
+            "type": "integer"
+          },
+          "relative_change": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Relative Change"
+          },
+          "source_id": {
+            "title": "Source Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "campaign_id",
+          "draft_id",
+          "source_id",
+          "metric",
+          "min_post_age_hours",
+          "max_post_age_hours",
+          "baseline",
+          "followup",
+          "absolute_change",
+          "relative_change",
+          "limitations",
+          "created_at"
+        ],
+        "title": "ExperimentOutcomeOut",
+        "type": "object"
+      },
+      "ExportOut": {
+        "additionalProperties": false,
+        "properties": {
+          "campaign_id": {
+            "title": "Campaign Id",
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "download_url": {
+            "title": "Download Url",
+            "type": "string"
+          },
+          "filename": {
+            "title": "Filename",
+            "type": "string"
+          },
+          "format": {
+            "enum": [
+              "csv",
+              "xlsx"
+            ],
+            "title": "Format",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "size": {
+            "title": "Size",
+            "type": "integer"
+          },
+          "status": {
+            "const": "ready",
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "campaign_id",
+          "format",
+          "status",
+          "download_url",
+          "filename",
+          "size",
+          "created_at"
+        ],
+        "title": "ExportOut",
+        "type": "object"
+      },
       "ForgotPasswordRequest": {
         "additionalProperties": false,
         "properties": {
@@ -223,6 +1933,149 @@
         "title": "ForgotPasswordRequest",
         "type": "object"
       },
+      "ForgotPasswordResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "accepted": {
+            "title": "Accepted",
+            "type": "boolean"
+          },
+          "message": {
+            "title": "Message",
+            "type": "string"
+          }
+        },
+        "required": [
+          "accepted",
+          "message"
+        ],
+        "title": "ForgotPasswordResponse",
+        "type": "object"
+      },
+      "GenerateContentRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "campaign_id": {
+            "title": "Campaign Id",
+            "type": "string"
+          },
+          "count": {
+            "maximum": 10.0,
+            "minimum": 1.0,
+            "title": "Count",
+            "type": "integer"
+          },
+          "end_date": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "End Date"
+          },
+          "formats": {
+            "items": {
+              "enum": [
+                "text",
+                "image",
+                "carousel",
+                "video",
+                "reel",
+                "story"
+              ],
+              "type": "string"
+            },
+            "maxItems": 6,
+            "minItems": 1,
+            "title": "Formats",
+            "type": "array"
+          },
+          "instruction": {
+            "anyOf": [
+              {
+                "maxLength": 2000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Instruction"
+          },
+          "pillars": {
+            "items": {
+              "enum": [
+                "education",
+                "entertainment",
+                "inspiration",
+                "promotion",
+                "community",
+                "behind_the_scenes",
+                "product",
+                "testimonial"
+              ],
+              "type": "string"
+            },
+            "maxItems": 8,
+            "title": "Pillars",
+            "type": "array"
+          },
+          "slot_id": {
+            "anyOf": [
+              {
+                "maxLength": 64,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Slot Id"
+          },
+          "start_date": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Start Date"
+          }
+        },
+        "required": [
+          "campaign_id",
+          "count"
+        ],
+        "title": "GenerateContentRequest",
+        "type": "object"
+      },
+      "GenerateContentResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "job_id": {
+            "title": "Job Id",
+            "type": "string"
+          },
+          "max_count": {
+            "default": 10,
+            "title": "Max Count",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "job_id"
+        ],
+        "title": "GenerateContentResponse",
+        "type": "object"
+      },
       "HTTPValidationError": {
         "properties": {
           "detail": {
@@ -234,6 +2087,41 @@
           }
         },
         "title": "HTTPValidationError",
+        "type": "object"
+      },
+      "InvitationPreviewOut": {
+        "additionalProperties": false,
+        "properties": {
+          "email": {
+            "format": "email",
+            "title": "Email",
+            "type": "string"
+          },
+          "expires_at": {
+            "format": "date-time",
+            "title": "Expires At",
+            "type": "string"
+          },
+          "role": {
+            "enum": [
+              "editor",
+              "viewer"
+            ],
+            "title": "Role",
+            "type": "string"
+          },
+          "workspace_name": {
+            "title": "Workspace Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "email",
+          "workspace_name",
+          "role",
+          "expires_at"
+        ],
+        "title": "InvitationPreviewOut",
         "type": "object"
       },
       "InviteMemberRequest": {
@@ -488,7 +2376,7 @@
           "error": {
             "anyOf": [
               {
-                "$ref": "#/components/schemas/DocumentError"
+                "$ref": "#/components/schemas/JobErrorOut"
               },
               {
                 "type": "null"
@@ -628,6 +2516,60 @@
         "title": "LoginResponse",
         "type": "object"
       },
+      "MediaAssetOut": {
+        "additionalProperties": false,
+        "properties": {
+          "alt_text": {
+            "title": "Alt Text",
+            "type": "string"
+          },
+          "content_path": {
+            "title": "Content Path",
+            "type": "string"
+          },
+          "content_sha256": {
+            "title": "Content Sha256",
+            "type": "string"
+          },
+          "filename": {
+            "title": "Filename",
+            "type": "string"
+          },
+          "height": {
+            "title": "Height",
+            "type": "integer"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "mime_type": {
+            "title": "Mime Type",
+            "type": "string"
+          },
+          "size_bytes": {
+            "title": "Size Bytes",
+            "type": "integer"
+          },
+          "width": {
+            "title": "Width",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "filename",
+          "mime_type",
+          "size_bytes",
+          "content_sha256",
+          "width",
+          "height",
+          "alt_text",
+          "content_path"
+        ],
+        "title": "MediaAssetOut",
+        "type": "object"
+      },
       "MemberOut": {
         "additionalProperties": false,
         "properties": {
@@ -719,6 +2661,1057 @@
         "title": "MemberOut",
         "type": "object"
       },
+      "MetricGroupOut": {
+        "additionalProperties": false,
+        "properties": {
+          "average_reach": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Average Reach"
+          },
+          "average_views": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Average Views"
+          },
+          "click_rate_by_reach": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Click Rate By Reach"
+          },
+          "dimension": {
+            "enum": [
+              "pillar",
+              "format"
+            ],
+            "title": "Dimension",
+            "type": "string"
+          },
+          "engagement_rate_by_reach": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Engagement Rate By Reach"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "post_count": {
+            "title": "Post Count",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "dimension",
+          "name",
+          "post_count"
+        ],
+        "title": "MetricGroupOut",
+        "type": "object"
+      },
+      "MetricImportRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "measured_at": {
+            "format": "date-time",
+            "title": "Measured At",
+            "type": "string"
+          },
+          "points": {
+            "items": {
+              "$ref": "#/components/schemas/MetricPointIn"
+            },
+            "maxItems": 1000,
+            "minItems": 1,
+            "title": "Points",
+            "type": "array"
+          },
+          "source_id": {
+            "maxLength": 160,
+            "minLength": 1,
+            "title": "Source Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "source_id",
+          "measured_at",
+          "points"
+        ],
+        "title": "MetricImportRequest",
+        "type": "object"
+      },
+      "MetricImportResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "imported_count": {
+            "title": "Imported Count",
+            "type": "integer"
+          },
+          "measured_at": {
+            "format": "date-time",
+            "title": "Measured At",
+            "type": "string"
+          },
+          "snapshot_fingerprint": {
+            "title": "Snapshot Fingerprint",
+            "type": "string"
+          },
+          "source_id": {
+            "title": "Source Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "source_id",
+          "imported_count",
+          "measured_at",
+          "snapshot_fingerprint"
+        ],
+        "title": "MetricImportResponse",
+        "type": "object"
+      },
+      "MetricObservation": {
+        "additionalProperties": false,
+        "properties": {
+          "coverage": {
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Coverage",
+            "type": "number"
+          },
+          "denominator": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Denominator"
+          },
+          "measured_from": {
+            "format": "date-time",
+            "title": "Measured From",
+            "type": "string"
+          },
+          "measured_to": {
+            "format": "date-time",
+            "title": "Measured To",
+            "type": "string"
+          },
+          "metric": {
+            "minLength": 1,
+            "title": "Metric",
+            "type": "string"
+          },
+          "numerator": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Numerator"
+          },
+          "sample_size": {
+            "minimum": 0.0,
+            "title": "Sample Size",
+            "type": "integer"
+          },
+          "unavailable_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unavailable Reason"
+          },
+          "value": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Value"
+          }
+        },
+        "required": [
+          "metric",
+          "sample_size",
+          "coverage",
+          "measured_from",
+          "measured_to"
+        ],
+        "title": "MetricObservation",
+        "type": "object"
+      },
+      "MetricPointIn": {
+        "additionalProperties": false,
+        "properties": {
+          "attributed_revenue": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Attributed Revenue"
+          },
+          "attribution_valid": {
+            "default": false,
+            "title": "Attribution Valid",
+            "type": "boolean"
+          },
+          "clicks": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Clicks"
+          },
+          "engagements": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Engagements"
+          },
+          "post_age_hours": {
+            "maximum": 8760.0,
+            "minimum": 0.0,
+            "title": "Post Age Hours",
+            "type": "integer"
+          },
+          "post_id": {
+            "maxLength": 36,
+            "minLength": 1,
+            "title": "Post Id",
+            "type": "string"
+          },
+          "reach": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reach"
+          },
+          "spend": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Spend"
+          },
+          "views": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Views"
+          }
+        },
+        "required": [
+          "post_id",
+          "post_age_hours"
+        ],
+        "title": "MetricPointIn",
+        "type": "object"
+      },
+      "PaginatedCampaigns": {
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/CampaignOut"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "page": {
+            "title": "Page",
+            "type": "integer"
+          },
+          "page_size": {
+            "title": "Page Size",
+            "type": "integer"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "total",
+          "page",
+          "page_size"
+        ],
+        "title": "PaginatedCampaigns",
+        "type": "object"
+      },
+      "PaginatedPosts": {
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/PostOut"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "page": {
+            "title": "Page",
+            "type": "integer"
+          },
+          "page_size": {
+            "title": "Page Size",
+            "type": "integer"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "total",
+          "page",
+          "page_size"
+        ],
+        "title": "PaginatedPosts",
+        "type": "object"
+      },
+      "PostMediaAttachmentIn": {
+        "additionalProperties": false,
+        "properties": {
+          "alt_text": {
+            "default": "",
+            "maxLength": 500,
+            "title": "Alt Text",
+            "type": "string"
+          },
+          "asset_id": {
+            "maxLength": 36,
+            "minLength": 1,
+            "title": "Asset Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "asset_id"
+        ],
+        "title": "PostMediaAttachmentIn",
+        "type": "object"
+      },
+      "PostOut": {
+        "additionalProperties": false,
+        "properties": {
+          "campaign_id": {
+            "title": "Campaign Id",
+            "type": "string"
+          },
+          "channel": {
+            "title": "Channel",
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "current": {
+            "additionalProperties": true,
+            "title": "Current",
+            "type": "object"
+          },
+          "format": {
+            "title": "Format",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "pillar": {
+            "title": "Pillar",
+            "type": "string"
+          },
+          "publish_mode": {
+            "anyOf": [
+              {
+                "enum": [
+                  "now",
+                  "scheduled",
+                  "manual"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Publish Mode"
+          },
+          "rejection_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rejection Reason"
+          },
+          "requires_reapproval": {
+            "title": "Requires Reapproval",
+            "type": "boolean"
+          },
+          "scheduled_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Scheduled At"
+          },
+          "status": {
+            "enum": [
+              "draft",
+              "needs_review",
+              "approved",
+              "rejected",
+              "scheduled",
+              "published",
+              "failed"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          },
+          "version": {
+            "title": "Version",
+            "type": "integer"
+          },
+          "workspace_id": {
+            "title": "Workspace Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "campaign_id",
+          "workspace_id",
+          "channel",
+          "pillar",
+          "format",
+          "status",
+          "version",
+          "current",
+          "requires_reapproval",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "PostOut",
+        "type": "object"
+      },
+      "PostVersionListOut": {
+        "additionalProperties": false,
+        "properties": {
+          "current_version": {
+            "title": "Current Version",
+            "type": "integer"
+          },
+          "pending_approval_version": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pending Approval Version"
+          },
+          "post_id": {
+            "title": "Post Id",
+            "type": "string"
+          },
+          "versions": {
+            "items": {
+              "$ref": "#/components/schemas/PostVersionOut"
+            },
+            "title": "Versions",
+            "type": "array"
+          }
+        },
+        "required": [
+          "post_id",
+          "versions",
+          "current_version"
+        ],
+        "title": "PostVersionListOut",
+        "type": "object"
+      },
+      "PostVersionOut": {
+        "additionalProperties": false,
+        "properties": {
+          "approved_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Approved At"
+          },
+          "approved_by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Approved By"
+          },
+          "caption": {
+            "title": "Caption",
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "created_by": {
+            "title": "Created By",
+            "type": "string"
+          },
+          "created_by_name": {
+            "title": "Created By Name",
+            "type": "string"
+          },
+          "hashtags": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Hashtags",
+            "type": "array"
+          },
+          "media": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Media",
+            "type": "array"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          },
+          "review": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Review"
+          },
+          "source": {
+            "enum": [
+              "human",
+              "ai_generated",
+              "ai_revised",
+              "imported"
+            ],
+            "title": "Source",
+            "type": "string"
+          },
+          "version": {
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "version",
+          "caption",
+          "hashtags",
+          "media",
+          "source",
+          "created_by",
+          "created_by_name",
+          "created_at"
+        ],
+        "title": "PostVersionOut",
+        "type": "object"
+      },
+      "ProfileAlternativeOut": {
+        "additionalProperties": false,
+        "properties": {
+          "provenance": {
+            "items": {
+              "$ref": "#/components/schemas/ProfileProvenanceOut"
+            },
+            "title": "Provenance",
+            "type": "array"
+          },
+          "value": {
+            "title": "Value"
+          }
+        },
+        "required": [
+          "value"
+        ],
+        "title": "ProfileAlternativeOut",
+        "type": "object"
+      },
+      "ProfileFieldUpdate": {
+        "additionalProperties": false,
+        "properties": {
+          "key": {
+            "enum": [
+              "business_name",
+              "industry",
+              "description",
+              "products",
+              "target_audience",
+              "brand_voice",
+              "tone_keywords",
+              "do_not_use",
+              "competitors",
+              "contact"
+            ],
+            "title": "Key",
+            "type": "string"
+          },
+          "value": {
+            "title": "Value"
+          }
+        },
+        "required": [
+          "key",
+          "value"
+        ],
+        "title": "ProfileFieldUpdate",
+        "type": "object"
+      },
+      "ProfileProvenanceOut": {
+        "additionalProperties": false,
+        "properties": {
+          "char_end": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Char End"
+          },
+          "char_start": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Char Start"
+          },
+          "document_id": {
+            "title": "Document Id",
+            "type": "string"
+          },
+          "document_name": {
+            "title": "Document Name",
+            "type": "string"
+          },
+          "page": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Page"
+          },
+          "quote": {
+            "title": "Quote",
+            "type": "string"
+          },
+          "row": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Row"
+          },
+          "sheet": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sheet"
+          }
+        },
+        "required": [
+          "document_id",
+          "document_name",
+          "quote"
+        ],
+        "title": "ProfileProvenanceOut",
+        "type": "object"
+      },
+      "RecommendationDraftDecisionRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "decision": {
+            "enum": [
+              "accepted",
+              "discarded"
+            ],
+            "title": "Decision",
+            "type": "string"
+          }
+        },
+        "required": [
+          "decision"
+        ],
+        "title": "RecommendationDraftDecisionRequest",
+        "type": "object"
+      },
+      "RecommendationFeedbackOut": {
+        "additionalProperties": false,
+        "properties": {
+          "at": {
+            "format": "date-time",
+            "title": "At",
+            "type": "string"
+          },
+          "by": {
+            "title": "By",
+            "type": "string"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          },
+          "value": {
+            "enum": [
+              "useful",
+              "not_useful",
+              "already_done"
+            ],
+            "title": "Value",
+            "type": "string"
+          }
+        },
+        "required": [
+          "value",
+          "at",
+          "by"
+        ],
+        "title": "RecommendationFeedbackOut",
+        "type": "object"
+      },
+      "RecommendationFeedbackRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "note": {
+            "anyOf": [
+              {
+                "maxLength": 1000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          },
+          "value": {
+            "enum": [
+              "useful",
+              "not_useful",
+              "already_done"
+            ],
+            "title": "Value",
+            "type": "string"
+          }
+        },
+        "required": [
+          "value"
+        ],
+        "title": "RecommendationFeedbackRequest",
+        "type": "object"
+      },
+      "RecommendationOut": {
+        "additionalProperties": false,
+        "properties": {
+          "action": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Action"
+          },
+          "confidence": {
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Confidence",
+            "type": "number"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "evidence_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Evidence Ids",
+            "type": "array"
+          },
+          "hypothesis": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Hypothesis"
+          },
+          "limitations": {
+            "items": {
+              "type": "string"
+            },
+            "minItems": 1,
+            "title": "Limitations",
+            "type": "array"
+          },
+          "metric": {
+            "title": "Metric",
+            "type": "string"
+          },
+          "observation": {
+            "title": "Observation",
+            "type": "string"
+          },
+          "sample_size": {
+            "minimum": 0.0,
+            "title": "Sample Size",
+            "type": "integer"
+          },
+          "status": {
+            "enum": [
+              "abstain",
+              "proposed"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "threshold": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Threshold"
+          }
+        },
+        "required": [
+          "status",
+          "observation",
+          "metric",
+          "confidence",
+          "sample_size",
+          "limitations",
+          "created_at"
+        ],
+        "title": "RecommendationOut",
+        "type": "object"
+      },
+      "RecordExperimentOutcomeRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "baseline_window_from": {
+            "format": "date-time",
+            "title": "Baseline Window From",
+            "type": "string"
+          },
+          "baseline_window_to": {
+            "format": "date-time",
+            "title": "Baseline Window To",
+            "type": "string"
+          },
+          "followup_window_from": {
+            "format": "date-time",
+            "title": "Followup Window From",
+            "type": "string"
+          },
+          "followup_window_to": {
+            "format": "date-time",
+            "title": "Followup Window To",
+            "type": "string"
+          },
+          "max_post_age_hours": {
+            "maximum": 8760.0,
+            "minimum": 0.0,
+            "title": "Max Post Age Hours",
+            "type": "integer"
+          },
+          "metric": {
+            "enum": [
+              "reach",
+              "views",
+              "engagement_rate_by_reach",
+              "click_rate_by_reach"
+            ],
+            "title": "Metric",
+            "type": "string"
+          },
+          "min_post_age_hours": {
+            "maximum": 8760.0,
+            "minimum": 0.0,
+            "title": "Min Post Age Hours",
+            "type": "integer"
+          },
+          "source_id": {
+            "maxLength": 160,
+            "minLength": 1,
+            "title": "Source Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "source_id",
+          "metric",
+          "baseline_window_from",
+          "baseline_window_to",
+          "followup_window_from",
+          "followup_window_to",
+          "min_post_age_hours",
+          "max_post_age_hours"
+        ],
+        "title": "RecordExperimentOutcomeRequest",
+        "type": "object"
+      },
       "RegisterRequest": {
         "additionalProperties": false,
         "properties": {
@@ -790,6 +3783,69 @@
         "title": "ResetPasswordRequest",
         "type": "object"
       },
+      "ResetPasswordResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "ok": {
+            "title": "Ok",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "ok"
+        ],
+        "title": "ResetPasswordResponse",
+        "type": "object"
+      },
+      "ReviseWithAiRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "instruction": {
+            "maxLength": 2000,
+            "minLength": 1,
+            "title": "Instruction",
+            "type": "string"
+          },
+          "scope": {
+            "default": "all",
+            "enum": [
+              "caption",
+              "hashtags",
+              "media",
+              "all"
+            ],
+            "title": "Scope",
+            "type": "string"
+          },
+          "version": {
+            "minimum": 1.0,
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "version",
+          "instruction"
+        ],
+        "title": "ReviseWithAiRequest",
+        "type": "object"
+      },
+      "SaveRecommendationRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "source_id": {
+            "maxLength": 160,
+            "minLength": 1,
+            "title": "Source Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "source_id"
+        ],
+        "title": "SaveRecommendationRequest",
+        "type": "object"
+      },
       "SelectWorkspaceRequest": {
         "additionalProperties": false,
         "properties": {
@@ -841,6 +3897,119 @@
           "expires_at"
         ],
         "title": "SessionResponse",
+        "type": "object"
+      },
+      "SubmitApprovalRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "version": {
+            "minimum": 1.0,
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "version"
+        ],
+        "title": "SubmitApprovalRequest",
+        "type": "object"
+      },
+      "UpdateBrandProfileRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "confirm": {
+            "default": false,
+            "title": "Confirm",
+            "type": "boolean"
+          },
+          "fields": {
+            "items": {
+              "$ref": "#/components/schemas/ProfileFieldUpdate"
+            },
+            "maxItems": 10,
+            "title": "Fields",
+            "type": "array"
+          },
+          "version": {
+            "minimum": 1.0,
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "version"
+        ],
+        "title": "UpdateBrandProfileRequest",
+        "type": "object"
+      },
+      "UpdatePostRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "caption": {
+            "anyOf": [
+              {
+                "maxLength": 10000,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Caption"
+          },
+          "hashtags": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "maxItems": 50,
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Hashtags"
+          },
+          "media": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/PostMediaAttachmentIn"
+                },
+                "maxItems": 10,
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Media"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "maxLength": 1000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          },
+          "version": {
+            "minimum": 1.0,
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "version"
+        ],
+        "title": "UpdatePostRequest",
         "type": "object"
       },
       "UploadLimits": {
@@ -1034,7 +4203,9 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/ForgotPasswordResponse"
+                }
               }
             },
             "description": "Successful Response"
@@ -1074,7 +4245,9 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/InvitationPreviewOut"
+                }
               }
             },
             "description": "Successful Response"
@@ -1282,7 +4455,9 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/ResetPasswordResponse"
+                }
               }
             },
             "description": "Successful Response"
@@ -1770,6 +4945,1751 @@
         ]
       }
     },
+    "/api/v1/workspaces/{company_id}/analytics/dashboard": {
+      "get": {
+        "operationId": "get_analytics_dashboard_api_v1_workspaces__company_id__analytics_dashboard_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "company_id",
+            "required": true,
+            "schema": {
+              "title": "Company Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "source_id",
+            "required": true,
+            "schema": {
+              "maxLength": 160,
+              "minLength": 1,
+              "title": "Source Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "min_post_age_hours",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "maximum": 8760,
+              "minimum": 0,
+              "title": "Min Post Age Hours",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "max_post_age_hours",
+            "required": false,
+            "schema": {
+              "default": 720,
+              "maximum": 8760,
+              "minimum": 0,
+              "title": "Max Post Age Hours",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "measured_from",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Measured From"
+            }
+          },
+          {
+            "in": "query",
+            "name": "measured_to",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Measured To"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AnalyticsDashboardOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Analytics Dashboard",
+        "tags": [
+          "analytics"
+        ]
+      }
+    },
+    "/api/v1/workspaces/{company_id}/analytics/recommendation": {
+      "get": {
+        "operationId": "get_recommendation_api_v1_workspaces__company_id__analytics_recommendation_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "company_id",
+            "required": true,
+            "schema": {
+              "title": "Company Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "source_id",
+            "required": true,
+            "schema": {
+              "maxLength": 160,
+              "minLength": 1,
+              "title": "Source Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "min_post_age_hours",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "maximum": 8760,
+              "minimum": 0,
+              "title": "Min Post Age Hours",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "max_post_age_hours",
+            "required": false,
+            "schema": {
+              "default": 720,
+              "maximum": 8760,
+              "minimum": 0,
+              "title": "Max Post Age Hours",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RecommendationOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Recommendation",
+        "tags": [
+          "analytics"
+        ]
+      }
+    },
+    "/api/v1/workspaces/{company_id}/analytics/recommendation-drafts": {
+      "get": {
+        "operationId": "list_accepted_recommendation_drafts_api_v1_workspaces__company_id__analytics_recommendation_drafts_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "company_id",
+            "required": true,
+            "schema": {
+              "title": "Company Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "campaign_id",
+            "required": true,
+            "schema": {
+              "maxLength": 36,
+              "minLength": 1,
+              "title": "Campaign Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "source_id",
+            "required": true,
+            "schema": {
+              "maxLength": 160,
+              "minLength": 1,
+              "title": "Source Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AcceptedRecommendationDraftListOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Accepted Recommendation Drafts",
+        "tags": [
+          "analytics"
+        ]
+      }
+    },
+    "/api/v1/workspaces/{company_id}/analytics/recommendation-drafts/{draft_id}/decision": {
+      "post": {
+        "operationId": "decide_recommendation_draft_api_v1_workspaces__company_id__analytics_recommendation_drafts__draft_id__decision_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "company_id",
+            "required": true,
+            "schema": {
+              "title": "Company Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "draft_id",
+            "required": true,
+            "schema": {
+              "title": "Draft Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RecommendationDraftDecisionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CampaignBriefRevisionDraftOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Decide Recommendation Draft",
+        "tags": [
+          "analytics"
+        ]
+      }
+    },
+    "/api/v1/workspaces/{company_id}/analytics/recommendation-drafts/{draft_id}/outcomes": {
+      "get": {
+        "operationId": "list_recommendation_experiment_outcomes_api_v1_workspaces__company_id__analytics_recommendation_drafts__draft_id__outcomes_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "company_id",
+            "required": true,
+            "schema": {
+              "title": "Company Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "draft_id",
+            "required": true,
+            "schema": {
+              "title": "Draft Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExperimentOutcomeListOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Recommendation Experiment Outcomes",
+        "tags": [
+          "analytics"
+        ]
+      },
+      "post": {
+        "operationId": "record_recommendation_experiment_outcome_api_v1_workspaces__company_id__analytics_recommendation_drafts__draft_id__outcomes_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "company_id",
+            "required": true,
+            "schema": {
+              "title": "Company Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "draft_id",
+            "required": true,
+            "schema": {
+              "title": "Draft Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RecordExperimentOutcomeRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExperimentOutcomeOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Record Recommendation Experiment Outcome",
+        "tags": [
+          "analytics"
+        ]
+      }
+    },
+    "/api/v1/workspaces/{company_id}/analytics/recommendations": {
+      "post": {
+        "operationId": "save_recommendation_api_v1_workspaces__company_id__analytics_recommendations_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "company_id",
+            "required": true,
+            "schema": {
+              "title": "Company Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SaveRecommendationRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AnalyticsRecommendationRecordOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Save Recommendation",
+        "tags": [
+          "analytics"
+        ]
+      }
+    },
+    "/api/v1/workspaces/{company_id}/analytics/recommendations/{recommendation_id}/apply": {
+      "post": {
+        "operationId": "apply_recommendation_api_v1_workspaces__company_id__analytics_recommendations__recommendation_id__apply_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "company_id",
+            "required": true,
+            "schema": {
+              "title": "Company Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "recommendation_id",
+            "required": true,
+            "schema": {
+              "title": "Recommendation Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ApplyRecommendationRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApplyRecommendationResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Apply Recommendation",
+        "tags": [
+          "analytics"
+        ]
+      }
+    },
+    "/api/v1/workspaces/{company_id}/analytics/recommendations/{recommendation_id}/feedback": {
+      "post": {
+        "operationId": "record_recommendation_feedback_api_v1_workspaces__company_id__analytics_recommendations__recommendation_id__feedback_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "company_id",
+            "required": true,
+            "schema": {
+              "title": "Company Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "recommendation_id",
+            "required": true,
+            "schema": {
+              "title": "Recommendation Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RecommendationFeedbackRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AnalyticsRecommendationRecordOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Record Recommendation Feedback",
+        "tags": [
+          "analytics"
+        ]
+      }
+    },
+    "/api/v1/workspaces/{company_id}/approvals": {
+      "get": {
+        "operationId": "approval_queue_api_v1_workspaces__company_id__approvals_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "company_id",
+            "required": true,
+            "schema": {
+              "title": "Company Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "page",
+            "required": false,
+            "schema": {
+              "default": 1,
+              "minimum": 1,
+              "title": "Page",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "page_size",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Page Size",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PaginatedPosts"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Approval Queue",
+        "tags": [
+          "campaigns-content-approvals"
+        ]
+      }
+    },
+    "/api/v1/workspaces/{company_id}/brand-profile": {
+      "get": {
+        "operationId": "get_brand_profile_api_v1_workspaces__company_id__brand_profile_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "company_id",
+            "required": true,
+            "schema": {
+              "title": "Company Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BrandProfileOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unauthenticated"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorEnvelope"
+                }
+              }
+            },
+            "description": "Workspace access denied"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorEnvelope"
+                }
+              }
+            },
+            "description": "Profile not found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal server error"
+          }
+        },
+        "summary": "Get Brand Profile",
+        "tags": [
+          "brand-profile"
+        ]
+      },
+      "patch": {
+        "operationId": "update_brand_profile_api_v1_workspaces__company_id__brand_profile_patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "company_id",
+            "required": true,
+            "schema": {
+              "title": "Company Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateBrandProfileRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BrandProfileOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unauthenticated"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorEnvelope"
+                }
+              }
+            },
+            "description": "Workspace access denied"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorEnvelope"
+                }
+              }
+            },
+            "description": "Profile not found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorEnvelope"
+                }
+              }
+            },
+            "description": "Version conflict; reload the current revision"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorEnvelope"
+                }
+              }
+            },
+            "description": "Invalid request"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal server error"
+          }
+        },
+        "summary": "Update Brand Profile",
+        "tags": [
+          "brand-profile"
+        ]
+      }
+    },
+    "/api/v1/workspaces/{company_id}/brand-profile/confirm": {
+      "post": {
+        "operationId": "confirm_brand_profile_api_v1_workspaces__company_id__brand_profile_confirm_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "company_id",
+            "required": true,
+            "schema": {
+              "title": "Company Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ConfirmBrandProfileRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BrandProfileOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unauthenticated"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorEnvelope"
+                }
+              }
+            },
+            "description": "Workspace access denied"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorEnvelope"
+                }
+              }
+            },
+            "description": "Profile not found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorEnvelope"
+                }
+              }
+            },
+            "description": "Version conflict; reload the current revision"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorEnvelope"
+                }
+              }
+            },
+            "description": "Invalid request"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal server error"
+          }
+        },
+        "summary": "Confirm Brand Profile",
+        "tags": [
+          "brand-profile"
+        ]
+      }
+    },
+    "/api/v1/workspaces/{company_id}/brand-profile/revisions": {
+      "get": {
+        "operationId": "list_brand_profile_revisions_api_v1_workspaces__company_id__brand_profile_revisions_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "company_id",
+            "required": true,
+            "schema": {
+              "title": "Company Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/BrandProfileRevisionOut"
+                  },
+                  "title": "Response List Brand Profile Revisions Api V1 Workspaces  Company Id  Brand Profile Revisions Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unauthenticated"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorEnvelope"
+                }
+              }
+            },
+            "description": "Workspace access denied"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorEnvelope"
+                }
+              }
+            },
+            "description": "Profile not found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal server error"
+          }
+        },
+        "summary": "List Brand Profile Revisions",
+        "tags": [
+          "brand-profile"
+        ]
+      }
+    },
+    "/api/v1/workspaces/{company_id}/brand-profile/revisions/{revision_number}": {
+      "get": {
+        "operationId": "get_brand_profile_revision_api_v1_workspaces__company_id__brand_profile_revisions__revision_number__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "company_id",
+            "required": true,
+            "schema": {
+              "title": "Company Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "revision_number",
+            "required": true,
+            "schema": {
+              "title": "Revision Number",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BrandProfileRevisionOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unauthenticated"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorEnvelope"
+                }
+              }
+            },
+            "description": "Workspace access denied"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorEnvelope"
+                }
+              }
+            },
+            "description": "Profile not found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal server error"
+          }
+        },
+        "summary": "Get Brand Profile Revision",
+        "tags": [
+          "brand-profile"
+        ]
+      }
+    },
+    "/api/v1/workspaces/{company_id}/campaigns": {
+      "get": {
+        "operationId": "list_campaigns_api_v1_workspaces__company_id__campaigns_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "company_id",
+            "required": true,
+            "schema": {
+              "title": "Company Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "page",
+            "required": false,
+            "schema": {
+              "default": 1,
+              "minimum": 1,
+              "title": "Page",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "page_size",
+            "required": false,
+            "schema": {
+              "default": 20,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Page Size",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Status"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PaginatedCampaigns"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Campaigns",
+        "tags": [
+          "campaigns-content-approvals"
+        ]
+      },
+      "post": {
+        "operationId": "create_campaign_api_v1_workspaces__company_id__campaigns_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "company_id",
+            "required": true,
+            "schema": {
+              "title": "Company Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CampaignCreateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CampaignOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Campaign",
+        "tags": [
+          "campaigns-content-approvals"
+        ]
+      }
+    },
+    "/api/v1/workspaces/{company_id}/campaigns/{campaign_id}": {
+      "get": {
+        "operationId": "get_campaign_api_v1_workspaces__company_id__campaigns__campaign_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "company_id",
+            "required": true,
+            "schema": {
+              "title": "Company Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "campaign_id",
+            "required": true,
+            "schema": {
+              "title": "Campaign Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CampaignOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Campaign",
+        "tags": [
+          "campaigns-content-approvals"
+        ]
+      },
+      "patch": {
+        "operationId": "update_campaign_api_v1_workspaces__company_id__campaigns__campaign_id__patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "company_id",
+            "required": true,
+            "schema": {
+              "title": "Company Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "campaign_id",
+            "required": true,
+            "schema": {
+              "title": "Campaign Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CampaignUpdateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CampaignOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Update Campaign",
+        "tags": [
+          "campaigns-content-approvals"
+        ]
+      }
+    },
+    "/api/v1/workspaces/{company_id}/campaigns/{campaign_id}/posts": {
+      "post": {
+        "operationId": "create_manual_post_api_v1_workspaces__company_id__campaigns__campaign_id__posts_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "company_id",
+            "required": true,
+            "schema": {
+              "title": "Company Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "campaign_id",
+            "required": true,
+            "schema": {
+              "title": "Campaign Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateManualPostRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PostOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Manual Post",
+        "tags": [
+          "campaigns-content-approvals"
+        ]
+      }
+    },
     "/api/v1/workspaces/{company_id}/documents": {
       "get": {
         "operationId": "list_documents_api_v1_workspaces__company_id__documents_get",
@@ -1897,15 +6817,85 @@
             },
             "description": "Successful Response"
           },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorEnvelope"
+                }
+              }
+            },
+            "description": "API error envelope"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorEnvelope"
+                }
+              }
+            },
+            "description": "API error envelope"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorEnvelope"
+                }
+              }
+            },
+            "description": "API error envelope"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorEnvelope"
+                }
+              }
+            },
+            "description": "API error envelope"
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorEnvelope"
+                }
+              }
+            },
+            "description": "API error envelope"
+          },
+          "415": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorEnvelope"
+                }
+              }
+            },
+            "description": "API error envelope"
+          },
           "422": {
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "$ref": "#/components/schemas/ApiErrorEnvelope"
                 }
               }
             },
-            "description": "Validation Error"
+            "description": "API error envelope"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorEnvelope"
+                }
+              }
+            },
+            "description": "API error envelope"
           }
         },
         "summary": "Upload Documents",
@@ -1973,6 +6963,64 @@
       }
     },
     "/api/v1/workspaces/{company_id}/documents/{document_id}": {
+      "delete": {
+        "operationId": "delete_document_api_v1_workspaces__company_id__documents__document_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "company_id",
+            "required": true,
+            "schema": {
+              "title": "Company Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "document_id",
+            "required": true,
+            "schema": {
+              "title": "Document Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Delete Document",
+        "tags": [
+          "documents"
+        ]
+      },
       "get": {
         "operationId": "get_document_api_v1_workspaces__company_id__documents__document_id__get",
         "parameters": [
@@ -2106,6 +7154,350 @@
         ]
       }
     },
+    "/api/v1/workspaces/{company_id}/exports": {
+      "post": {
+        "operationId": "create_export_api_v1_workspaces__company_id__exports_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "company_id",
+            "required": true,
+            "schema": {
+              "title": "Company Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 200,
+                  "minLength": 8,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateExportRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Export",
+        "tags": [
+          "campaigns-content-approvals"
+        ]
+      }
+    },
+    "/api/v1/workspaces/{company_id}/exports/{export_id}": {
+      "get": {
+        "operationId": "get_export_api_v1_workspaces__company_id__exports__export_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "company_id",
+            "required": true,
+            "schema": {
+              "title": "Company Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "export_id",
+            "required": true,
+            "schema": {
+              "title": "Export Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExportOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Export",
+        "tags": [
+          "campaigns-content-approvals"
+        ]
+      }
+    },
+    "/api/v1/workspaces/{company_id}/exports/{export_id}/download": {
+      "get": {
+        "operationId": "download_export_api_v1_workspaces__company_id__exports__export_id__download_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "company_id",
+            "required": true,
+            "schema": {
+              "title": "Company Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "export_id",
+            "required": true,
+            "schema": {
+              "title": "Export Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Download Export",
+        "tags": [
+          "campaigns-content-approvals"
+        ]
+      }
+    },
+    "/api/v1/workspaces/{company_id}/media": {
+      "post": {
+        "operationId": "upload_media_asset_api_v1_workspaces__company_id__media_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "company_id",
+            "required": true,
+            "schema": {
+              "title": "Company Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_upload_media_asset_api_v1_workspaces__company_id__media_post"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MediaAssetOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Upload Media Asset",
+        "tags": [
+          "media-assets"
+        ]
+      }
+    },
+    "/api/v1/workspaces/{company_id}/media/{asset_id}/content": {
+      "get": {
+        "operationId": "download_media_asset_api_v1_workspaces__company_id__media__asset_id__content_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "company_id",
+            "required": true,
+            "schema": {
+              "title": "Company Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "asset_id",
+            "required": true,
+            "schema": {
+              "title": "Asset Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Download Media Asset",
+        "tags": [
+          "media-assets"
+        ]
+      }
+    },
     "/api/v1/workspaces/{company_id}/members": {
       "get": {
         "operationId": "list_members_api_v1_workspaces__company_id__members_get",
@@ -2231,6 +7623,853 @@
         "summary": "Invite Member",
         "tags": [
           "workspaces"
+        ]
+      }
+    },
+    "/api/v1/workspaces/{company_id}/members/{member_id}/resend-invitation": {
+      "post": {
+        "operationId": "resend_invitation_api_v1_workspaces__company_id__members__member_id__resend_invitation_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "company_id",
+            "required": true,
+            "schema": {
+              "title": "Company Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "member_id",
+            "required": true,
+            "schema": {
+              "title": "Member Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InviteMemberResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Resend Invitation",
+        "tags": [
+          "workspaces"
+        ]
+      }
+    },
+    "/api/v1/workspaces/{company_id}/metrics/import": {
+      "post": {
+        "operationId": "import_metrics_api_v1_workspaces__company_id__metrics_import_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "company_id",
+            "required": true,
+            "schema": {
+              "title": "Company Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MetricImportRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MetricImportResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Import Metrics",
+        "tags": [
+          "analytics"
+        ]
+      }
+    },
+    "/api/v1/workspaces/{company_id}/posts": {
+      "get": {
+        "operationId": "list_posts_api_v1_workspaces__company_id__posts_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "company_id",
+            "required": true,
+            "schema": {
+              "title": "Company Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "campaign_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Campaign Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "page",
+            "required": false,
+            "schema": {
+              "default": 1,
+              "minimum": 1,
+              "title": "Page",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "page_size",
+            "required": false,
+            "schema": {
+              "default": 100,
+              "maximum": 200,
+              "minimum": 1,
+              "title": "Page Size",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PaginatedPosts"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Posts",
+        "tags": [
+          "campaigns-content-approvals"
+        ]
+      }
+    },
+    "/api/v1/workspaces/{company_id}/posts/generate": {
+      "post": {
+        "operationId": "generate_content_api_v1_workspaces__company_id__posts_generate_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "company_id",
+            "required": true,
+            "schema": {
+              "title": "Company Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 200,
+                  "minLength": 8,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GenerateContentRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GenerateContentResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Generate Content",
+        "tags": [
+          "campaigns-content-approvals"
+        ]
+      }
+    },
+    "/api/v1/workspaces/{company_id}/posts/{post_id}": {
+      "get": {
+        "operationId": "get_post_api_v1_workspaces__company_id__posts__post_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "company_id",
+            "required": true,
+            "schema": {
+              "title": "Company Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "post_id",
+            "required": true,
+            "schema": {
+              "title": "Post Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PostOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Post",
+        "tags": [
+          "campaigns-content-approvals"
+        ]
+      },
+      "patch": {
+        "operationId": "update_post_api_v1_workspaces__company_id__posts__post_id__patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "company_id",
+            "required": true,
+            "schema": {
+              "title": "Company Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "post_id",
+            "required": true,
+            "schema": {
+              "title": "Post Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdatePostRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PostOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Update Post",
+        "tags": [
+          "campaigns-content-approvals"
+        ]
+      }
+    },
+    "/api/v1/workspaces/{company_id}/posts/{post_id}/approval": {
+      "post": {
+        "operationId": "decide_post_approval_api_v1_workspaces__company_id__posts__post_id__approval_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "company_id",
+            "required": true,
+            "schema": {
+              "title": "Company Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "post_id",
+            "required": true,
+            "schema": {
+              "title": "Post Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ApprovalRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PostOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Decide Post Approval",
+        "tags": [
+          "campaigns-content-approvals"
+        ]
+      }
+    },
+    "/api/v1/workspaces/{company_id}/posts/{post_id}/approvals": {
+      "get": {
+        "operationId": "post_approval_history_api_v1_workspaces__company_id__posts__post_id__approvals_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "company_id",
+            "required": true,
+            "schema": {
+              "title": "Company Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "post_id",
+            "required": true,
+            "schema": {
+              "title": "Post Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ApprovalRecordOut"
+                  },
+                  "title": "Response Post Approval History Api V1 Workspaces  Company Id  Posts  Post Id  Approvals Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Post Approval History",
+        "tags": [
+          "campaigns-content-approvals"
+        ]
+      }
+    },
+    "/api/v1/workspaces/{company_id}/posts/{post_id}/revise": {
+      "post": {
+        "operationId": "revise_post_with_ai_api_v1_workspaces__company_id__posts__post_id__revise_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "company_id",
+            "required": true,
+            "schema": {
+              "title": "Company Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "post_id",
+            "required": true,
+            "schema": {
+              "title": "Post Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 200,
+                  "minLength": 8,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReviseWithAiRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AcceptedResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Revise Post With Ai",
+        "tags": [
+          "campaigns-content-approvals"
+        ]
+      }
+    },
+    "/api/v1/workspaces/{company_id}/posts/{post_id}/submit-approval": {
+      "post": {
+        "operationId": "submit_post_for_approval_api_v1_workspaces__company_id__posts__post_id__submit_approval_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "company_id",
+            "required": true,
+            "schema": {
+              "title": "Company Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "post_id",
+            "required": true,
+            "schema": {
+              "title": "Post Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SubmitApprovalRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PostOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Submit Post For Approval",
+        "tags": [
+          "campaigns-content-approvals"
+        ]
+      }
+    },
+    "/api/v1/workspaces/{company_id}/posts/{post_id}/versions": {
+      "get": {
+        "operationId": "list_post_versions_api_v1_workspaces__company_id__posts__post_id__versions_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "company_id",
+            "required": true,
+            "schema": {
+              "title": "Company Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "post_id",
+            "required": true,
+            "schema": {
+              "title": "Post Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PostVersionListOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Post Versions",
+        "tags": [
+          "campaigns-content-approvals"
         ]
       }
     },

@@ -2,7 +2,7 @@
 
 import { createContext, useContext, useMemo, type ReactNode } from 'react';
 
-import type { SessionResponse, Workspace } from '@agentic/contracts';
+import type { ApiSessionResponse as SessionResponse, ApiWorkspace as Workspace } from '@/lib/api/types';
 
 import { ApiError } from '@/lib/api';
 import { useMe } from '@/lib/hooks';
@@ -11,7 +11,7 @@ import { Button, ErrorPanel, LoadingBlock } from '@/components/ui';
 interface SessionValue {
   session: SessionResponse;
   user: SessionResponse['user'];
-  workspaces: Workspace[];
+  workspaces: readonly Workspace[];
 }
 
 const SessionContext = createContext<SessionValue | null>(null);

@@ -220,6 +220,13 @@ export const demoCampaigns: Campaign[] = [
     workspace_id: WS_FB,
     name: 'Combo trưa văn phòng – Tháng 3',
     status: CAMPAIGN_STATUSES.ACTIVE,
+    content_plan: {
+      strategy_summary: 'Xây nhận biết combo trưa nhanh gọn, nhấn vào thời gian lên món và giá rõ ràng.',
+      slots: [
+        { id: 'slot-combo-1', scheduled_date: '2026-03-05', pillar: CONTENT_PILLARS.PRODUCT, format: POST_FORMATS.IMAGE, topic: 'Một bữa trưa nóng hổi trong 5 phút' },
+        { id: 'slot-combo-2', scheduled_date: '2026-03-10', pillar: CONTENT_PILLARS.PROMOTION, format: POST_FORMATS.TEXT, topic: 'Combo trưa 55.000đ cho dân văn phòng' },
+      ],
+    },
     brief: {
       objective: CAMPAIGN_OBJECTIVES.SALES,
       objective_note:
@@ -267,6 +274,7 @@ export const demoCampaigns: Campaign[] = [
     workspace_id: WS_FB,
     name: 'Khai trương chi nhánh 2 – Trần Duy Hưng',
     status: CAMPAIGN_STATUSES.DRAFT,
+    content_plan: { strategy_summary: '', slots: [] },
     brief: {
       objective: CAMPAIGN_OBJECTIVES.AWARENESS,
       objective_note:

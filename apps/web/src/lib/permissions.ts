@@ -10,12 +10,17 @@ import {
   PERMISSIONS,
   ROLE_LABELS,
   type Permission,
-  type Workspace,
+  type WorkspaceRole,
 } from '@agentic/contracts';
+
+interface WorkspaceAccess {
+  role: WorkspaceRole;
+  permissions: readonly string[];
+}
 
 /** Người dùng hiện tại có quyền này trong workspace không. */
 export function hasPermission(
-  workspace: Workspace | null | undefined,
+  workspace: WorkspaceAccess | null | undefined,
   permission: Permission,
 ): boolean {
   if (!workspace) return false;
@@ -23,7 +28,7 @@ export function hasPermission(
 }
 
 export function hasAnyPermission(
-  workspace: Workspace | null | undefined,
+  workspace: WorkspaceAccess | null | undefined,
   permissions: readonly Permission[],
 ): boolean {
   return permissions.some((permission) => hasPermission(workspace, permission));
@@ -36,7 +41,7 @@ export function hasAnyPermission(
  * biết là do quyền của mình hay do trạng thái dữ liệu.
  */
 export function permissionDeniedReason(
-  workspace: Workspace | null | undefined,
+  workspace: WorkspaceAccess | null | undefined,
   _permission: Permission,
 ): string {
   const roleLabel = workspace ? ROLE_LABELS[workspace.role] : 'khách';
@@ -52,6 +57,7 @@ export const ACTION_REQUIREMENTS = {
   confirmBrand: PERMISSIONS.BRAND_CONFIRM,
   uploadDocument: PERMISSIONS.DOCUMENT_UPLOAD,
   createCampaign: PERMISSIONS.CAMPAIGN_CREATE,
+  editCampaign: PERMISSIONS.CAMPAIGN_EDIT,
   generateContent: PERMISSIONS.POST_GENERATE,
   editPost: PERMISSIONS.POST_EDIT,
   approvePost: PERMISSIONS.POST_APPROVE,

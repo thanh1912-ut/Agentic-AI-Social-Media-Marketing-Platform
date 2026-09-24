@@ -9,19 +9,14 @@
 
 import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
-
-import {
-  JOB_STATUS_LABELS,
-  JOB_STATUSES,
-  type Job,
-  type JobStep,
-  type JobStepStatus,
-} from '@agentic/contracts';
+import { useState } from 'react';
 
 import { useSession } from '@/components/session-gate';
-import { ApiError } from '@/lib/api';
+import { api, ApiError, saveBlob } from '@/lib/api';
+import type { ApiJob as Job, ApiJobStep as JobStep } from '@/lib/api/types';
 import { formatDateTime, formatNumber, formatRelative } from '@/lib/format';
 import { useCancelJob, useJob, useRetryJob } from '@/lib/hooks';
+import { presentJobFailure } from '@/lib/processing-status';
 import {
   Button,
   Card,
@@ -40,12 +35,20 @@ import {
  * chưa có bảng nhãn trong `labels.ts` — khác với `JOB_STATUS_LABELS` dành cho
  * trạng thái job. Khai báo tạm một chỗ ở đây thay vì rải chuỗi khắp nơi.
  */
-const JOB_STEP_STATUS_LABELS: Record<JobStepStatus, { label: string; tone: Tone }> = {
+const JOB_STEP_STATUS_LABELS: Record<string, { label: string; tone: Tone }> = {
   pending: { label: 'Chưa bắt đầu', tone: 'neutral' },
   running: { label: 'Đang chạy', tone: 'info' },
   succeeded: { label: 'Xong', tone: 'success' },
   failed: { label: 'Lỗi', tone: 'danger' },
   skipped: { label: 'Bỏ qua', tone: 'neutral' },
+};
+
+const JOB_STATUS_META: Record<string, { label: string; tone: Tone }> = {
+  queued: { label: 'Đang chờ', tone: 'neutral' },
+  running: { label: 'Đang chạy', tone: 'info' },
+  succeeded: { label: 'Đã hoàn tất', tone: 'success' },
+  failed: { label: 'Thất bại', tone: 'danger' },
+  cancelled: { label: 'Đã huỷ', tone: 'warning' },
 };
 
 /**
@@ -70,21 +73,9 @@ const JOB_RESULT_KEY_LABELS: Record<string, string> = {
 /**
  * Phần trăm của tác vụ — CHỈ lấy từ số máy chủ gửi.
  *
- * Hợp đồng khai báo `progress: number`, nhưng thực tế backend có thể bỏ trống,
- * hoặc chỉ gửi `progress_current`/`progress_total`. Thiếu `total` (hoặc total = 0)
- * nghĩa là KHÔNG có phần trăm thật → trả `null` để thanh tiến độ hiển thị dạng
- * không xác định. TUYỆT ĐỐI không lấy số bước đã xong chia cho tổng số bước để tự
- * chế ra một phần trăm.
+ * HTTP DTO khai báo `progress` có thể null. Không suy phần trăm từ số bước.
  */
 function reportedProgress(job: Job): number | null {
-  const raw = job as Job & { progress_current?: unknown; progress_total?: unknown };
-  const current = raw.progress_current;
-  const total = raw.progress_total;
-
-  if (typeof current === 'number' && typeof total === 'number' && total > 0) {
-    return (current / total) * 100;
-  }
-
   if (typeof job.progress === 'number' && Number.isFinite(job.progress)) {
     return job.progress;
   }
@@ -105,7 +96,7 @@ function resultValueText(value: unknown): string {
 }
 
 /** Đường dẫn đi tiếp sau khi tác vụ xong — chỉ trỏ tới màn hình đã có trong bản này. */
-function resultHref(workspaceId: string, result: Record<string, unknown>): {
+function resultHref(workspaceId: string, result: Readonly<Record<string, unknown>>): {
   href: string;
   label: string;
 } {
@@ -117,14 +108,22 @@ function resultHref(workspaceId: string, result: Record<string, unknown>): {
   ) {
     return { href: `/w/${workspaceId}/documents`, label: 'Xem danh sách đã tải lên' };
   }
+  const campaignId = result.campaign_id;
+  if (typeof campaignId === 'string' && campaignId !== '') {
+    return { href: `/w/${workspaceId}/campaigns/${campaignId}`, label: 'Mở chiến dịch' };
+  }
   return { href: `/w/${workspaceId}`, label: 'Về màn hình chính' };
 }
 
-function JobSteps({ steps }: { steps: JobStep[] }) {
+function JobSteps({ steps }: { steps: readonly JobStep[] }) {
   return (
     <ol className="space-y-3">
       {steps.map((step) => {
-        const meta = JOB_STEP_STATUS_LABELS[step.status];
+        const meta = JOB_STEP_STATUS_LABELS[step.status] ?? {
+          label: step.status || 'Chưa rõ',
+          tone: 'neutral' as const,
+        };
+        const failure = step.error ? presentJobFailure(step.error) : null;
         return (
           <li key={step.key} className="border-b border-slate-100 pb-3 last:border-b-0 last:pb-0">
             <div className="flex flex-wrap items-center gap-2">
@@ -137,16 +136,18 @@ function JobSteps({ steps }: { steps: JobStep[] }) {
                 <ProgressBar value={step.progress} label={`Tiến độ bước “${step.label}”`} />
               </div>
             ) : null}
-            {step.error ? (
-              <p className="mt-1 text-sm text-rose-800">
-                {step.error.message}
-                {step.error.code ? (
+            {failure ? (
+              <div className="mt-1 text-sm text-rose-800">
+                <p>
+                  {failure.title}: {failure.message}
+                </p>
+                {failure.hint ? <p className="mt-1">Việc cần làm: {failure.hint}</p> : null}
+                {step.error?.code ? (
                   <span className="text-xs text-rose-700/80">
-                    {' '}
-                    (mã: <code className="font-mono">{step.error.code}</code>)
+                    Mã lỗi: <code className="font-mono">{step.error.code}</code>
                   </span>
                 ) : null}
-              </p>
+              </div>
             ) : null}
             <p className="mt-1 text-xs text-slate-500">
               {step.started_at ? `Bắt đầu ${formatDateTime(step.started_at)}` : 'Chưa bắt đầu'}
@@ -171,6 +172,8 @@ export default function TrangTienDoTacVu() {
   const jobQuery = useJob(jobId);
   const cancel = useCancelJob(jobId);
   const retry = useRetryJob(jobId);
+  const [downloadingExport, setDownloadingExport] = useState(false);
+  const [exportDownloadError, setExportDownloadError] = useState<string | null>(null);
 
   if (!workspace) {
     return (
@@ -227,11 +230,10 @@ export default function TrangTienDoTacVu() {
     }
 
     if (apiError?.isForbidden) {
-      const permission = apiError.details.permission;
       return (
         <PermissionNotice
           message={apiError.message}
-          requiredPermission={typeof permission === 'string' ? permission : undefined}
+          requiredPermission={apiError.requiredPermission ?? undefined}
         />
       );
     }
@@ -249,13 +251,31 @@ export default function TrangTienDoTacVu() {
   }
 
   const job = jobQuery.data;
-  const statusMeta = JOB_STATUS_LABELS[job.status];
+  const statusMeta = JOB_STATUS_META[job.status] ?? {
+    label: job.status || 'Chưa rõ',
+    tone: 'neutral' as const,
+  };
   const progress = reportedProgress(job);
-  const isActive = job.status === JOB_STATUSES.QUEUED || job.status === JOB_STATUSES.RUNNING;
+  const isActive = job.status === 'queued' || job.status === 'running';
   const result = job.result ?? null;
   const resultEntries = result ? Object.entries(result).slice(0, 20) : [];
   const hasResult = resultEntries.length > 0;
   const onward = result ? resultHref(workspaceId, result) : null;
+  const exportId = typeof result?.export_id === 'string' ? result.export_id : null;
+  const exportFilename = typeof result?.filename === 'string' ? result.filename : 'campaign-export';
+
+  async function downloadExport() {
+    if (!exportId) return;
+    setDownloadingExport(true);
+    setExportDownloadError(null);
+    try {
+      saveBlob(await api.export.download(workspaceId, exportId), exportFilename);
+    } catch (error) {
+      setExportDownloadError(error instanceof ApiError ? error.message : 'Không tải được tệp xuất. Hãy thử lại.');
+    } finally {
+      setDownloadingExport(false);
+    }
+  }
 
   return (
     <div className="space-y-6">
@@ -272,11 +292,6 @@ export default function TrangTienDoTacVu() {
         {isActive ? (
           <p role="status" className="text-sm text-sky-800">
             Đang theo dõi tiến độ — màn hình tự cập nhật cho tới khi tác vụ kết thúc.
-          </p>
-        ) : null}
-        {job.expires_at ? (
-          <p className="text-xs text-slate-500">
-            Tác vụ sẽ bị xoá khỏi lịch sử sau {formatDateTime(job.expires_at)}.
           </p>
         ) : null}
       </header>
@@ -339,7 +354,7 @@ export default function TrangTienDoTacVu() {
         )}
       </Card>
 
-      {job.status === JOB_STATUSES.SUCCEEDED ? (
+      {job.status === 'succeeded' ? (
         <Card title="Kết quả" description="Dữ liệu máy chủ trả về sau khi tác vụ hoàn tất.">
           {hasResult && result ? (
             <div className="space-y-4">
@@ -365,6 +380,14 @@ export default function TrangTienDoTacVu() {
                   {onward.label}
                 </Link>
               ) : null}
+              {exportId ? (
+                <div className="space-y-2">
+                  <Button variant="secondary" loading={downloadingExport} onClick={() => void downloadExport()}>
+                    Tải tệp {exportFilename}
+                  </Button>
+                  {exportDownloadError ? <p role="alert" className="text-sm text-rose-700">{exportDownloadError}</p> : null}
+                </div>
+              ) : null}
             </div>
           ) : (
             <EmptyState
@@ -380,15 +403,20 @@ export default function TrangTienDoTacVu() {
         </Card>
       ) : null}
 
-      {job.status === JOB_STATUSES.FAILED ? (
-        <Card title="Tác vụ thất bại">
+      {job.status === 'failed' ? (
+        <Card title={presentJobFailure(job.error).title}>
           <div className="space-y-3">
             <div>
-              <p className="text-sm font-semibold text-rose-900">
-                {job.error?.message ?? 'Máy chủ báo tác vụ thất bại nhưng không gửi kèm mô tả lỗi.'}
+              {presentJobFailure(job.error).description ? (
+                <p className="text-sm text-slate-700">{presentJobFailure(job.error).description}</p>
+              ) : null}
+              <p className="mt-1 text-sm font-medium text-rose-900">
+                {presentJobFailure(job.error).message}
               </p>
-              {job.error?.hint ? (
-                <p className="mt-1 text-sm text-rose-800">Việc cần làm: {job.error.hint}</p>
+              {presentJobFailure(job.error).hint ? (
+                <p className="mt-1 text-sm text-rose-800">
+                  Việc cần làm: {presentJobFailure(job.error).hint}
+                </p>
               ) : null}
               {job.error?.code ? (
                 <p className="mt-1 text-xs text-rose-700/80">
@@ -417,7 +445,7 @@ export default function TrangTienDoTacVu() {
             ) : (
               <p className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
                 Lỗi này không thử lại được: bấm lại sẽ cho kết quả y hệt. Hãy xử lý theo hướng dẫn ở
-                trên rồi tải lại tài liệu.
+                trên rồi chạy lại tác vụ nếu cần. Không cần tải lại tệp nếu tài liệu đã đọc xong.
               </p>
             )}
 
@@ -441,7 +469,7 @@ export default function TrangTienDoTacVu() {
         </Card>
       ) : null}
 
-      {job.status === JOB_STATUSES.CANCELLED ? (
+      {job.status === 'cancelled' ? (
         <Card title="Tác vụ đã bị huỷ">
           <p className="text-sm text-slate-700">
             Tác vụ đã dừng theo yêu cầu. Kết quả dở dang không được dùng; hãy tạo lại tác vụ nếu vẫn

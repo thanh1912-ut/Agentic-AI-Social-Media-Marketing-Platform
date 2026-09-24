@@ -4,6 +4,7 @@ import type { ReactNode } from 'react';
 import { AppProviders } from '@/components/providers';
 import { MockingProvider } from '@/components/mocking-provider';
 import type { RuntimeConfig } from '@/lib/api/config';
+import { serializeRuntimeConfigForInlineScript } from '@/lib/runtime-config-script';
 
 import './globals.css';
 
@@ -36,13 +37,14 @@ function readRuntimeConfig(): RuntimeConfig {
 
 export default function RootLayout({ children }: { children: ReactNode }) {
   const runtimeConfig = readRuntimeConfig();
+  const serializedRuntimeConfig = serializeRuntimeConfigForInlineScript(runtimeConfig);
 
   return (
     <html lang="vi">
       <head>
         <script
           dangerouslySetInnerHTML={{
-            __html: `window.__AGENTIC_RUNTIME_CONFIG__=${JSON.stringify(runtimeConfig)};`,
+            __html: `window.__AGENTIC_RUNTIME_CONFIG__=${serializedRuntimeConfig};`,
           }}
         />
       </head>

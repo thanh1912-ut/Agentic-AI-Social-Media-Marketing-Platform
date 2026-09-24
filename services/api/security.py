@@ -55,12 +55,20 @@ def token_hash(token: str) -> str:
     return hashlib.sha256(token.encode()).hexdigest()
 
 
+def password_version(user: User) -> int:
+    changed_at = user.password_changed_at
+    if changed_at.tzinfo is None:
+        changed_at = changed_at.replace(tzinfo=timezone.utc)
+    return int(changed_at.timestamp() * 1_000_000)
+
+
 def create_access_token(user: User) -> tuple[str, datetime]:
     expires_at = utcnow() + timedelta(minutes=settings.access_token_expire_minutes)
     claims: dict[str, Any] = {
         "sub": user.id,
         "email": user.email,
         "type": "access",
+        "password_version": password_version(user),
         "iat": utcnow(),
         "exp": expires_at,
         "jti": secrets.token_hex(16),

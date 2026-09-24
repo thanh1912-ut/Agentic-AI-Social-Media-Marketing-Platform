@@ -39,6 +39,10 @@ const allSourceFiles = walk(SRC).filter(
 );
 
 const pageFiles = walk(APP).filter((path) => path.endsWith('page.tsx'));
+const STATIC_INFORMATION_PAGES = new Set(['app/w/[workspaceId]/publishing/page.tsx']);
+const dataPageFiles = pageFiles.filter(
+  (path) => !STATIC_INFORMATION_PAGES.has(relative(SRC, path)),
+);
 
 /**
  * Câu bị CẤM. Mỗi câu kèm lý do — nếu ai đó thực sự cần dùng, họ phải đọc lý do
@@ -79,6 +83,11 @@ const REQUIRED: Array<{ file: string; text: string; why: string }> = [
     file: 'components/session-gate.tsx',
     text: 'Phiên làm việc đã hết hạn',
     why: 'Phiên hết hạn phải được phân biệt với "chưa từng đăng nhập".',
+  },
+  {
+    file: 'app/w/[workspaceId]/publishing/page.tsx',
+    text: 'Chưa kết nối Meta',
+    why: 'Trang hướng dẫn đăng thủ công phải nói rõ chưa có kết nối Meta.',
   },
 ];
 
@@ -125,7 +134,7 @@ describe('mọi màn hình phải có đủ trạng thái', () => {
     expect(pageFiles.length).toBeGreaterThan(0);
   });
 
-  it.each(pageFiles.map((path) => [relative(SRC, path), path] as const))(
+  it.each(dataPageFiles.map((path) => [relative(SRC, path), path] as const))(
     '%s có trạng thái đang tải và lỗi',
     (_name, path) => {
       const content = read(path);
@@ -161,7 +170,7 @@ describe('mọi màn hình phải có đủ trạng thái', () => {
    * Trang đăng nhập không có "danh sách rỗng" — bắt nó phải có EmptyState sẽ dẫn
    * tới việc thêm một khối rỗng vô nghĩa cho đủ test, làm hỏng UX thật.
    */
-  const collectionPages = pageFiles.filter((path) =>
+  const collectionPages = dataPageFiles.filter((path) =>
     relative(SRC, path).startsWith('app/w/'),
   );
 

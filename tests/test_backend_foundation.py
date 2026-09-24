@@ -74,6 +74,69 @@ def test_auth_and_tenant_isolation(api_client: TestClient) -> None:
     assert response.headers["x-request-id"].startswith("req_")
 
 
+def test_cors_preflight_allows_only_required_api_methods_and_headers(api_client: TestClient) -> None:
+    allowed = api_client.options(
+        "/api/v1/auth/login",
+        headers={
+            "Origin": "http://localhost:3000",
+            "Access-Control-Request-Method": "POST",
+            "Access-Control-Request-Headers": "content-type,x-csrf-token,idempotency-key",
+        },
+    )
+    assert allowed.status_code == 200
+    assert allowed.headers["access-control-allow-origin"] == "http://localhost:3000"
+    assert "*" not in allowed.headers["access-control-allow-methods"]
+    assert "*" not in allowed.headers["access-control-allow-headers"]
+
+    denied = api_client.options(
+        "/api/v1/auth/login",
+        headers={
+            "Origin": "http://localhost:3000",
+            "Access-Control-Request-Method": "POST",
+            "Access-Control-Request-Headers": "x-unlisted-header",
+        },
+    )
+    assert denied.status_code == 400
+
+
+def test_refresh_and_logout_require_csrf_for_cookie_sessions(api_client: TestClient) -> None:
+    registered = api_client.post(
+        "/api/v1/auth/register",
+        json={
+            "email": "csrf-owner@example.com",
+            "password": "secret123",
+            "full_name": "CSRF Owner",
+            "company_name": "CSRF Co",
+        },
+    )
+    assert registered.status_code == 201
+    csrf_token = api_client.cookies.get("agentic_csrf")
+
+    # Even a bogus bearer header cannot bypass CSRF when the route still uses
+    # its refresh cookie. This also covers the access-cookie-expired state.
+    api_client.cookies.delete("agentic_access")
+    refresh_url = "/api/v1/auth/refresh"
+    refused_refresh = api_client.post(refresh_url, headers={"Authorization": "Bearer unused"})
+    assert refused_refresh.status_code == 403
+    assert refused_refresh.json()["error"]["code"] == "csrf_failed"
+
+    refreshed = api_client.post(refresh_url, headers={"X-CSRF-Token": csrf_token})
+    assert refreshed.status_code == 200, refreshed.text
+    refreshed_csrf = api_client.cookies.get("agentic_csrf")
+
+    refused_logout = api_client.post(
+        "/api/v1/auth/logout",
+        headers={"Authorization": "Bearer unused"},
+    )
+    assert refused_logout.status_code == 403
+    logged_out = api_client.post(
+        "/api/v1/auth/logout",
+        headers={"X-CSRF-Token": refreshed_csrf},
+    )
+    assert logged_out.status_code == 204
+    assert api_client.post(refresh_url, headers={"X-CSRF-Token": refreshed_csrf}).status_code == 401
+
+
 def test_parser_returns_locators_and_rejects_scan_pdf(tmp_path) -> None:
     text_path = tmp_path / "brand.txt"
     text_path.write_text("Bếp Mộc phục vụ món Việt.", encoding="utf-8")
@@ -88,4 +151,3 @@ def test_parser_returns_locators_and_rejects_scan_pdf(tmp_path) -> None:
     with pytest.raises(ParseError) as error:
         parse_document(pdf_path, kind="pdf", mime_type="application/pdf", filename=pdf_path.name)
     assert error.value.code in {"corrupted", "pdf_no_text_layer"}
-

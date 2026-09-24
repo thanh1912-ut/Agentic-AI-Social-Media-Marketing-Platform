@@ -1,0 +1,43 @@
+"""Versioned, strict contracts exchanged between M2 and M3."""
+
+from .models import (
+    AnalyticsEvidence,
+    AnalyticsReport,
+    AnalyticsInsight,
+    BrandFact,
+    BrandProfile,
+    CampaignBrief,
+    CampaignStrategy,
+    ContentIssue,
+    ContentReview,
+    Experiment,
+    GeneratedPost,
+    GenerationMetadata,
+    MetricObservation,
+    NormalizedDocument,
+    Recommendation,
+    SourceReference,
+    TableBlock,
+    TextBlock,
+)
+
+__all__ = [
+    "AnalyticsEvidence",
+    "AnalyticsReport",
+    "AnalyticsInsight",
+    "BrandFact",
+    "BrandProfile",
+    "CampaignBrief",
+    "CampaignStrategy",
+    "ContentIssue",
+    "ContentReview",
+    "Experiment",
+    "GeneratedPost",
+    "GenerationMetadata",
+    "MetricObservation",
+    "NormalizedDocument",
+    "Recommendation",
+    "SourceReference",
+    "TableBlock",
+    "TextBlock",
+]

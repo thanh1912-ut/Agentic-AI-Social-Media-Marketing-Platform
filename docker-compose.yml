@@ -52,27 +52,70 @@ services:
       context: .
       dockerfile: infra/docker/python.Dockerfile
     command: ["alembic", "upgrade", "head"]
-    env_file: [.env]
     environment:
       DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-agentic_marketing}
     depends_on:
       postgres:
         condition: service_healthy
 
+  storage-init:
+    build:
+      context: .
+      dockerfile: infra/docker/python.Dockerfile
+    command: ["python", "-m", "services.api.init_storage"]
+    environment:
+      S3_ENDPOINT: http://minio:9000
+      S3_ACCESS_KEY: ${S3_ACCESS_KEY:-minioadmin}
+      S3_SECRET_KEY: ${S3_SECRET_KEY:-minioadmin}
+      S3_BUCKET: ${S3_BUCKET:-agentic-marketing}
+      STORAGE_BACKEND: s3
+    depends_on:
+      minio:
+        condition: service_healthy
+
   api:
     build:
       context: .
       dockerfile: infra/docker/python.Dockerfile
-    command: ["uvicorn", "services.api.main:app", "--host", "0.0.0.0", "--port", "8000"]
+    command:
+      - uvicorn
+      - services.api.main:app
+      - --host
+      - 0.0.0.0
+      - --port
+      - "8000"
+      - --proxy-headers
+      - --forwarded-allow-ips
+      - ${FORWARDED_ALLOW_IPS:-127.0.0.1}
     env_file: [.env]
     environment:
       DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-agentic_marketing}
       REDIS_URL: redis://redis:6379/0
       S3_ENDPOINT: http://minio:9000
       STORAGE_BACKEND: s3
-      COOKIE_SECURE: "0"
+      COOKIE_SECURE: ${COOKIE_SECURE:-0}
+      LLM_PROVIDER: ${LLM_PROVIDER:-deepseek}
+      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
+      DEEPSEEK_BASE_URL: ${DEEPSEEK_BASE_URL:-https://api.deepseek.com}
+      LLM_DEFAULT_MODEL: ${LLM_DEFAULT_MODEL:-deepseek-flash}
+      EMBEDDING_PROVIDER: ${EMBEDDING_PROVIDER:-fastembed}
+      EMBEDDING_API_KEY: ${EMBEDDING_API_KEY:-}
+      EMBEDDING_MODEL: ${EMBEDDING_MODEL:-intfloat/multilingual-e5-small}
+      EMBEDDING_MODEL_REVISION: ${EMBEDDING_MODEL_REVISION:-614241f622f53c4eeff9890bdc4f31cfecc418b3}
+      EMBEDDING_DIMENSIONS: ${EMBEDDING_DIMENSIONS:-384}
+      EMBEDDING_CACHE_DIR: /model-cache
+      EMBEDDING_THREADS: ${EMBEDDING_THREADS:-2}
+      EMBEDDING_LOCAL_FILES_ONLY: ${EMBEDDING_LOCAL_FILES_ONLY:-0}
+      RETRIEVAL_MODE: ${RETRIEVAL_MODE:-semantic_vector}
+      CHUNKER_VERSION: ${CHUNKER_VERSION:-vi-token-window-v2}
+      MINIMUM_RELEVANCE_SCORE: ${MINIMUM_RELEVANCE_SCORE:-0.12}
+      MINIMUM_SEMANTIC_SCORE: ${MINIMUM_SEMANTIC_SCORE:-0.82}
+      MINIMUM_SEMANTIC_MARGIN: ${MINIMUM_SEMANTIC_MARGIN:-0.04}
+      MINIMUM_HYBRID_LEXICAL_SCORE: ${MINIMUM_HYBRID_LEXICAL_SCORE:-0.45}
     ports:
       - "${API_PORT:-8000}:8000"
+    volumes:
+      - embedding_models:/model-cache
     depends_on:
       migrate:
         condition: service_completed_successfully
@@ -80,18 +123,48 @@ services:
         condition: service_healthy
       minio:
         condition: service_healthy
+      storage-init:
+        condition: service_completed_successfully
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/readyz', timeout=3)"
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 20s
 
   worker:
     build:
       context: .
       dockerfile: infra/docker/python.Dockerfile
-    command: ["celery", "-A", "services.worker.celery_app:celery_app", "worker", "--loglevel=INFO", "--queues=default", "--concurrency=2"]
+    command: ["celery", "-A", "services.worker.celery_app:celery_app", "worker", "--loglevel=INFO", "--queues=default,agent", "--concurrency=2"]
     env_file: [.env]
     environment:
       DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-agentic_marketing}
       REDIS_URL: redis://redis:6379/0
       S3_ENDPOINT: http://minio:9000
       STORAGE_BACKEND: s3
+      LLM_PROVIDER: ${LLM_PROVIDER:-deepseek}
+      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
+      DEEPSEEK_BASE_URL: ${DEEPSEEK_BASE_URL:-https://api.deepseek.com}
+      LLM_DEFAULT_MODEL: ${LLM_DEFAULT_MODEL:-deepseek-flash}
+      EMBEDDING_PROVIDER: ${EMBEDDING_PROVIDER:-fastembed}
+      EMBEDDING_API_KEY: ${EMBEDDING_API_KEY:-}
+      EMBEDDING_MODEL: ${EMBEDDING_MODEL:-intfloat/multilingual-e5-small}
+      EMBEDDING_MODEL_REVISION: ${EMBEDDING_MODEL_REVISION:-614241f622f53c4eeff9890bdc4f31cfecc418b3}
+      EMBEDDING_DIMENSIONS: ${EMBEDDING_DIMENSIONS:-384}
+      EMBEDDING_CACHE_DIR: /model-cache
+      EMBEDDING_THREADS: ${EMBEDDING_THREADS:-2}
+      EMBEDDING_LOCAL_FILES_ONLY: ${EMBEDDING_LOCAL_FILES_ONLY:-0}
+      RETRIEVAL_MODE: ${RETRIEVAL_MODE:-semantic_vector}
+      CHUNKER_VERSION: ${CHUNKER_VERSION:-vi-token-window-v2}
+      MINIMUM_RELEVANCE_SCORE: ${MINIMUM_RELEVANCE_SCORE:-0.12}
+      MINIMUM_SEMANTIC_SCORE: ${MINIMUM_SEMANTIC_SCORE:-0.82}
+      MINIMUM_SEMANTIC_MARGIN: ${MINIMUM_SEMANTIC_MARGIN:-0.04}
+      MINIMUM_HYBRID_LEXICAL_SCORE: ${MINIMUM_HYBRID_LEXICAL_SCORE:-0.45}
     depends_on:
       migrate:
         condition: service_completed_successfully
@@ -99,23 +172,10 @@ services:
         condition: service_healthy
       minio:
         condition: service_healthy
-
-  agent-worker:
-    build:
-      context: .
-      dockerfile: infra/docker/python.Dockerfile
-    command: ["celery", "-A", "services.worker.celery_app:celery_app", "worker", "--loglevel=INFO", "--queues=agent", "--concurrency=1"]
-    env_file: [.env]
-    environment:
-      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-agentic_marketing}
-      REDIS_URL: redis://redis:6379/0
-      S3_ENDPOINT: http://minio:9000
-      STORAGE_BACKEND: s3
-    depends_on:
-      migrate:
+      storage-init:
         condition: service_completed_successfully
-      redis:
-        condition: service_healthy
+    volumes:
+      - embedding_models:/model-cache
 
   scheduler:
     build:
@@ -131,11 +191,13 @@ services:
         condition: service_completed_successfully
       redis:
         condition: service_healthy
-
   web:
     build:
       context: .
       dockerfile: infra/docker/web.Dockerfile
+      args:
+        NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL:-http://localhost:8000}
+        NEXT_PUBLIC_USE_MOCKS: ${NEXT_PUBLIC_USE_MOCKS:-0}
     environment:
       NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL:-http://localhost:8000}
       NEXT_PUBLIC_USE_MOCKS: ${NEXT_PUBLIC_USE_MOCKS:-0}
@@ -143,9 +205,10 @@ services:
       - "${WEB_PORT:-3000}:3000"
     depends_on:
       api:
-        condition: service_started
+        condition: service_healthy
 
 volumes:
   postgres_data:
   redis_data:
   minio_data:
+  embedding_models:

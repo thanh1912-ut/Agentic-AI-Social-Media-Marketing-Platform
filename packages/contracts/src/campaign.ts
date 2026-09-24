@@ -29,7 +29,7 @@ export interface CampaignBrief {
   /** Mục tiêu chiến dịch. */
   objective: CampaignObjective;
   /** Mô tả mục tiêu bằng lời người dùng, hiển thị lại cho họ đọc. */
-  objective_note?: string;
+  objective_note?: string | null;
   /** Chân dung khán giả. */
   audience: string[];
   /** Sản phẩm/dịch vụ được quảng bá. */
@@ -43,12 +43,30 @@ export interface CampaignBrief {
   end_date: DateString;
 }
 
+export interface CampaignContentSlot {
+  id: Id;
+  scheduled_date: DateString;
+  pillar: ContentPillar;
+  format: PostFormat;
+  topic: string;
+  /** ID bài được sinh từ slot; chỉ backend tạo. */
+  generated_post_id?: Id | null;
+  /** ID job đang giữ slot; chỉ backend tạo. */
+  generation_job_id?: Id | null;
+}
+
+export interface CampaignContentPlan {
+  strategy_summary: string;
+  slots: CampaignContentSlot[];
+}
+
 export interface Campaign {
   id: Id;
   workspace_id: Id;
   name: string;
   status: CampaignStatus;
   brief: CampaignBrief;
+  content_plan: CampaignContentPlan;
   /** Trụ nội dung chiến dịch dùng. */
   pillars: ContentPillar[];
   /** Kênh phân phối. */
@@ -96,9 +114,26 @@ export interface PostMedia {
   mime_type?: string;
   /** Ảnh do AI gợi ý hay người dùng tải lên. */
   source: 'ai_suggested' | 'uploaded' | 'external_url';
+  asset_id?: Id;
+  filename?: string;
+  size_bytes?: number;
+  sha256?: string;
 }
 
 /** Một phiên bản nội dung. Mọi sửa đổi tạo version mới, không ghi đè. */
+export interface MediaAsset {
+  id: Id;
+  filename: string;
+  mime_type: 'image/jpeg' | 'image/png' | 'image/webp';
+  size_bytes: number;
+  content_sha256: string;
+  width: number;
+  height: number;
+  alt_text: string;
+  /** API route path, fetched with the authenticated API client. */
+  content_path: string;
+}
+
 export interface PostVersion {
   version: number;
   caption: string;
@@ -165,12 +200,17 @@ export interface PostVersionList {
   pending_approval_version?: number;
 }
 
+export interface PostMediaAttachment {
+  asset_id: Id;
+  alt_text: string;
+}
+
 export interface UpdatePostRequest {
   /** Version client đang giữ. Lệch → 409 version_conflict. */
   version: number;
   caption?: string;
   hashtags?: string[];
-  media?: PostMedia[];
+  media?: PostMediaAttachment[];
   scheduled_at?: Timestamp;
   note?: string;
 }
@@ -189,6 +229,8 @@ export interface GenerateContentRequest {
   campaign_id: Id;
   /** Số bài muốn sinh — backend từ chối nếu > 10. */
   count: number;
+  /** Sinh đúng một bản nháp theo slot đã lưu trong campaign. */
+  slot_id?: Id;
   pillars?: ContentPillar[];
   formats?: PostFormat[];
   /** Khoảng ngày muốn rải bài. */
@@ -202,6 +244,14 @@ export interface GenerateContentResponse {
   job_id: Id;
   /** Số bài tối đa backend cho phép mỗi lần. UI hiển thị ở ô nhập số lượng. */
   max_count: number;
+}
+
+/** Tạo bản nháp thủ công khi AI provider chưa được bật cho workspace. */
+export interface CreateManualPostRequest {
+  pillar: ContentPillar;
+  format: PostFormat;
+  caption: string;
+  hashtags?: string[];
 }
 
 // ---------------------------------------------------------------------------
@@ -227,6 +277,7 @@ export interface ApprovalRecord {
   decided_by: Id;
   decided_by_name: string;
   decided_at: Timestamp;
+  content_sha256?: string;
 }
 
 // ---------------------------------------------------------------------------
