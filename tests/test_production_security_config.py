@@ -11,6 +11,7 @@ def _production_env() -> dict[str, str]:
     environment = os.environ.copy()
     environment.update({
         "APP_ENV": "production",
+        "WEB_BASE_URL": "https://marketing.example.test",
         "COOKIE_SECURE": "1",
         "JWT_SECRET": "test-only-random-secret-with-at-least-32-bytes",
         "DATABASE_URL": "sqlite+aiosqlite:///:memory:",

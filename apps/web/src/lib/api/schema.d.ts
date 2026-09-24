@@ -725,6 +725,23 @@ export interface paths {
         readonly patch?: never;
         readonly trace?: never;
     };
+    readonly "/api/v1/workspaces/{company_id}/members/{member_id}/resend-invitation": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get?: never;
+        readonly put?: never;
+        /** Resend Invitation */
+        readonly post: operations["resend_invitation_api_v1_workspaces__company_id__members__member_id__resend_invitation_post"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
     readonly "/api/v1/workspaces/{company_id}/metrics/import": {
         readonly parameters: {
             readonly query?: never;
@@ -925,9 +942,9 @@ export interface components {
              */
             readonly email: string;
             /** Full Name */
-            readonly full_name: string;
+            readonly full_name?: string | null;
             /** Password */
-            readonly password: string;
+            readonly password?: string | null;
         };
         /** AcceptedRecommendationDraftListOut */
         readonly AcceptedRecommendationDraftListOut: {
@@ -1601,6 +1618,13 @@ export interface components {
              */
             readonly email: string;
         };
+        /** ForgotPasswordResponse */
+        readonly ForgotPasswordResponse: {
+            /** Accepted */
+            readonly accepted: boolean;
+            /** Message */
+            readonly message: string;
+        };
         /** GenerateContentRequest */
         readonly GenerateContentRequest: {
             /** Campaign Id */
@@ -1634,6 +1658,26 @@ export interface components {
         readonly HTTPValidationError: {
             /** Detail */
             readonly detail?: readonly components["schemas"]["ValidationError"][];
+        };
+        /** InvitationPreviewOut */
+        readonly InvitationPreviewOut: {
+            /**
+             * Email
+             * Format: email
+             */
+            readonly email: string;
+            /**
+             * Expires At
+             * Format: date-time
+             */
+            readonly expires_at: string;
+            /**
+             * Role
+             * @enum {string}
+             */
+            readonly role: "editor" | "viewer";
+            /** Workspace Name */
+            readonly workspace_name: string;
         };
         /** InviteMemberRequest */
         readonly InviteMemberRequest: {
@@ -2190,6 +2234,11 @@ export interface components {
             /** Token */
             readonly token: string;
         };
+        /** ResetPasswordResponse */
+        readonly ResetPasswordResponse: {
+            /** Ok */
+            readonly ok: boolean;
+        };
         /** ReviseWithAiRequest */
         readonly ReviseWithAiRequest: {
             /** Instruction */
@@ -2366,9 +2415,11 @@ export type SchemaExperimentOutcomeListOut = components['schemas']['ExperimentOu
 export type SchemaExperimentOutcomeOut = components['schemas']['ExperimentOutcomeOut'];
 export type SchemaExportOut = components['schemas']['ExportOut'];
 export type SchemaForgotPasswordRequest = components['schemas']['ForgotPasswordRequest'];
+export type SchemaForgotPasswordResponse = components['schemas']['ForgotPasswordResponse'];
 export type SchemaGenerateContentRequest = components['schemas']['GenerateContentRequest'];
 export type SchemaGenerateContentResponse = components['schemas']['GenerateContentResponse'];
 export type SchemaHttpValidationError = components['schemas']['HTTPValidationError'];
+export type SchemaInvitationPreviewOut = components['schemas']['InvitationPreviewOut'];
 export type SchemaInviteMemberRequest = components['schemas']['InviteMemberRequest'];
 export type SchemaInviteMemberResponse = components['schemas']['InviteMemberResponse'];
 export type SchemaJobErrorOut = components['schemas']['JobErrorOut'];
@@ -2400,6 +2451,7 @@ export type SchemaRecommendationOut = components['schemas']['RecommendationOut']
 export type SchemaRecordExperimentOutcomeRequest = components['schemas']['RecordExperimentOutcomeRequest'];
 export type SchemaRegisterRequest = components['schemas']['RegisterRequest'];
 export type SchemaResetPasswordRequest = components['schemas']['ResetPasswordRequest'];
+export type SchemaResetPasswordResponse = components['schemas']['ResetPasswordResponse'];
 export type SchemaReviseWithAiRequest = components['schemas']['ReviseWithAiRequest'];
 export type SchemaSaveRecommendationRequest = components['schemas']['SaveRecommendationRequest'];
 export type SchemaSelectWorkspaceRequest = components['schemas']['SelectWorkspaceRequest'];
@@ -2432,7 +2484,7 @@ export interface operations {
                     readonly [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": unknown;
+                    readonly "application/json": components["schemas"]["ForgotPasswordResponse"];
                 };
             };
             /** @description Validation Error */
@@ -2463,7 +2515,7 @@ export interface operations {
                     readonly [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": unknown;
+                    readonly "application/json": components["schemas"]["InvitationPreviewOut"];
                 };
             };
             /** @description Validation Error */
@@ -2635,7 +2687,7 @@ export interface operations {
                     readonly [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": unknown;
+                    readonly "application/json": components["schemas"]["ResetPasswordResponse"];
                 };
             };
             /** @description Validation Error */
@@ -4334,6 +4386,40 @@ export interface operations {
         readonly responses: {
             /** @description Successful Response */
             readonly 201: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["InviteMemberResponse"];
+                };
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    readonly resend_invitation_api_v1_workspaces__company_id__members__member_id__resend_invitation_post: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: {
+                readonly authorization?: string | null;
+            };
+            readonly path: {
+                readonly company_id: string;
+                readonly member_id: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
                 headers: {
                     readonly [name: string]: unknown;
                 };

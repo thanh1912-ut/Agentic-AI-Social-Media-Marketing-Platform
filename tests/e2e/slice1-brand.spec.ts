@@ -94,6 +94,37 @@ test.describe('lát cắt 1 — hồ sơ thương hiệu', () => {
     await expect(page.getByText('moi-moi@pho-bac.vn')).toBeVisible();
   });
 
+  test('tạo, gửi lại và chấp nhận lời mời thành viên mới', async ({ page }) => {
+    await login(page);
+    await page.goto('/w/ws_pho_bac/settings');
+    await page.getByRole('button', { name: 'Mời thành viên' }).click();
+    await page.getByLabel('Email', { exact: true }).fill('e2e-moi-thanh-vien@example.com');
+    await page.getByLabel('Vai trò', { exact: true }).selectOption('editor');
+    await page.getByRole('button', { name: 'Tạo lời mời' }).click();
+
+    const inviteLink = page.getByRole('status').getByRole('link');
+    await expect(inviteLink).toBeVisible();
+    await expect(page.getByRole('status')).toContainText('Email chưa được gửi');
+    const firstInvitePath = new URL(await inviteLink.getAttribute('href') ?? '').pathname;
+    const memberRow = page.getByRole('row', { name: /e2e-moi-thanh-vien@example\.com/ });
+    await expect(memberRow).toBeVisible();
+    await memberRow.getByRole('button', { name: 'Gửi lại lời mời' }).click();
+
+    await expect(inviteLink).toBeVisible();
+    const renewedInvitePath = new URL(await inviteLink.getAttribute('href') ?? '').pathname;
+    expect(renewedInvitePath).not.toBe(firstInvitePath);
+    // The mock server's static fixture survives a full-page navigation, while
+    // dynamically created mock tokens intentionally remain page-local.
+    await page.goto('/invite/demo-invite-mem_3');
+    await expect(page.getByRole('heading', { name: 'Tham gia doanh nghiệp' })).toBeVisible();
+    await expect(page.getByText('moi-moi@pho-bac.vn')).toBeVisible();
+    await page.getByLabel('Họ tên').fill('Thành viên E2E');
+    await page.getByLabel('Tạo mật khẩu nếu đây là tài khoản mới').fill('e2e-password-123');
+    await page.getByLabel('Nhập lại mật khẩu').fill('e2e-password-123');
+    await page.getByRole('button', { name: 'Chấp nhận lời mời' }).click();
+    await page.waitForURL((url) => url.pathname !== renewedInvitePath, { timeout: 20_000 });
+  });
+
   test('trường mâu thuẫn cho người dùng chọn, không tự quyết', async ({ page }) => {
     await login(page);
     await page.goto('/w/ws_pho_bac/brand');

@@ -18,7 +18,7 @@ import { Button, Card, ErrorPanel } from '@/components/ui';
 
 /** Câu xác nhận trung tính — dùng chung cho mọi trường hợp gửi thành công. */
 const NEUTRAL_CONFIRMATION =
-  'Nếu email này có tài khoản trong hệ thống, chúng tôi đã gửi hướng dẫn đặt lại mật khẩu. Hãy kiểm tra hộp thư (kể cả mục Spam/Quảng cáo). Liên kết trong thư chỉ dùng được một lần và sẽ hết hạn sau ít phút.';
+  'Nếu email này có tài khoản và hệ thống đã cấu hình gửi thư, hướng dẫn đặt lại mật khẩu sẽ được gửi. Liên kết chỉ dùng được một lần và sẽ hết hạn sau ít phút.';
 
 export default function TrangQuenMatKhau() {
   const [email, setEmail] = useState('');
@@ -58,17 +58,17 @@ export default function TrangQuenMatKhau() {
     <div className="mx-auto flex min-h-[60vh] max-w-md flex-col justify-center px-4 py-10">
       <h1 className="text-lg font-semibold text-slate-900">Quên mật khẩu</h1>
       <p className="mt-1 text-sm text-slate-600">
-        Nhập email đã dùng để đăng nhập. Chúng tôi sẽ gửi hướng dẫn đặt lại mật khẩu.
+        Nhập email đã dùng để đăng nhập. Hệ thống sẽ gửi hướng dẫn nếu email tồn tại và email delivery đã được cấu hình.
       </p>
 
       <div className="mt-5">
         <Card>
           {submitted ? (
             <div role="status" className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3">
-              <h2 className="text-sm font-semibold text-emerald-900">Đã gửi yêu cầu</h2>
+              <h2 className="text-sm font-semibold text-emerald-900">Đã tiếp nhận yêu cầu</h2>
               <p className="mt-1 text-sm text-emerald-900">{NEUTRAL_CONFIRMATION}</p>
               <p className="mt-2 text-xs text-emerald-800">
-                Vì lý do bảo mật, hệ thống không cho biết email này có tài khoản hay không.
+                Vì lý do bảo mật, hệ thống không cho biết email này có tài khoản hay không. Nếu chưa nhận được thư, hãy liên hệ quản trị viên.
               </p>
               <div className="mt-3">
                 <Button variant="secondary" size="sm" onClick={() => setSubmitted(false)}>

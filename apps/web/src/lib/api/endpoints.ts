@@ -54,6 +54,8 @@ import type {
   ApiConfirmBrandProfileRequest,
   ApiDocument,
   ApiForgotPasswordRequest,
+  ApiForgotPasswordResponse,
+  ApiInvitationPreview,
   ApiInviteMemberRequest,
   ApiInviteMemberResponse,
   ApiJob,
@@ -63,6 +65,7 @@ import type {
   ApiLoginResponse,
   ApiMember,
   ApiResetPasswordRequest,
+  ApiResetPasswordResponse,
   ApiSelectWorkspaceRequest,
   ApiSessionResponse,
   ApiUploadLimits,
@@ -107,17 +110,17 @@ export const authApi = {
   refresh: () => apiRequest<ApiLoginResponse>(v1('/auth/refresh'), { method: 'POST' }),
 
   forgotPassword: (email: string) =>
-    apiRequest<unknown>(v1('/auth/forgot-password'), {
+    apiRequest<ApiForgotPasswordResponse>(v1('/auth/forgot-password'), {
       method: 'POST',
       body: { email } satisfies ApiForgotPasswordRequest,
     }),
 
   resetPassword: (body: ApiResetPasswordRequest) =>
-    apiRequest<unknown>(v1('/auth/reset-password'), { method: 'POST', body }),
+    apiRequest<ApiResetPasswordResponse>(v1('/auth/reset-password'), { method: 'POST', body }),
 
   /** Xem trước lời mời trước khi đăng nhập/tạo tài khoản. */
   previewInvitation: (token: string) =>
-    apiRequest<unknown>(v1(`/auth/invitations/${encodeURIComponent(token)}`)),
+    apiRequest<ApiInvitationPreview>(v1(`/auth/invitations/${encodeURIComponent(token)}`)),
 
   acceptInvitation: (token: string, body: ApiAcceptInvitationRequest) =>
     apiRequest<ApiLoginResponse>(

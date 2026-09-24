@@ -10,6 +10,8 @@
 
 import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
+import { useState, type FormEvent } from 'react';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
 
 import {
   ROLE_DESCRIPTIONS,
@@ -18,10 +20,11 @@ import {
 } from '@agentic/contracts';
 
 import { useSession } from '@/components/session-gate';
-import { ApiError } from '@/lib/api';
-import type { ApiMember as Member } from '@/lib/api/types';
+import { ApiError, api } from '@/lib/api';
+import type { ApiInviteMemberRequest, ApiInviteMemberResponse, ApiMember as Member } from '@/lib/api/types';
 import { formatDate, formatDateTime, formatDeadline, formatNumber } from '@/lib/format';
 import { useMembers } from '@/lib/hooks';
+import { queryKeys } from '@/lib/query-keys';
 import { ACTION_REQUIREMENTS, hasPermission, permissionDeniedReason } from '@/lib/permissions';
 import {
   Button,
@@ -57,12 +60,34 @@ export default function TrangCaiDat() {
   const params = useParams<{ workspaceId?: string }>();
   const workspaceId = params?.workspaceId ?? '';
   const router = useRouter();
+  const queryClient = useQueryClient();
   const { user, workspaces } = useSession();
+  const [inviteOpen, setInviteOpen] = useState(false);
+  const [inviteEmail, setInviteEmail] = useState('');
+  const [inviteRole, setInviteRole] = useState<ApiInviteMemberRequest['role']>('editor');
+  const [inviteResult, setInviteResult] = useState<ApiInviteMemberResponse | null>(null);
 
   const workspace = workspaces.find((item) => item.id === workspaceId) ?? null;
   const activeId = workspace ? workspaceId : '';
 
   const membersQuery = useMembers(activeId);
+  const refreshMembers = async () => {
+    await queryClient.invalidateQueries({ queryKey: queryKeys.members(activeId) });
+  };
+  const inviteMutation = useMutation({
+    mutationFn: (body: ApiInviteMemberRequest) => api.workspace.inviteMember(activeId, body),
+    onSuccess: async (result) => {
+      setInviteResult(result);
+      await refreshMembers();
+    },
+  });
+  const resendMutation = useMutation({
+    mutationFn: (memberId: string) => api.workspace.resendInvitation(activeId, memberId),
+    onSuccess: async (result) => {
+      setInviteResult(result);
+      await refreshMembers();
+    },
+  });
 
   if (!workspace) {
     return (
@@ -81,9 +106,6 @@ export default function TrangCaiDat() {
   const canInvite = hasPermission(workspace, ACTION_REQUIREMENTS.inviteMember);
   const canManageConnection = hasPermission(workspace, ACTION_REQUIREMENTS.manageConnection);
   const inviteDeniedReason = permissionDeniedReason(workspace, ACTION_REQUIREMENTS.inviteMember);
-  const inviteDisabledReason = canInvite
-    ? 'Màn hình mời thành viên chưa có trong bản dựng này, nên nút này chưa hoạt động.'
-    : inviteDeniedReason;
   const connectionDisabledReason =
     'Nút kết nối chưa hoạt động vì luồng uỷ quyền OAuth với Facebook chưa có trong bản dựng này.';
   const connectionDeniedReason = canManageConnection
@@ -92,6 +114,24 @@ export default function TrangCaiDat() {
         workspace,
         ACTION_REQUIREMENTS.manageConnection,
       )}`;
+
+  function submitInvitation(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const email = inviteEmail.trim();
+    if (!email) return;
+    setInviteResult(null);
+    inviteMutation.mutate({ email, role: inviteRole });
+  }
+
+  const inviteMessage = inviteResult
+    ? inviteResult.outcome === 'sent'
+      ? 'Đã chuyển lời mời tới dịch vụ email.'
+      : inviteResult.outcome === 'email_failed'
+        ? 'Email chưa được gửi. Chuyển liên kết này cho người được mời qua kênh riêng.'
+        : inviteResult.outcome === 'already_invited'
+          ? 'Địa chỉ này đã có lời mời đang chờ. Dùng nút gửi lại trong danh sách.'
+          : 'Người này đã là thành viên của doanh nghiệp.'
+    : null;
 
   return (
     <div className="space-y-6">
@@ -155,14 +195,90 @@ export default function TrangCaiDat() {
         title="Thành viên"
         description="Ai đang tham gia doanh nghiệp này và với vai trò nào."
         actions={
-          <div className="flex flex-col items-end gap-1">
-            <Button disabled disabledReason={inviteDisabledReason}>
-              Mời thành viên
+          canInvite ? (
+            <Button onClick={() => { setInviteOpen((open) => !open); setInviteResult(null); }}>
+              {inviteOpen ? 'Đóng biểu mẫu' : 'Mời thành viên'}
             </Button>
-            <p className="max-w-xs text-right text-xs text-slate-500">{inviteDisabledReason}</p>
-          </div>
+          ) : (
+            <div className="flex flex-col items-end gap-1">
+              <Button disabled disabledReason={inviteDeniedReason}>Mời thành viên</Button>
+              <p className="max-w-xs text-right text-xs text-slate-500">{inviteDeniedReason}</p>
+            </div>
+          )
         }
       >
+        {inviteOpen && canInvite ? (
+          <form onSubmit={submitInvitation} className="mb-5 space-y-3 rounded-xl border border-slate-200 bg-slate-50 p-4">
+            <p className="text-sm text-slate-600">
+              Gửi lời mời với quyền biên tập hoặc chỉ xem. Nếu email chưa được cấu hình, bạn sẽ nhận liên kết để chuyển riêng.
+            </p>
+            <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_12rem_auto] sm:items-end">
+              <div>
+                <label htmlFor="member-invite-email" className="block text-sm font-medium text-slate-700">Email</label>
+                <input
+                  id="member-invite-email"
+                  name="email"
+                  type="email"
+                  autoComplete="email"
+                  required
+                  value={inviteEmail}
+                  onChange={(event) => setInviteEmail(event.target.value)}
+                  className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900"
+                />
+              </div>
+              <div>
+                <label htmlFor="member-invite-role" className="block text-sm font-medium text-slate-700">Vai trò</label>
+                <select
+                  id="member-invite-role"
+                  value={inviteRole}
+                  onChange={(event) => setInviteRole(event.target.value as ApiInviteMemberRequest['role'])}
+                  className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900"
+                >
+                  <option value="editor">Biên tập viên</option>
+                  <option value="viewer">Chỉ xem</option>
+                </select>
+              </div>
+              <Button type="submit" loading={inviteMutation.isPending}>
+                {inviteMutation.isPending ? 'Đang gửi…' : 'Tạo lời mời'}
+              </Button>
+            </div>
+            {inviteMutation.error instanceof ApiError ? (
+              <ErrorPanel
+                title="Không tạo được lời mời"
+                message={inviteMutation.error.message}
+                code={inviteMutation.error.code}
+                requestId={inviteMutation.error.requestId}
+                retryable={inviteMutation.error.retryable}
+                onRetry={() => inviteMutation.mutate({ email: inviteEmail.trim(), role: inviteRole })}
+              />
+            ) : null}
+            {resendMutation.error instanceof ApiError ? (
+              <ErrorPanel
+                title="Không gửi lại được lời mời"
+                message={resendMutation.error.message}
+                code={resendMutation.error.code}
+                requestId={resendMutation.error.requestId}
+                retryable={resendMutation.error.retryable}
+                onRetry={() => {
+                  const memberId = resendMutation.variables;
+                  if (memberId) resendMutation.mutate(memberId);
+                }}
+              />
+            ) : null}
+            {inviteResult && inviteMessage ? (
+              <div role="status" className="rounded-lg border border-slate-200 bg-white px-3 py-3 text-sm text-slate-700">
+                <p>{inviteMessage}</p>
+                {inviteResult.invite_url ? (
+                  <p className="mt-2 break-all">
+                    <a className="font-medium text-slate-900 underline" href={inviteResult.invite_url}>
+                      {inviteResult.invite_url}
+                    </a>
+                  </p>
+                ) : null}
+              </div>
+            ) : null}
+          </form>
+        ) : null}
         {membersQuery.isPending ? (
           <LoadingBlock label="Đang tải danh sách thành viên…" />
         ) : membersQuery.isError ? (
@@ -188,7 +304,7 @@ export default function TrangCaiDat() {
           />
         ) : (
           <div className="table-scroll">
-            <table className="w-full min-w-[640px] border-collapse text-left text-sm">
+            <table className="w-full min-w-[720px] border-collapse text-left text-sm">
               <caption className="sr-only">Danh sách thành viên và vai trò trong doanh nghiệp</caption>
               <thead>
                 <tr className="border-b border-slate-200 text-xs uppercase tracking-wide text-slate-500">
@@ -204,6 +320,9 @@ export default function TrangCaiDat() {
                   <th scope="col" className="px-3 py-2 font-medium">
                     Thời gian
                   </th>
+                  {canInvite ? (
+                    <th scope="col" className="px-3 py-2 text-right font-medium">Thao tác</th>
+                  ) : null}
                 </tr>
               </thead>
               <tbody>
@@ -262,6 +381,25 @@ export default function TrangCaiDat() {
                           </p>
                         )}
                       </td>
+                      {canInvite ? (
+                        <td className="px-3 py-3 text-right">
+                          {member.status === 'invited' ? (
+                            <Button
+                              type="button"
+                              variant="secondary"
+                              size="sm"
+                              loading={resendMutation.isPending && resendMutation.variables === member.id}
+                              onClick={() => {
+                                setInviteOpen(true);
+                                setInviteResult(null);
+                                resendMutation.mutate(member.id);
+                              }}
+                            >
+                              Gửi lại lời mời
+                            </Button>
+                          ) : null}
+                        </td>
+                      ) : null}
                     </tr>
                   );
                 })}

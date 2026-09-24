@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+import asyncio
 import re
 from datetime import timedelta
+from urllib.parse import quote
 
-from fastapi import APIRouter, Depends, Request, Response
+from fastapi import APIRouter, BackgroundTasks, Depends, Request, Response
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -13,15 +15,19 @@ from database.models import Brand, Company, Invitation, Membership, PasswordRese
 from .config import settings
 from .db import get_db
 from .dependencies import ACCESS_COOKIE, CSRF_COOKIE, REFRESH_COOKIE, require_csrf
+from .email import EmailDeliveryError, send_email
 from .errors import ApiProblem
 from .permissions import permissions_for
 from .rate_limits import rate_limit
 from .schemas import (
     ForgotPasswordRequest,
+    ForgotPasswordResponse,
     AcceptInvitationRequest,
+    InvitationPreviewOut,
     LoginRequest,
     LoginResponse,
     RegisterRequest,
+    ResetPasswordResponse,
     ResetPasswordRequest,
     SessionResponse,
     UserOut,
@@ -31,6 +37,20 @@ from .security import create_access_token, hash_password, is_expired, new_opaque
 
 
 router = APIRouter(prefix="/auth", tags=["auth"])
+
+
+async def _send_password_reset_email(recipient: str, body: str) -> None:
+    try:
+        await asyncio.to_thread(
+            send_email,
+            recipient,
+            "Đặt lại mật khẩu Agentic Marketing",
+            body,
+        )
+    except EmailDeliveryError:
+        # Forgot-password must not reveal account existence or SMTP diagnostics.
+        # The response has already been sent; the user can request another link.
+        return
 
 
 def _slugify(value: str) -> str:
@@ -173,24 +193,47 @@ async def logout(request: Request, response: Response, db: AsyncSession = Depend
 
 @router.post(
     "/forgot-password",
+    response_model=ForgotPasswordResponse,
     dependencies=[Depends(rate_limit("password_forgot", max_requests=5, window_seconds=3600))],
 )
-async def forgot_password(payload: ForgotPasswordRequest, db: AsyncSession = Depends(get_db)):
+async def forgot_password(
+    payload: ForgotPasswordRequest,
+    background_tasks: BackgroundTasks,
+    db: AsyncSession = Depends(get_db),
+) -> ForgotPasswordResponse:
     user = await db.scalar(select(User).where(User.email == str(payload.email).lower()))
-    if user:
+    if user and user.is_active and settings.email_delivery_configured:
         raw = new_opaque_token()
-        db.add(PasswordResetToken(user_id=user.id, token_hash=token_hash(raw), expires_at=utcnow() + timedelta(minutes=settings.password_reset_expire_minutes)))
+        reset_token = PasswordResetToken(
+            user_id=user.id,
+            token_hash=token_hash(raw),
+            expires_at=utcnow() + timedelta(minutes=settings.password_reset_expire_minutes),
+        )
+        db.add(reset_token)
         await db.commit()
-        # The raw token is intentionally not returned in production. A mail
-        # adapter can consume it here; local operators can inspect the job log.
-    return {"sent": True, "message": "Nếu email này có tài khoản, hệ thống đã gửi hướng dẫn đặt lại mật khẩu."}
+        reset_url = f"{settings.web_base_url}/reset-password?token={quote(raw, safe='')}"
+        body = (
+            "Bạn đã yêu cầu đặt lại mật khẩu cho tài khoản Agentic Marketing.\n\n"
+            f"Mở liên kết này để chọn mật khẩu mới: {reset_url}\n\n"
+            f"Liên kết hết hạn sau {settings.password_reset_expire_minutes} phút và chỉ dùng được một lần. "
+            "Nếu bạn không yêu cầu đặt lại mật khẩu, hãy bỏ qua email này."
+        )
+        background_tasks.add_task(_send_password_reset_email, str(user.email), body)
+    return ForgotPasswordResponse(
+        accepted=True,
+        message=(
+            "Nếu email này có tài khoản và hệ thống gửi thư đã được cấu hình, "
+            "hướng dẫn đặt lại mật khẩu sẽ được gửi."
+        ),
+    )
 
 
 @router.post(
     "/reset-password",
+    response_model=ResetPasswordResponse,
     dependencies=[Depends(rate_limit("password_reset", max_requests=10, window_seconds=3600))],
 )
-async def reset_password(payload: ResetPasswordRequest, db: AsyncSession = Depends(get_db)):
+async def reset_password(payload: ResetPasswordRequest, db: AsyncSession = Depends(get_db)) -> ResetPasswordResponse:
     reset = await db.scalar(select(PasswordResetToken).where(PasswordResetToken.token_hash == token_hash(payload.token), PasswordResetToken.used_at.is_(None)))
     if reset is None or is_expired(reset.expires_at):
         raise ApiProblem(400, "invalid_reset_token", "Liên kết đặt lại mật khẩu không hợp lệ hoặc đã hết hạn.")
@@ -199,21 +242,36 @@ async def reset_password(payload: ResetPasswordRequest, db: AsyncSession = Depen
         raise ApiProblem(400, "invalid_reset_token", "Liên kết đặt lại mật khẩu không hợp lệ hoặc đã hết hạn.")
     user.password_hash = hash_password(payload.new_password)
     user.password_changed_at = utcnow()
-    reset.used_at = utcnow()
+    for pending_reset in (
+        await db.scalars(
+            select(PasswordResetToken).where(
+                PasswordResetToken.user_id == user.id,
+                PasswordResetToken.used_at.is_(None),
+            )
+        )
+    ).all():
+        pending_reset.used_at = utcnow()
     sessions = (await db.scalars(select(RefreshSession).where(RefreshSession.user_id == user.id, RefreshSession.revoked_at.is_(None)))).all()
     for session in sessions:
         session.revoked_at = utcnow()
     await db.commit()
-    return {"ok": True}
+    return ResetPasswordResponse(ok=True)
 
 
-@router.get("/invitations/{token}")
-async def preview_invitation(token: str, db: AsyncSession = Depends(get_db)):
+@router.get("/invitations/{token}", response_model=InvitationPreviewOut)
+async def preview_invitation(token: str, response: Response, db: AsyncSession = Depends(get_db)) -> InvitationPreviewOut:
+    response.headers["Cache-Control"] = "no-store"
+    response.headers["Referrer-Policy"] = "no-referrer"
     invitation = await db.scalar(select(Invitation).where(Invitation.token_hash == token_hash(token), Invitation.accepted_at.is_(None)))
     if invitation is None or is_expired(invitation.expires_at):
         raise ApiProblem(404, "not_found", "Lời mời không tồn tại hoặc đã hết hạn.")
     company = await db.get(Company, invitation.company_id)
-    return {"email": invitation.email, "workspace_name": company.name if company else "", "role": invitation.role}
+    return InvitationPreviewOut(
+        email=invitation.email,
+        workspace_name=company.name if company else "",
+        role=invitation.role,
+        expires_at=invitation.expires_at,
+    )
 
 
 @router.post(
@@ -229,9 +287,21 @@ async def accept_invitation(token: str, payload: AcceptInvitationRequest, reques
         raise ApiProblem(422, "validation_error", "Email phải trùng với email trong lời mời.", field_errors=[{"field": "email", "message": "Email không khớp lời mời."}])
     user = await db.scalar(select(User).where(User.email == invitation.email))
     if user is None:
+        if not payload.full_name or not payload.password:
+            raise ApiProblem(
+                422,
+                "validation_error",
+                "Hãy nhập họ tên và tạo mật khẩu để tạo tài khoản mới.",
+                field_errors=[
+                    {"field": "full_name", "message": "Họ tên bắt buộc khi tạo tài khoản."},
+                    {"field": "password", "message": "Mật khẩu bắt buộc khi tạo tài khoản."},
+                ],
+            )
         user = User(email=invitation.email, full_name=payload.full_name, password_hash=hash_password(payload.password))
         db.add(user)
         await db.flush()
+    elif not user.is_active:
+        raise ApiProblem(403, "account_inactive", "Tài khoản này đang bị tạm khóa.")
     existing = await db.scalar(select(Membership).where(Membership.company_id == invitation.company_id, Membership.user_id == user.id))
     if existing is None:
         db.add(Membership(company_id=invitation.company_id, user_id=user.id, role=invitation.role))

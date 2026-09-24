@@ -27,11 +27,13 @@ import {
   type ApprovalRequest,
   type DocumentUpload,
   type Job,
+  type Member,
   type MediaAsset,
   type PostMedia,
   type PostVersion,
   type PostVersionList,
   type SessionResponse,
+  type User,
 } from '@agentic/contracts';
 
 import type { ApiDocument } from '@/lib/api/types';
@@ -163,6 +165,10 @@ const demoBriefRevisionDrafts: Record<string, Record<string, DemoBriefRevisionDr
 const demoExperimentOutcomes: Record<string, Record<string, ApiExperimentOutcome[]>> = {};
 const demoExperimentOutcomeFingerprints: Record<string, Record<string, Record<string, string>>> = {};
 const demoRevisionJobsByKey: Record<string, string> = {};
+type DemoInvitationToken = { workspaceId: string; memberId: string };
+const demoInvitationTokens = new Map<string, DemoInvitationToken>([
+  ['demo-invite-mem_3', { workspaceId: WS_FB, memberId: 'mem_3' }],
+]);
 
 const nowIso = (): string => new Date().toISOString();
 
@@ -260,10 +266,79 @@ export const handlers = [
     // Cố ý trả cùng một câu trả lời dù email có tồn tại hay không —
     // không được để lộ tài khoản nào đang có trong hệ thống.
     return HttpResponse.json({
-      sent: true,
+      accepted: true,
       message:
-        'Nếu email này có tài khoản, hệ thống đã gửi hướng dẫn đặt lại mật khẩu. Hãy kiểm tra hộp thư (kể cả thư rác).',
+        'Nếu email này có tài khoản và hệ thống gửi thư đã được cấu hình, hướng dẫn đặt lại mật khẩu sẽ được gửi.',
     });
+  }),
+
+  http.post('*/api/v1/auth/reset-password', async ({ request }) => {
+    const body = (await request.json()) as { token?: string; new_password?: string };
+    if (!body.token || !body.new_password || body.new_password.length < 8) {
+      return fail(400, ERROR_CODES.VALIDATION_ERROR, 'Liên kết hoặc mật khẩu chưa hợp lệ.');
+    }
+    return HttpResponse.json({ ok: true });
+  }),
+
+  http.get('*/api/v1/auth/invitations/:token', ({ params }) => {
+    const target = demoInvitationTokens.get(params.token as string);
+    const member = target
+      ? demoMembers[target.workspaceId]?.find((item) => item.id === target.memberId)
+      : undefined;
+    if (!target || !member || member.status !== 'invited' || !member.invited_email) {
+      return notFound('lời mời');
+    }
+    return HttpResponse.json({
+      email: member.invited_email,
+      workspace_name: demoWorkspaces.find((item) => item.id === target.workspaceId)?.name ?? '',
+      role: member.role,
+      expires_at: member.invitation_expires_at ?? nowIso(),
+    });
+  }),
+
+  http.post('*/api/v1/auth/invitations/:token/accept', async ({ params, request }) => {
+    const target = demoInvitationTokens.get(params.token as string);
+    const body = (await request.json()) as { email?: string; full_name?: string; password?: string };
+    const member = target
+      ? demoMembers[target.workspaceId]?.find((item) => item.id === target.memberId)
+      : undefined;
+    if (!target || !member || member.status !== 'invited' || !member.invited_email) {
+      return notFound('lời mời');
+    }
+    if (body.email?.toLowerCase() !== member.invited_email.toLowerCase()) {
+      return fail(422, ERROR_CODES.VALIDATION_ERROR, 'Email không khớp với lời mời.');
+    }
+
+    let user = demoUsers.find((item) => item.email.toLowerCase() === member.invited_email?.toLowerCase());
+    if (!user) {
+      if (!body.full_name?.trim() || !body.password || body.password.length < 8) {
+        return fail(422, ERROR_CODES.VALIDATION_ERROR, 'Nhập họ tên và mật khẩu để tạo tài khoản mới.');
+      }
+      user = {
+        id: nextId('usr'),
+        email: member.invited_email,
+        full_name: body.full_name.trim(),
+        created_at: nowIso(),
+      } satisfies User;
+      demoUsers.push(user);
+    }
+
+    member.user = user;
+    member.status = 'active';
+    member.invited_email = undefined;
+    member.joined_at = nowIso();
+    signedInUserId = user.id;
+    activeWorkspaceId = target.workspaceId;
+    writeStoredUserId(user.id);
+    try {
+      sessionStorage.setItem(SESSION_WORKSPACE_KEY, activeWorkspaceId);
+    } catch {
+      // The demo session remains in memory when sessionStorage is unavailable.
+    }
+    applyDemoRole(member.role);
+    demoInvitationTokens.delete(params.token as string);
+    const session = currentSession();
+    return session ? HttpResponse.json({ ...session, access_token: 'demo-access-token' }) : unauthenticated();
   }),
 
   // ----- Workspace -----
@@ -306,6 +381,65 @@ export const handlers = [
     const session = currentSession();
     if (!session) return unauthenticated();
     return HttpResponse.json(demoMembers[params.workspaceId as string] ?? []);
+  }),
+
+  http.post('*/api/v1/workspaces/:workspaceId/members', async ({ params, request }) => {
+    const session = currentSession();
+    if (!session) return unauthenticated();
+    const workspaceId = params.workspaceId as string;
+    if (session.workspaces.find((item) => item.id === workspaceId)?.role !== 'owner') {
+      return fail(403, ERROR_CODES.FORBIDDEN, 'Chỉ chủ sở hữu mới có thể mời thành viên.');
+    }
+    const body = (await request.json()) as { email?: string; role?: 'editor' | 'viewer' };
+    const email = body.email?.trim().toLowerCase() ?? '';
+    if (!email.includes('@') || (body.role !== 'editor' && body.role !== 'viewer')) {
+      return fail(422, ERROR_CODES.VALIDATION_ERROR, 'Kiểm tra email và vai trò đã chọn.');
+    }
+    const members = demoMembers[workspaceId] ?? [];
+    if (members.some((item) => item.invited_email?.toLowerCase() === email && item.status === 'invited')) {
+      return fail(409, ERROR_CODES.STATE_CONFLICT, 'Email này đã có lời mời đang chờ.');
+    }
+    const memberId = nextId('invite');
+    const member: Member = {
+      id: memberId,
+      user: null,
+      role: body.role,
+      status: 'invited',
+      invited_email: email,
+      invited_by: session.user.id,
+      invitation_expires_at: new Date(Date.now() + 7 * 86_400_000).toISOString(),
+    };
+    demoMembers[workspaceId] = [member, ...members];
+    const token = nextId('demo-token');
+    demoInvitationTokens.set(token, { workspaceId, memberId });
+    return HttpResponse.json(
+      { member, outcome: 'email_failed', invite_url: `http://localhost:3000/invite/${token}` },
+      { status: 201 },
+    );
+  }),
+
+  http.post('*/api/v1/workspaces/:workspaceId/members/:memberId/resend-invitation', ({ params }) => {
+    const session = currentSession();
+    if (!session) return unauthenticated();
+    const workspaceId = params.workspaceId as string;
+    if (session.workspaces.find((item) => item.id === workspaceId)?.role !== 'owner') {
+      return fail(403, ERROR_CODES.FORBIDDEN, 'Chỉ chủ sở hữu mới có thể gửi lại lời mời.');
+    }
+    const member = demoMembers[workspaceId]?.find((item) => item.id === params.memberId);
+    if (!member || member.status !== 'invited') return notFound('lời mời đang chờ');
+    for (const [oldToken, target] of demoInvitationTokens) {
+      if (target.workspaceId === workspaceId && target.memberId === member.id) {
+        demoInvitationTokens.delete(oldToken);
+      }
+    }
+    member.invitation_expires_at = new Date(Date.now() + 7 * 86_400_000).toISOString();
+    const token = nextId('demo-token');
+    demoInvitationTokens.set(token, { workspaceId, memberId: member.id });
+    return HttpResponse.json({
+      member,
+      outcome: 'email_failed',
+      invite_url: `http://localhost:3000/invite/${token}`,
+    });
   }),
 
   // ----- Tài liệu -----

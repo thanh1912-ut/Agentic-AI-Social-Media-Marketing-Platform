@@ -5,6 +5,7 @@ from __future__ import annotations
 import os
 from dataclasses import dataclass, field
 from pathlib import Path
+from urllib.parse import urlsplit
 
 
 def _bool(name: str, default: bool) -> bool:
@@ -40,6 +41,15 @@ class Settings:
         ).split(",")
         if origin.strip()
     )
+    web_base_url: str = os.getenv("WEB_BASE_URL", "http://localhost:3000").rstrip("/")
+    smtp_host: str = os.getenv("SMTP_HOST", "").strip()
+    smtp_port: int = int(os.getenv("SMTP_PORT", "587"))
+    smtp_username: str = os.getenv("SMTP_USERNAME", "").strip()
+    smtp_password: str = field(default_factory=lambda: os.getenv("SMTP_PASSWORD", ""), repr=False)
+    smtp_starttls: bool = _bool("SMTP_STARTTLS", True)
+    smtp_ssl: bool = _bool("SMTP_SSL", False)
+    smtp_timeout_seconds: int = int(os.getenv("SMTP_TIMEOUT_SECONDS", "10"))
+    email_from: str = os.getenv("EMAIL_FROM", "").strip()
     storage_backend: str = os.getenv("STORAGE_BACKEND", "local")
     storage_root: Path = Path(os.getenv("STORAGE_ROOT", ".data/uploads"))
     s3_endpoint: str = os.getenv("S3_ENDPOINT", "http://localhost:9000")
@@ -80,12 +90,37 @@ class Settings:
     max_job_attempts: int = int(os.getenv("MAX_JOB_ATTEMPTS", "3"))
     job_lease_minutes: int = int(os.getenv("JOB_LEASE_MINUTES", "30"))
 
+    @property
+    def email_delivery_configured(self) -> bool:
+        return bool(self.smtp_host and self.email_from)
+
 
 settings = Settings()
 if settings.cookie_samesite not in {"strict", "lax", "none"}:
     raise ValueError("COOKIE_SAMESITE must be strict, lax, or none")
 if settings.cookie_samesite == "none" and not settings.cookie_secure:
     raise ValueError("COOKIE_SECURE=1 is required when COOKIE_SAMESITE=none")
+web_url = urlsplit(settings.web_base_url)
+if (
+    web_url.scheme not in {"http", "https"}
+    or not web_url.netloc
+    or web_url.path not in {"", "/"}
+    or web_url.username
+    or web_url.password
+    or web_url.query
+    or web_url.fragment
+):
+    raise ValueError("WEB_BASE_URL must be an HTTP(S) origin without credentials, query, or fragment")
+if settings.app_env.casefold() in {"prod", "production"} and web_url.scheme != "https":
+    raise ValueError("Production WEB_BASE_URL must use HTTPS")
+if not 1 <= settings.smtp_port <= 65535 or settings.smtp_timeout_seconds < 1:
+    raise ValueError("SMTP port and timeout must be valid positive values")
+if bool(settings.smtp_username) != bool(settings.smtp_password):
+    raise ValueError("SMTP_USERNAME and SMTP_PASSWORD must be configured together")
+if settings.smtp_starttls and settings.smtp_ssl:
+    raise ValueError("Configure only one of SMTP_STARTTLS or SMTP_SSL")
+if settings.smtp_host and not settings.email_from:
+    raise ValueError("EMAIL_FROM is required when SMTP_HOST is configured")
 if settings.app_env.casefold() in {"prod", "production"}:
     if settings.jwt_secret == "change-me-in-development-only-secret" or len(settings.jwt_secret.encode("utf-8")) < 32:
         raise ValueError("Production requires a random JWT_SECRET with at least 32 bytes")

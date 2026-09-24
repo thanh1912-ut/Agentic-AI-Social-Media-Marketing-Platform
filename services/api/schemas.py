@@ -40,8 +40,8 @@ class RegisterRequest(StrictSchema):
 
 class AcceptInvitationRequest(StrictSchema):
     email: EmailStr
-    password: str = Field(min_length=8, max_length=200)
-    full_name: str = Field(min_length=1, max_length=200)
+    password: str | None = Field(default=None, min_length=8, max_length=200)
+    full_name: str | None = Field(default=None, min_length=1, max_length=200)
 
 
 class LoginRequest(StrictSchema):
@@ -56,6 +56,22 @@ class ForgotPasswordRequest(StrictSchema):
 class ResetPasswordRequest(StrictSchema):
     token: str = Field(min_length=20, max_length=200)
     new_password: str = Field(min_length=8, max_length=200)
+
+
+class ForgotPasswordResponse(StrictSchema):
+    accepted: bool
+    message: str
+
+
+class ResetPasswordResponse(StrictSchema):
+    ok: bool
+
+
+class InvitationPreviewOut(StrictSchema):
+    email: EmailStr
+    workspace_name: str
+    role: Literal["editor", "viewer"]
+    expires_at: datetime
 
 
 class UserOut(StrictSchema):

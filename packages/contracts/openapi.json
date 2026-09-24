@@ -10,22 +10,34 @@
             "type": "string"
           },
           "full_name": {
-            "maxLength": 200,
-            "minLength": 1,
-            "title": "Full Name",
-            "type": "string"
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Full Name"
           },
           "password": {
-            "maxLength": 200,
-            "minLength": 8,
-            "title": "Password",
-            "type": "string"
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "minLength": 8,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Password"
           }
         },
         "required": [
-          "email",
-          "password",
-          "full_name"
+          "email"
         ],
         "title": "AcceptInvitationRequest",
         "type": "object"
@@ -1921,6 +1933,25 @@
         "title": "ForgotPasswordRequest",
         "type": "object"
       },
+      "ForgotPasswordResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "accepted": {
+            "title": "Accepted",
+            "type": "boolean"
+          },
+          "message": {
+            "title": "Message",
+            "type": "string"
+          }
+        },
+        "required": [
+          "accepted",
+          "message"
+        ],
+        "title": "ForgotPasswordResponse",
+        "type": "object"
+      },
       "GenerateContentRequest": {
         "additionalProperties": false,
         "properties": {
@@ -2056,6 +2087,41 @@
           }
         },
         "title": "HTTPValidationError",
+        "type": "object"
+      },
+      "InvitationPreviewOut": {
+        "additionalProperties": false,
+        "properties": {
+          "email": {
+            "format": "email",
+            "title": "Email",
+            "type": "string"
+          },
+          "expires_at": {
+            "format": "date-time",
+            "title": "Expires At",
+            "type": "string"
+          },
+          "role": {
+            "enum": [
+              "editor",
+              "viewer"
+            ],
+            "title": "Role",
+            "type": "string"
+          },
+          "workspace_name": {
+            "title": "Workspace Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "email",
+          "workspace_name",
+          "role",
+          "expires_at"
+        ],
+        "title": "InvitationPreviewOut",
         "type": "object"
       },
       "InviteMemberRequest": {
@@ -3717,6 +3783,20 @@
         "title": "ResetPasswordRequest",
         "type": "object"
       },
+      "ResetPasswordResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "ok": {
+            "title": "Ok",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "ok"
+        ],
+        "title": "ResetPasswordResponse",
+        "type": "object"
+      },
       "ReviseWithAiRequest": {
         "additionalProperties": false,
         "properties": {
@@ -4123,7 +4203,9 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/ForgotPasswordResponse"
+                }
               }
             },
             "description": "Successful Response"
@@ -4163,7 +4245,9 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/InvitationPreviewOut"
+                }
               }
             },
             "description": "Successful Response"
@@ -4371,7 +4455,9 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/ResetPasswordResponse"
+                }
               }
             },
             "description": "Successful Response"
@@ -7535,6 +7621,73 @@
           }
         },
         "summary": "Invite Member",
+        "tags": [
+          "workspaces"
+        ]
+      }
+    },
+    "/api/v1/workspaces/{company_id}/members/{member_id}/resend-invitation": {
+      "post": {
+        "operationId": "resend_invitation_api_v1_workspaces__company_id__members__member_id__resend_invitation_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "company_id",
+            "required": true,
+            "schema": {
+              "title": "Company Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "member_id",
+            "required": true,
+            "schema": {
+              "title": "Member Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InviteMemberResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Resend Invitation",
         "tags": [
           "workspaces"
         ]

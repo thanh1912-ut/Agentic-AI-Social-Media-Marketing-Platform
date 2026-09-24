@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from datetime import timezone
+
 import jwt
 from fastapi import Depends, Header, Request
 from sqlalchemy import select
@@ -11,7 +13,7 @@ from database.models import Membership, User
 from .db import get_db
 from .errors import ApiProblem
 from .permissions import has_permission
-from .security import decode_access_token
+from .security import decode_access_token, password_version
 
 
 ACCESS_COOKIE = "agentic_access"
@@ -41,6 +43,20 @@ async def current_user(
     user = await db.get(User, str(claims["sub"]))
     if user is None or not user.is_active:
         raise ApiProblem(401, "unauthenticated", "Tài khoản không còn hoạt động.")
+    issued_password_version = claims.get("password_version")
+    if issued_password_version is not None:
+        stale_password = issued_password_version != password_version(user)
+    else:
+        # Tokens issued before password-version claims were introduced remain
+        # compatible until expiry, but a password reset still rejects older
+        # tokens when their second-resolution `iat` predates the password change.
+        changed_at = user.password_changed_at
+        if changed_at.tzinfo is None:
+            changed_at = changed_at.replace(tzinfo=timezone.utc)
+        issued_at = claims.get("iat")
+        stale_password = not isinstance(issued_at, (int, float)) or issued_at < int(changed_at.timestamp())
+    if stale_password:
+        raise ApiProblem(401, "session_expired", "Phiên làm việc đã hết hạn. Vui lòng đăng nhập lại.")
     return user
 
 

@@ -1,6 +1,18 @@
 # Báo cáo kiểm thử
 
-Cập nhật: 2026-09-24 07:33 (Asia/Ho_Chi_Minh). Snapshot code `380ac6c` trên branch `codex/product-v1-completion` sửa route của Celery recovery về queue worker đang nghe và giữ event loop ổn định giữa các task. Full Python suite: **118 passed, 1 skipped**; skip là smoke DeepSeek thật vì chưa có key. Runtime recovery pass trên PostgreSQL/Redis cô lập với Celery `solo`; Docker Compose, Beat process, ingestion worker và prefork Linux vẫn chưa được nghiệm thu.
+Cập nhật: 2026-09-24 08:30 (Asia/Ho_Chi_Minh). Trên worktree cô lập của branch `codex/product-v1-completion`, account lifecycle bổ sung password reset và invitation/email. Full Python suite mới nhất: **123 passed, 1 skipped**; skip là live DeepSeek smoke do chưa có key. Frontend: **45 Vitest pass**, typecheck, ESLint, production build pass; Playwright invite flow **2 passed** trên desktop/mobile Chromium. Runtime recovery đã pass trước đó trên PostgreSQL/Redis cô lập với Celery `solo`; Compose, Beat process, ingestion worker và prefork Linux vẫn chưa được nghiệm thu. Các kết quả này được ghi nhận trên worktree trước bước push.
+
+## Account lifecycle và SMTP tùy chọn
+
+| Check | Kết quả | Giới hạn |
+|---|---|---|
+| `tests/test_account_lifecycle.py` trong full Python suite | **5 test pass**: reset link chỉ dùng một lần; mọi token reset cũ, access token cũ và refresh sessions bị thu hồi sau reset; SMTP không cấu hình trả lời trung tính; SMTP lỗi không lộ chẩn đoán; invitation fallback/resend/accept/re-activation; SMTP STARTTLS/login và credential không nằm trong message body/header. | SMTP fake; không gửi thư ra ngoài hoặc xác minh mailbox/provider thật. |
+| `services/api/config.py` | **PASS**: URL frontend phải là HTTP(S) origin; production bắt buộc HTTPS; SMTP username/password phải đi cùng nhau; STARTTLS và SSL không thể bật đồng thời; có host thì cần `EMAIL_FROM`. | Chưa chạy trong production deployment. |
+| OpenAPI export/check và `npm run gen:api -- --from ../../packages/contracts/openapi.json` | **PASS** | TypeScript schema sinh từ OpenAPI backend; không có contract hand-maintained cho endpoints mới. |
+| Frontend `npm run typecheck`, `npm test`, `npm run lint`, `npm run build` | **PASS; 45 Vitest tests passed** | Build không chứng minh gửi thư hoặc provider thật. |
+| `npm run test:e2e -- slice1-brand.spec.ts --grep 'tạo, gửi lại và chấp nhận' --workers=1` | **2 passed** (desktop + mobile Chromium) | Tạo lời mời, resend xoay token và render/accept trang lời mời bằng MSW. Token fixture được dùng cho page navigation; đây không phải real API browser acceptance. |
+| Live SMTP | **NOT VERIFIED** | Không có SMTP host/credentials hoặc mailbox test trong môi trường; không phát sinh email ra ngoài. |
+| Live DeepSeek smoke | **SKIPPED** | Cần provision `DEEPSEEK_API_KEY` qua secret store; không paste key vào chat. |
 
 ## RAG-001 — local multilingual E5
 
@@ -12,7 +24,7 @@ Cập nhật: 2026-09-24 07:33 (Asia/Ho_Chi_Minh). Snapshot code `380ac6c` trên
 | Relevance defaults | Lexical-only `0.12`; hybrid lexical rescue `0.45`; semantic floor `0.82`; semantic inter-source margin `0.04` (single-source score phải đạt `0.86`). | Thresholds là cấu hình pilot bảo thủ, không phải xác suất confidence; cần hiệu chỉnh bằng truy vấn và tài liệu SME được cho phép trước khi nghiệm thu pilot. |
 | PostgreSQL 18.3 + pgvector 0.8.2 migration 0009→0010 | **PASS** | Test disposable bắt đầu từ schema `vector(1536)` như deployment cũ, chứa row 1536 chiều trước upgrade; sau migration giữ row đó, nhận row 384 chiều và Postgres retrieval chỉ trả model version khớp. Downgrade chủ động từ chối khi vector 384 còn tồn tại. |
 | SQLite migration 0001→0010 | **PASS** | JSON test representation cho vectors giữ được độ dài linh hoạt; SQLite không kiểm tra cosine/vector operator của pgvector. |
-| Full Python suite; OpenAPI check; `compileall`; Compose YAML; `git diff --check` | **118 passed, 1 skipped; PASS** cho các kiểm tra còn lại | Live DeepSeek smoke là skip duy nhất. Docker Compose runtime chưa chạy vì máy thiếu Docker/Podman. |
+| Full Python suite; OpenAPI check; `compileall`; Compose YAML; `git diff --check` | **123 passed, 1 skipped; PASS** cho các kiểm tra còn lại | Live DeepSeek smoke là skip duy nhất. Docker Compose runtime chưa chạy vì máy thiếu Docker/Podman. |
 
 Model choice là local `intfloat/multilingual-e5-small`, pinned revision `614241f622f53c4eeff9890bdc4f31cfecc418b3`, 384 dimensions. Tokenizer revision đó khai báo context 512; chunker v3 dùng cửa sổ 300 token/overlap 40 để chừa khoảng đệm. Chỉ public model weights được tải; workspace documents/queries được encode tại worker. Existing documents cần reprocess sau khi chuyển provider/model/chunker. `.env.example` bật local model; OpenAI embeddings vẫn cần data-flow approval riêng. Chất lượng retrieval cần kiểm chứng tiếp bằng tài liệu/query do SME pilot cung cấp. [Pinned tokenizer config](https://huggingface.co/intfloat/multilingual-e5-small/blob/614241f622f53c4eeff9890bdc4f31cfecc418b3/tokenizer_config.json).
 
