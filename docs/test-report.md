@@ -1,6 +1,6 @@
 # Báo cáo kiểm thử
 
-Cập nhật: 2026-09-24 10:47 (Asia/Ho_Chi_Minh). Code commit trước `64d663e9e0b8e03fdba830e94a66fb0d3dd9f1a8` có hosted backend check pass. Lượt này mở rộng parser formats/limits, upload preflight và DOCX ingestion trên PostgreSQL/Redis/Celery.
+Cập nhật: 2026-09-24 10:54 (Asia/Ho_Chi_Minh). Parser/upload implementation nằm trên commit `8ded65afa6adbe923fc2b9f1481e52a99b4b8147`; GitHub backend workflow run #58 trên đúng commit pass pytest và OpenAPI. Lượt này mở rộng parser formats/limits, upload preflight và DOCX ingestion trên PostgreSQL/Redis/Celery.
 
 ## Parser formats, giới hạn và upload preflight — 2026-09-24
 
@@ -12,6 +12,7 @@ Cập nhật: 2026-09-24 10:47 (Asia/Ho_Chi_Minh). Code commit trước `64d663e
 | Reprocess parser identity | **PASS** | Default `PARSER_VERSION` đổi `m2-parser-v1` → `m2-parser-v2`; endpoint reprocess cập nhật document về parser version cấu hình trước khi dispatch. Test xác nhận version mới được lưu. |
 | Focused parser + Brand Profile integration suite | **22 passed** | SQLite fixture; bao gồm regression Brand Profile, partial batch, retry và missing-key state. |
 | Full Python suite | **137 passed, 1 skipped** | Python 3.11.16; skip duy nhất live DeepSeek smoke vì không có key; một LangGraph pending-deprecation warning. OpenAPI `--check`, compileall và `git diff --check` cũng pass. |
+| GitHub hosted backend workflow, commit `8ded65a` | **PASS**, run #58 | Job `test` chạy pytest và `scripts/export_openapi.py --check`; [workflow run](https://github.com/thanh1912-ut/Agentic-AI-Social-Media-Marketing-Platform/actions/runs/35953327472). |
 
 Parser coverage chứng minh từng parser và validation API ở mức unit/SQLite integration. Runtime smoke dưới đây chứng minh thêm DOCX paragraph/table qua PostgreSQL/Redis/Celery; PDF/XLSX/CSV worker path, Docker/Podman/MinIO, Beat và worker process restart còn mở.
 

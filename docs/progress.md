@@ -1,13 +1,13 @@
 # Tiến độ triển khai
 
-Cập nhật gần nhất: 2026-09-24 10:47 (Asia/Ho_Chi_Minh)
+Cập nhật gần nhất: 2026-09-24 10:54 (Asia/Ho_Chi_Minh)
 
 ## Trạng thái hiện tại
 
-- PR #1 còn mở, base `main` ở `07938bd2d0a9793baff86711b39c8d181c0121ca`. Nhánh đã có hosted backend check pass; parser/upload follow-up ở lượt hiện tại có full suite và PostgreSQL/Redis/Celery runtime smoke pass, đang được đưa vào nhánh trước lần CI kế tiếp.
+- PR #1 còn mở, base `main` ở `07938bd2d0a9793baff86711b39c8d181c0121ca`; head đã kiểm chứng `8ded65a`. Hosted backend run #58 trên đúng head pass (pytest + OpenAPI); parser/upload follow-up cũng pass full suite và DOCX runtime smoke PostgreSQL/Redis/Celery.
 - Phase hiện tại: Phase 7 — hardening và bàn giao core pilot. Real-mode browser flow trên PostgreSQL 18.3/pgvector 0.8.2 gồm campaign/bài thủ công, media, approval, XLSX, metrics snapshot, dashboard readback và recommendation abstention. Kiểm tra bổ sung xác nhận tài khoản/campaign còn đọc được sau khi dừng rồi khởi động lại cả FastAPI và PostgreSQL. Readiness chịu tải nhẹ; database dump/restore counts khớp và archive/restore local object storage giữ nguyên SHA-256.
 - Runtime: Celery `solo` phục hồi stale lease và chạy upload TXT qua FastAPI/PostgreSQL/Redis; lần mới nhất upload DOCX có paragraph + table qua cùng queue `default`. Same-key replay trả cùng job; DOCX lưu 1 text block, 1 table block và 2 knowledge chunks. Thiếu key thì job/profile step báo `ai_not_configured`; document/knowledge vẫn ready. Không gọi DeepSeek.
-- Hosted CI backend `test` pass trên code commit `64d663e`; thay đổi parser hiện tại có full pytest, OpenAPI check, compileall và PostgreSQL migration 0010 pass. PostgreSQL restart persistence, readiness load và Redis outage/recovery có evidence từ lượt trước.
+- Hosted CI backend `test` pass trên code commit `8ded65a` (run #58: pytest + OpenAPI); thay đổi parser có full pytest, OpenAPI check, compileall và PostgreSQL migration 0010 pass. PostgreSQL restart persistence, readiness load và Redis outage/recovery có evidence từ lượt trước.
 - Mốc RAG: local FastEmbed multilingual E5 small pinned 384d đã chạy qua adapter; gate yêu cầu semantic margin hoặc lexical evidence mạnh. PostgreSQL migration legacy `vector(1536)` giữ dữ liệu cũ, nhận vector 384 và lọc theo model identity. Python suite hiện **137 passed, 1 skipped** sau tất cả parser tests.
 - E5 calibration chạy model thật trên dữ liệu tổng hợp: 6/6 truy vấn đúng hit đúng nguồn hạng 1 và 0/8 truy vấn ngoài miền trả context. Cũ hơn, ranking holdout 12 truy vấn đạt Hit@1 75%, Hit@3 91.7%, MRR .850. Cả hai bộ đều nhỏ, không đại diện corpus SME.
 - Checkout dùng cho task là `/private/tmp/agentic-v1-media`; worktree gốc `/Users/lethanh/agent` vẫn ở `main` (`648ff66`, ahead 1/behind 1) với staged/unstaged/untracked M1/M2/M3 changes. Không sửa, stage, stash hoặc commit các thay đổi đó. Trong worktree bàn giao có file untracked `:memory:.ses`; đã giữ nguyên và không stage.
