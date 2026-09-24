@@ -775,8 +775,32 @@ async def ingest_document_task_batch_async(
             message = "Chưa thể tạo hồ sơ thương hiệu từ tài liệu."
             hint = "Hệ thống sẽ tự thử lại nếu còn lượt; không tải lại tệp để tránh tạo bản trùng."
         async with SessionLocal() as db:
+            job = await db.get(Job, job_id)
+            will_retry = bool(
+                retryable
+                and job is not None
+                and job.status == "running"
+                and job.attempts < settings.max_job_attempts
+            )
+            profile_status = "pending" if will_retry else "failed"
+            profile_error = None if will_retry else {
+                "code": code,
+                "message": message,
+                "hint": hint,
+                "retryable": False,
+            }
             for document in (await db.scalars(select(Document).where(Document.company_id == company_id, Document.id.in_(successful_text_ids)))).all():
-                document.profile_status = "failed"
+                document.profile_status = profile_status
+            await _set_step(
+                db,
+                job_id,
+                PROFILE_STEP,
+                status=profile_status,
+                progress=None if will_retry else 100,
+                message="Đang chờ worker thử lại." if will_retry else message,
+                error=profile_error,
+            )
+            await db.commit()
         await _fail_job(job_id, code=code, message=message, hint=hint, retryable=retryable)
         return
 

@@ -343,6 +343,43 @@ def test_upload_worker_profile_revision_confirm_and_tenant_isolation(api_env):
     assert knowledge_chunks > 0
 
 
+@pytest.mark.fixture_integration
+def test_missing_deepseek_configuration_marks_ingested_profile_failed(api_env, monkeypatch):
+    from services.worker.model_provider import AIConfigurationError
+
+    client, _sessions = api_env
+    workspace_id, csrf = _register(client, "missing-deepseek@example.com", "No LLM Co")
+    uploaded = _upload(
+        client,
+        workspace_id,
+        csrf,
+        [("brand.txt", b"No LLM Co serves Vietnamese coffee to local office workers.")],
+    )
+    assert uploaded.status_code == 202, uploaded.text
+    job_id = uploaded.json()["job_id"]
+    document_id = uploaded.json()["job"]["result"]["document_ids"][0]
+
+    def no_deepseek_key():
+        raise AIConfigurationError("DEEPSEEK_API_KEY is required when LLM_PROVIDER=deepseek")
+
+    monkeypatch.setattr(tasks, "configured_embedding_provider", lambda: None)
+    monkeypatch.setattr(tasks, "configured_structured_model", no_deepseek_key)
+    asyncio.run(tasks.ingest_document_task_batch_async(job_id, [document_id]))
+
+    job = client.get(f"/api/v1/jobs/{job_id}").json()
+    document = client.get(f"/api/v1/workspaces/{workspace_id}/documents/{document_id}").json()
+
+    assert job["status"] == "failed"
+    assert job["error"]["code"] == "ai_not_configured"
+    profile_step = next(step for step in job["steps"] if step["key"] == "create_brand_profile")
+    assert profile_step["status"] == "failed"
+    assert profile_step["error"]["code"] == "ai_not_configured"
+    assert document["status"] == "ready"
+    assert document["knowledge_status"] == "ready"
+    assert document["profile_status"] == "failed"
+    assert document["extracted"]["knowledge_chunks"] > 0
+
+
 def test_expired_worker_lease_is_requeued(api_env, monkeypatch):
     client, sessions = api_env
     workspace_id, _csrf = _register(client, "lease-owner@example.com", "Lease Co")
@@ -479,3 +516,7 @@ def test_worker_honors_m3_provider_retry_policy(
     assert result["status"] == expected_status
     assert result["error"]["code"] == failure_code
     assert result["error"]["retryable"] is retryable
+    profile_step = next(step for step in result["steps"] if step["key"] == "create_brand_profile")
+    assert profile_step["status"] == ("pending" if expected_status == "queued" else "failed")
+    document = client.get(f"/api/v1/workspaces/{workspace_id}/documents/{document_id}").json()
+    assert document["profile_status"] == ("pending" if expected_status == "queued" else "failed")
