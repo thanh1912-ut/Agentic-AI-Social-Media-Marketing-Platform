@@ -12,11 +12,13 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from redis.asyncio import Redis
 from sqlalchemy import text
+from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 from . import analytics, auth, brand_profiles, campaign_workflows, documents, jobs, media, workspaces
 from .config import settings
 from .db import create_schema, engine
 from .errors import ApiProblem, api_problem_handler, error_body
+from .request_limits import RequestBodyLimitMiddleware
 from .storage import storage_ready
 
 
@@ -46,13 +48,7 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=list(settings.cors_allowed_origins),
-    allow_credentials=True,
-    allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE"],
-    allow_headers=["Authorization", "Content-Type", "Idempotency-Key", "X-CSRF-Token"],
-)
+app.add_middleware(RequestBodyLimitMiddleware, max_bytes=settings.max_request_body_bytes)
 
 
 @app.middleware("http")
@@ -69,6 +65,16 @@ async def correlation_middleware(request: Request, call_next):
         )
     response.headers["X-Request-ID"] = request_id
     return response
+
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=list(settings.cors_allowed_origins),
+    allow_credentials=True,
+    allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE"],
+    allow_headers=["Authorization", "Content-Type", "Idempotency-Key", "X-CSRF-Token"],
+)
+app.add_middleware(TrustedHostMiddleware, allowed_hosts=list(settings.allowed_hosts))
 
 
 async def validation_exception_handler(request: Request, exc: RequestValidationError):

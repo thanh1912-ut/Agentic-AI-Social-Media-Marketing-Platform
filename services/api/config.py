@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import ipaddress
 import os
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -41,6 +42,12 @@ class Settings:
         ).split(",")
         if origin.strip()
     )
+    allowed_hosts: tuple[str, ...] = tuple(
+        host.strip().lower()
+        for host in os.getenv("ALLOWED_HOSTS", "localhost,127.0.0.1,testserver").split(",")
+        if host.strip()
+    )
+    forwarded_allow_ips: str = os.getenv("FORWARDED_ALLOW_IPS", "127.0.0.1").strip()
     web_base_url: str = os.getenv("WEB_BASE_URL", "http://localhost:3000").rstrip("/")
     smtp_host: str = os.getenv("SMTP_HOST", "").strip()
     smtp_port: int = int(os.getenv("SMTP_PORT", "587"))
@@ -57,6 +64,7 @@ class Settings:
     s3_secret_key: str = os.getenv("S3_SECRET_KEY", "minioadmin")
     s3_bucket: str = os.getenv("S3_BUCKET", "agentic-marketing")
     max_upload_bytes: int = int(os.getenv("MAX_UPLOAD_BYTES", str(25 * 1024 * 1024)))
+    max_request_body_bytes: int = int(os.getenv("MAX_REQUEST_BODY_BYTES", str(256 * 1024 * 1024)))
     max_image_bytes: int = int(os.getenv("MAX_IMAGE_BYTES", str(12 * 1024 * 1024)))
     max_image_pixels: int = int(os.getenv("MAX_IMAGE_PIXELS", "40000000"))
     max_files_per_request: int = int(os.getenv("MAX_FILES_PER_REQUEST", "10"))
@@ -128,6 +136,22 @@ if settings.app_env.casefold() in {"prod", "production"}:
         raise ValueError("Production cookie authentication requires COOKIE_SECURE=1")
     if not settings.rate_limits_enabled:
         raise ValueError("Production requires RATE_LIMITS_ENABLED=1")
+    if not os.getenv("ALLOWED_HOSTS", "").strip() or not settings.allowed_hosts or "*" in settings.allowed_hosts:
+        raise ValueError("Production requires an explicit ALLOWED_HOSTS list without '*'")
+if any(
+    "*" in host and host != "*" and (not host.startswith("*.") or host.count("*") != 1)
+    for host in settings.allowed_hosts
+):
+    raise ValueError("ALLOWED_HOSTS wildcards must use the '*.example.com' form")
+if "*" in settings.forwarded_allow_ips.split(","):
+    raise ValueError("FORWARDED_ALLOW_IPS must list trusted proxy IPs or CIDRs; '*' is not allowed")
+if not settings.forwarded_allow_ips:
+    raise ValueError("FORWARDED_ALLOW_IPS must list trusted proxy IPs or CIDRs")
+for proxy_ip in settings.forwarded_allow_ips.split(","):
+    try:
+        ipaddress.ip_network(proxy_ip.strip(), strict=False)
+    except ValueError as exc:
+        raise ValueError("FORWARDED_ALLOW_IPS entries must be IP addresses or CIDRs") from exc
 if settings.llm_provider != "deepseek":
     raise ValueError("LLM_PROVIDER must be deepseek; no implicit provider fallback is supported")
 if settings.embedding_provider not in {"none", "openai", "fastembed"}:
@@ -146,6 +170,8 @@ if not 1 <= settings.embedding_dimensions <= 2000:
     raise ValueError("EMBEDDING_DIMENSIONS must be between 1 and 2000")
 if settings.max_image_bytes < 1 or settings.max_image_pixels < 1:
     raise ValueError("Image upload byte and pixel limits must be positive")
+if settings.max_request_body_bytes < settings.max_upload_bytes + 1024 * 1024:
+    raise ValueError("MAX_REQUEST_BODY_BYTES must exceed MAX_UPLOAD_BYTES by at least 1 MiB for multipart overhead")
 if (
     not 0 <= settings.minimum_relevance_score <= 1
     or not 0 <= settings.minimum_semantic_score <= 1
@@ -157,8 +183,18 @@ if settings.llm_max_tokens < 1 or settings.llm_max_input_chars < 1 or settings.a
     raise ValueError("LLM token, input, and request-timeout limits must be positive")
 if not settings.llm_default_model:
     raise ValueError("LLM_DEFAULT_MODEL must name a DeepSeek model")
-if not settings.deepseek_base_url.startswith(("https://", "http://")):
+deepseek_url = urlsplit(settings.deepseek_base_url)
+if (
+    deepseek_url.scheme not in {"http", "https"}
+    or not deepseek_url.hostname
+    or deepseek_url.username
+    or deepseek_url.password
+    or deepseek_url.query
+    or deepseek_url.fragment
+):
     raise ValueError("DEEPSEEK_BASE_URL must be an HTTP(S) URL")
+if settings.app_env.casefold() in {"prod", "production"} and deepseek_url.scheme != "https":
+    raise ValueError("Production DEEPSEEK_BASE_URL must use HTTPS")
 if settings.embedding_provider == "openai":
     if not settings.embedding_api_key:
         raise ValueError("EMBEDDING_API_KEY is required when EMBEDDING_PROVIDER=openai")
