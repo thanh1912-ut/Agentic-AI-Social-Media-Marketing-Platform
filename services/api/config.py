@@ -60,7 +60,7 @@ class Settings:
     max_image_bytes: int = int(os.getenv("MAX_IMAGE_BYTES", str(12 * 1024 * 1024)))
     max_image_pixels: int = int(os.getenv("MAX_IMAGE_PIXELS", "40000000"))
     max_files_per_request: int = int(os.getenv("MAX_FILES_PER_REQUEST", "10"))
-    parser_version: str = os.getenv("PARSER_VERSION", "m2-parser-v1")
+    parser_version: str = os.getenv("PARSER_VERSION", "m2-parser-v2")
     auto_create_schema: bool = _bool("AUTO_CREATE_SCHEMA", False)
     inline_jobs: bool = _bool("INLINE_JOBS", False)
     llm_provider: str = os.getenv("LLM_PROVIDER", "deepseek").strip().casefold()

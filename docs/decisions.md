@@ -174,7 +174,7 @@ Ngày tạo: 2026-09-23. Trạng thái dưới đây được ghi từ audit đ�
 - Lý do: worker Compose phải nhận recovery task và các task trong process cần dùng cùng event loop để tái sử dụng connection pool an toàn.
 - Ảnh hưởng: không đổi schema/database. Entry point đóng coroutine rồi báo lỗi nếu được gọi khi loop đang chạy, vì worker sync xử lý task tuần tự.
 - Bằng chứng: router/Beat unit test xác nhận queue `default`; unit test xác nhận loop reuse. PostgreSQL 18.3 + Redis 8.6.3 với Celery 5.6.3 `solo` đã nhận task recovery không chỉ định queue, khôi phục một stale lease và xử lý lại content job. Không có DeepSeek request; lỗi `ai_not_configured` là kết quả dự kiến khi thiếu key.
-- Trạng thái: IMPLEMENTED tại `380ac6c`; Beat process, upload ingestion, worker process restart, Compose và prefork Linux còn cần nghiệm thu.
+- Trạng thái: IMPLEMENTED tại `380ac6c`; stale-lease recovery, TXT upload và DOCX paragraph/table upload được xác minh trên PostgreSQL/Redis + Celery `solo`. Beat process, worker process restart, Compose, MinIO và prefork Linux còn cần nghiệm thu.
 
 ## DEC-022 — Account lifecycle email dùng SMTP tùy chọn và link mời thủ công
 

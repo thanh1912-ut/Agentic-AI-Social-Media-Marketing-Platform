@@ -120,18 +120,28 @@ async def upload_documents(
             raise ApiProblem(409, "state_conflict", "Yêu cầu cũ không còn hợp lệ.")
         return await accepted_response(db, job)
 
-    first_document: Document | None = None
-    document_ids: list[str] = []
-    total_files = len(files)
+    prepared_uploads: list[tuple[str, str, str, UploadFile]] = []
     for upload in files:
         filename = (upload.filename or "untitled").replace("\\", "/").rsplit("/", 1)[-1] or "untitled"
         mime_type = (upload.content_type or "application/octet-stream").lower()
         kind = infer_kind(filename, mime_type)
         if kind is None:
             raise ApiProblem(415, "unsupported_type", f"Định dạng tệp “{filename}” chưa được hỗ trợ.", field_errors=[{"field": "files", "message": "Chỉ nhận PDF, DOCX, XLSX, CSV, TXT và ảnh."}])
-        content = await upload.read(settings.max_upload_bytes + 1)
-        if len(content) > settings.max_upload_bytes:
+        size = 0
+        while size <= settings.max_upload_bytes:
+            chunk = await upload.read(min(64 * 1024, settings.max_upload_bytes + 1 - size))
+            if not chunk:
+                break
+            size += len(chunk)
+        if size > settings.max_upload_bytes:
             raise ApiProblem(413, "file_too_large", f"Tệp “{filename}” vượt quá dung lượng cho phép.", field_errors=[{"field": "files", "message": f"Tối đa {settings.max_upload_bytes} byte mỗi tệp."}])
+        await upload.seek(0)
+        prepared_uploads.append((filename, mime_type, kind, upload))
+
+    first_document: Document | None = None
+    document_ids: list[str] = []
+    for filename, mime_type, kind, upload in prepared_uploads:
+        content = await upload.read(settings.max_upload_bytes + 1)
         source_hash = hashlib.sha256(content).hexdigest()
         existing = await db.scalar(select(Document).where(Document.company_id == company_id, Document.source_hash == source_hash, Document.parser_version == settings.parser_version))
         if existing:
@@ -207,6 +217,7 @@ async def reprocess_document(company_id: str, document_id: str, user: User = Dep
     job = Job(company_id=company_id, created_by=user.id, kind="document_ingest", title=f"Đọc lại tài liệu “{document.filename}”", status="queued", progress=0, result={"document_id": document.id}, idempotency_key=f"reprocess:{document.id}:{document.updated_at.timestamp()}")
     document.status = "pending"
     document.error = None
+    document.parser_version = settings.parser_version
     db.add(job)
     await db.flush()
     document.job_id = job.id

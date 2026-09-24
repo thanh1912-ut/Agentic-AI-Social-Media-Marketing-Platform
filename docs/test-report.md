@@ -1,6 +1,30 @@
 # Báo cáo kiểm thử
 
-Cập nhật: 2026-09-24 10:14 (Asia/Ho_Chi_Minh). Code commit `64d663e9e0b8e03fdba830e94a66fb0d3dd9f1a8` đã được GitHub hosted backend check `test` xác nhận pass. Bằng chứng mới nhất là upload TXT qua API/PostgreSQL/Redis/Celery, idempotent replay và xử lý rõ trạng thái thiếu DeepSeek.
+Cập nhật: 2026-09-24 10:47 (Asia/Ho_Chi_Minh). Code commit trước `64d663e9e0b8e03fdba830e94a66fb0d3dd9f1a8` có hosted backend check pass. Lượt này mở rộng parser formats/limits, upload preflight và DOCX ingestion trên PostgreSQL/Redis/Celery.
+
+## Parser formats, giới hạn và upload preflight — 2026-09-24
+
+| Check | Kết quả | Giới hạn |
+|---|---|---|
+| `tests/test_ingestion_parsers.py` | **10 passed** | Synthetic TXT/CSV, PDF text layer, DOCX paragraphs + tables, XLSX nhiều sheet; kiểm tra locators `text:1`, `page=1`, `paragraph=1`, `table=1;row=1`, `sheet=...;row=1`, Unicode tiếng Việt, CSV blank/missing columns và lỗi empty/corrupt/unsupported. |
+| Parser safety bounds | **PASS** | Text tối đa 2,000,000 ký tự; bảng tối đa 20,000 dòng, 256 cột, 200,000 ô; PDF tối đa 1,000 trang; DOCX/XLSX tối đa 100 MiB sau giải nén và 10,000 archive entries; ảnh tối đa 40,000,000 pixel. Tests hạ ngưỡng bằng monkeypatch để xác nhận lỗi `parser_limit_exceeded`; scanned PDF vẫn báo `pdf_no_text_layer`. |
+| Upload API preflight, SQLite API integration | **PASS; 2 cases** | Batch có file hợp lệ rồi file không hỗ trợ trả 415; file sau vượt giới hạn trả 413. Cả hai đều không tạo Document row hoặc object storage file. Upload quét kích thước theo block 64 KiB rồi rewind trước khi ghi, tránh giữ cả batch trong RAM. |
+| Reprocess parser identity | **PASS** | Default `PARSER_VERSION` đổi `m2-parser-v1` → `m2-parser-v2`; endpoint reprocess cập nhật document về parser version cấu hình trước khi dispatch. Test xác nhận version mới được lưu. |
+| Focused parser + Brand Profile integration suite | **22 passed** | SQLite fixture; bao gồm regression Brand Profile, partial batch, retry và missing-key state. |
+| Full Python suite | **137 passed, 1 skipped** | Python 3.11.16; skip duy nhất live DeepSeek smoke vì không có key; một LangGraph pending-deprecation warning. OpenAPI `--check`, compileall và `git diff --check` cũng pass. |
+
+Parser coverage chứng minh từng parser và validation API ở mức unit/SQLite integration. Runtime smoke dưới đây chứng minh thêm DOCX paragraph/table qua PostgreSQL/Redis/Celery; PDF/XLSX/CSV worker path, Docker/Podman/MinIO, Beat và worker process restart còn mở.
+
+## DOCX upload/PostgreSQL worker smoke — 2026-09-24 10:46
+
+| Check | Kết quả | Giới hạn |
+|---|---|---|
+| Fresh database `agentic_v1_parser_v2`, PostgreSQL 18.3 + pgvector 0.8.2, Alembic 0001→0010; Redis 8.6.3; FastAPI + Celery 5.6.3 `solo` trên queue `default` | **PASS** | Cluster/DB nằm dưới `/private/tmp`; storage local; embedding none/retrieval lexical; không dùng Compose/MinIO/shared database. |
+| Upload synthetic DOCX có paragraph và table, sau đó replay cùng `Idempotency-Key` | **PASS** | Hai POST trả 202 và cùng job ID. Parser version `m2-parser-v2`; DB lưu 1 text block, 1 table block, header `Sản phẩm/Giá`, row `Cơm gà/65.000đ`; knowledge index có 2 chunks. |
+| Trạng thái provider thiếu key | **PASS** | Không đặt `DEEPSEEK_API_KEY`. Document và knowledge `ready`; job/profile step `failed` với `ai_not_configured`. Không gửi request tới DeepSeek. |
+| Dừng dịch vụ disposable | **PASS** | API, Celery, Redis và PostgreSQL đều được dừng sau smoke. |
+
+Đây xác nhận DOCX parsing và lưu trữ qua PostgreSQL/Redis/Celery thật trên code mới. PDF/XLSX/CSV mới có parser/unit coverage; worker process restart, Beat, Compose, MinIO/S3 và prefork Linux vẫn cần nghiệm thu.
 
 ## Upload và Celery worker trên PostgreSQL/Redis — 2026-09-24 10:10
 
@@ -9,7 +33,7 @@ Cập nhật: 2026-09-24 10:14 (Asia/Ho_Chi_Minh). Code commit `64d663e9e0b8e03f
 | PostgreSQL 18.3 + pgvector 0.8.2, database `agentic_v1_ingestion`; Alembic 0001→0010; Redis 8.6.3; FastAPI thật + local object storage; Celery 5.6.3 `solo` consume queue `default` | **PASS** | Tất cả dịch vụ thử nghiệm cô lập dưới `/private/tmp`; không dùng database dùng chung, Compose hay MinIO. Embedding tắt (`EMBEDDING_PROVIDER=none`), retrieval lexical. |
 | `POST` synthetic TXT upload và replay cùng idempotency key | **PASS** | Upload trả 202; replay trả lại cùng job ID. Worker nhận job bền vững từ queue `default`; parser lưu 1 normalized block và 1 knowledge chunk. |
 | Trạng thái document/job khi không cấu hình `DEEPSEEK_API_KEY` | **PASS sau khi sửa lỗi được phát hiện trong lần chạy đầu** | `document.status=ready`, `knowledge_status=ready`, `profile_status=failed`; job và Brand Profile step đều `failed` với mã `ai_not_configured`. Lần chạy đầu làm lộ lỗi không commit trạng thái failed; commit `64d663e` sửa và regression tests xác nhận trạng thái retryable vẫn pending, terminal lỗi thành failed. Không gửi request tới DeepSeek. |
-| Regression và full Python suite trên source `64d663e` | **124 passed, 1 skipped**; focused profile/provider suite **6 passed** | Skip duy nhất là live DeepSeek smoke vì không có key; có một warning deprecation hiện hữu của LangGraph. |
+| Regression và full Python suite trên source `64d663e` | **124 passed, 1 skipped** (snapshot historical, before parser changes); focused profile/provider suite **6 passed** | Skip duy nhất là live DeepSeek smoke vì không có key; có một warning deprecation hiện hữu của LangGraph. |
 | GitHub hosted backend workflow trên commit `64d663e` | **PASS**, job `test` hoàn tất | Đây là workflow check của GitHub trên commit đã push; không thay thế các kiểm tra còn mở bên dưới. |
 
 Smoke này xác nhận upload TXT và provider-missing error path trên một process worker. Chưa xác nhận PDF/DOCX/XLSX/CSV trên service stack này, worker/process crash-restart, Beat, Compose, MinIO/S3, prefork Linux hoặc thành công khi gọi Brand Profile bằng DeepSeek thật.

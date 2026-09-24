@@ -164,6 +164,79 @@ def test_upload_filename_is_not_used_as_storage_path(api_env, tmp_path):
 
 
 @pytest.mark.fixture_integration
+@pytest.mark.parametrize(
+    ("invalid_name", "invalid_body", "max_upload_bytes", "expected_status"),
+    [
+        ("unsupported.bin", b"unsupported", None, 415),
+        ("too-large.txt", b"123456789", 8, 413),
+    ],
+)
+def test_upload_preflights_entire_batch_before_writing_objects(
+    api_env, tmp_path, monkeypatch, invalid_name, invalid_body, max_upload_bytes, expected_status
+):
+    from dataclasses import replace
+
+    from database.models import Document
+    from services.api import documents
+    from sqlalchemy import select
+
+    client, sessions = api_env
+    workspace_id, csrf = _register(client, f"preflight-{expected_status}@example.com", "Preflight Co")
+    if max_upload_bytes is not None:
+        monkeypatch.setattr(
+            documents, "settings", replace(documents.settings, max_upload_bytes=max_upload_bytes)
+        )
+    invalid_mime = "application/octet-stream" if invalid_name.endswith(".bin") else "text/plain"
+    uploaded = client.post(
+        f"/api/v1/workspaces/{workspace_id}/documents",
+        headers={**csrf, "Idempotency-Key": f"preflight-{expected_status}"},
+        files=[
+            ("files", ("good.txt", b"Good.", "text/plain")),
+            ("files", (invalid_name, invalid_body, invalid_mime)),
+        ],
+    )
+
+    assert uploaded.status_code == expected_status, uploaded.text
+    object_root = tmp_path / "objects"
+    assert not object_root.exists() or list(object_root.rglob("*")) == []
+
+    async def document_count():
+        async with sessions() as db:
+            return len((await db.scalars(select(Document))).all())
+
+    assert asyncio.run(document_count()) == 0
+
+
+@pytest.mark.fixture_integration
+def test_reprocess_updates_document_parser_version(api_env, monkeypatch):
+    from dataclasses import replace
+
+    from database.models import Document
+    from services.api import documents
+
+    client, sessions = api_env
+    workspace_id, csrf = _register(client, "parser-version@example.com", "Parser Version Co")
+    uploaded = _upload(client, workspace_id, csrf, [("brand.txt", b"Parser version test content.")])
+    assert uploaded.status_code == 202, uploaded.text
+    document_id = uploaded.json()["job"]["result"]["document_ids"][0]
+
+    monkeypatch.setattr(
+        documents, "settings", replace(documents.settings, parser_version="m2-parser-v2")
+    )
+    reprocessed = client.post(
+        f"/api/v1/workspaces/{workspace_id}/documents/{document_id}/reprocess",
+        headers=csrf,
+    )
+    assert reprocessed.status_code == 202, reprocessed.text
+
+    async def parser_version():
+        async with sessions() as db:
+            return (await db.get(Document, document_id)).parser_version
+
+    assert asyncio.run(parser_version()) == "m2-parser-v2"
+
+
+@pytest.mark.fixture_integration
 def test_upload_worker_profile_revision_confirm_and_tenant_isolation(api_env):
     client, sessions = api_env
     workspace_id, csrf = _register(client, "owner-one@example.com", "Bếp Mộc")
