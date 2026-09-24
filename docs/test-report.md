@@ -1,6 +1,6 @@
 # Báo cáo kiểm thử
 
-Cập nhật: 2026-09-24 07:27 (Asia/Ho_Chi_Minh). Snapshot code `380ac6c` trên branch `codex/product-v1-completion` sửa route của Celery recovery về queue worker đang nghe và giữ event loop ổn định giữa các task. Full Python suite: **118 passed, 1 skipped**; skip là smoke DeepSeek thật vì chưa có key. Runtime recovery pass trên PostgreSQL/Redis cô lập với Celery `solo`; Docker Compose, Beat process, ingestion worker và prefork Linux vẫn chưa được nghiệm thu.
+Cập nhật: 2026-09-24 07:33 (Asia/Ho_Chi_Minh). Snapshot code `380ac6c` trên branch `codex/product-v1-completion` sửa route của Celery recovery về queue worker đang nghe và giữ event loop ổn định giữa các task. Full Python suite: **118 passed, 1 skipped**; skip là smoke DeepSeek thật vì chưa có key. Runtime recovery pass trên PostgreSQL/Redis cô lập với Celery `solo`; Docker Compose, Beat process, ingestion worker và prefork Linux vẫn chưa được nghiệm thu.
 
 ## RAG-001 — local multilingual E5
 

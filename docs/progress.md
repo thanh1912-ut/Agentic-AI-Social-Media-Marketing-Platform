@@ -1,10 +1,10 @@
 # Tiến độ triển khai
 
-Cập nhật gần nhất: 2026-09-24 07:27 (Asia/Ho_Chi_Minh)
+Cập nhật gần nhất: 2026-09-24 07:33 (Asia/Ho_Chi_Minh)
 
 ## Trạng thái hiện tại
 
-- Branch: `codex/product-v1-completion`; code snapshot `380ac6c` bổ sung route đúng queue cho Celery recovery và giữ event loop dùng chung giữa các task. Commit đang chờ push lên PR #1.
+- Branch: `codex/product-v1-completion`; PR #1 đã có fix recovery ở commit `380ac6c` cùng tài liệu kiểm thử và vận hành được cập nhật.
 - Phase hiện tại: Phase 7 — hardening và bàn giao core pilot. Mốc mới: real-mode browser manual flow pass riêng trên SQLite và PostgreSQL; database dump/restore counts khớp và archive/restore local object storage giữ nguyên SHA-256.
 - Công việc trong phiên: kiểm tra Celery recovery trên PostgreSQL 18.3 và Redis 8.6.3 cô lập. Worker `solo` nhận recovery task qua queue `default`, phục hồi job có lease hết hạn, rồi xử lý job content tới lỗi cấu hình DeepSeek dự kiến vì môi trường không có key. Đã dừng process và dịch vụ thử nghiệm; không gọi DeepSeek.
 - Mốc RAG: local FastEmbed multilingual E5 small pinned 384d đã chạy qua adapter; gate yêu cầu semantic margin hoặc lexical evidence mạnh. PostgreSQL migration legacy `vector(1536)` giữ dữ liệu cũ, nhận vector 384 và lọc theo model identity. Full Python suite hiện **118 passed, 1 skipped**.
