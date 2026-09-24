@@ -1,12 +1,12 @@
 # Báo cáo kiểm thử
 
-Cập nhật: 2026-09-24 10:54 (Asia/Ho_Chi_Minh). Parser/upload implementation nằm trên commit `8ded65afa6adbe923fc2b9f1481e52a99b4b8147`; GitHub backend workflow run #58 trên đúng commit pass pytest và OpenAPI. Lượt này mở rộng parser formats/limits, upload preflight và DOCX ingestion trên PostgreSQL/Redis/Celery.
+Cập nhật: 2026-09-24 11:08 (Asia/Ho_Chi_Minh). XLSX parser follow-up sửa lỗi storage key không có extension; full pytest, OpenAPI check, compileall và runtime PDF/XLSX/CSV smoke pass tại worktree. Changeset này cần push và chạy hosted CI.
 
 ## Parser formats, giới hạn và upload preflight — 2026-09-24
 
 | Check | Kết quả | Giới hạn |
 |---|---|---|
-| `tests/test_ingestion_parsers.py` | **10 passed** | Synthetic TXT/CSV, PDF text layer, DOCX paragraphs + tables, XLSX nhiều sheet; kiểm tra locators `text:1`, `page=1`, `paragraph=1`, `table=1;row=1`, `sheet=...;row=1`, Unicode tiếng Việt, CSV blank/missing columns và lỗi empty/corrupt/unsupported. |
+| `tests/test_ingestion_parsers.py` | **10 passed** | Synthetic TXT/CSV, PDF text layer, DOCX paragraphs + tables, XLSX nhiều sheet; kiểm tra locators `text:1`, `page=1`, `paragraph=1`, `table=1;row=1`, `sheet=...;row=1`, Unicode tiếng Việt, CSV blank/missing columns và lỗi empty/corrupt/unsupported. XLSX fixture dùng server-generated path không suffix để tái hiện storage key thật. |
 | Parser safety bounds | **PASS** | Text tối đa 2,000,000 ký tự; bảng tối đa 20,000 dòng, 256 cột, 200,000 ô; PDF tối đa 1,000 trang; DOCX/XLSX tối đa 100 MiB sau giải nén và 10,000 archive entries; ảnh tối đa 40,000,000 pixel. Tests hạ ngưỡng bằng monkeypatch để xác nhận lỗi `parser_limit_exceeded`; scanned PDF vẫn báo `pdf_no_text_layer`. |
 | Upload API preflight, SQLite API integration | **PASS; 2 cases** | Batch có file hợp lệ rồi file không hỗ trợ trả 415; file sau vượt giới hạn trả 413. Cả hai đều không tạo Document row hoặc object storage file. Upload quét kích thước theo block 64 KiB rồi rewind trước khi ghi, tránh giữ cả batch trong RAM. |
 | Reprocess parser identity | **PASS** | Default `PARSER_VERSION` đổi `m2-parser-v1` → `m2-parser-v2`; endpoint reprocess cập nhật document về parser version cấu hình trước khi dispatch. Test xác nhận version mới được lưu. |
@@ -14,7 +14,7 @@ Cập nhật: 2026-09-24 10:54 (Asia/Ho_Chi_Minh). Parser/upload implementation 
 | Full Python suite | **137 passed, 1 skipped** | Python 3.11.16; skip duy nhất live DeepSeek smoke vì không có key; một LangGraph pending-deprecation warning. OpenAPI `--check`, compileall và `git diff --check` cũng pass. |
 | GitHub hosted backend workflow, commit `8ded65a` | **PASS**, run #58 | Job `test` chạy pytest và `scripts/export_openapi.py --check`; [workflow run](https://github.com/thanh1912-ut/Agentic-AI-Social-Media-Marketing-Platform/actions/runs/35953327472). |
 
-Parser coverage chứng minh từng parser và validation API ở mức unit/SQLite integration. Runtime smoke dưới đây chứng minh thêm DOCX paragraph/table qua PostgreSQL/Redis/Celery; PDF/XLSX/CSV worker path, Docker/Podman/MinIO, Beat và worker process restart còn mở.
+Parser coverage chứng minh từng parser và validation API ở mức unit/SQLite integration. Runtime smoke dưới đây kiểm chứng thêm DOCX paragraph/table và PDF/XLSX/CSV qua PostgreSQL/Redis/Celery; Docker/Podman/MinIO, Beat và worker process restart còn mở.
 
 ## DOCX upload/PostgreSQL worker smoke — 2026-09-24 10:46
 
@@ -26,6 +26,18 @@ Parser coverage chứng minh từng parser và validation API ở mức unit/SQL
 | Dừng dịch vụ disposable | **PASS** | API, Celery, Redis và PostgreSQL đều được dừng sau smoke. |
 
 Đây xác nhận DOCX parsing và lưu trữ qua PostgreSQL/Redis/Celery thật trên code mới. PDF/XLSX/CSV mới có parser/unit coverage; worker process restart, Beat, Compose, MinIO/S3 và prefork Linux vẫn cần nghiệm thu.
+
+## PDF/XLSX/CSV upload và worker smoke — 2026-09-24 11:08
+
+| Check | Kết quả | Giới hạn |
+|---|---|---|
+| Fresh database `agentic_v1_parser_formats`, PostgreSQL 18.3 + pgvector 0.8.2, Alembic 0001→0010; Redis 8.6.3; FastAPI và Celery 5.6.3 `solo` trên queue `default` | **PASS** | DB, object storage local và service disposable dưới `/private/tmp`; embedding tắt, retrieval lexical; không dùng Compose/MinIO/shared database. |
+| Batch upload PDF text, XLSX và CSV qua API; worker lưu vào PostgreSQL | **PASS** | API trả 202; cả ba documents đạt `extraction_status=extracted`, `knowledge_status=ready`; mỗi loại có 1 document chunk và 1 knowledge chunk. |
+| XLSX storage key không extension | **PASS sau fix** | Lượt đầu tái hiện `openpyxl` từ chối storage key không có `.xlsx` dù archive hợp lệ. Parser nay mở binary stream; unit regression dùng path không suffix; lượt chạy lại thành công. |
+| Brand Profile khi không có key | **PASS theo giới hạn môi trường** | Document/knowledge của ba file vẫn ready; job/profile step kết thúc `ai_not_configured`. Không gửi request tới DeepSeek. |
+| Cleanup services | **PASS** | FastAPI, Celery, Redis và PostgreSQL disposable đã dừng sau smoke. |
+
+Kết quả này xác nhận đường upload → durable job → parser → PostgreSQL knowledge indexing cho PDF/XLSX/CSV trên service stack thật. Chưa xác nhận Compose, MinIO/S3, Beat, worker crash/restart, prefork Linux hoặc Brand Profile generation bằng DeepSeek.
 
 ## Upload và Celery worker trên PostgreSQL/Redis — 2026-09-24 10:10
 

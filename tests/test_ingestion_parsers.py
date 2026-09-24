@@ -66,6 +66,9 @@ def test_xlsx_returns_each_sheet_as_a_located_table(tmp_path: Path) -> None:
     second.append(["Tên", "Dung tích"])
     second.append(["Cà phê sữa", "350ml"])
     workbook.save(path)
+    stored_path = tmp_path / "server-generated-object-key"
+    path.rename(stored_path)
+    path = stored_path
 
     parsed = parse_document(
         path,

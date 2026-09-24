@@ -178,9 +178,13 @@ def _parse_xlsx(path: Path, filename: str) -> ParsedDocument:
     except ImportError as exc:
         raise ParseError("parser_unavailable", "Chưa cài bộ đọc XLSX.", "Liên hệ quản trị viên để bật parser XLSX.", retryable=True) from exc
     _check_archive_limits(path, filename)
+    source_file = None
     try:
-        workbook = openpyxl.load_workbook(path, read_only=True, data_only=True)
+        source_file = path.open("rb")
+        workbook = openpyxl.load_workbook(source_file, read_only=True, data_only=True)
     except Exception as exc:
+        if source_file is not None:
+            source_file.close()
         raise ParseError("corrupted", f"Không đọc được tệp “{filename}”.", "Hãy mở và lưu lại tệp XLSX rồi tải lên lần nữa.") from exc
     tables: list[ParsedTableBlock] = []
     total_rows = 0
@@ -210,7 +214,10 @@ def _parse_xlsx(path: Path, filename: str) -> ParsedDocument:
             values = [row + [""] * (width - len(row)) for row in values]
             tables.append(ParsedTableBlock(values[0], values[1:], f"sheet={sheet.title};row=1"))
     finally:
-        workbook.close()
+        try:
+            workbook.close()
+        finally:
+            source_file.close()
     if not tables:
         raise ParseError("empty_content", f"Tệp “{filename}” không có dữ liệu.", "Hãy chọn bảng tính có dữ liệu.")
     return ParsedDocument(table_blocks=tables, metadata={"rows": total_rows, "sheets": len(tables)})
