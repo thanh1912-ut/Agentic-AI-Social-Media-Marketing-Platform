@@ -54,6 +54,10 @@ Sửa `.env` cục bộ trong editor, không paste key vào chat. Provision `DEE
 
 `.env.example` để `RATE_LIMITS_ENABLED=0` cho local development. Production phải đặt `APP_ENV=production`, `RATE_LIMITS_ENABLED=1`, `COOKIE_SECURE=1` và một `REDIS_URL` khả dụng; cấu hình production từ chối limiter bị tắt. Auth, upload và content-generation routes dùng fixed-window Redis limits; production trả `503` cho các route này khi Redis không dùng được. Các mức hiện tại được ghi trong [security-review.md](security-review.md). Limit key dựa trên `request.client.host`: sau reverse proxy, cấu hình Uvicorn chỉ tin forwarded headers từ proxy thực tế và xác nhận API không truy cập trực tiếp từ nguồn không tin cậy. Không lấy `X-Forwarded-For` tùy ý làm client identity.
 
+Khi triển khai production, đặt `ALLOWED_HOSTS` thành hostname API thật, ví dụ `api.example.com`; để trống hoặc `*` sẽ làm API từ chối khởi động. `FORWARDED_ALLOW_IPS` phải là danh sách IP/CIDR mà API thực sự nhìn thấy ở proxy; mặc định là `127.0.0.1`, không dùng `*`. Chỉ expose API qua proxy đã tin cậy và giữ `CORS_ALLOWED_ORIGINS` khớp origin frontend.
+
+`MAX_REQUEST_BODY_BYTES` mặc định là `268435456` (256 MiB tổng cho một request); `MAX_UPLOAD_BYTES` mặc định là 25 MiB mỗi file, tối đa 10 file. Giữ body limit ít nhất lớn hơn per-file limit 1 MiB để multipart overhead không làm upload hợp lệ bị từ chối. ASGI trả `413 request_too_large` cho Content-Length vượt ngưỡng và đếm stream khi route đọc body. Cấu hình thêm body-size limit ở reverse proxy/ingress để từ chối traffic trước khi vào API. Production `DEEPSEEK_BASE_URL` phải dùng HTTPS; không đặt credentials hoặc query string trong URL.
+
 ## Khởi động full stack
 
 ```bash

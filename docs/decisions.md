@@ -185,3 +185,13 @@ Ngày tạo: 2026-09-23. Trạng thái dưới đây được ghi từ audit đ�
 - Ảnh hưởng: OpenAPI/generated TS types và UI auth/settings được cập nhật; production `WEB_BASE_URL` bắt buộc HTTPS. SMTP password cần đặt trong secret store. Reset delivery background hiện chưa có durable queue, retry, bounce handling hoặc telemetry; invitation delivery vẫn đợi trong request và lỗi có manual fallback. Access token cũ phát hành trước password-version claim dùng `iat` fallback để giữ tương thích; token mới bị thu hồi ngay khi password đổi.
 - Bằng chứng: 5 account lifecycle integration tests trong full suite; fake SMTP STARTTLS/login/header sanitization; reset replay/stale-token/session revocation; invite fallback/resend/accept. Full Python suite **123 passed, 1 skipped**, frontend **45 passed**, typecheck/lint/build/OpenAPI pass, invitation Playwright **2/2** desktop/mobile.
 - Trạng thái: IMPLEMENTED + fixture-tested; SMTP mailbox delivery chưa xác minh do môi trường chưa có credentials/mailbox. Chi tiết vận hành ở `docs/runbook.md` và giới hạn ở `docs/test-report.md`.
+
+## DEC-023 — Giới hạn Host, trusted proxy, request body và DeepSeek transport
+
+- Ngày: 2026-09-24.
+- Vấn đề: API cần chặn Host không thuộc deployment, chỉ tin forwarded headers từ reverse proxy thật, giới hạn upload tổng thể và bảo vệ DeepSeek key cùng nội dung workspace khỏi đường truyền HTTP.
+- Quyết định: production yêu cầu `ALLOWED_HOSTS` tường minh, không chấp nhận wildcard toàn cục; `FORWARDED_ALLOW_IPS` phải là IP/CIDR hợp lệ và được truyền vào Uvicorn ở entrypoint lẫn Compose. ASGI kiểm tra `MAX_REQUEST_BODY_BYTES` trước parse khi có Content-Length và đếm stream body khi endpoint tiêu thụ; default 256 MiB. Production `DEEPSEEK_BASE_URL` bắt buộc HTTPS và không nhận credentials/query/fragment.
+- Không chọn: tin mọi proxy (`*`), chấp nhận Host tùy ý hoặc dựa hoàn toàn vào per-file limit mà không có tổng request cap.
+- Ảnh hưởng: cấu hình production phải khai báo host/proxy thực tế; reverse proxy/ingress vẫn phải từ chối body lớn trước khi chuyển traffic tới API. Kết nối và địa chỉ proxy trên môi trường production chưa được xác minh.
+- Bằng chứng: commit `c5bb13e`; production Host rejection, host/proxy configuration, Uvicorn forwarding, request-size error envelope/stream handling và HTTP DeepSeek rejection đều có tests. Local full Python suite **147 passed, 1 skipped**; OpenAPI, compileall, Compose YAML và `git diff --check` pass. Hosted backend run [#65](https://github.com/thanh1912-ut/Agentic-AI-Social-Media-Marketing-Platform/actions/runs/35957721239) trên commit `c5bb13e` pass (pytest + OpenAPI).
+- Trạng thái: app-level hardening IMPLEMENTED; proxy IPs, edge limits và Compose runtime vẫn cần nghiệm thu.

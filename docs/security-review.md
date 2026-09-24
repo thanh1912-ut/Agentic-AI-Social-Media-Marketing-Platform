@@ -1,10 +1,10 @@
 # Security review — core pilot
 
-Cập nhật: 2026-09-24. Branch: `codex/product-v1-completion`; fixes at `d9cb6a8`, `1e1589f` and rate-limit implementation `004020e` are pushed, base `origin/main` at `07938bd`.
+Cập nhật: 2026-09-24. Branch: `codex/product-v1-completion`; request hardening code ở `c5bb13e` (hosted backend run #65 pass), base `origin/main` tại `07938bd`. Review này giới hạn ở app/API hiện có; không thay cho penetration test hoặc xác minh cấu hình production/edge.
 
 ## Tóm tắt
 
-Đã xác nhận lỗi path traversal qua tên file upload và thiếu CSRF ở refresh/logout dùng cookie. Hai lỗi đã được sửa trong hai commit riêng, có regression tests. Review này giới hạn ở app/API hiện có; không thay cho penetration test hoặc xác minh cấu hình production/edge.
+Đã xác nhận lỗi path traversal qua tên file upload và thiếu CSRF ở refresh/logout dùng cookie. Hai lỗi đã được sửa trong hai commit riêng, có regression tests. Hardening bổ sung chặn Host không được duyệt, giới hạn trusted proxy, body size ở ASGI và bắt buộc HTTPS cho DeepSeek khi chạy production.
 
 ## Finding
 
@@ -39,19 +39,36 @@ Cập nhật: 2026-09-24. Branch: `codex/product-v1-completion`; fixes at `d9cb6
 - **Verification:** `tests/test_rate_limits.py` kiểm tra disabled mode, ngưỡng `429`, key không chứa IP thô, production fail-closed và development fail-open; `tests/test_production_security_config.py` kiểm tra production cấm tắt limiter. Toàn bộ Python suite trên `004020e`: **96 passed, 1 skipped**; skip là live DeepSeek smoke.
 - **Limitations:** rate limit chưa được kiểm tra trên Redis/Compose production. Key dựa trên địa chỉ mà ASGI server cung cấp; nếu đặt sau reverse proxy, cần cấu hình trusted proxy/forwarded headers đúng tại server để phân biệt client. Không tin `X-Forwarded-For` từ nguồn không được tin cậy. Fixed window cho phép burst ở ranh giới hai cửa sổ. Edge/WAF limit và account-aware login throttling vẫn cần quyết định/kiểm tra.
 
+### SEC-HOST-001 — Host, proxy và model transport được giới hạn ở production
+
+- **Severity:** Medium.
+- **Location:** `services/api/config.py`, `services/api/main.py`, `services/api/__main__.py`, root `docker-compose.yml`.
+- **Finding:** API trước đây chấp nhận Host tùy ý, chưa cấu hình rõ nguồn forwarded headers, và cho phép đặt URL DeepSeek qua HTTP kể cả trong production.
+- **Fix:** production bắt buộc `ALLOWED_HOSTS` tường minh, cấm wildcard toàn cục và wildcard sai dạng; `TrustedHostMiddleware` từ chối Host ngoài allowlist. `FORWARDED_ALLOW_IPS` chỉ nhận IP/CIDR hợp lệ, Uvicorn chỉ tin các proxy được liệt kê. Production yêu cầu `DEEPSEEK_BASE_URL` dùng HTTPS và URL không chứa credentials/query/fragment.
+- **Verification:** production TestClient xác nhận Host lạ trả 400; subprocess tests kiểm tra thiếu/wildcard/multiple wildcard, proxy `*`, entrypoint Uvicorn và DeepSeek HTTP bị từ chối.
+- **Limitations:** IP/CIDR phải được thay bằng địa chỉ proxy thật tại deployment; Compose, TLS termination và đường mạng production chưa được chạy ở môi trường này.
+
+### SEC-BODY-001 — Giới hạn tổng request body tại ASGI
+
+- **Severity:** Medium.
+- **Location:** `services/api/request_limits.py`, `services/api/config.py`, `.env.example`.
+- **Fix:** middleware từ chối `Content-Length` vượt `MAX_REQUEST_BODY_BYTES` trước khi FastAPI parse multipart, đồng thời đếm các chunk khi route đọc body. Default là 256 MiB; cấu hình phải cao hơn `MAX_UPLOAD_BYTES` ít nhất 1 MiB để chừa multipart overhead. API trả lỗi `413 request_too_large` có request ID.
+- **Verification:** focused tests bao phủ Content-Length, streamed body, đúng ngưỡng, error envelope và request ID; full suite trên code `c5bb13e` **147 passed, 1 skipped**. Skip duy nhất là live DeepSeek smoke vì chưa có key.
+- **Limitations:** reverse proxy/ingress vẫn phải giới hạn request trước khi chuyển traffic vào API để bảo vệ băng thông và kết nối. Compose/runtime chưa được xác minh.
+
 ## Kiểm tra khác trong phạm vi
 
 - **Tenant authorization:** protected workspace routes kiểm tra active membership; tenant-cross-read được kiểm bằng API integration tests. Chưa chạy test trên PostgreSQL/production policy.
 - **Cookie/CSRF:** access/refresh cookie HttpOnly; mọi non-public mutation có dependency CSRF, refresh và logout kiểm tra double-submit token; production yêu cầu Secure cookie. Static route inventory còn 5 public auth writes (`register`, `login`, `forgot-password`, `reset-password`, invitation `accept`) không có CSRF dependency vì chúng không dựa trên cookie session; cần tiếp tục xác minh origin/body controls trên deployment.
 - **CORS:** origins lấy từ allowlist cấu hình; methods và headers API dùng allowlist tường minh. Preflight cho header cần thiết pass, header lạ bị từ chối. Cần xác nhận origin allowlist theo deployment tại edge trước pilot public.
 - **JWT/docs:** access token kiểm tra chữ ký bằng algorithm đã cấu hình và `exp`; docs/OpenAPI bị tắt trong production; test cấu hình JWT yếu pass.
-- **Rate limits:** Redis application-level fixed-window limits đã được thêm cho auth, upload và content generation; production fail-closed khi Redis không dùng được. Cấu hình host/proxy, edge limits, Redis runtime và account-aware login throttling chưa được kiểm chứng. Giữ `SEC-001` IN_PROGRESS.
-- **Upload/size:** API kiểm MIME/extension và kích thước từng file, quét batch trước khi ghi storage để file 415/413 không để lại object/row; parser có giới hạn text/table/page/archive/image. File được đọc theo block 64 KiB nên không giữ cả batch trong RAM. Giới hạn request-body aggregate ở reverse proxy chưa được cấu hình/kiểm chứng; ingress có thể nhận tối đa số file × per-file cap trước khi app xử lý.
+- **Rate limits:** Redis application-level fixed-window limits đã được thêm cho auth, upload và content generation; production fail-closed khi Redis không dùng được. Host allowlist và trusted proxy được kiểm tra trong app/tests; edge limits, Redis runtime, proxy IP thực tế và account-aware login throttling chưa được kiểm chứng. Giữ `SEC-001` IN_PROGRESS.
+- **Upload/size:** API kiểm MIME/extension, từng file, toàn batch trước storage; parser giới hạn text/table/page/archive/image và đọc theo block 64 KiB. ASGI có aggregate body cap; edge/ingress vẫn cần cap riêng và runtime verification.
 - **Frontend sinks:** inline bootstrap script trong `apps/web/src/app/layout.tsx` dùng `dangerouslySetInnerHTML` cho runtime config từ deployment environment; serializer tại `apps/web/src/lib/runtime-config-script.ts` escape `<` và test xác nhận `</script>` không thể đóng script. Content Security Policy vẫn cần chốt khi triển khai.
-- **Dependency/infrastructure:** npm audit lần kiểm gần nhất không báo vulnerability; PostgreSQL, MinIO, Compose, reverse-proxy headers, TLS, backup/restore và production logs chưa được kiểm chứng trong runtime.
+- **Dependency/infrastructure:** npm audit lần kiểm gần nhất không báo vulnerability; PostgreSQL, MinIO, Compose, proxy/TLS termination, backup/restore và production logs chưa được kiểm chứng trong runtime. App yêu cầu HTTPS cho URL DeepSeek production.
 
 ## Việc còn lại
 
-1. Xác minh ASGI client IP qua trusted proxy, edge limits và CORS origin allowlist theo deployment; đánh giá account-aware login throttling.
-2. Hoàn tất CSRF/authorization matrix cho mọi auth/write route, request-size limit toàn request và log redaction trên deployment test.
+1. Đặt Host allowlist/trusted proxy theo deployment; xác minh client IP, edge body/rate limits và CORS origin allowlist; đánh giá account-aware login throttling.
+2. Hoàn tất CSRF/authorization matrix cho mọi auth/write route và log redaction trên deployment test.
 3. Chạy PostgreSQL/MinIO/Compose hardening cùng backup/restore trên môi trường cô lập trước pilot.

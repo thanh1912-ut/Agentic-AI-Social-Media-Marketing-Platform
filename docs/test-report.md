@@ -2,6 +2,18 @@
 
 Cập nhật: 2026-09-24 11:22 (Asia/Ho_Chi_Minh). Parser/upload code ở commit `c9fc10df87903ef0c50f11b6e03e804ed62a793e`; hosted backend run #62 trên đúng commit pass pytest và OpenAPI. XLSX parser xử lý storage key không có extension; runtime PDF/XLSX/CSV smoke pass.
 
+## Production Host/proxy, body-size và DeepSeek transport — 2026-09-24
+
+| Check | Kết quả | Bằng chứng và giới hạn |
+|---|---|---|
+| Host allowlist và proxy trust | **PASS** | Production yêu cầu `ALLOWED_HOSTS` tường minh, từ chối Host lạ, wildcard toàn cục và wildcard sai dạng. `FORWARDED_ALLOW_IPS` chỉ nhận IP/CIDR hợp lệ; Uvicorn entrypoint nhận đúng danh sách cấu hình. Chưa kiểm tra địa chỉ proxy thật ở deployment. |
+| Tổng request body | **PASS** | 13 focused tests cho giới hạn theo Content-Length và streamed body, request đúng ngưỡng, lỗi 413/error envelope/request ID; API từ chối trước parse khi Content-Length quá lớn. Mặc định 256 MiB; edge/ingress limit và Compose runtime chưa kiểm chứng. |
+| DeepSeek transport | **PASS** | URL có cấu trúc HTTP(S) hợp lệ; production từ chối HTTP. Test không gửi request ra ngoài hoặc dùng API key. |
+| Full Python suite | **147 passed, 1 skipped** | Python 3.11 cô lập; skip duy nhất live DeepSeek API smoke do chưa có `DEEPSEEK_API_KEY`; một LangGraph pending-deprecation warning. |
+| OpenAPI, `compileall`, `git diff --check`, Compose YAML parse | **PASS** | Đây là kiểm tra contract, cú pháp Python/YAML và whitespace; không thay cho `docker compose up`. Máy hiện không có Docker/Podman. |
+
+GitHub backend workflow [#65](https://github.com/thanh1912-ut/Agentic-AI-Social-Media-Marketing-Platform/actions/runs/35957721239) pass trên code commit `c5bb13e`: pytest và OpenAPI đều thành công. Workflow chạy trước commit docs này.
+
 ## Parser formats, giới hạn và upload preflight — 2026-09-24
 
 | Check | Kết quả | Giới hạn |
