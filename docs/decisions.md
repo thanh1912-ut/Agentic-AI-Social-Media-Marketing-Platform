@@ -27,7 +27,7 @@ Ngày tạo: 2026-09-23. Trạng thái dưới đây được ghi từ audit đ�
 - Lý do: tài liệu chính thức được kiểm tra lại 2026-09-24; `deepseek-flash` hiện gọi DeepSeek-V4.1-Flash; từ 2026-09-14, `deepseek-v4-pro` cũng được route sang Flash và tính giá Flash cho tới khi V4.1-Pro ra mắt. Chat Completions JSON mode dùng `response_format={"type":"json_object"}`. Giá Flash tại thời điểm kiểm tra: peak $0.30/M input cache miss, $0.006/M cache hit, $1.20/M output; off-peak bằng một nửa. Vì vậy model mặc định `deepseek-flash` là lựa chọn đúng. [JSON Output](https://api-docs.deepseek.com/guides/json_mode/), [Model list](https://api-docs.deepseek.com/api/list-models/), [Models & Pricing](https://api-docs.deepseek.com/quick_start/pricing/), [V4.1-Flash release](https://api-docs.deepseek.com/news/news260910/).
 - Không chọn: fallback âm thầm sang OpenAI hoặc gọi structured-output helper chưa xác minh.
 - Ảnh hưởng: `LLM_PROVIDER`, `DEEPSEEK_API_KEY`, `DEEPSEEK_BASE_URL`, `LLM_DEFAULT_MODEL` cấu hình server-side; lỗi token/model/timeout phải chuẩn hóa. Có thể lập scenario từ bảng giá công khai, nhưng chưa có token usage/chi phí thực của workspace.
-- Trạng thái: adapter IMPLEMENTED; model ID và bảng giá công khai được xác nhận từ docs; account-specific availability và live request NOT_VERIFIED do chưa có `DEEPSEEK_API_KEY`. Scenario ngân sách có giả định ở `docs/test-report.md`, chưa phải dự báo tổng OPEX.
+- Trạng thái: adapter IMPLEMENTED; model ID và bảng giá công khai được xác nhận từ docs. Live smoke ngày 2026-09-24 xác nhận account liệt kê `deepseek-flash` và trả một structured JSON theo Pydantic schema; payload chỉ là dữ liệu tổng hợp. Key nằm trong ignored local `.env` của isolated checkout, chưa provision production. Smoke không ghi token/latency; chi phí thực và tổng OPEX vẫn chưa được xác nhận. Xem `docs/test-report.md`.
 
 ## DEC-004 — Embedding độc lập với DeepSeek chat
 
@@ -65,7 +65,7 @@ Ngày tạo: 2026-09-23. Trạng thái dưới đây được ghi từ audit đ�
 - Quyết định: chủ dự án chấp thuận ngày 2026-09-24 gửi đoạn trích tài liệu và Brand Profile tới DeepSeek. Worker Brand Profile dùng adapter DeepSeek server-side; API tạo durable/idempotent content job, chỉ dùng hồ sơ đã xác nhận và nguồn tenant đang hoạt động, rồi lưu bài ở trạng thái draft để người dùng duyệt.
 - Lý do: đây là data flow cốt lõi cho sản phẩm. Provider chỉ nhận nội dung cần cho tác vụ; mã tenant và mã thương hiệu không được đưa vào prompt, liên hệ/đối thủ không được gửi trong profile content-generation. Tenant/source authorization, revision checks và citations được xác minh trong backend.
 - Ảnh hưởng: AI endpoint giờ trả `202` cùng job ID; thiếu key tạo lỗi cấu hình bền vững trên job thay vì trả `503` tại API. Retrieval mặc định lexical. Embedding provider bên ngoài vẫn yêu cầu cờ chấp thuận riêng và mặc định tắt. DeepSeek cost metadata được lưu `null` khi chưa có giá được xác minh.
-- Trạng thái: IMPLEMENTED + fixture-tested; live DeepSeek/model-account verification chưa chạy vì môi trường chưa có `DEEPSEEK_API_KEY`.
+- Trạng thái: IMPLEMENTED + fixture-tested. Adapter smoke ngày 2026-09-24 xác nhận account model-list và structured JSON generation với dữ liệu tổng hợp; key chỉ ở ignored local checkout. Full Brand Profile/content worker/browser, usage/latency capture và production secret provisioning còn mở.
 
 ## DEC-008 — Cấu hình bảo mật production và PostCSS
 
@@ -133,7 +133,7 @@ Ngày tạo: 2026-09-23. Trạng thái dưới đây được ghi từ audit đ�
 - Quyết định: `POST /workspaces/{company_id}/posts/{post_id}/revise` tạo job `content_revise` có `Idempotency-Key`; dùng cùng DeepSeek adapter và tenant-filtered retrieval như content generation. Worker kiểm tra lại expected post, campaign và Brand Profile version trước khi lưu `PostVersion(source="ai_revised")`; chỉ field thuộc scope được đổi. Nếu bài đã từng được duyệt, version mới trở lại draft và cần duyệt lại. Không cho revise bài đã lên lịch/đã đăng.
 - Không chọn: gọi DeepSeek đồng bộ từ API, thay thế lịch sử version, tự gửi duyệt/đăng, hoặc xem AI tạo mô tả ảnh là tạo media.
 - Ảnh hưởng: thêm DTO/OpenAPI/TS type, worker job recovery/retry và editor UI; scope `media` chỉ cập nhật `image_brief`. Không thêm migration mới vì dùng job ledger và PostVersion schema hiện có.
-- Trạng thái: IMPLEMENTED; SQLite API/worker fixture, retry/recovery, OpenAPI generation/check và Playwright mock desktop/mobile pass. Live DeepSeek request và real-provider browser flow NOT_VERIFIED do chưa provision key.
+- Trạng thái: IMPLEMENTED; SQLite API/worker fixture, retry/recovery, OpenAPI generation/check và Playwright mock desktop/mobile pass. Adapter smoke đã xác minh model-list + một JSON generation tổng hợp; live revise job và real-provider browser flow vẫn NOT_VERIFIED.
 
 ## DEC-017 — PostgreSQL Alembic version table cần chứa revision IDs dài
 
