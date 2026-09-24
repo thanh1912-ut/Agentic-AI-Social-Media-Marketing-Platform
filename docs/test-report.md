@@ -1,6 +1,6 @@
 # Báo cáo kiểm thử
 
-Cập nhật: 2026-09-24 11:08 (Asia/Ho_Chi_Minh). XLSX parser follow-up sửa lỗi storage key không có extension; full pytest, OpenAPI check, compileall và runtime PDF/XLSX/CSV smoke pass tại worktree. Changeset này cần push và chạy hosted CI.
+Cập nhật: 2026-09-24 11:22 (Asia/Ho_Chi_Minh). Parser/upload code ở commit `c9fc10df87903ef0c50f11b6e03e804ed62a793e`; hosted backend run #62 trên đúng commit pass pytest và OpenAPI. XLSX parser xử lý storage key không có extension; runtime PDF/XLSX/CSV smoke pass.
 
 ## Parser formats, giới hạn và upload preflight — 2026-09-24
 
@@ -12,7 +12,7 @@ Cập nhật: 2026-09-24 11:08 (Asia/Ho_Chi_Minh). XLSX parser follow-up sửa l
 | Reprocess parser identity | **PASS** | Default `PARSER_VERSION` đổi `m2-parser-v1` → `m2-parser-v2`; endpoint reprocess cập nhật document về parser version cấu hình trước khi dispatch. Test xác nhận version mới được lưu. |
 | Focused parser + Brand Profile integration suite | **22 passed** | SQLite fixture; bao gồm regression Brand Profile, partial batch, retry và missing-key state. |
 | Full Python suite | **137 passed, 1 skipped** | Python 3.11.16; skip duy nhất live DeepSeek smoke vì không có key; một LangGraph pending-deprecation warning. OpenAPI `--check`, compileall và `git diff --check` cũng pass. |
-| GitHub hosted backend workflow, commit `8ded65a` | **PASS**, run #58 | Job `test` chạy pytest và `scripts/export_openapi.py --check`; [workflow run](https://github.com/thanh1912-ut/Agentic-AI-Social-Media-Marketing-Platform/actions/runs/35953327472). |
+| GitHub hosted backend workflow, commit `c9fc10d` | **PASS**, run #62 | Job `test` chạy pytest và `scripts/export_openapi.py --check`; [workflow run](https://github.com/thanh1912-ut/Agentic-AI-Social-Media-Marketing-Platform/actions/runs/35954996161). |
 
 Parser coverage chứng minh từng parser và validation API ở mức unit/SQLite integration. Runtime smoke dưới đây kiểm chứng thêm DOCX paragraph/table và PDF/XLSX/CSV qua PostgreSQL/Redis/Celery; Docker/Podman/MinIO, Beat và worker process restart còn mở.
 
@@ -25,7 +25,7 @@ Parser coverage chứng minh từng parser và validation API ở mức unit/SQL
 | Trạng thái provider thiếu key | **PASS** | Không đặt `DEEPSEEK_API_KEY`. Document và knowledge `ready`; job/profile step `failed` với `ai_not_configured`. Không gửi request tới DeepSeek. |
 | Dừng dịch vụ disposable | **PASS** | API, Celery, Redis và PostgreSQL đều được dừng sau smoke. |
 
-Đây xác nhận DOCX parsing và lưu trữ qua PostgreSQL/Redis/Celery thật trên code mới. PDF/XLSX/CSV mới có parser/unit coverage; worker process restart, Beat, Compose, MinIO/S3 và prefork Linux vẫn cần nghiệm thu.
+Đây xác nhận DOCX parsing và lưu trữ qua PostgreSQL/Redis/Celery thật; PDF/XLSX/CSV worker smoke được ghi ở phần tiếp theo. Worker process restart, Beat, Compose, MinIO/S3 và prefork Linux vẫn cần nghiệm thu.
 
 ## PDF/XLSX/CSV upload và worker smoke — 2026-09-24 11:08
 
