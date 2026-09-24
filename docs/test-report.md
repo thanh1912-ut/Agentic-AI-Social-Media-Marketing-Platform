@@ -1,6 +1,8 @@
 # Báo cáo kiểm thử
 
-Cập nhật: 2026-09-24 11:22 (Asia/Ho_Chi_Minh). Parser/upload code ở commit `c9fc10df87903ef0c50f11b6e03e804ed62a793e`; hosted backend run #62 trên đúng commit pass pytest và OpenAPI. XLSX parser xử lý storage key không có extension; runtime PDF/XLSX/CSV smoke pass.
+Cập nhật: 2026-09-24 12:37 (Asia/Ho_Chi_Minh). PR branch snapshot `f744033e06a69e4c212291339801c402a78e349c`; hosted backend workflow [#67](https://github.com/thanh1912-ut/Agentic-AI-Social-Media-Marketing-Platform/actions/runs/35960084320) pass. Commit `f744033` chỉ đồng bộ README/docs và Compose override; full local Python suite **147 passed, 1 skipped** và 13 focused hardening tests thuộc implementation snapshot `c5bb13e`, được hosted workflow #65 kiểm tra. Không gộp các lượt test khác commit thành một lượt chạy.
+
+DeepSeek smoke vẫn **NOT RUN**: lúc 12:37 process environment và các file dotenv được kiểm tra ở hai checkout không có key. Không gửi request tới provider; người dùng đã chấp thuận data flow nhưng key phải được cấu hình trong secret store/runtime, không qua chat. Meta Graph API docs đã thử tìm kiếm và mở trực tiếp lần nữa; official search không trả kết quả, các trang `developers.facebook.com` trả HTTP 429. Kết quả mirror ngoài Meta không được xem là nguồn xác minh; connector vẫn `VERIFY CURRENT META API` / `BLOCKED_EXTERNAL`.
 
 ## Production Host/proxy, body-size và DeepSeek transport — 2026-09-24
 
