@@ -35,11 +35,13 @@ export default defineConfig({
   ],
 
   webServer: {
-    command: `npm run build && npx next start --hostname 127.0.0.1 --port ${PORT}`,
+    command: `npm run build && node scripts/prepare-standalone.mjs && node .next/standalone/apps/web/server.js`,
     url: BASE_URL,
     reuseExistingServer: !process.env.CI,
     timeout: 180_000,
     env: {
+      HOSTNAME: '127.0.0.1',
+      PORT: String(PORT),
       NEXT_PUBLIC_USE_MOCKS: '1',
       NEXT_PUBLIC_API_BASE_URL: 'http://127.0.0.1:8000',
       NEXT_PUBLIC_ENVIRONMENT_LABEL: 'Bản demo',

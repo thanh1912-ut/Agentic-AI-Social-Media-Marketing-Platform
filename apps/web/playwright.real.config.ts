@@ -37,11 +37,13 @@ export default defineConfig({
   },
   projects: [{ name: 'real-api-chromium', use: { ...devices['Desktop Chrome'] } }],
   webServer: {
-    command: `npm run build && npx next start --port ${port}`,
+    command: `npm run build && node scripts/prepare-standalone.mjs && node .next/standalone/apps/web/server.js`,
     url: baseURL,
     reuseExistingServer: false,
     timeout: 180_000,
     env: {
+      HOSTNAME: '127.0.0.1',
+      PORT: String(port),
       NEXT_PUBLIC_USE_MOCKS: '0',
       NEXT_PUBLIC_API_BASE_URL: apiOrigin,
       NEXT_PUBLIC_ENVIRONMENT_LABEL: 'Kết nối API thật',
