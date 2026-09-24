@@ -4,7 +4,7 @@ Cập nhật gần nhất: 2026-09-24 10:54 (Asia/Ho_Chi_Minh)
 
 ## Trạng thái hiện tại
 
-- PR #1 còn mở, base `main` ở `07938bd2d0a9793baff86711b39c8d181c0121ca`; head đã kiểm chứng `8ded65a`. Hosted backend run #58 trên đúng head pass (pytest + OpenAPI); parser/upload follow-up cũng pass full suite và DOCX runtime smoke PostgreSQL/Redis/Celery.
+- PR #1 còn mở trên branch `codex/product-v1-completion`, base `main` ở `07938bd2d0a9793baff86711b39c8d181c0121ca`. Product code snapshot `8ded65a` pass hosted backend run #58 (pytest + OpenAPI); các commit sau snapshot này chỉ cập nhật báo cáo docs.
 - Phase hiện tại: Phase 7 — hardening và bàn giao core pilot. Real-mode browser flow trên PostgreSQL 18.3/pgvector 0.8.2 gồm campaign/bài thủ công, media, approval, XLSX, metrics snapshot, dashboard readback và recommendation abstention. Kiểm tra bổ sung xác nhận tài khoản/campaign còn đọc được sau khi dừng rồi khởi động lại cả FastAPI và PostgreSQL. Readiness chịu tải nhẹ; database dump/restore counts khớp và archive/restore local object storage giữ nguyên SHA-256.
 - Runtime: Celery `solo` phục hồi stale lease và chạy upload TXT qua FastAPI/PostgreSQL/Redis; lần mới nhất upload DOCX có paragraph + table qua cùng queue `default`. Same-key replay trả cùng job; DOCX lưu 1 text block, 1 table block và 2 knowledge chunks. Thiếu key thì job/profile step báo `ai_not_configured`; document/knowledge vẫn ready. Không gọi DeepSeek.
 - Hosted CI backend `test` pass trên code commit `8ded65a` (run #58: pytest + OpenAPI); thay đổi parser có full pytest, OpenAPI check, compileall và PostgreSQL migration 0010 pass. PostgreSQL restart persistence, readiness load và Redis outage/recovery có evidence từ lượt trước.
