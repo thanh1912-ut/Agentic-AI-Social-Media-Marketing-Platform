@@ -1,36 +1,20 @@
-# Compose stack cho môi trường dev.
-# Stack hạ tầng dùng chung (postgres/redis/minio) nằm ở ../docker-compose.yml
-# File này dành cho các service build từ source: api, worker, agents, web.
+# Optional source-build override for the root Compose stack.
+# Run from the repository root with:
+# docker compose -f docker-compose.yml -f infra/docker-compose.yml up --build
+# The root file owns environment, ports, dependencies and health checks.
 
 services:
   api:
     build:
-      context: ..
-      dockerfile: infra/docker/api.Dockerfile
-    env_file:
-      - ../.env
-    ports:
-      - "8000:8000"
-    depends_on:
-      - postgres
-      - redis
+      context: .
+      dockerfile: infra/docker/python.Dockerfile
 
   worker:
     build:
-      context: ..
-      dockerfile: infra/docker/worker.Dockerfile
-    env_file:
-      - ../.env
-    depends_on:
-      - redis
+      context: .
+      dockerfile: infra/docker/python.Dockerfile
 
   web:
     build:
-      context: ..
+      context: .
       dockerfile: infra/docker/web.Dockerfile
-    env_file:
-      - ../.env
-    ports:
-      - "3000:3000"
-    depends_on:
-      - api
