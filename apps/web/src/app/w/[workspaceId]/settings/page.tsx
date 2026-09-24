@@ -3,15 +3,13 @@
 /**
  * Cài đặt doanh nghiệp — bản tối thiểu nhưng thật.
  *
- * Có gì: tên doanh nghiệp, vai trò của bạn, danh sách thành viên.
- * Chưa có gì: kết nối Facebook. Phần chưa có phải nói rõ lý do cụ thể, không được
- * để một nút chết không giải thích.
+ * Có gì: tên doanh nghiệp, vai trò, thành viên và trạng thái Page pilot.
  */
 
 import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
 import { useState, type FormEvent } from 'react';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import {
   ROLE_DESCRIPTIONS,
@@ -20,7 +18,7 @@ import {
 } from '@agentic/contracts';
 
 import { useSession } from '@/components/session-gate';
-import { ApiError, api } from '@/lib/api';
+import { ApiError, api, metaApi, metaQueryKeys } from '@/lib/api';
 import type { ApiInviteMemberRequest, ApiInviteMemberResponse, ApiMember as Member } from '@/lib/api/types';
 import { formatDate, formatDateTime, formatDeadline, formatNumber } from '@/lib/format';
 import { useMembers } from '@/lib/hooks';
@@ -29,7 +27,6 @@ import { ACTION_REQUIREMENTS, hasPermission, permissionDeniedReason } from '@/li
 import {
   Button,
   Card,
-  DisabledReason,
   EmptyState,
   ErrorPanel,
   FieldRow,
@@ -56,6 +53,16 @@ const ROLE_TONE: Record<WorkspaceRole, Tone> = {
   viewer: 'neutral',
 };
 
+const META_STATUS: Record<
+  'unconfigured' | 'configured' | 'verified' | 'error',
+  { label: string; tone: Tone }
+> = {
+  unconfigured: { label: 'Chưa cấu hình', tone: 'neutral' },
+  configured: { label: 'Chờ xác minh', tone: 'info' },
+  verified: { label: 'Đã xác minh', tone: 'success' },
+  error: { label: 'Cần kiểm tra', tone: 'warning' },
+};
+
 export default function TrangCaiDat() {
   const params = useParams<{ workspaceId?: string }>();
   const workspaceId = params?.workspaceId ?? '';
@@ -71,6 +78,17 @@ export default function TrangCaiDat() {
   const activeId = workspace ? workspaceId : '';
 
   const membersQuery = useMembers(activeId);
+  const metaConnectionQuery = useQuery({
+    queryKey: metaQueryKeys.connection(activeId),
+    queryFn: () => metaApi.connection(activeId),
+    enabled: activeId !== '',
+  });
+  const verifyMetaConnection = useMutation({
+    mutationFn: () => metaApi.verifyConnection(activeId),
+    onSuccess: (connection) => {
+      queryClient.setQueryData(metaQueryKeys.connection(activeId), connection);
+    },
+  });
   const refreshMembers = async () => {
     await queryClient.invalidateQueries({ queryKey: queryKeys.members(activeId) });
   };
@@ -104,16 +122,17 @@ export default function TrangCaiDat() {
   const loadError = membersQuery.error instanceof ApiError ? membersQuery.error : null;
   const members = membersQuery.data ?? null;
   const canInvite = hasPermission(workspace, ACTION_REQUIREMENTS.inviteMember);
-  const canManageConnection = hasPermission(workspace, ACTION_REQUIREMENTS.manageConnection);
+  const canManageConnection =
+    workspace.role === 'owner' &&
+    hasPermission(workspace, ACTION_REQUIREMENTS.manageConnection);
   const inviteDeniedReason = permissionDeniedReason(workspace, ACTION_REQUIREMENTS.inviteMember);
-  const connectionDisabledReason =
-    'Nút kết nối chưa hoạt động vì luồng uỷ quyền OAuth với Facebook chưa có trong bản dựng này.';
-  const connectionDeniedReason = canManageConnection
-    ? connectionDisabledReason
-    : `${connectionDisabledReason} ${permissionDeniedReason(
-        workspace,
-        ACTION_REQUIREMENTS.manageConnection,
-      )}`;
+  const connection = metaConnectionQuery.data;
+  const connectionStatus = connection ? META_STATUS[connection.status] : null;
+  const verifyDisabledReason = !canManageConnection
+    ? 'Chỉ chủ sở hữu có quyền xác minh kết nối Fanpage.'
+    : connection?.status === 'unconfigured'
+      ? 'Cần cấu hình thông tin Page trong môi trường backend trước.'
+      : undefined;
 
   function submitInvitation(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -410,26 +429,61 @@ export default function TrangCaiDat() {
       </Card>
 
       <Card title="Kết nối Facebook" description="Kênh đăng bài của doanh nghiệp.">
-        <div className="space-y-3">
-          <UnavailableNotice
-            title="Chưa kết nối được Facebook trong bản dựng này"
-            reason="Luồng uỷ quyền OAuth với Facebook chưa được nối: máy chủ mới có đặc tả endpoint POST /api/v1/workspaces/{id}/connections/facebook/start ở dạng DRAFT và chưa cấu hình Meta App ID/secret, nên chưa thể xin quyền cho Page hay lấy danh sách Page."
-            remedy="Chờ bản cập nhật có luồng kết nối; trong lúc đó hãy đăng bài thủ công trên Facebook. Khi luồng kết nối hoạt động, mục này sẽ cho chọn Page và hiện trạng thái token."
+        {metaConnectionQuery.isPending ? (
+          <LoadingBlock label="Đang kiểm tra trạng thái Fanpage…" />
+        ) : metaConnectionQuery.isError ? (
+          <ErrorPanel
+            title="Không tải được kết nối Fanpage"
+            message={metaConnectionQuery.error instanceof ApiError ? metaConnectionQuery.error.message : 'Vui lòng tải lại trạng thái kết nối.'}
+            onRetry={() => void metaConnectionQuery.refetch()}
+            retryable
           />
-          <div>
-            <Button disabled disabledReason={connectionDeniedReason}>
-              Kết nối Facebook Page
-            </Button>
-            <div className="mt-1">
-              <DisabledReason>{connectionDeniedReason}</DisabledReason>
+        ) : connection && connectionStatus ? (
+          <div className="space-y-4">
+            <div className="flex flex-wrap items-center gap-3">
+              <StatusBadge label={connectionStatus.label} tone={connectionStatus.tone} />
+              <p className="text-sm text-slate-700">{connection.message}</p>
             </div>
+            {connection.page_id ? (
+              <dl>
+                <FieldRow label="Fanpage">{connection.page_name || 'Chưa có tên Page'}</FieldRow>
+                <FieldRow label="Page ID"><code>{connection.page_id}</code></FieldRow>
+                <FieldRow label="Quyền hiện có">
+                  {connection.can_publish ? 'Có thể gửi yêu cầu đăng; Meta kiểm tra quyền lúc gửi' : 'Chưa thể gửi yêu cầu đăng'} ·{' '}
+                  {connection.can_sync_metrics ? 'có thể đồng bộ số liệu' : 'chưa thể đồng bộ số liệu'}
+                </FieldRow>
+              </dl>
+            ) : null}
+            {connection.status === 'unconfigured' ? (
+              <UnavailableNotice
+                title="Chưa cấu hình Fanpage"
+                reason="Thông tin Page và quyền truy cập cần được cấu hình ở backend cho pilot này."
+                remedy="Cấu hình secret trên máy chủ rồi tải lại trạng thái. Không nhập hoặc gửi token trong trình duyệt."
+              />
+            ) : null}
+            <div className="flex flex-wrap items-center gap-2">
+              <Button
+                onClick={() => verifyMetaConnection.mutate()}
+                loading={verifyMetaConnection.isPending}
+                disabled={Boolean(verifyDisabledReason)}
+                disabledReason={verifyDisabledReason}
+              >
+                Kiểm tra kết nối Fanpage
+              </Button>
+              <Button variant="secondary" onClick={() => void metaConnectionQuery.refetch()} loading={metaConnectionQuery.isFetching}>
+                Tải lại trạng thái
+              </Button>
+            </div>
+            {verifyDisabledReason ? <p className="text-xs text-slate-600">{verifyDisabledReason}</p> : null}
+            {verifyMetaConnection.isError ? (
+              <ErrorPanel
+                title="Không xác minh được Fanpage"
+                message={verifyMetaConnection.error instanceof ApiError ? verifyMetaConnection.error.message : 'Vui lòng kiểm tra cấu hình backend.'}
+              />
+            ) : null}
+            {verifyMetaConnection.isSuccess ? <p role="status" className="text-sm text-emerald-800">Đã cập nhật trạng thái kết nối.</p> : null}
           </div>
-          <p className="text-sm text-slate-600">
-            Quyền cần cho việc này:{' '}
-            <code className="font-mono">{ACTION_REQUIREMENTS.manageConnection}</code>. Bạn xem được
-            trạng thái nhưng không tự kết nối được.
-          </p>
-        </div>
+        ) : null}
       </Card>
 
       <p className="text-xs text-slate-500">

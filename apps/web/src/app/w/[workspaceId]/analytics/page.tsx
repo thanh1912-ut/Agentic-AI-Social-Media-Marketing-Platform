@@ -1,12 +1,15 @@
 'use client';
 
+import Link from 'next/link';
 import { useEffect, useMemo, useState } from 'react';
 import { useParams } from 'next/navigation';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import { useSession } from '@/components/session-gate';
-import { EmptyState } from '@/components/ui';
-import { ApiError } from '@/lib/api';
+import { Button, EmptyState, ErrorPanel, LoadingBlock, StatusBadge, UnavailableNotice } from '@/components/ui';
+import { ApiError, facebookPostUrl, metaApi, metaQueryKeys } from '@/lib/api';
 import type { ApiMetricImportRequest, ApiRecordExperimentOutcomeRequest } from '@/lib/api/types';
+import { formatDateTime } from '@/lib/format';
 import {
   useApplyManualRecommendation,
   useCampaigns,
@@ -17,6 +20,7 @@ import {
   useManualAnalyticsDashboard,
   useManualMetricRecommendation,
   usePosts,
+  useJob,
   useAcceptedRecommendationDrafts,
   useRecommendationExperimentOutcomes,
   useRecordRecommendationExperimentOutcome,
@@ -57,9 +61,33 @@ export default function AnalyticsPage() {
   const workspaceId = params?.workspaceId ?? '';
   const { workspaces } = useSession();
   const workspace = workspaces.find((item) => item.id === workspaceId) ?? null;
+  const queryClient = useQueryClient();
   const posts = usePosts(workspace ? workspaceId : '');
   const campaigns = useCampaigns(workspace ? workspaceId : '');
+  const [pagePostOffset, setPagePostOffset] = useState(0);
+  const [lastSyncJobId, setLastSyncJobId] = useState<string | null>(null);
+  const metaConnection = useQuery({
+    queryKey: metaQueryKeys.connection(workspace ? workspaceId : ''),
+    queryFn: () => metaApi.connection(workspaceId),
+    enabled: Boolean(workspace),
+  });
+  const metaPageId = metaConnection.data?.page_id ?? null;
+  const metaSourceId = metaPageId ? `meta:${metaPageId}` : '';
+  const pagePosts = useQuery({
+    queryKey: metaQueryKeys.pagePosts(workspace ? workspaceId : '', pagePostOffset),
+    queryFn: () => metaApi.pagePosts(workspaceId, pagePostOffset),
+    enabled: Boolean(workspace && metaPageId),
+  });
+  const syncMetaMetrics = useMutation({
+    mutationFn: () => metaApi.syncMetrics(workspaceId),
+    onSuccess: (result) => {
+      setLastSyncJobId(result.job_id);
+      void queryClient.invalidateQueries({ queryKey: ['workspaces', workspaceId, 'meta', 'page-posts'] });
+    },
+  });
+  const syncJob = useJob(lastSyncJobId);
   const [sourceId, setSourceId] = useState('');
+  const isMetaSource = metaSourceId !== '' && sourceId.trim() === metaSourceId;
   const [measuredAt, setMeasuredAt] = useState('');
   const [selectedPostId, setSelectedPostId] = useState('');
   const [postAgeHours, setPostAgeHours] = useState('168');
@@ -84,6 +112,16 @@ export default function AnalyticsPage() {
   const [experimentFormError, setExperimentFormError] = useState<string | null>(null);
 
   useEffect(() => setMeasuredAt(localDateTimeValue()), []);
+  useEffect(() => {
+    if (metaSourceId) setSourceId((current) => current || metaSourceId);
+  }, [metaSourceId]);
+  useEffect(() => {
+    if (syncJob.data?.status === 'succeeded') {
+      void queryClient.invalidateQueries({ queryKey: ['workspaces', workspaceId, 'meta', 'page-posts'] });
+      void queryClient.invalidateQueries({ queryKey: ['workspaces', workspaceId, 'analytics'] });
+      void queryClient.invalidateQueries({ queryKey: ['workspaces', workspaceId, 'recommendations'] });
+    }
+  }, [syncJob.data?.status, queryClient, workspaceId]);
   useEffect(() => {
     if (!selectedPostId && posts.data?.items[0]) setSelectedPostId(posts.data.items[0].id);
   }, [posts.data, selectedPostId]);
@@ -149,6 +187,7 @@ export default function AnalyticsPage() {
   function addPoint() {
     setFormError(null);
     try {
+      if (isMetaSource) throw new Error('Nguồn Meta được đồng bộ tự động; chọn mã nguồn khác để nhập thủ công.');
       if (!selectedPostId) throw new Error('Hãy chọn bài viết cần nhập số liệu.');
       const point: MetricPoint = {
         post_id: selectedPostId,
@@ -181,6 +220,7 @@ export default function AnalyticsPage() {
 
   function submitSnapshot() {
     setFormError(null);
+    if (isMetaSource) return setFormError('Nguồn Meta được đồng bộ tự động; chọn mã nguồn khác để nhập thủ công.');
     if (!sourceId.trim()) return setFormError('Nhập mã nguồn, ví dụ ID Facebook Page.');
     if (!measuredAt || Number.isNaN(new Date(measuredAt).getTime())) return setFormError('Chọn thời điểm đo hợp lệ.');
     if (pendingPoints.length === 0) return setFormError('Thêm ít nhất một bài trước khi lưu snapshot.');
@@ -239,13 +279,105 @@ export default function AnalyticsPage() {
       <header className="space-y-2">
         <h1 className="text-2xl font-semibold text-slate-950">Hiệu quả nội dung</h1>
         <p className="max-w-3xl text-sm leading-6 text-slate-600">
-          Nhập snapshot từ Meta hoặc số liệu đã ghi thủ công. Báo cáo dùng snapshot mới nhất của mỗi bài; số thiếu được giữ là “—”, không tính thành 0.
+          Đồng bộ bài viết và số liệu từ Fanpage hoặc nhập snapshot thủ công. Số thiếu được giữ là “—”, không tính thành 0.
         </p>
       </header>
 
+      <section className="space-y-4 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm" aria-labelledby="meta-page-posts-heading">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h2 id="meta-page-posts-heading" className="text-lg font-semibold text-slate-900">Bài viết trên Fanpage</h2>
+            <p className="mt-1 text-sm text-slate-600">Bao gồm bài đăng trước đây hoặc đăng ngoài nền tảng. Nguồn: {metaSourceId || 'chưa kết nối Page'}.</p>
+          </div>
+          {metaConnection.data?.status === 'verified' ? <StatusBadge label="Nguồn Meta" tone="info" /> : null}
+        </div>
+        {metaConnection.isPending ? <LoadingBlock label="Đang tải kết nối Fanpage…" /> : null}
+        {metaConnection.isError ? <ErrorPanel title="Không tải được kết nối Fanpage" message={shortError(metaConnection.error)} retryable onRetry={() => void metaConnection.refetch()} /> : null}
+        {metaConnection.data && !metaPageId ? (
+          <UnavailableNotice title="Chưa có Fanpage để đồng bộ" reason={metaConnection.data.message}
+            remedy="Cấu hình và xác minh Page trong Cài đặt. Thông tin truy cập chỉ được lưu ở backend."
+            action={<Link href={`/w/${workspaceId}/settings`} className="font-medium underline">Mở Cài đặt</Link>} />
+        ) : null}
+        {metaPageId ? (
+          <>
+            <p className="text-sm text-slate-700">{metaConnection.data?.page_name || 'Fanpage'} · Page ID {metaPageId}</p>
+            <div className="flex flex-wrap items-center gap-3">
+              <Button
+                onClick={() => syncMetaMetrics.mutate()}
+                loading={syncMetaMetrics.isPending}
+                disabled={workspace?.role !== 'owner' || metaConnection.data?.status !== 'verified' || !metaConnection.data.can_sync_metrics || syncJob.data?.status === 'queued' || syncJob.data?.status === 'running'}
+                disabledReason={workspace?.role !== 'owner' ? 'Chỉ chủ sở hữu có quyền đồng bộ Fanpage.' : metaConnection.data?.status !== 'verified' || !metaConnection.data.can_sync_metrics ? 'Cần xác minh quyền đọc số liệu của Page trong Cài đặt.' : 'Đang đồng bộ, chờ job hoàn tất.'}
+              >
+                Đồng bộ bài và số liệu Meta
+              </Button>
+              <Button variant="secondary" onClick={() => void pagePosts.refetch()} loading={pagePosts.isFetching}>Tải lại bài trên Page</Button>
+            </div>
+            {workspace?.role !== 'owner' || metaConnection.data?.status !== 'verified' || !metaConnection.data.can_sync_metrics ? (
+              <p className="text-xs text-slate-600">{workspace?.role !== 'owner' ? 'Chỉ chủ sở hữu có quyền đồng bộ Fanpage.' : 'Cần xác minh quyền đọc số liệu của Page trong Cài đặt.'}</p>
+            ) : null}
+            {syncMetaMetrics.isError ? <p role="alert" className="text-sm text-rose-800">{shortError(syncMetaMetrics.error)}</p> : null}
+            {lastSyncJobId ? (
+              <p role="status" className="text-sm text-slate-700">
+                Đồng bộ {syncJob.data?.status === 'succeeded' ? 'đã hoàn tất' : syncJob.data?.status === 'failed' ? 'thất bại' : 'đang xử lý'}.
+                {' '}<Link href={`/w/${workspaceId}/jobs/${lastSyncJobId}`} className="font-medium underline">Xem tiến độ job</Link>.
+              </p>
+            ) : null}
+            {pagePosts.isPending ? <LoadingBlock label="Đang tải bài từ Fanpage…" /> : null}
+            {pagePosts.isError ? <ErrorPanel title="Không tải được bài từ Fanpage" message={shortError(pagePosts.error)} retryable onRetry={() => void pagePosts.refetch()} /> : null}
+            {pagePosts.data ? (
+              <>
+                <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-slate-600">
+                  <span>{pagePosts.data.total} bài đã ghi nhận · Đồng bộ gần nhất: {pagePosts.data.last_sync_at ? formatDateTime(pagePosts.data.last_sync_at) : 'chưa có'}</span>
+                  {pagePosts.data.sync_has_more ? <span className="font-medium text-amber-800">Còn bài cũ chưa lấy hết; đồng bộ tiếp để tải thêm.</span> : null}
+                </div>
+                {pagePosts.data.items.length === 0 ? <EmptyState title="Chưa có bài từ Fanpage" description="Bấm đồng bộ để lấy các bài cũ và số liệu đang khả dụng." /> : (
+                  <div className="overflow-x-auto rounded-xl border border-slate-200">
+                    <table className="min-w-[900px] w-full divide-y divide-slate-200 text-sm">
+                      <caption className="sr-only">Bài đã đăng trên Fanpage, gồm bài ngoài nền tảng và số liệu Meta</caption>
+                      <thead className="bg-slate-50 text-left text-xs text-slate-600"><tr>
+                        <th scope="col" className="px-3 py-2">Bài trên Page</th>
+                        <th scope="col" className="px-3 py-2">Ngày đăng</th>
+                        <th scope="col" className="px-3 py-2">Cảm xúc</th>
+                        <th scope="col" className="px-3 py-2">Bình luận</th>
+                        <th scope="col" className="px-3 py-2">Chia sẻ</th>
+                        <th scope="col" className="px-3 py-2">Tương tác</th>
+                        <th scope="col" className="px-3 py-2">Đồng bộ</th>
+                      </tr></thead>
+                      <tbody className="divide-y divide-slate-100">
+                        {pagePosts.data.items.map((item) => {
+                          const link = facebookPostUrl(item.permalink);
+                          return <tr key={item.id} className="align-top">
+                            <td className="max-w-xs px-3 py-3"><p className="line-clamp-3 whitespace-pre-wrap text-slate-800">{item.message || 'Bài không có nội dung chữ'}</p>
+                              <p className="mt-1 text-xs text-slate-500">{item.linked_post_id ? 'Bài tạo trong nền tảng' : 'Bài cũ / đăng ngoài nền tảng'}</p>
+                              {link ? <a href={link} target="_blank" rel="noopener noreferrer" className="text-xs font-medium text-slate-700 underline">Mở trên Facebook</a> : null}
+                            </td>
+                            <td className="px-3 py-3 whitespace-nowrap">{item.published_at ? formatDateTime(item.published_at) : '—'}</td>
+                            <td className="px-3 py-3 tabular-nums">{formatMetric(item.reactions)}</td>
+                            <td className="px-3 py-3 tabular-nums">{formatMetric(item.comments)}</td>
+                            <td className="px-3 py-3 tabular-nums">{formatMetric(item.shares)}</td>
+                            <td className="px-3 py-3 tabular-nums">{formatMetric(item.engagements)}</td>
+                            <td className="px-3 py-3 whitespace-nowrap text-xs text-slate-500">{item.last_synced_at ? formatDateTime(item.last_synced_at) : '—'}</td>
+                          </tr>;
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+                <p className="text-xs text-slate-600">Tương tác = cảm xúc + bình luận + chia sẻ khi cả ba số đều khả dụng. Lượt tiếp cận, lượt xem và lượt nhấp hiện chưa được Page API cung cấp cho bảng này; “—” là thiếu dữ liệu.</p>
+                {pagePostOffset > 0 || pagePosts.data.has_more ? <div className="flex gap-2">
+                  <Button variant="secondary" disabled={pagePostOffset === 0} disabledReason="Đang ở trang đầu." onClick={() => setPagePostOffset(Math.max(0, pagePostOffset - 25))}>Trang trước</Button>
+                  <Button variant="secondary" disabled={!pagePosts.data.has_more || pagePosts.data.next_offset === null} disabledReason="Đã tải hết bài trên Page." onClick={() => setPagePostOffset(pagePosts.data?.next_offset ?? pagePostOffset)}>Trang sau</Button>
+                </div> : null}
+              </>
+            ) : null}
+          </>
+        ) : null}
+      </section>
+
       <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
         <h2 className="text-lg font-semibold text-slate-900">Nhập snapshot số liệu</h2>
-        <p className="mt-1 text-sm text-slate-600">Chọn một nguồn và thời điểm đo chung, sau đó thêm từng bài vào snapshot trước khi lưu.</p>
+        <p className="mt-1 text-sm text-slate-600">Nguồn Meta được đồng bộ ở bảng trên. Để nhập thủ công, chọn mã nguồn khác rồi thêm từng bài vào snapshot.</p>
+        {isMetaSource ? <p className="mt-2 text-xs font-medium text-amber-800">Đang xem nguồn Meta; nhập thủ công vào cùng mã nguồn đã bị khóa để không trộn số liệu.</p> : null}
         <div className="mt-4 grid gap-4 sm:grid-cols-2">
           <label className="space-y-1 text-sm font-medium text-slate-700">
             Mã nguồn / Facebook Page ID
@@ -281,8 +413,8 @@ export default function AnalyticsPage() {
           Đã xác minh cửa sổ và phương pháp gán doanh thu cho snapshot này
         </label>
         <div className="mt-4 flex flex-wrap gap-2">
-          <button type="button" onClick={addPoint} className="rounded-lg border border-slate-300 px-3 py-2 text-sm font-medium text-slate-800 hover:bg-slate-50">Thêm bài vào snapshot</button>
-          <button type="button" onClick={submitSnapshot} disabled={importSnapshot.isPending || pendingPoints.length === 0} className="rounded-lg bg-slate-900 px-3 py-2 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-50">{importSnapshot.isPending ? 'Đang lưu…' : `Lưu ${pendingPoints.length} bài`}</button>
+          <button type="button" onClick={addPoint} disabled={isMetaSource} title={isMetaSource ? 'Chọn mã nguồn khác để nhập thủ công.' : undefined} className="rounded-lg border border-slate-300 px-3 py-2 text-sm font-medium text-slate-800 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50">Thêm bài vào snapshot</button>
+          <button type="button" onClick={submitSnapshot} disabled={isMetaSource || importSnapshot.isPending || pendingPoints.length === 0} title={isMetaSource ? 'Nguồn Meta được đồng bộ tự động.' : undefined} className="rounded-lg bg-slate-900 px-3 py-2 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-50">{importSnapshot.isPending ? 'Đang lưu…' : `Lưu ${pendingPoints.length} bài`}</button>
           {pendingPoints.length > 0 ? <button type="button" onClick={() => setPendingPoints([])} className="rounded-lg px-3 py-2 text-sm text-slate-600 hover:bg-slate-100">Xóa danh sách</button> : null}
         </div>
         {formError ? <p role="alert" className="mt-3 text-sm text-rose-800">{formError}</p> : null}
@@ -300,7 +432,7 @@ export default function AnalyticsPage() {
 
       <section className="space-y-3" aria-label="Báo cáo và đề xuất">
         <div className="flex flex-wrap items-end justify-between gap-3">
-          <div><h2 className="text-lg font-semibold text-slate-900">Báo cáo snapshot</h2><p className="text-sm text-slate-600">Nguồn: {sourceId || 'chưa chọn'} · tuổi bài mặc định 0–30 ngày.</p></div>
+          <div><h2 className="text-lg font-semibold text-slate-900">Báo cáo bài thuộc chiến dịch</h2><p className="text-sm text-slate-600">Nguồn: {sourceId || 'chưa chọn'} · tuổi bài mặc định 0–30 ngày. Bài cũ ngoài nền tảng chỉ có trong bảng Fanpage ở trên.</p></div>
           {dashboard.data?.freshness_at ? <span className="text-xs text-slate-500">Đo gần nhất: {new Date(dashboard.data.freshness_at).toLocaleString('vi-VN')}</span> : null}
         </div>
         {dashboard.isError ? <p role="alert" className="rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-900">{shortError(dashboard.error)}</p> : null}

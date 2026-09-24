@@ -425,6 +425,66 @@ class PostMetricSnapshot(Base, IdMixin):
     imported_by: Mapped[str] = mapped_column(ForeignKey("users.id"), nullable=False)
 
 
+class MetaPublication(Base, IdMixin, TimestampMixin):
+    """One guarded attempt to publish an approved, immutable post version."""
+
+    __tablename__ = "meta_publications"
+    __table_args__ = (
+        UniqueConstraint("company_id", "active_key", name="uq_meta_publication_active"),
+        Index("ix_meta_publication_company_created", "company_id", "created_at"),
+    )
+
+    company_id: Mapped[str] = mapped_column(ForeignKey("companies.id", ondelete="CASCADE"), nullable=False)
+    post_id: Mapped[str] = mapped_column(ForeignKey("campaign_posts.id", ondelete="CASCADE"), nullable=False)
+    post_version: Mapped[int] = mapped_column(Integer, nullable=False)
+    approved_content_sha256: Mapped[str] = mapped_column(String(64), nullable=False)
+    page_id: Mapped[str] = mapped_column(String(100), nullable=False)
+    status: Mapped[str] = mapped_column(String(30), default="queued", nullable=False)
+    active_key: Mapped[str | None] = mapped_column(String(255))
+    external_post_id: Mapped[str | None] = mapped_column(String(160))
+    permalink: Mapped[str | None] = mapped_column(String(2048))
+    error_json: Mapped[dict[str, Any] | None] = mapped_column(JSON)
+    job_id: Mapped[str] = mapped_column(ForeignKey("jobs.id"), nullable=False, unique=True)
+    sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    published_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class MetaPagePost(Base, IdMixin, TimestampMixin):
+    """Page-authored posts, including historical posts outside this product."""
+
+    __tablename__ = "meta_page_posts"
+    __table_args__ = (
+        UniqueConstraint("company_id", "page_id", "external_post_id", name="uq_meta_page_post_external"),
+        Index("ix_meta_page_post_company_published", "company_id", "published_at"),
+    )
+
+    company_id: Mapped[str] = mapped_column(ForeignKey("companies.id", ondelete="CASCADE"), nullable=False)
+    page_id: Mapped[str] = mapped_column(String(100), nullable=False)
+    external_post_id: Mapped[str] = mapped_column(String(160), nullable=False)
+    linked_post_id: Mapped[str | None] = mapped_column(ForeignKey("campaign_posts.id", ondelete="SET NULL"))
+    message: Mapped[str | None] = mapped_column(Text)
+    permalink: Mapped[str | None] = mapped_column(String(2048))
+    published_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    reactions: Mapped[int | None] = mapped_column(Integer)
+    comments: Mapped[int | None] = mapped_column(Integer)
+    shares: Mapped[int | None] = mapped_column(Integer)
+    last_synced_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
+class MetaSyncState(Base, IdMixin, TimestampMixin):
+    __tablename__ = "meta_sync_states"
+    __table_args__ = (UniqueConstraint("company_id", "page_id", name="uq_meta_sync_company_page"),)
+
+    company_id: Mapped[str] = mapped_column(ForeignKey("companies.id", ondelete="CASCADE"), nullable=False)
+    page_id: Mapped[str] = mapped_column(String(100), nullable=False)
+    page_name: Mapped[str | None] = mapped_column(String(200))
+    verified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    next_cursor: Mapped[str | None] = mapped_column(Text)
+    has_more: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    last_sync_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    running_job_id: Mapped[str | None] = mapped_column(ForeignKey("jobs.id", ondelete="SET NULL"))
+
+
 class AnalyticsRecommendationRecord(Base, IdMixin, TimestampMixin):
     __tablename__ = "analytics_recommendations"
     __table_args__ = (

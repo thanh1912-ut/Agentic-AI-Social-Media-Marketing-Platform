@@ -1,6 +1,17 @@
 # Báo cáo kiểm thử
 
-Cập nhật: 2026-09-24 13:05 (Asia/Ho_Chi_Minh). Snapshot revalidated lúc 13:02: PR branch head `1f99bb7709f356975637b241895a34bc50e9764f`; hosted backend workflow [#68](https://github.com/thanh1912-ut/Agentic-AI-Social-Media-Marketing-Platform/actions/runs/35961071754) pass. Follow-up này chỉ cập nhật bằng chứng docs sau live smoke, không thay đổi application code. Full local Python suite **147 passed, 1 skipped** và 13 focused hardening tests thuộc implementation snapshot `c5bb13e`, được hosted workflow #65 kiểm tra. Không gộp các lượt test khác commit thành một lượt chạy.
+Cập nhật: 2026-09-24 15:19 (Asia/Ho_Chi_Minh). Snapshot gốc là PR branch head `1f99bb7709f356975637b241895a34bc50e9764f`; hosted backend workflow [#68](https://github.com/thanh1912-ut/Agentic-AI-Social-Media-Marketing-Platform/actions/runs/35961071754) pass. Meta Page connector đang được thêm trên branch riêng. Các lượt kiểm tra dưới đây thuộc snapshot Meta hiện tại và không được gộp với test của PR base.
+
+## Meta Page connector — local snapshot, 2026-09-24
+
+| Check | Kết quả | Bằng chứng và giới hạn |
+|---|---|---|
+| `tests/test_meta_client.py` | **17 passed** | `httpx.MockTransport`: verify Page, text/photo request shape, history paging, counts/nulls, unsafe cursor/URL and sanitized errors. Không gọi Meta thật. |
+| `npm run typecheck --workspace @agentic/web` | **PASS** | Các trang Settings, Publishing và Analytics dùng DTO của OpenAPI sinh tự động. |
+| `scripts/export_openapi.py`, TypeScript `gen:api`, `scripts/export_openapi.py --check` | **PASS** | Thêm route/schema Meta và sinh lại `packages/contracts/openapi.json`, `apps/web/src/lib/api/schema.d.ts`. |
+| `git diff --check`, Python `compileall` | **PASS** | Kiểm tra whitespace/syntax; không xác minh PostgreSQL migration hoặc job behavior trên dịch vụ thật. |
+| API/worker acceptance và live Meta | **NOT RUN / NOT VERIFIED** | Chưa có API/worker fixture cho publish/reconcile/history sync trong lượt này; chưa cấu hình Page token trong backend của worktree và chưa gọi Graph thật. Xem [Meta feasibility spike](meta-feasibility-spike.md). |
+
 
 ## Live DeepSeek adapter smoke — 2026-09-24 13:00–13:02
 
@@ -233,7 +244,7 @@ Không có DeepSeek key nên chưa có model-list/live JSON request hoặc chi p
 
 - PostgreSQL/Redis: migration 0001→0010, manual API/browser flow và readiness failure/recovery đã chạy trên PostgreSQL/Redis cô lập; chưa kiểm tra full Compose, Celery job path/restart trong lượt này, MinIO/S3, production pool/proxy hoặc shared PostgreSQL service.
 - DeepSeek live: user đã chấp thuận đoạn trích tài liệu, Brand Profile, campaign strategy và slot topic/date đã chọn. Adapter smoke đã xác minh model list và một JSON generation tổng hợp; chưa ghi token/latency/cost, chưa chạy full Brand→content worker/browser path. Key mới có trong ignored local checkout, chưa nằm ở production secret store.
-- Meta publish/metrics: chưa có app/page/token/quyền/App Review.
+- Meta publish/metrics: connector đã triển khai cho pilot một Page, nhưng token chưa được đặt trong backend của worktree. Chưa chạy Page verification, publish hoặc historical sync với Meta thật; quyền App/Page, Graph fields và token lifetime còn cần kiểm chứng.
 - Real-mode browser E2E đầy đủ: campaign → post → media → approval → export đã chạy trên SQLite và PostgreSQL bằng API thật. Analytics/recommendation real browser smoke trước đó chạy trên SQLite; AI generation/revise vẫn chỉ có API/worker fixture và mock browser, chưa gọi DeepSeek hay kiểm tra real-provider browser path. MinIO chưa nghiệm thu.
 
 ## Phạm vi bằng chứng
