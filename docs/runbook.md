@@ -9,9 +9,9 @@
 - Docker Compose v2 cho stack đầy đủ; PostgreSQL có extension pgvector, Redis, MinIO.
 - DeepSeek API key server-side để chạy LLM thật. Chủ dự án đã chấp thuận gửi đoạn trích tài liệu, Brand Profile, cùng campaign strategy, slot topic và ngày đã chọn tới DeepSeek khi sinh theo slot.
 - Semantic retrieval mặc định trong `.env.example` dùng FastEmbed multilingual E5 chạy tại worker; text và query không rời runtime. Tải model weights cần mạng ở lần đầu và cache nằm ở `EMBEDDING_CACHE_DIR`. `EMBEDDING_PROVIDER=none` bật lexical-only. Embedding provider ngoài như OpenAI vẫn bị chặn khi chưa có chấp thuận riêng (`EMBEDDING_DATA_FLOW_APPROVED=1`).
-- Facebook Page/app/token/App Review chỉ cần khi bật connector tương ứng.
+- Pilot Facebook Page cần một workspace ID, Page ID và Page access token được đặt ở server. OAuth/App Review cho Page của khách ngoài team cần một giai đoạn riêng.
 
-DeepSeek docs được xem lại ngày 2026-09-24: dùng `deepseek-flash` (V4.1-Flash); `deepseek-v4-pro` được route sang Flash và tính giá Flash từ 14/9 cho đến khi V4.1-Pro ra mắt. Giá peak hiện tại là $0.30/M input cache miss, $0.006/M cache hit, $1.20/M output; off-peak bằng một nửa. Repo mặc định `LLM_DEFAULT_MODEL=deepseek-flash`; trước khi vận hành cần chạy smoke list-model với key của account cụ thể và đo usage thật. Xem [DEC-003](decisions.md#dec-003--deepseek-làm-provider-llm-duy-nhất) và scenario có giả định tại [test-report.md](test-report.md). Meta docs chưa được xác minh: các URL Page Feed, Page Insights, permissions và access-token guide trả HTTP 429 trong lần truy cập 2026-09-24. Giữ `META-001` ở `BLOCKED_EXTERNAL` và `VERIFY CURRENT META API` cho đến khi kiểm tra lại version, permissions, tokens, publishing, metrics, rate limits, webhooks và App Review trên tài liệu/app được cấp quyền.
+DeepSeek docs được xem lại ngày 2026-09-24: dùng `deepseek-flash` (V4.1-Flash); `deepseek-v4-pro` được route sang Flash và tính giá Flash từ 14/9 cho đến khi V4.1-Pro ra mắt. Giá peak hiện tại là $0.30/M input cache miss, $0.006/M cache hit, $1.20/M output; off-peak bằng một nửa. Repo mặc định `LLM_DEFAULT_MODEL=deepseek-flash`; trước khi vận hành cần chạy smoke list-model với key của account cụ thể và đo usage thật. Xem [DEC-003](decisions.md#dec-003--deepseek-làm-provider-llm-duy-nhất) và scenario có giả định tại [test-report.md](test-report.md). Pilot Meta đang triển khai cho một Page; các URL Page Feed, Page Insights, permissions và access-token guide trả HTTP 429 trong lần truy cập 2026-09-24. Phiên bản, quyền, token lifetime, fields publish/metrics và rate limits vẫn `VERIFY CURRENT META API`; chỉ mở cho Page thật sau khi xác minh bằng app/token được cấp quyền. Xem [Meta feasibility spike](meta-feasibility-spike.md).
 
 ## Password reset, invitation và email delivery
 
@@ -51,6 +51,62 @@ cp .env.example .env
 ```
 
 Sửa `.env` cục bộ trong editor, không paste key vào chat. Provision `DEEPSEEK_API_KEY` trong môi trường server/secret store; không commit `.env`. Đặt `LLM_PROVIDER=deepseek`, `LLM_DEFAULT_MODEL` thành model ID được DeepSeek API list cho tài khoản, `DEEPSEEK_MAX_TOKENS=8192`, `LLM_MAX_INPUT_CHARS=24000` và `AI_REQUEST_TIMEOUT_SECONDS=120`. Không cần `OPENAI_API_KEY` cho LLM. Brand Profile extraction, content-generation và AI-revise workers gọi cùng adapter DeepSeek sau khi nhận job; thiếu key sẽ khiến job kết thúc với lỗi `ai_not_configured`. API generate/revise trả `202` + `job_id`; Brand Profile hiện tại phải được user xác nhận trước. Revise yêu cầu `version` hiện tại và `Idempotency-Key`, tạo PostVersion mới (`ai_revised`), không ghi đè lịch sử; scope `media` chỉ sửa mô tả ảnh, không tạo/thay ảnh. Bài vẫn cần người duyệt; worker không tự publish. Job content có thể retry qua `/api/v1/jobs/{job_id}/retry` trong giới hạn cấu hình; worker kiểm lại base version trước khi lưu. Để retrieval lexical, giữ `EMBEDDING_PROVIDER=none` và `RETRIEVAL_MODE=lexical`.
+
+## Kết nối một Facebook Page cho pilot
+
+1. Đăng nhập bằng tài khoản **owner** và lấy workspace ID từ `GET /api/v1/me`
+   (`active_workspace_id`) hoặc `GET /api/v1/workspaces`. Chọn đúng Page ID trong
+   tài khoản Meta của bạn; lấy Page access token bằng quy trình chính thức của
+   app/Page. [Meta Facebook API collection trên Postman](https://www.postman.com/meta/facebook/documentation/r56bjfd/facebook-api)
+   là điểm tham khảo, không thay cho kiểm tra quyền/Graph API trên app thật.
+2. Trong `.env` local đã được `.gitignore` bỏ qua, điền
+   `META_WORKSPACE_ID=<workspace-id>` và `META_PAGE_ID=<page-id>`; đặt
+   `META_PAGE_ACCESS_TOKEN` **chỉ trên server**. Giữ `META_GRAPH_VERSION=v26.0`
+   làm giá trị khởi đầu của pilot, rồi xác minh version này hoạt động với app
+   và Page thật. Với deployment, đặt bốn biến trong secret store/runtime và
+   chỉ cấp cho process backend cần dùng; không đưa token vào `NEXT_PUBLIC_*`,
+   frontend, Git, chat, URL query, log hay ảnh chụp màn hình. `META_APP_ID` và
+   `META_APP_SECRET` dành cho OAuth tương lai, không thay Page token trong pilot.
+3. Khởi động lại API/worker sau khi đổi biến môi trường. Đọc
+   `GET /api/v1/workspaces/{workspace_id}/meta/connection`, rồi owner gọi
+   `POST /api/v1/workspaces/{workspace_id}/meta/connection/verify`. Page ID/name
+   server đọc từ Meta phải trùng Page đã cấu hình; bước này đọc tối đa một bài
+   để thử quyền đọc feed, không đăng bài. Quyền publish chỉ được Meta kiểm tra
+   khi owner gửi một bài cụ thể. Chưa xác minh được identity/feed thì giữ connector ở trạng thái không khả dụng và tiếp tục
+   export/đăng thủ công/nhập metrics. Thử với Page và bài mà owner cho phép dùng
+   để nghiệm thu.
+4. Tạo hoặc chọn bài, gửi duyệt và để owner duyệt **đúng phiên bản hiện tại**.
+   Owner bấm đăng riêng cho từng bài bằng
+   `POST /api/v1/workspaces/{workspace_id}/meta/publications` với `post_id` và
+   `version`; response `202` trả job để theo dõi. Server kiểm lại approval,
+   hash nội dung và Page ngay trước khi gọi Meta. Pilot dành cho text và tối đa
+   một ảnh khi Page capability đã được xác minh; video/carousel chưa hỗ trợ.
+   Đọc `GET /api/v1/workspaces/{workspace_id}/meta/publications` để xem trạng
+   thái và external post ID/permalink. Nếu kết quả là `outcome_unknown`, mở Page
+   kiểm tra; chỉ owner ghi kết quả qua
+   `POST /api/v1/workspaces/{workspace_id}/meta/publications/{publication_id}/reconcile`.
+   Không bấm thử lại hoặc để job tự gửi lại khi chưa biết bài đã lên hay chưa.
+5. Khi muốn cập nhật số liệu, owner gọi
+   `POST /api/v1/workspaces/{workspace_id}/meta/metrics/sync` để nhập bài trên
+   Page, gồm bài cũ đăng ngoài nền tảng. Mỗi lượt lấy tối đa 5 trang × 100 bài,
+   lưu cursor; bấm đồng bộ tiếp để đi sâu hơn vào lịch sử. Không có bộ lọc ngày.
+   Đọc lại qua `GET /api/v1/workspaces/{workspace_id}/meta/page-posts` (phân
+   trang `limit` tối đa 100 và `offset`); kiểm tra Page/external post ID,
+   `published_at`, `last_synced_at` và các count có thể thiếu: `reactions`,
+   `comments`, `shares`. `engagements` là tổng count hiện có, có thể chưa đủ nếu
+   một loại count không khả dụng. Chưa có reach/views/clicks hoặc snapshot theo
+   cửa sổ đo cho Page posts. Bài lịch sử chỉ dùng cho phân tích, không tự có
+   approval hay trạng thái “đã đăng qua nền tảng”. Quyền đọc và khả năng có
+   từng count cần kiểm chứng trên Page thật; không điền 0 thay số liệu thiếu.
+
+Nếu token hết hạn hoặc bị thu hồi, thay secret trong server runtime, khởi động
+lại process liên quan và xác minh Page identity/capability trước khi tiếp tục.
+Không dán token vào chat hay gửi qua request từ browser. Pilot này không làm
+OAuth nhiều khách hàng, App Review cho Page ngoài team, lịch đăng tự động,
+video/carousel hoặc webhook. Chưa có bằng chứng live cho Page/token/quyền của
+chủ dự án; xem [ma trận kiểm chứng](meta-feasibility-spike.md).
+
+## Cấu hình production chung
 
 `.env.example` để `RATE_LIMITS_ENABLED=0` cho local development. Production phải đặt `APP_ENV=production`, `RATE_LIMITS_ENABLED=1`, `COOKIE_SECURE=1` và một `REDIS_URL` khả dụng; cấu hình production từ chối limiter bị tắt. Auth, upload và content-generation routes dùng fixed-window Redis limits; production trả `503` cho các route này khi Redis không dùng được. Các mức hiện tại được ghi trong [security-review.md](security-review.md). Limit key dựa trên `request.client.host`: sau reverse proxy, cấu hình Uvicorn chỉ tin forwarded headers từ proxy thực tế và xác nhận API không truy cập trực tiếp từ nguồn không tin cậy. Không lấy `X-Forwarded-For` tùy ý làm client identity.
 
@@ -97,12 +153,12 @@ Cookie-authenticated refresh/logout yêu cầu header `X-CSRF-Token` khớp cook
 
 - Demo UI: `NEXT_PUBLIC_USE_MOCKS=1`; dữ liệu do MSW cung cấp, không phải API evidence.
 - Real mode: `NEXT_PUBLIC_USE_MOCKS=0`; UI gọi API, hiển thị lỗi khi backend lỗi, không dùng dữ liệu mock thay thế.
-- Campaign supports tenant-scoped create/list/detail and brief/strategy/slot editing. Updates include the latest `version`; stale updates return `409 version_conflict`. Slots contain a date, pillar, format and topic; slot generation reserves one slot and links its generated draft. A repeated idempotency key returns the same job. Slots are locked while a job is active and after a draft is linked; failed/cancelled jobs release the reservation, and retry reclaims it only if campaign context has not changed. Generation by slot sends the approved campaign strategy, selected slot topic/date, Brand Profile and relevant source excerpts to DeepSeek; backend-only IDs stay out of the model prompt. In a post editor, upload JPEG/PNG/WebP images up to `MAX_IMAGE_BYTES` (default 12 MiB) and `MAX_IMAGE_PIXELS` (default 40 million pixels), add alt text, preview, and save attachments as a new immutable post version; removing an attachment also creates a new version. The authenticated content route is workspace-scoped. Approval stores the SHA-256 of the exact version, including attached asset hashes; export includes each image filename, hash, and API path. There is no asset delete endpoint so old versions retain valid references. CSV/XLSX export still requires a human to publish on Meta.
+- Campaign supports tenant-scoped create/list/detail and brief/strategy/slot editing. Updates include the latest `version`; stale updates return `409 version_conflict`. Slots contain a date, pillar, format and topic; slot generation reserves one slot and links its generated draft. A repeated idempotency key returns the same job. Slots are locked while a job is active and after a draft is linked; failed/cancelled jobs release the reservation, and retry reclaims it only if campaign context has not changed. Generation by slot sends the approved campaign strategy, selected slot topic/date, Brand Profile and relevant source excerpts to DeepSeek; backend-only IDs stay out of the model prompt. In a post editor, upload JPEG/PNG/WebP images up to `MAX_IMAGE_BYTES` (default 12 MiB) and `MAX_IMAGE_PIXELS` (default 40 million pixels), add alt text, preview, and save attachments as a new immutable post version; removing an attachment also creates a new version. The authenticated content route is workspace-scoped. Approval stores the SHA-256 of the exact version, including attached asset hashes; export includes each image filename, hash, and API path. There is no asset delete endpoint so old versions retain valid references. CSV/XLSX export remains the manual fallback; Page publishing requires the separate owner action and connector capability check.
 - Analytics supports manual snapshots: choose a source ID and measurement timestamp, add one or more workspace posts, and enter age-at-measurement plus available metrics. Counts must be integers; cost/revenue may be decimal. Leave unavailable values blank. Duplicate `(workspace, post, source, measured_at)` snapshots return conflict. Only mark attribution valid when its method/window is verified.
 - Dashboard uses latest per-post snapshots for the selected source and reports freshness, coverage, pillar/format groups and missing-value notes. Recommendations are deterministic test suggestions with evidence IDs; they abstain on small samples and do not establish causality. Save a proposal to persist its evidence fingerprint, then record useful/not useful/already done feedback. An owner can choose a campaign and Apply to create a pending brief revision; inspect before/after values, then accept or discard. Campaign changes only on accept; a stale base version returns `409` and needs a new revision.
 - After an accepted revision has run, choose that campaign and the recommendation's same source on Analytics. Record baseline and follow-up measurement windows, one metric, and a shared post-age range. Windows must not overlap and both cohorts need usable snapshots. The API persists computed values, coverage/sample size, outcome-specific evidence IDs, snapshot IDs and limitations; repeated identical submissions are idempotent. The comparison is observational and must not be presented as causal proof. Apply migration 0007 before using this feature on an existing database.
 - LLM fixture tests do not call DeepSeek. API+worker fixture integration verifies the confirmed-profile gate, idempotency, exact-source citations, saved draft/version, slot strategy/topic/date payload, slot retry/cancel handling, AI revise scope, expected-version guard, and reapproval. The live adapter smoke checks that the configured model appears in the account's model list, then makes one structured JSON request; it may incur charges. In a secured environment with the server key provisioned, run `RUN_DEEPSEEK_API_SMOKE=1 .venv/bin/python -m pytest -m api_smoke tests/test_deepseek_api_smoke.py -q`. The user-approved data flow covers Brand Profile, retrieved document excerpts, and selected slot strategy/topic/date; backend-only tenant/brand/content-slot database IDs are not sent in the prompt.
-- Real-mode smoke analytics/recommendation đã chạy trên API loopback với SQLite mới và dữ liệu giả lập. `tests/e2e/manual-workflows.real.spec.ts` tự tạo owner/campaign, viết bài, upload ảnh thật, lưu version 2, gửi/duyệt, đọc lại media SHA và approval hash qua API, tạo export và tải XLSX. Test đã pass riêng trên SQLite và PostgreSQL 18 + local storage; không dùng MSW, DeepSeek, Meta hoặc Redis. Trang `Xuất bản` hướng dẫn export/đăng thủ công/nhập số liệu khi Meta chưa kết nối. Các test account/database chỉ tồn tại trong môi trường disposable và được xóa sau test. AI API+worker fixture test không gọi DeepSeek; live acceptance vẫn chờ key.
+- Real-mode smoke analytics/recommendation đã chạy trên API loopback với SQLite mới và dữ liệu giả lập. `tests/e2e/manual-workflows.real.spec.ts` tự tạo owner/campaign, viết bài, upload ảnh thật, lưu version 2, gửi/duyệt, đọc lại media SHA và approval hash qua API, tạo export và tải XLSX. Test đã pass riêng trên SQLite và PostgreSQL 18 + local storage; không dùng MSW, DeepSeek, Meta hoặc Redis. Trang `Xuất bản` hướng dẫn export/đăng thủ công/nhập số liệu khi Meta chưa kết nối. Các test account/database chỉ tồn tại trong môi trường disposable và được xóa sau test. AI API+worker fixture test không gọi DeepSeek; adapter live smoke đã pass riêng, còn full provider-backed worker/browser flow chưa nghiệm thu.
 
 ## Test, OpenAPI và build
 
@@ -166,4 +222,4 @@ Xác nhận Alembic revision, row counts và dữ liệu mẫu trên database m�
 
 ## Rollback và giới hạn
 
-Trước release, chụp backup DB/object metadata, ghi commit/branch và migration head. Nếu release lỗi, quay lại image/commit trước và thực hiện migration rollback chỉ khi migration có downgrade an toàn; không tự drop dữ liệu. Auto Facebook publish/sync vẫn bị khóa cho đến khi permission và duplicate-safe reconciliation được live kiểm chứng.
+Trước release, chụp backup DB/object metadata, ghi commit/branch và migration head. Nếu release lỗi, quay lại image/commit trước và thực hiện migration rollback chỉ khi migration có downgrade an toàn; không tự drop dữ liệu. Tắt Page connector hoặc quay về export/nhập metrics thủ công nếu Page identity, permissions, token hoặc đối soát kết quả đăng chưa được live kiểm chứng.

@@ -4,6 +4,8 @@
  */
 
 export { api, authApi, brandApi, campaignApi, documentApi, jobApi, mediaApi, workspaceApi } from './endpoints';
+export { facebookPostUrl, metaApi, metaQueryKeys } from './meta';
+export type { MetaConnection, MetaPublication, MetaPublicationStatus, MetaPagePost, MetaPagePostPage, ReconcileMetaPublicationRequest } from './meta';
 export type { User } from './endpoints';
 export {
   ApiError,

@@ -41,6 +41,8 @@ async def get_job_events(job_id: str, after_seq: int = Query(default=0, ge=0), u
 @router.post("/{job_id}/cancel", response_model=JobOut, dependencies=[Depends(require_csrf)])
 async def cancel_job(job_id: str, user: User = Depends(current_user), db: AsyncSession = Depends(get_db)):
     job = await _tenant_job(job_id, user, db)
+    if job.kind in {"meta_publish", "meta_metrics_sync"}:
+        raise ApiProblem(409, "state_conflict", "Job Fanpage không hỗ trợ huỷ; hãy chờ kết quả hoặc đối soát lần đăng.")
     if job.status not in {"queued", "running"}:
         raise ApiProblem(409, "state_conflict", "Job này không còn có thể huỷ.")
     job.status = "cancelled"

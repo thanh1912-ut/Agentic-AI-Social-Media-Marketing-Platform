@@ -49,15 +49,15 @@ Ngày tạo: 2026-09-23. Trạng thái dưới đây được ghi từ audit đ�
 - Ảnh hưởng: phải regenerate/check OpenAPI artifacts khi đổi DTO.
 - Trạng thái: một phần đã thiết lập cho auth/document/brand; campaign/content contract chưa có backend thật.
 
-## DEC-006 — Manual Meta fallback cho pilot
+## DEC-006 — Manual Meta fallback khi connector chưa khả dụng
 
 - Vấn đề: Page permission/App Review/version/token/metrics semantics chưa được kiểm chứng trên app và Page được cấp quyền.
-- Quyết định: chưa bật auto publish/sync; export + manual publication/metrics là fallback v1 khi kiểm chứng được.
+- Quyết định: giữ export → đăng thủ công → nhập metrics có nguồn khi Page connector chưa được cấu hình, thiếu quyền hoặc chưa qua nghiệm thu live. Một Page pilot được triển khai riêng theo DEC-024; không suy rằng Page khác cũng dùng được.
 - Lý do: tránh blind retry POST gây đăng trùng và tránh claim quyền chưa có.
 - Không chọn: scraping/browser automation để lách permission.
-- Ảnh hưởng: Meta connector trạng thái BLOCKED_EXTERNAL cho tới khi có credentials, quyền và live evidence; user vẫn phân biệt export với publish.
+- Ảnh hưởng: connector chỉ mở capability đã được xác minh cho workspace/Page cấu hình; user vẫn phân biệt export với publish.
 - Bằng chứng: ngày 2026-09-24 đã thử đọc [Page Feed](https://developers.facebook.com/docs/graph-api/reference/page/feed/), [Page Insights](https://developers.facebook.com/docs/graph-api/reference/page/insights/), [permissions](https://developers.facebook.com/docs/permissions/) và [access-token guide](https://developers.facebook.com/docs/facebook-login/guides/access-tokens/); cả bốn trang trả HTTP 429. Đây không phải xác minh nội dung tài liệu hiện hành.
-- Trạng thái: `BLOCKED_EXTERNAL`; `VERIFY CURRENT META API` cho version, permission, token, publish/schedule, metrics, rate limits và webhooks khi docs truy cập được. Không thiết kế/claim connector tự động trước bước này và app/Page/token/App Review.
+- Trạng thái: fallback manual IMPLEMENTED; Page pilot IN_PROGRESS theo DEC-024. Version, permission, token, publish fields, metrics và rate limits vẫn `VERIFY CURRENT META API` trước khi bật trên Page thật. OAuth/App Review cho khách ngoài team chưa nằm trong pilot.
 
 ## DEC-007 — DeepSeek xử lý trích đoạn tài liệu và Brand Profile sau chấp thuận
 
@@ -94,7 +94,7 @@ Ngày tạo: 2026-09-23. Trạng thái dưới đây được ghi từ audit đ�
 - Vấn đề: mục Xuất bản trên menu real mode từng bị guard ẩn và dẫn người dùng tới trang 404; chưa có Meta app/Page permission để tự đăng.
 - Quyết định: hiển thị trang trạng thái trong real mode, nói rõ chưa kết nối Meta và hướng dẫn review → export → đăng thủ công → nhập metrics. Không giả lập trạng thái đăng hoặc gọi Meta API.
 - Ảnh hưởng: `apps/web/src/app/w/[workspaceId]/publishing/page.tsx`; bỏ guard chung che route real mode.
-- Trạng thái: IMPLEMENTED; typecheck, lint, production build và browser kiểm tra route pass; Meta connector vẫn BLOCKED_EXTERNAL.
+- Trạng thái: trang fallback IMPLEMENTED; typecheck, lint, production build và browser kiểm tra route pass. Page pilot theo DEC-024 đang triển khai, chưa có live verification với Page/token của chủ dự án.
 
 ## DEC-012 — Theo dõi kết quả recommendation bằng cohort snapshots
 
@@ -195,3 +195,13 @@ Ngày tạo: 2026-09-23. Trạng thái dưới đây được ghi từ audit đ�
 - Ảnh hưởng: cấu hình production phải khai báo host/proxy thực tế; reverse proxy/ingress vẫn phải từ chối body lớn trước khi chuyển traffic tới API. Kết nối và địa chỉ proxy trên môi trường production chưa được xác minh.
 - Bằng chứng: commit `c5bb13e`; production Host rejection, host/proxy configuration, Uvicorn forwarding, request-size error envelope/stream handling và HTTP DeepSeek rejection đều có tests. Local full Python suite **147 passed, 1 skipped**; OpenAPI, compileall, Compose YAML và `git diff --check` pass. Hosted backend run [#65](https://github.com/thanh1912-ut/Agentic-AI-Social-Media-Marketing-Platform/actions/runs/35957721239) trên commit `c5bb13e` pass (pytest + OpenAPI).
 - Trạng thái: app-level hardening IMPLEMENTED; proxy IPs, edge limits và Compose runtime vẫn cần nghiệm thu.
+
+## DEC-024 — Một Facebook Page pilot dùng token server-side
+
+- Ngày: 2026-09-24.
+- Vấn đề: chủ dự án muốn nối sản phẩm trực tiếp với Fanpage của mình, đăng bài đã duyệt và xem cả bài cũ/chỉ số tương tác. Chưa có bằng chứng quyền Meta/App Review để làm OAuth nhiều khách hàng.
+- Quyết định: ghim một `META_WORKSPACE_ID` và `META_PAGE_ID` ở backend, giữ `META_PAGE_ACCESS_TOKEN` trong ignored local `.env` hoặc deployment secret store, `META_GRAPH_VERSION=v26.0` chỉ là default cần xác minh. Backend đọc Page identity qua Graph trước khi báo có thể dùng. Chỉ owner được bấm gửi bài đã duyệt đúng current version; publisher kiểm lại `PostApproval.content_sha256` so với `PostVersion` ngay trước lần gửi. Lưu attempt, Page/external ID/permalink và kết quả; timeout hoặc phản hồi mơ hồ thành `outcome_unknown`, không blind retry. Text và tối đa một ảnh thuộc pilot sau khi capability được kiểm chứng; video/carousel không thuộc phạm vi.
+- Dữ liệu phân tích: owner yêu cầu đồng bộ bằng `POST /workspaces/{id}/meta/metrics/sync`, mỗi lượt tối đa 5 trang × 100 bài và lưu cursor để những lượt sau tiếp tục lịch sử. `GET /workspaces/{id}/meta/page-posts` phân trang những bài đã nhập. Bản ghi có Page/external ID, thời điểm đăng/đồng bộ và count `reactions`, `comments`, `shares` có thể thiếu; `engagements` chỉ cộng khi cả ba count có sẵn. Chưa có bộ lọc ngày, reach/views/clicks hay snapshot theo cửa sổ đo. Bài lịch sử không có approval hoặc publication do nền tảng tạo. Quyền đọc và sự sẵn có/ý nghĩa từng count cần live validation; không tự gán 0 cho giá trị thiếu.
+- Không chọn: đưa token vào browser/chat/Git/LLM, cho agent tự đăng, tự retry một POST chưa rõ kết quả, scraping Page hoặc coi token của một Page là OAuth cho mọi khách hàng.
+- Ảnh hưởng: `META_APP_ID`/`META_APP_SECRET` chưa cần cho pilot; OAuth, Page discovery, App Review cho khách ngoài team, scheduling và webhooks để giai đoạn sau. Export/đăng thủ công/nhập metrics vẫn dùng được khi connector chưa khả dụng. Xem [Meta feasibility spike](meta-feasibility-spike.md) và [runbook](runbook.md).
+- Trạng thái: IN_PROGRESS. Chưa có live evidence với Page access token của chủ dự án. Các trang developer Meta trả HTTP 429 ngày 2026-09-24; Graph version, fields, permissions, token lifetime, error/rate-limit semantics vẫn `VERIFY CURRENT META API` cho đến khi thử với app/Page thật.

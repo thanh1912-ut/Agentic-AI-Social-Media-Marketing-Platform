@@ -742,6 +742,109 @@ export interface paths {
         readonly patch?: never;
         readonly trace?: never;
     };
+    readonly "/api/v1/workspaces/{company_id}/meta/connection": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /** Get Meta Connection */
+        readonly get: operations["get_meta_connection_api_v1_workspaces__company_id__meta_connection_get"];
+        readonly put?: never;
+        readonly post?: never;
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/v1/workspaces/{company_id}/meta/connection/verify": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get?: never;
+        readonly put?: never;
+        /** Verify Meta Connection */
+        readonly post: operations["verify_meta_connection_api_v1_workspaces__company_id__meta_connection_verify_post"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/v1/workspaces/{company_id}/meta/metrics/sync": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get?: never;
+        readonly put?: never;
+        /** Sync Meta Metrics */
+        readonly post: operations["sync_meta_metrics_api_v1_workspaces__company_id__meta_metrics_sync_post"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/v1/workspaces/{company_id}/meta/page-posts": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /** List Meta Page Posts */
+        readonly get: operations["list_meta_page_posts_api_v1_workspaces__company_id__meta_page_posts_get"];
+        readonly put?: never;
+        readonly post?: never;
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/v1/workspaces/{company_id}/meta/publications": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /** List Meta Publications */
+        readonly get: operations["list_meta_publications_api_v1_workspaces__company_id__meta_publications_get"];
+        readonly put?: never;
+        /** Publish Meta Post */
+        readonly post: operations["publish_meta_post_api_v1_workspaces__company_id__meta_publications_post"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/v1/workspaces/{company_id}/meta/publications/{publication_id}/reconcile": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get?: never;
+        readonly put?: never;
+        /** Reconcile Meta Publication */
+        readonly post: operations["reconcile_meta_publication_api_v1_workspaces__company_id__meta_publications__publication_id__reconcile_post"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
     readonly "/api/v1/workspaces/{company_id}/metrics/import": {
         readonly parameters: {
             readonly query?: never;
@@ -1854,6 +1957,130 @@ export interface components {
             readonly status: "active" | "invited" | "suspended";
             readonly user?: components["schemas"]["UserOut"] | null;
         };
+        /** MetaConnectionOut */
+        readonly MetaConnectionOut: {
+            /** Can Publish */
+            readonly can_publish: boolean;
+            /** Can Sync Metrics */
+            readonly can_sync_metrics: boolean;
+            /** Message */
+            readonly message: string;
+            /** Page Id */
+            readonly page_id: string | null;
+            /** Page Name */
+            readonly page_name: string | null;
+            /**
+             * Status
+             * @enum {string}
+             */
+            readonly status: "unconfigured" | "configured" | "verified" | "error";
+        };
+        /** MetaErrorOut */
+        readonly MetaErrorOut: {
+            /** Code */
+            readonly code: string;
+            /** Hint */
+            readonly hint?: string | null;
+            /** Message */
+            readonly message: string;
+        };
+        /** MetaPagePostOut */
+        readonly MetaPagePostOut: {
+            /** Comments */
+            readonly comments: number | null;
+            /** Engagements */
+            readonly engagements: number | null;
+            /** External Post Id */
+            readonly external_post_id: string;
+            /** Id */
+            readonly id: string;
+            /**
+             * Last Synced At
+             * Format: date-time
+             */
+            readonly last_synced_at: string;
+            /** Linked Post Id */
+            readonly linked_post_id: string | null;
+            /** Message */
+            readonly message: string | null;
+            /** Page Id */
+            readonly page_id: string;
+            /** Permalink */
+            readonly permalink: string | null;
+            /** Published At */
+            readonly published_at: string | null;
+            /** Reactions */
+            readonly reactions: number | null;
+            /** Shares */
+            readonly shares: number | null;
+        };
+        /** MetaPagePostsOut */
+        readonly MetaPagePostsOut: {
+            /** Has More */
+            readonly has_more: boolean;
+            /** Items */
+            readonly items: readonly components["schemas"]["MetaPagePostOut"][];
+            /** Last Sync At */
+            readonly last_sync_at: string | null;
+            /** Next Offset */
+            readonly next_offset: number | null;
+            /** Sync Has More */
+            readonly sync_has_more: boolean;
+            /** Total */
+            readonly total: number;
+        };
+        /** MetaPublicationOut */
+        readonly MetaPublicationOut: {
+            /**
+             * Created At
+             * Format: date-time
+             */
+            readonly created_at: string;
+            readonly error: components["schemas"]["MetaErrorOut"] | null;
+            /** External Post Id */
+            readonly external_post_id: string | null;
+            /** Id */
+            readonly id: string;
+            /** Page Id */
+            readonly page_id: string;
+            /** Permalink */
+            readonly permalink: string | null;
+            /** Post Id */
+            readonly post_id: string;
+            /** Post Version */
+            readonly post_version: number;
+            /**
+             * Status
+             * @enum {string}
+             */
+            readonly status: "queued" | "sending" | "published" | "failed" | "needs_reconnect" | "outcome_unknown" | "not_published";
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            readonly updated_at: string;
+        };
+        /** MetaPublishIn */
+        readonly MetaPublishIn: {
+            /** Post Id */
+            readonly post_id: string;
+            /** Version */
+            readonly version: number;
+        };
+        /** MetaReconcileIn */
+        readonly MetaReconcileIn: {
+            /** External Post Id */
+            readonly external_post_id?: string | null;
+            /** Note */
+            readonly note?: string | null;
+            /**
+             * Outcome
+             * @enum {string}
+             */
+            readonly outcome: "published" | "not_published";
+            /** Permalink */
+            readonly permalink?: string | null;
+        };
         /** MetricGroupOut */
         readonly MetricGroupOut: {
             /** Average Reach */
@@ -2430,6 +2657,13 @@ export type SchemaLoginRequest = components['schemas']['LoginRequest'];
 export type SchemaLoginResponse = components['schemas']['LoginResponse'];
 export type SchemaMediaAssetOut = components['schemas']['MediaAssetOut'];
 export type SchemaMemberOut = components['schemas']['MemberOut'];
+export type SchemaMetaConnectionOut = components['schemas']['MetaConnectionOut'];
+export type SchemaMetaErrorOut = components['schemas']['MetaErrorOut'];
+export type SchemaMetaPagePostOut = components['schemas']['MetaPagePostOut'];
+export type SchemaMetaPagePostsOut = components['schemas']['MetaPagePostsOut'];
+export type SchemaMetaPublicationOut = components['schemas']['MetaPublicationOut'];
+export type SchemaMetaPublishIn = components['schemas']['MetaPublishIn'];
+export type SchemaMetaReconcileIn = components['schemas']['MetaReconcileIn'];
 export type SchemaMetricGroupOut = components['schemas']['MetricGroupOut'];
 export type SchemaMetricImportRequest = components['schemas']['MetricImportRequest'];
 export type SchemaMetricImportResponse = components['schemas']['MetricImportResponse'];
@@ -4425,6 +4659,249 @@ export interface operations {
                 };
                 content: {
                     readonly "application/json": components["schemas"]["InviteMemberResponse"];
+                };
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    readonly get_meta_connection_api_v1_workspaces__company_id__meta_connection_get: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: {
+                readonly authorization?: string | null;
+            };
+            readonly path: {
+                readonly company_id: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["MetaConnectionOut"];
+                };
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    readonly verify_meta_connection_api_v1_workspaces__company_id__meta_connection_verify_post: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: {
+                readonly authorization?: string | null;
+            };
+            readonly path: {
+                readonly company_id: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["MetaConnectionOut"];
+                };
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    readonly sync_meta_metrics_api_v1_workspaces__company_id__meta_metrics_sync_post: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: {
+                readonly authorization?: string | null;
+            };
+            readonly path: {
+                readonly company_id: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 202: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["AcceptedResponse"];
+                };
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    readonly list_meta_page_posts_api_v1_workspaces__company_id__meta_page_posts_get: {
+        readonly parameters: {
+            readonly query?: {
+                readonly limit?: number;
+                readonly offset?: number;
+            };
+            readonly header?: {
+                readonly authorization?: string | null;
+            };
+            readonly path: {
+                readonly company_id: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["MetaPagePostsOut"];
+                };
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    readonly list_meta_publications_api_v1_workspaces__company_id__meta_publications_get: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: {
+                readonly authorization?: string | null;
+            };
+            readonly path: {
+                readonly company_id: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": readonly components["schemas"]["MetaPublicationOut"][];
+                };
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    readonly publish_meta_post_api_v1_workspaces__company_id__meta_publications_post: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: {
+                readonly authorization?: string | null;
+            };
+            readonly path: {
+                readonly company_id: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": components["schemas"]["MetaPublishIn"];
+            };
+        };
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 202: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["AcceptedResponse"];
+                };
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    readonly reconcile_meta_publication_api_v1_workspaces__company_id__meta_publications__publication_id__reconcile_post: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: {
+                readonly authorization?: string | null;
+            };
+            readonly path: {
+                readonly company_id: string;
+                readonly publication_id: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": components["schemas"]["MetaReconcileIn"];
+            };
+        };
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["MetaPublicationOut"];
                 };
             };
             /** @description Validation Error */

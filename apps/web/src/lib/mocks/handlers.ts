@@ -1515,6 +1515,26 @@ export const handlers = [
     if (!session) return unauthenticated();
     return HttpResponse.json({ items: [], total: 0, page: 1, page_size: 100 });
   }),
+
+  // Fanpage pilot: demo never holds or simulates a live Page credential.
+  http.get('*/api/v1/workspaces/:workspaceId/meta/connection', () => {
+    const session = currentSession();
+    if (!session) return unauthenticated();
+    return HttpResponse.json({
+      status: 'unconfigured',
+      page_id: null,
+      page_name: null,
+      can_publish: false,
+      can_sync_metrics: false,
+      message: 'Bản demo chưa cấu hình Fanpage thật.',
+    });
+  }),
+
+  http.get('*/api/v1/workspaces/:workspaceId/meta/publications', () => {
+    const session = currentSession();
+    if (!session) return unauthenticated();
+    return HttpResponse.json([]);
+  }),
 ];
 
 /** Suy ra loại tài liệu từ tên/đuôi tệp. */

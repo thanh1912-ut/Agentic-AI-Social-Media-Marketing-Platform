@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import ipaddress
 import os
+import re
 from dataclasses import dataclass, field
 from pathlib import Path
 from urllib.parse import urlsplit
@@ -97,6 +98,14 @@ class Settings:
     ai_request_timeout_seconds: int = int(os.getenv("AI_REQUEST_TIMEOUT_SECONDS", "120"))
     max_job_attempts: int = int(os.getenv("MAX_JOB_ATTEMPTS", "3"))
     job_lease_minutes: int = int(os.getenv("JOB_LEASE_MINUTES", "30"))
+    meta_workspace_id: str = os.getenv("META_WORKSPACE_ID", "").strip()
+    meta_page_id: str = os.getenv("META_PAGE_ID", "").strip()
+    meta_page_access_token: str = field(default_factory=lambda: os.getenv("META_PAGE_ACCESS_TOKEN", "").strip(), repr=False)
+    meta_graph_version: str = os.getenv("META_GRAPH_VERSION", "v26.0").strip()
+
+    @property
+    def meta_configured(self) -> bool:
+        return bool(self.meta_workspace_id and self.meta_page_id and self.meta_page_access_token)
 
     @property
     def email_delivery_configured(self) -> bool:
@@ -104,6 +113,12 @@ class Settings:
 
 
 settings = Settings()
+if any((settings.meta_workspace_id, settings.meta_page_id, settings.meta_page_access_token)) and not settings.meta_configured:
+    raise ValueError("META_WORKSPACE_ID, META_PAGE_ID and META_PAGE_ACCESS_TOKEN must be configured together")
+if not re.fullmatch(r"v[1-9][0-9]{0,2}\.0", settings.meta_graph_version):
+    raise ValueError("META_GRAPH_VERSION must look like v26.0")
+if settings.meta_page_id and not re.fullmatch(r"[0-9]{1,32}", settings.meta_page_id):
+    raise ValueError("META_PAGE_ID must be a numeric Facebook Page ID")
 if settings.cookie_samesite not in {"strict", "lax", "none"}:
     raise ValueError("COOKIE_SAMESITE must be strict, lax, or none")
 if settings.cookie_samesite == "none" and not settings.cookie_secure:

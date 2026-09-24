@@ -58,6 +58,18 @@ Nguồn sự thật cho schema dùng chung nằm ở `packages/contracts`.
 | POST | `/integrations/{provider}/connect` | Kết nối kênh |
 | DELETE | `/integrations/{provider}` | Ngắt kết nối |
 
+### Meta Page pilot — `services/api/meta`
+
+| Method | Path | Mô tả |
+| --- | --- | --- |
+| GET | `/workspaces/{id}/meta/connection` | Trạng thái cấu hình và xác minh Page; token không trả về client |
+| POST | `/workspaces/{id}/meta/connection/verify` | Owner xác minh Page ID/name và quyền đọc feed bằng request chỉ đọc |
+| GET | `/workspaces/{id}/meta/publications` | Lịch sử đăng text/ảnh của sản phẩm và trạng thái đối soát |
+| POST | `/workspaces/{id}/meta/publications` | Owner gửi đúng version đã duyệt; trả `202 AcceptedResponse` |
+| POST | `/workspaces/{id}/meta/publications/{publication_id}/reconcile` | Owner xác nhận bài đã/chưa xuất hiện khi kết quả gửi chưa rõ |
+| GET | `/workspaces/{id}/meta/page-posts` | Danh sách bài Page đã đồng bộ, gồm bài ngoài sản phẩm |
+| POST | `/workspaces/{id}/meta/metrics/sync` | Owner đồng bộ tối đa 500 bài/lượt; cursor giữ tiến độ lịch sử |
+
 ## Lát cắt backend đã triển khai
 
 Lát cắt đầu tiên hiện có trong FastAPI:

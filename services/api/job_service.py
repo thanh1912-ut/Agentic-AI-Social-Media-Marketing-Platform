@@ -63,7 +63,7 @@ async def serialize_job(db: AsyncSession, job: Job) -> JobOut:
         created_at=job.created_at,
         started_at=job.started_at,
         finished_at=job.finished_at,
-        cancellable=job.status in {"queued", "running"},
+        cancellable=job.status in {"queued", "running"} and job.kind not in {"meta_publish", "meta_metrics_sync"},
     )
 
 
@@ -108,6 +108,23 @@ async def dispatch_content_generation_job(job_id: str) -> None:
         return
 
 
+async def dispatch_meta_job(job_id: str, kind: str) -> None:
+    """Dispatch only committed Meta jobs; delivery failure leaves a recoverable queue row."""
+    if kind not in {"meta_publish", "meta_metrics_sync"}:
+        raise ValueError("unsupported Meta job kind")
+    if settings.inline_jobs:
+        from services.worker.meta_tasks import meta_job_async
+
+        await meta_job_async(job_id, kind)
+        return
+    try:
+        from services.worker.celery_app import celery_app
+
+        celery_app.send_task("services.worker.meta_tasks.meta_job", args=[job_id, kind], queue="default")
+    except Exception:
+        return
+
+
 async def dispatch_queued_jobs(db: AsyncSession) -> int:
     now = datetime.now(timezone.utc)
     jobs = (
@@ -122,6 +139,7 @@ async def dispatch_queued_jobs(db: AsyncSession) -> int:
     count = 0
     dispatch: list[tuple[str, str, list[str]]] = []
     content_dispatch: list[str] = []
+    meta_dispatch: list[tuple[str, str]] = []
     for job in jobs:
         if job.kind in {"content_generation", "content_revise"} and job.result and job.result.get("campaign_id"):
             if job.attempts >= settings.max_job_attempts:
@@ -157,6 +175,11 @@ async def dispatch_queued_jobs(db: AsyncSession) -> int:
             document_ids = [str(item) for item in job.result.get("document_ids", [document_id])]
             job.lease_until = now + timedelta(minutes=settings.job_lease_minutes)
             dispatch.append((job.id, document_id, document_ids))
+        elif job.kind in {"meta_publish", "meta_metrics_sync"}:
+            # Queued Meta publish jobs have not crossed the send boundary.
+            # A running send is never returned to this queue by recovery.
+            job.lease_until = now + timedelta(minutes=settings.job_lease_minutes)
+            meta_dispatch.append((job.id, job.kind))
 
     # Persist the lease before queue delivery. If Redis is unavailable, the
     # scheduler can safely retry after expiry without losing the DB job.
@@ -167,5 +190,8 @@ async def dispatch_queued_jobs(db: AsyncSession) -> int:
         count += 1
     for job_id in content_dispatch:
         await dispatch_content_generation_job(job_id)
+        count += 1
+    for job_id, kind in meta_dispatch:
+        await dispatch_meta_job(job_id, kind)
         count += 1
     return count
