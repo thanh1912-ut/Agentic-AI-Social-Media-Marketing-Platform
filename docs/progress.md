@@ -2,7 +2,7 @@
 
 > Phần bổ sung Fanpage nhiều Page và nghiên cứu thị trường đang được triển khai trên branch riêng; trạng thái chi tiết, chức năng, giới hạn nguồn, cấu hình và kiểm tra xem tại [page-groups-market-research.md](page-groups-market-research.md). Không dùng trạng thái test cũ trong bảng dưới đây làm bằng chứng nghiệm thu cho branch mới.
 
-Cập nhật gần nhất: 2026-09-25 15:17 (Asia/Ho_Chi_Minh)
+Cập nhật gần nhất: 2026-09-25 15:22 (Asia/Ho_Chi_Minh)
 
 ## Trạng thái hiện tại
 
@@ -73,7 +73,7 @@ Không có URL service nào đang chạy. Hướng dẫn chạy và các giới 
 
 ## Bổ sung Fanpage nhiều Page và nghiên cứu thị trường — 2026-09-25
 
-- Tính năng ở branch riêng `codex/page-groups-market-research`, commit `5dad29a` đã push nhưng chưa merge; phần hoàn thiện metrics/report/UI đang sửa trên cùng worktree và chờ commit/push. Có UI cấu hình nhóm ngành/khu vực/từ khóa, Page ID + Page Access Token, danh sách link nguồn, nhập dữ liệu thủ công, chạy ngay, báo cáo/gợi ý và tạo campaign nháp.
+- Tính năng ở branch riêng `codex/page-groups-market-research`, commit `12a14e1` (trên `5dad29a`) đã push, chưa merge. Có UI cấu hình nhóm ngành/khu vực/từ khóa, Page ID + Page Access Token, danh sách link nguồn, nhập dữ liệu thủ công, chạy ngay, báo cáo/gợi ý và tạo campaign nháp.
 - Backend có token mã hóa, tenant checks, giới hạn 5 Page/20 URL/10 nhóm mỗi workspace, job/scheduler 12 giờ, collector website và Page thuộc workspace. Page đối thủ tự đọc bằng Graph API khi server có `META_PUBLIC_CONTENT_ACCESS_TOKEN` của app được duyệt; nếu thiếu quyền thì chuyển `needs_access`. Nhóm Facebook lưu link và nhập tay, không scrape. Báo cáo DeepSeek có fallback, lưu bằng chứng và xóa raw web snapshot sau 30 ngày.
 - Migration mới `0012_market_research_and_page_groups`; đã sửa idempotence để tương thích bootstrap migration hiện tại, kiểm tra SQLite upgrade/downgrade/upgrade và `alembic check`. OpenAPI và type frontend đã sinh lại.
 - Kiểm chứng working tree hiện tại: Python **185 passed, 1 skipped** (Python 3.13.9; SQLite/fake providers và pgvector shim; skip là DeepSeek live smoke opt-in). Frontend **47 Vitest**, ESLint, TypeScript (`--incremental false`), Ruff, compileall, OpenAPI `--check` và `git diff --check` pass. Next production build compile/typecheck pass nhưng dừng do `ENOSPC`; không ghi nhận build hoàn tất. Playwright **42/42** là bằng chứng của snapshot trước phần UI metrics mới, không tính là chạy lại sau thay đổi này. Chưa xác minh PostgreSQL/pgvector thật, worker/Beat/Redis, Meta live hoặc DeepSeek cho flow mới.
