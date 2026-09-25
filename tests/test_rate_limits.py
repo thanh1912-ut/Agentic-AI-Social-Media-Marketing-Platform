@@ -82,3 +82,20 @@ def test_redis_failure_fails_closed_in_production_and_open_in_development(monkey
 
     monkeypatch.setattr(rate_limits, "settings", SimpleNamespace(rate_limits_enabled=True, app_env="development"))
     asyncio.run(dependency(_request(redis)))
+
+
+def test_high_cost_market_routes_have_scoped_limits_after_authorization() -> None:
+    from services.api.market_research import router as market_research_router
+
+    expected_limits = {
+        "connect_page": "rate_limit_meta_page_verify",
+        "crawl_group_now": "rate_limit_market_research_crawl",
+    }
+    route_dependencies = {
+        route.endpoint.__name__: [dependency.call.__name__ for dependency in route.dependant.dependencies]
+        for route in market_research_router.routes
+        if getattr(route, "endpoint", None) is not None and hasattr(route, "dependant")
+    }
+    for endpoint, expected in expected_limits.items():
+        assert expected in route_dependencies[endpoint]
+        assert route_dependencies[endpoint].index(expected) > route_dependencies[endpoint].index("current_user")

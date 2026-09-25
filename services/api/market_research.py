@@ -50,6 +50,7 @@ from .market_research_schemas import (
 )
 from .meta_client import MetaGraphClient, MetaGraphReadError, MetaGraphRejected, MetaGraphTokenExpired
 from .meta_tokens import TokenEncryptionUnavailable, encrypt_page_token, token_fingerprint
+from .rate_limits import rate_limit
 from .schemas import AcceptedResponse
 from services.research.web_crawler import CrawlError, canonicalize_url
 
@@ -203,6 +204,7 @@ async def list_all_pages(
 async def connect_page(
     company_id: str, group_id: str, request: PageConnectIn,
     user: User = Depends(current_user), membership=Depends(require_permission("connection:manage")),
+    _rate_limit: None = Depends(rate_limit("meta_page_verify", max_requests=10, window_seconds=3600)),
     db: AsyncSession = Depends(get_db),
 ):
     await _tenant_group(db, company_id, group_id)
@@ -416,7 +418,9 @@ async def delete_source(
             status_code=202, dependencies=[Depends(require_csrf)])
 async def crawl_group_now(
     company_id: str, group_id: str, user: User = Depends(current_user),
-    membership=Depends(require_permission("market:manage")), db: AsyncSession = Depends(get_db),
+    membership=Depends(require_permission("market:manage")),
+    _rate_limit: None = Depends(rate_limit("market_research_crawl", max_requests=6, window_seconds=3600)),
+    db: AsyncSession = Depends(get_db),
 ):
     group = await _tenant_group(db, company_id, group_id, lock=True)
     existing = await db.scalar(select(ResearchCycle).where(
