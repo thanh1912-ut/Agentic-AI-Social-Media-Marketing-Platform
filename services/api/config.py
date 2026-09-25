@@ -101,6 +101,10 @@ class Settings:
     meta_workspace_id: str = os.getenv("META_WORKSPACE_ID", "").strip()
     meta_page_id: str = os.getenv("META_PAGE_ID", "").strip()
     meta_page_access_token: str = field(default_factory=lambda: os.getenv("META_PAGE_ACCESS_TOKEN", "").strip(), repr=False)
+    # App/user token for approved Page Public Content Access, used only for public competitor Pages.
+    meta_public_content_access_token: str = field(
+        default_factory=lambda: os.getenv("META_PUBLIC_CONTENT_ACCESS_TOKEN", "").strip(), repr=False
+    )
     meta_graph_version: str = os.getenv("META_GRAPH_VERSION", "v26.0").strip()
     meta_token_encryption_key: str = field(default_factory=lambda: os.getenv("META_TOKEN_ENCRYPTION_KEY", "").strip(), repr=False)
     meta_token_encryption_key_previous: str = field(default_factory=lambda: os.getenv("META_TOKEN_ENCRYPTION_KEY_PREVIOUS", "").strip(), repr=False)

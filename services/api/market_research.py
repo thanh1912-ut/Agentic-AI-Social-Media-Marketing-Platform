@@ -361,7 +361,12 @@ async def create_source(
         host = (parsed.hostname or "").casefold()
         if host != "facebook.com" and not host.endswith(".facebook.com"):
             raise ApiProblem(422, "facebook_url_required", "Nguồn Facebook cần là liên kết facebook.com.")
-        status = "manual_import_only"
+        if request.source_type == "competitor_facebook_page" and getattr(
+            settings, "meta_public_content_access_token", ""
+        ):
+            status = "active"
+        else:
+            status = "manual_import_only"
     else:
         connection = None
     now = utcnow()

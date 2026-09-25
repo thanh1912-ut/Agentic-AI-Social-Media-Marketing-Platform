@@ -2,7 +2,7 @@
 
 from datetime import datetime, timedelta, timezone
 
-from sqlalchemy import select
+from sqlalchemy import and_, or_, select
 
 from database.models import (
     Job, JobStep, MarketObservation, Membership, MetaPageGroup, MetaPublication,
@@ -31,7 +31,10 @@ async def _enqueue_due_research(db, now: datetime) -> int:
             ResearchSource.company_id == group.company_id,
             ResearchSource.group_id == group.id,
             ResearchSource.active.is_(True),
-            ResearchSource.status.in_(["active", "manual_import_only", "needs_access", "error"]),
+            or_(
+                ResearchSource.status.in_(["active", "error"]),
+                and_(ResearchSource.source_type == "owned_facebook_page", ResearchSource.status == "needs_access"),
+            ),
         ).limit(1))
         if not source_id:
             group.next_due_at = None

@@ -25,14 +25,15 @@ Cập nhật: 2026-09-25
 - Lưu tối đa 20 URL nguồn trong workspace, gắn mỗi nguồn với một nhóm.
 - Website công khai: đọc HTML hoặc RSS/XML, cùng host, tối đa 25 trang và 2 MiB mỗi response; kiểm tra `robots.txt`, chặn địa chỉ mạng riêng, URL chứa credential/token, chuyển hướng HTTPS xuống HTTP và response ngoài giới hạn.
 - Fanpage thuộc workspace: đọc tối đa 300 bài mỗi chu kỳ từ Page đã xác minh. Với tối đa 25 bài đầu, backend thử đọc tối đa 50 bình luận/bài; chỉ yêu cầu nội dung bình luận, không lấy tên/ID tác giả. Email và số điện thoại trong phần bình luận được ẩn trước khi lưu và gửi cho model.
-- Fanpage đối thủ và nhóm Facebook: lưu URL và cho phép nhập dữ liệu thủ công. Không tự scrape hoặc giả vờ lấy được dữ liệu; Meta có thể giới hạn dữ liệu theo quyền của app/Page. Tự động hóa những nguồn này cần quyền/API chính thức phù hợp.
+- Fanpage đối thủ: lưu URL để tái sử dụng. Nếu backend có `META_PUBLIC_CONTENT_ACCESS_TOKEN`, worker dùng Graph API để phân giải Page và đọc bài công khai; ứng dụng Meta phải được duyệt Page Public Content Access hoặc quyền công khai tương ứng. Nếu thiếu quyền/token, nguồn chuyển sang `needs_access` và vẫn cho nhập số liệu được phép dùng thủ công.
+- Nhóm Facebook: lưu URL và hỗ trợ nhập dữ liệu thủ công. Không tự scrape nội dung nhóm; cần quyền API chính thức cho đúng ứng dụng/nhóm và chính sách Meta hiện hành, chưa có cấu hình này trong sản phẩm.
 - Worker và scheduler tạo job bền vững, chạy chu kỳ đầu khi có nguồn và lặp lại sau mỗi 12 giờ. Có nút chạy ngay. Nội dung response web thô trong object storage được lên lịch xóa sau 30 ngày; bản trích xuất, snapshot số liệu và báo cáo được giữ trong DB.
 - Báo cáo DeepSeek gồm tóm tắt, xu hướng, độ tin cậy, ID bằng chứng, gợi ý góc bài và coverage/quyền số liệu. Nếu không gọi được model, hệ thống tạo kết quả fallback có trạng thái lỗi phân tích thay vì coi là phân tích thành công.
 - Người dùng tự chọn gợi ý để tạo campaign nháp. Dữ liệu bên ngoài được ghi rõ là chưa xác minh và không được chuyển thành tuyên bố về sản phẩm/thương hiệu. AI tạo bài tiếp theo và người duyệt vẫn qua luồng campaign/approval hiện có; báo cáo không tự đăng bài.
 
 ### Những chỉ số chưa được cam kết
 
-Đường đọc Page lưu reaction, comment count, share count và nội dung bình luận nếu quyền cho phép. Lượt xem và số người theo dõi được để trống vì chưa xác minh quyền/field Meta trả về cho app này. Số liệu của Page đối thủ/nhóm chỉ có nếu người dùng nhập dữ liệu có quyền sử dụng. Không nội suy số thiếu thành 0.
+Đường đọc Page lưu reaction, comment count, share count và nội dung bình luận nếu quyền cho phép. Với đối thủ, follower count chỉ được lưu khi Graph API trả field đó; lượt xem luôn để trống vì cần quyền/field khác chưa có trong cấu hình. Không nội suy số thiếu thành 0.
 
 ## Cấu hình backend
 
@@ -45,6 +46,8 @@ META_TOKEN_ENCRYPTION_KEY="$(.venv/bin/python -c 'from cryptography.fernet impor
 Lưu giá trị qua secret store của runtime. Khi xoay khóa, đặt khóa mới vào `META_TOKEN_ENCRYPTION_KEY`, khóa cũ vào `META_TOKEN_ENCRYPTION_KEY_PREVIOUS`, kết nối lại Page để mã hóa token bằng khóa mới, rồi gỡ khóa cũ sau khi xác nhận không còn token cũ. Không ghi Page Access Token hoặc khóa mã hóa vào log, file docs, frontend env hay Git.
 
 Worker, Redis, database và Celery Beat cần chạy để thực hiện lịch nền. `DEEPSEEK_API_KEY` và `LLM_DEFAULT_MODEL` được đọc riêng bởi backend/worker; không gửi key lên trình duyệt. Tác vụ tự động dùng DeepSeek nếu key/model sẵn sàng, còn không thì báo fallback.
+
+Để tự đọc Page đối thủ, cấp `META_PUBLIC_CONTENT_ACCESS_TOKEN` trong secret store backend/worker. Đây phải là app/user access token thuộc Meta App đã qua App Review và có quyền Page Public Content Access/Metadata phù hợp. Sau khi cài token, chạy một chu kỳ bằng nút **Crawl ngay** cho những link đối thủ đã lưu ở chế độ nhập tay; nếu API trả quyền hợp lệ, các chu kỳ sau sẽ tự chạy mỗi 12 giờ. Token này khác Page Access Token dùng cho Page của workspace. Nếu chưa được Meta duyệt, để trống biến và dùng nhập dữ liệu thủ công. Không cấu hình secret này trong trình duyệt hoặc gửi qua chat.
 
 ## API chính
 
@@ -66,6 +69,6 @@ Prefix: `/api/v1/workspaces/{company_id}/market-research`.
 
 ## Tiến độ và kiểm chứng
 
-Phần này đang ở branch `codex/page-groups-market-research`, chưa merge/push. Đã có test crawler/SSRF/robots/RSS, mã hóa/đổi khóa token, kết nối/ngắt/kết nối lại Page qua API SQLite với Meta client giả lập, che PII khi nhập đối thủ, và kiểm tra Meta client chỉ yêu cầu trường bình luận `message`. Lượt kiểm tra gần nhất: Python mục tiêu **24 passed**, frontend **47 Vitest passed**, typecheck/lint/build pass, Playwright **42/42** desktop/mobile pass; `compileall`, OpenAPI `--check` và `git diff --check` pass. Migration SQLite mới nâng từ đầu lên head, downgrade về 0011 rồi nâng lại pass; `alembic check` không phát hiện schema lệch. SQLite migration dùng shim `pgvector` chỉ để tạo kiểu vector trong test cô lập.
+Phần này ở branch `codex/page-groups-market-research`, đã push lên GitHub nhưng chưa merge. Có test crawler/SSRF/robots/RSS, mã hóa/đổi khóa token, kết nối/ngắt/kết nối lại Page qua API SQLite với Meta client giả lập, nhập dữ liệu thủ công có che PII, đọc Page đối thủ bằng token public-access giả lập, trích link Page an toàn và xếp một chu kỳ scheduler bền vững. Phần đã push trước đó đạt Python mục tiêu **24 passed**, frontend **47 Vitest passed**, typecheck/lint/build pass, Playwright **42/42** desktop/mobile pass; `compileall`, OpenAPI `--check` và `git diff --check` pass. Bổ sung hiện tại đã thêm pytest mới cho Page đối thủ và scheduler nhưng chưa chạy được tại máy này vì thiếu pytest/runtime dependencies và PyPI không truy cập được. Migration SQLite trước đó nâng từ đầu lên head, downgrade về 0011 rồi nâng lại pass; `alembic check` không phát hiện schema lệch. SQLite migration dùng shim `pgvector` chỉ để tạo kiểu vector trong test cô lập.
 
 Chưa xác minh migration trên PostgreSQL thật vì môi trường kiểm tra thiếu package `pgvector` và không có dịch vụ PostgreSQL sẵn sàng; mạng chặn tải package. Không có live request Meta, live crawl hoặc DeepSeek cho chức năng mới. Cần kiểm tra worker/Beat/Redis và làm smoke test với Page/nguồn do chủ workspace cho phép trước khi coi là sẵn sàng triển khai.

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 
 import pytest
@@ -12,12 +13,14 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from sqlalchemy.pool import StaticPool
 
-from database.models import Base, MarketEvidence, MarketObservation, MetaPageConnection
+from database.models import Base, MarketEvidence, MarketObservation, MetaPageConnection, MetaPageGroup, ResearchCycle
 from services.api import market_research as market_research_routes
 from services.api import meta_tokens
 from services.api.db import get_db
+from services.api.meta_client import MetaPagePost, MetaPagePostsPage, MetaPublicPage
 from services.api.main import app
 from services.api.meta_client import MetaPage
+from services.worker import research_tasks, scheduled_jobs
 
 
 @pytest.fixture
@@ -194,3 +197,127 @@ def test_manual_competitor_import_masks_private_contact_data(market_api) -> None
     assert "[đã ẩn số điện thoại]" in evidence.text
     assert all("contact@example.com" not in item and "0912345678" not in item for item in observation.comments_json)
     assert observation.metrics_json == {"reactions": 45, "comments": 7, "shares": 3, "views": 1000}
+
+
+def test_competitor_page_uses_approved_public_api_token_when_configured(market_api, monkeypatch) -> None:
+    client, session_factory, _encryption_key = market_api
+    monkeypatch.setattr(market_research_routes, "settings", SimpleNamespace(
+        meta_graph_version="v26.0", meta_public_content_access_token="app-review-approved-token",
+    ))
+    monkeypatch.setattr(research_tasks, "settings", SimpleNamespace(
+        meta_graph_version="v26.0", meta_public_content_access_token="app-review-approved-token",
+    ))
+    monkeypatch.setattr(research_tasks, "SessionLocal", session_factory)
+    workspace_id, headers = _owner(client, "competitor-owner@example.com")
+    group_id = _create_group(client, workspace_id, headers)
+    created = client.post(
+        f"/api/v1/workspaces/{workspace_id}/market-research/sources",
+        headers=headers,
+        json={
+            "group_id": group_id,
+            "source_type": "competitor_facebook_page",
+            "name": "Đối thủ A",
+            "url": "https://www.facebook.com/rival",
+            "competitor_name": "Đối thủ A",
+        },
+    )
+    assert created.status_code == 201, created.text
+    source_id = created.json()["id"]
+    assert created.json()["status"] == "active"
+
+    class FakePublicGraphClient:
+        def __init__(self, page_id: str, token: str, graph_version: str):
+            assert token == "app-review-approved-token"
+            assert graph_version == "v26.0"
+            self.page_id = page_id
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *_args):
+            return None
+
+        async def resolve_public_page(self, reference: str):
+            assert self.page_id == "1"
+            assert reference == "rival"
+            return MetaPublicPage(id="987654", name="Đối thủ A", followers_count=2500)
+
+        async def list_page_posts(self, limit: int = 100, after: str | None = None):
+            assert self.page_id == "987654"
+            assert limit == 100 and after is None
+            return MetaPagePostsPage((MetaPagePost(
+                external_post_id="987654_42", message="Ưu đãi mùa mới", created_time=None,
+                permalink_url="https://www.facebook.com/rival/posts/42",
+                reactions=17, comments=4, shares=2,
+            ),), None)
+
+        async def list_post_comments(self, external_post_id: str, limit: int = 50):
+            assert external_post_id == "987654_42" and limit == 50
+            return ("Liên hệ rival@example.com",)
+
+    monkeypatch.setattr(research_tasks, "MetaGraphClient", FakePublicGraphClient)
+
+    async def collect():
+        async with session_factory() as db:
+            from database.models import ResearchSource
+
+            source = await db.get(ResearchSource, source_id)
+            assert source is not None
+        return await research_tasks._collect_competitor_page(
+            workspace_id, group_id, source, datetime.now(timezone.utc),
+        )
+
+    saved, details = asyncio.run(collect())
+    assert saved == 1
+    assert details["metrics_available"] == ["reactions", "comments", "shares", "followers"]
+    assert details["metrics_unavailable"] == ["views"]
+
+    async def read_observation():
+        async with session_factory() as db:
+            evidence = await db.scalar(select(MarketEvidence).where(MarketEvidence.source_id == source_id))
+            observation = await db.scalar(select(MarketObservation).where(MarketObservation.evidence_id == evidence.id))
+            return evidence, observation
+
+    evidence, observation = asyncio.run(read_observation())
+    assert evidence.text == "Ưu đãi mùa mới"
+    assert observation.metrics_json == {
+        "reactions": 17, "comments": 4, "shares": 2, "interactions": 23,
+        "views": None, "followers": 2500,
+    }
+    assert observation.comments_json == ["Liên hệ [đã ẩn email]"]
+
+
+def test_due_market_research_enqueues_one_durable_cycle(market_api) -> None:
+    client, session_factory, _encryption_key = market_api
+    workspace_id, headers = _owner(client, "schedule-owner@example.com")
+    group_id = _create_group(client, workspace_id, headers)
+    source = client.post(
+        f"/api/v1/workspaces/{workspace_id}/market-research/sources",
+        headers=headers,
+        json={"group_id": group_id, "source_type": "website", "name": "Website", "url": "https://example.com"},
+    )
+    assert source.status_code == 201, source.text
+    now = datetime.now(timezone.utc)
+
+    async def set_due_time():
+        async with session_factory() as db:
+            group = await db.get(MetaPageGroup, group_id)
+            assert group is not None
+            group.next_due_at = now - timedelta(seconds=1)
+            await db.commit()
+
+    async def enqueue():
+        async with session_factory() as db:
+            count = await scheduled_jobs._enqueue_due_research(db, now)
+            await db.commit()
+            return count
+
+    asyncio.run(set_due_time())
+    assert asyncio.run(enqueue()) == 1
+    assert asyncio.run(enqueue()) == 0
+
+    async def cycle_state():
+        async with session_factory() as db:
+            return await db.scalar(select(ResearchCycle.status).where(ResearchCycle.group_id == group_id))
+
+    assert asyncio.run(cycle_state()) == "queued"

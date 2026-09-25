@@ -9,7 +9,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 from datetime import datetime
-from urllib.parse import urlsplit
+from urllib.parse import quote, parse_qs, urlsplit
 
 import httpx
 
@@ -56,6 +56,13 @@ class MetaPagePost:
 class MetaPagePostsPage:
     posts: tuple[MetaPagePost, ...]
     next_cursor: str | None
+
+
+@dataclass(frozen=True, slots=True)
+class MetaPublicPage:
+    id: str
+    name: str
+    followers_count: int | None
 
 
 class MetaGraphError(Exception):
@@ -136,6 +143,33 @@ def _valid_post_id(value: object, page_id: str) -> bool:
     return isinstance(value, str) and bool(_POST_ID.fullmatch(value)) and (
         "_" not in value or value.split("_", 1)[0] == page_id
     )
+
+
+def facebook_page_reference(url: str) -> str:
+    """Extract a Graph API Page identifier from a user-submitted Page URL."""
+    try:
+        parsed = urlsplit(url)
+        host = (parsed.hostname or "").casefold().rstrip(".")
+    except ValueError as exc:
+        raise ValueError("invalid Facebook Page URL") from exc
+    if parsed.scheme not in {"http", "https"} or host not in {"facebook.com", "www.facebook.com", "m.facebook.com"}:
+        raise ValueError("invalid Facebook Page URL")
+    segments = [segment for segment in parsed.path.split("/") if segment]
+    if segments and segments[0].casefold() == "profile.php":
+        ids = parse_qs(parsed.query).get("id", [])
+        if len(ids) == 1 and _PAGE_ID.fullmatch(ids[0]):
+            return ids[0]
+        raise ValueError("invalid Facebook Page URL")
+    if len(segments) >= 3 and segments[0].casefold() == "pages" and _PAGE_ID.fullmatch(segments[-1]):
+        return segments[-1]
+    if len(segments) != 1:
+        raise ValueError("use the Facebook Page home URL")
+    reference = segments[0]
+    if reference.casefold() in {"groups", "watch", "story.php", "photo.php", "marketplace", "reel"}:
+        raise ValueError("use the Facebook Page home URL")
+    if not re.fullmatch(r"[A-Za-z0-9._-]{1,100}", reference):
+        raise ValueError("invalid Facebook Page URL")
+    return reference
 
 
 class MetaGraphClient:
@@ -222,6 +256,33 @@ class MetaGraphClient:
         if page_id != self.page_id or not isinstance(name, str) or not name.strip():
             raise MetaGraphReadError("Meta Graph returned an invalid Page identity.")
         return MetaPage(id=page_id, name=name.strip())
+
+    async def resolve_public_page(self, reference: str) -> MetaPublicPage:
+        """Resolve a public Page with an app/user token approved for Page public access."""
+        if not isinstance(reference, str) or not re.fullmatch(r"[A-Za-z0-9._-]{1,100}", reference):
+            raise ValueError("invalid public Page reference")
+        payload = await self._request(
+            "GET", f"/{self.graph_version}/{quote(reference, safe='')}", publishing=False,
+            params={"fields": "id,name"},
+        )
+        page_id, name = payload.get("id"), payload.get("name")
+        if not isinstance(page_id, str) or not _PAGE_ID.fullmatch(page_id) or not isinstance(name, str) or not name.strip():
+            raise MetaGraphReadError("Meta Graph returned an invalid public Page identity.")
+        followers_count = None
+        try:
+            details = await self._request(
+                "GET", f"/{self.graph_version}/{page_id}", publishing=False,
+                params={"fields": "followers_count"},
+            )
+            followers_count = _nonnegative_count(details.get("followers_count"))
+        except MetaGraphTokenExpired:
+            raise
+        except MetaGraphRejected as error:
+            if error.retryable:
+                raise
+        except MetaGraphReadError:
+            pass
+        return MetaPublicPage(id=page_id, name=name.strip(), followers_count=followers_count)
 
     async def publish_text(self, message: str) -> MetaPublishedPost:
         if not isinstance(message, str) or not message.strip():

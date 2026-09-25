@@ -14,6 +14,7 @@ from services.api.meta_client import (
     MetaGraphReadError,
     MetaGraphRejected,
     MetaGraphTokenExpired,
+    facebook_page_reference,
 )
 
 
@@ -40,6 +41,51 @@ def test_verify_page_uses_bearer_header_and_returns_verified_identity() -> None:
 
     page = _run(exercise())
     assert (page.id, page.name) == ("123", "Trang của tôi")
+
+
+@pytest.mark.parametrize(("url", "expected"), [
+    ("https://www.facebook.com/thuonghieu", "thuonghieu"),
+    ("https://facebook.com/pages/Thuong-Hieu/123456", "123456"),
+    ("https://m.facebook.com/profile.php?id=123456", "123456"),
+])
+def test_facebook_page_reference_extracts_only_page_identity(url: str, expected: str) -> None:
+    assert facebook_page_reference(url) == expected
+
+
+@pytest.mark.parametrize("url", [
+    "https://facebook.com/groups/123",
+    "https://facebook.com/story.php?story_fbid=2&id=3",
+    "https://evil.facebook.com/brand",
+    "https://facebook.com/brand/posts/123",
+])
+def test_facebook_page_reference_rejects_non_page_urls(url: str) -> None:
+    with pytest.raises(ValueError):
+        facebook_page_reference(url)
+
+
+def test_resolve_public_page_uses_app_reviewed_token_and_keeps_missing_followers_unknown() -> None:
+    requests = 0
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        assert request.headers["Authorization"] == f"Bearer {SECRET}"
+        assert SECRET not in str(request.url)
+        nonlocal requests
+        requests += 1
+        if requests == 1:
+            assert request.url.path == "/v26.0/brand-page"
+            assert request.url.params["fields"] == "id,name"
+            return httpx.Response(200, json={"id": "456", "name": "Trang đối thủ"})
+        assert request.url.path == "/v26.0/456"
+        assert request.url.params["fields"] == "followers_count"
+        return httpx.Response(400, json={"error": {"code": 100}})
+
+    async def exercise():
+        async with MetaGraphClient("1", SECRET, transport=httpx.MockTransport(handler)) as client:
+            return await client.resolve_public_page("brand-page")
+
+    page = _run(exercise())
+    assert (page.id, page.name, page.followers_count) == ("456", "Trang đối thủ", None)
+    assert requests == 2
 
 
 def test_text_and_photo_publish_require_post_ids() -> None:

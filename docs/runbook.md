@@ -67,6 +67,12 @@ Sửa `.env` cục bộ trong editor, không paste key vào chat. Provision `DEE
    chỉ cấp cho process backend cần dùng; không đưa token vào `NEXT_PUBLIC_*`,
    frontend, Git, chat, URL query, log hay ảnh chụp màn hình. `META_APP_ID` và
    `META_APP_SECRET` dành cho OAuth tương lai, không thay Page token trong pilot.
+   Để tự thu thập Page đối thủ, cấu hình riêng `META_PUBLIC_CONTENT_ACCESS_TOKEN`
+   ở backend/worker bằng app/user access token của Meta App đã được duyệt Page
+   Public Content Access/Metadata. Đây là quyền app-level và không thể suy ra
+   chỉ từ Page Access Token của Page thuộc workspace. Nếu Meta trả lỗi quyền,
+   nguồn hiển thị `needs_access`; dùng nhập tay cho đến khi app được duyệt.
+   Page views không được giả định có sẵn. Nhóm Facebook hiện vẫn nhập tay.
 3. Khởi động lại API/worker sau khi đổi biến môi trường. Đọc
    `GET /api/v1/workspaces/{workspace_id}/meta/connection`, rồi owner gọi
    `POST /api/v1/workspaces/{workspace_id}/meta/connection/verify`. Page ID/name

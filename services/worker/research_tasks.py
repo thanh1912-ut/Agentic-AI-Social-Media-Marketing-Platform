@@ -18,7 +18,10 @@ from database.models import (
 )
 from services.api.config import settings
 from services.api.db import SessionLocal
-from services.api.meta_client import MetaGraphClient, MetaGraphReadError, MetaGraphRejected, MetaGraphTokenExpired
+from services.api.meta_client import (
+    MetaGraphClient, MetaGraphReadError, MetaGraphRejected, MetaGraphTokenExpired,
+    facebook_page_reference,
+)
 from services.api.meta_tokens import TokenEncryptionUnavailable, decrypt_page_token
 from services.api.storage import storage
 from services.research.web_crawler import CrawlError, crawl_public_site
@@ -241,6 +244,77 @@ async def _collect_page(company_id: str, group_id: str, source: ResearchSource, 
     }
 
 
+async def _collect_competitor_page(
+    company_id: str, group_id: str, source: ResearchSource, observed_at: datetime,
+) -> tuple[int, dict[str, Any]]:
+    token = getattr(settings, "meta_public_content_access_token", "")
+    if not token:
+        raise CrawlError(
+            "page_public_content_access_not_configured",
+            "Cấu hình META_PUBLIC_CONTENT_ACCESS_TOKEN và được Meta duyệt Page Public Content Access để tự đọc Trang đối thủ.",
+        )
+    try:
+        reference = facebook_page_reference(source.url)
+    except ValueError as error:
+        raise CrawlError("invalid_facebook_page_url", "Hãy nhập link trang chủ Fanpage đối thủ.") from error
+
+    stored = 0
+    posts_seen = 0
+    comments_content_available = True
+    try:
+        async with MetaGraphClient("1", token, settings.meta_graph_version) as resolver:
+            page = await resolver.resolve_public_page(reference)
+        async with MetaGraphClient(page.id, token, settings.meta_graph_version) as client:
+            cursor = None
+            for _page in range(3):
+                batch = await client.list_page_posts(limit=100, after=cursor)
+                for post in batch.posts:
+                    posts_seen += 1
+                    post_url = post.permalink_url or f"https://www.facebook.com/{post.external_post_id}"
+                    counts = [post.reactions, post.comments, post.shares]
+                    metrics = {
+                        "reactions": post.reactions, "comments": post.comments, "shares": post.shares,
+                        "interactions": sum(value for value in counts if value is not None)
+                        if any(value is not None for value in counts) else None,
+                        "views": None, "followers": page.followers_count,
+                    }
+                    comments: list[str] = []
+                    if posts_seen <= 25:
+                        try:
+                            comments = [
+                                _sanitize_comment(comment)
+                                for comment in await client.list_post_comments(post.external_post_id, limit=50)
+                            ]
+                        except MetaGraphTokenExpired:
+                            raise
+                        except (MetaGraphRejected, MetaGraphReadError):
+                            comments_content_available = False
+                    await _persist_evidence(
+                        company_id=company_id, group_id=group_id, source=source, url=post_url,
+                        title=(post.message or "")[:1000],
+                        text=post.message or "Bài viết Fanpage đối thủ không có nội dung văn bản.",
+                        published_at=post.created_time, metrics=metrics, comments=comments,
+                        raw_body=None, observed_at=observed_at,
+                    )
+                    stored += 1
+                cursor = batch.next_cursor
+                if not cursor:
+                    break
+    except MetaGraphTokenExpired as error:
+        raise CrawlError("page_public_access_token_invalid", "Meta từ chối hoặc token truy cập công khai đã hết hạn.") from error
+    except MetaGraphRejected as error:
+        raise CrawlError("page_public_access_denied", "Meta từ chối đọc Trang đối thủ; kiểm tra quyền Page Public Content Access và App Review.") from error
+    return stored, {
+        "items_seen": posts_seen, "items_saved": stored, "page_name": page.name,
+        "metrics_available": [
+            key for key, value in {"reactions": True, "comments": True, "shares": True,
+                                   "followers": page.followers_count is not None}.items() if value
+        ],
+        "metrics_unavailable": ["views"],
+        "comments_content": "partially_collected" if comments_content_available else "permission_or_read_unavailable",
+    }
+
+
 def _trim_evidence_ids(payload: dict[str, Any], valid_ids: set[str]) -> dict[str, Any]:
     for item in payload.get("trends", []):
         item["evidence_ids"] = [value for value in item.get("evidence_ids", []) if value in valid_ids]
@@ -353,18 +427,27 @@ async def _run(job_id: str) -> None:
                 continue
             source_type = source.source_type
             try:
-                if source.status == "manual_import_only" or source_type in {"competitor_facebook_page", "facebook_group"}:
+                if source_type == "facebook_group" or (
+                    source.status == "manual_import_only"
+                    and not (source_type == "competitor_facebook_page"
+                             and getattr(settings, "meta_public_content_access_token", ""))
+                ):
                     outcome = {"status": "manual_import_only", "items_saved": 0,
-                               "message": "Meta không cho phép crawler không được cấp quyền đọc nhóm/Fanpage này."}
+                               "message": "Nguồn Facebook chưa có quyền API phù hợp; có thể nhập dữ liệu thủ công."}
                 elif source_type == "website":
                     _count, details = await _collect_website(company_id, group_id, source, observed_at)
                     outcome = {"status": "collected", **details}
                 elif source_type == "owned_facebook_page":
                     _count, details = await _collect_page(company_id, group_id, source, observed_at)
                     outcome = {"status": "collected", **details}
+                elif source_type == "competitor_facebook_page":
+                    _count, details = await _collect_competitor_page(company_id, group_id, source, observed_at)
+                    outcome = {"status": "collected", **details}
                 else:
                     raise CrawlError("source_type_unsupported", "Loại nguồn này chưa được hỗ trợ.")
-                source.status = "active" if source_type in {"website", "owned_facebook_page"} else "manual_import_only"
+                source.status = "active" if source_type in {
+                    "website", "owned_facebook_page", "competitor_facebook_page",
+                } else "manual_import_only"
                 source.last_crawled_at = utcnow()
                 source.error_json = None
                 source.next_due_at = utcnow() + timedelta(hours=12) if source.status == "active" else None
@@ -372,6 +455,7 @@ async def _run(job_id: str) -> None:
                 outcome = {"status": "failed", "code": error.code, "message": str(error), "items_saved": 0}
                 source.status = "needs_access" if error.code in {
                     "page_needs_reconnect", "page_token_unavailable", "page_token_expired", "page_permission_missing",
+                    "page_public_content_access_not_configured", "page_public_access_denied", "page_public_access_token_invalid",
                 } else "error"
                 source.error_json = {"code": error.code, "message": str(error), "retryable": error.retryable}
             except Exception:
