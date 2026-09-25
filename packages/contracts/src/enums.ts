@@ -43,6 +43,7 @@ export const PERMISSIONS = {
   POST_REJECT: 'post:reject',
   EXPORT_CREATE: 'export:create',
   CONNECTION_MANAGE: 'connection:manage',
+  MARKET_MANAGE: 'market:manage',
   PUBLISH_CREATE: 'publish:create',
   METRIC_IMPORT: 'metric:import',
   RECOMMENDATION_APPLY: 'recommendation:apply',
@@ -61,6 +62,7 @@ export const ROLE_PERMISSIONS: Record<WorkspaceRole, readonly Permission[]> = {
     PERMISSIONS.POST_GENERATE,
     PERMISSIONS.EXPORT_CREATE,
     PERMISSIONS.METRIC_IMPORT,
+    PERMISSIONS.MARKET_MANAGE,
   ],
   viewer: [],
 };

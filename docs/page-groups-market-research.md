@@ -47,6 +47,8 @@ Lưu giá trị qua secret store của runtime. Khi xoay khóa, đặt khóa m�
 
 Worker, Redis, database và Celery Beat cần chạy để thực hiện lịch nền. `DEEPSEEK_API_KEY` và `LLM_DEFAULT_MODEL` được đọc riêng bởi backend/worker; không gửi key lên trình duyệt. Tác vụ tự động dùng DeepSeek nếu key/model sẵn sàng, còn không thì báo fallback.
 
+Trong `NEXT_PUBLIC_USE_MOCKS=1`, trang hiển thị nhóm, link và báo cáo mẫu để xem bố cục. Mock không lưu Page Access Token và không gọi Meta; kết nối thật chỉ chạy khi frontend dùng API backend thật.
+
 Để tự đọc Page đối thủ, cấp `META_PUBLIC_CONTENT_ACCESS_TOKEN` trong secret store backend/worker. Đây phải là app/user access token thuộc Meta App đã qua App Review và có quyền Page Public Content Access/Metadata phù hợp. Sau khi cài token, chạy một chu kỳ bằng nút **Crawl ngay** cho những link đối thủ đã lưu ở chế độ nhập tay; nếu API trả quyền hợp lệ, các chu kỳ sau sẽ tự chạy mỗi 12 giờ. Token này khác Page Access Token dùng cho Page của workspace. Nếu chưa được Meta duyệt, để trống biến và dùng nhập dữ liệu thủ công. Không cấu hình secret này trong trình duyệt hoặc gửi qua chat.
 
 ## API chính

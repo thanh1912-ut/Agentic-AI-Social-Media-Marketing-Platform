@@ -47,6 +47,7 @@ import type {
   ApiRecommendationFeedbackRequest,
   ApiRecordExperimentOutcomeRequest,
 } from '@/lib/api/types';
+import type { MarketGroup, MarketReport, PageConnection, ResearchSource } from '@/lib/api/market-research';
 
 import {
   DEMO_ACCOUNTS,
@@ -165,6 +166,13 @@ const demoBriefRevisionDrafts: Record<string, Record<string, DemoBriefRevisionDr
 const demoExperimentOutcomes: Record<string, Record<string, ApiExperimentOutcome[]>> = {};
 const demoExperimentOutcomeFingerprints: Record<string, Record<string, Record<string, string>>> = {};
 const demoRevisionJobsByKey: Record<string, string> = {};
+type DemoMarketState = {
+  groups: MarketGroup[];
+  pages: PageConnection[];
+  sources: ResearchSource[];
+  reports: MarketReport[];
+};
+const demoMarketStates = new Map<string, DemoMarketState>();
 type DemoInvitationToken = { workspaceId: string; memberId: string };
 const demoInvitationTokens = new Map<string, DemoInvitationToken>([
   ['demo-invite-mem_3', { workspaceId: WS_FB, memberId: 'mem_3' }],
@@ -209,6 +217,73 @@ function currentSession(): SessionResponse | null {
     active_workspace_id: activeWorkspaceId,
     expires_at: new Date(new Date(DEMO_NOW).getTime() + 8 * 3_600_000).toISOString(),
   };
+}
+
+function marketState(workspaceId: string): DemoMarketState {
+  const stored = demoMarketStates.get(workspaceId);
+  if (stored) return stored;
+  const groupId = 'market_' + workspaceId;
+  const sourceSiteId = 'market_site_' + workspaceId;
+  const sourceCompetitorId = 'market_competitor_' + workspaceId;
+  const latest = new Date(new Date(DEMO_NOW).getTime() - 2 * 3_600_000).toISOString();
+  const state: DemoMarketState = {
+    groups: [{
+      id: groupId, name: 'Ẩm thực Hà Nội', industry: 'Nhà hàng và F&B', region: 'Hà Nội', locale: 'vi-VN',
+      keywords: ['phở', 'bữa sáng', 'đặc sản Hà Nội'], active: true, page_count: 0, source_count: 2,
+      next_due_at: new Date(new Date(DEMO_NOW).getTime() + 10 * 3_600_000).toISOString(), last_cycle_at: latest,
+    }],
+    pages: [],
+    sources: [
+      {
+        id: sourceSiteId, group_id: groupId, source_type: 'website', name: 'Ẩm thực mùa thu',
+        url: 'https://amthuc.example.vn/tin-tuc', competitor_name: null, status: 'active', active: true,
+        next_due_at: new Date(new Date(DEMO_NOW).getTime() + 10 * 3_600_000).toISOString(),
+        last_crawled_at: latest, error: null, connection_id: null,
+      },
+      {
+        id: sourceCompetitorId, group_id: groupId, source_type: 'competitor_facebook_page',
+        name: 'Quán ngon quanh đây', url: 'https://www.facebook.com/quanngon.example',
+        competitor_name: 'Quán ngon quanh đây', status: 'manual_import_only', active: true,
+        next_due_at: null, last_crawled_at: latest, error: null, connection_id: null,
+      },
+    ],
+    reports: [{
+      id: 'market_report_' + workspaceId, group_id: groupId,
+      window_start: new Date(new Date(DEMO_NOW).getTime() - 14 * 3_600_000).toISOString(),
+      window_end: latest,
+      report: {
+        headline: 'Bản demo: khách hàng đang quan tâm bữa sáng tiện lợi',
+        summary: 'Dữ liệu mẫu cho thấy nội dung về món ăn sáng nhanh và nguồn gốc nguyên liệu đang được nhắc đến nhiều. Đây là ví dụ giao diện, không phải kết quả crawl thật.',
+        analysis_status: 'completed',
+        trends: [{
+          title: 'Bữa sáng mang đi',
+          explanation: 'Các bài mẫu về bữa sáng gọn nhẹ có mức tương tác cao hơn nhóm nội dung giới thiệu chung.',
+          evidence_ids: ['market_evidence_demo'], confidence: 0.78,
+        }],
+        suggestions: [{
+          title: 'Một buổi sáng Hà Nội trong 15 phút',
+          angle: 'Kể hành trình chuẩn bị bữa sáng nhanh, nhấn vào nguyên liệu và trải nghiệm tại quán.',
+          hook: 'Sáng bận rộn vẫn có thể ăn ngon.', format: 'Bài Facebook kèm ảnh', evidence_ids: ['market_evidence_demo'],
+        }],
+        evidence_refs: [{
+          id: 'market_evidence_demo', title: 'Bài mẫu về bữa sáng',
+          url: 'https://amthuc.example.vn/tin-tuc/bua-sang', published_at: latest,
+        }],
+      },
+      evidence_ids: ['market_evidence_demo'],
+      coverage: {
+        ai_status: 'completed',
+        metrics_note: 'Bản demo dùng dữ liệu minh họa; thiếu lượt xem sẽ để trống.',
+        sources: [
+          { source_id: sourceSiteId, status: 'collected', items_seen: 8, items_saved: 8, metrics_available: [], metrics_unavailable: [] },
+          { source_id: sourceCompetitorId, status: 'manual_import_only', items_seen: 0, items_saved: 0, metrics_available: [], metrics_unavailable: ['views'] },
+        ],
+      },
+      model_name: 'demo-only', created_at: latest,
+    }],
+  };
+  demoMarketStates.set(workspaceId, state);
+  return state;
 }
 
 // ---------------------------------------------------------------------------
@@ -1532,10 +1607,142 @@ export const handlers = [
 
   // Research UI uses the real Page registry endpoint in real mode. In demo
   // mode the registry is intentionally empty and never simulates credentials.
+  http.get('*/api/v1/workspaces/:workspaceId/market-research/groups', ({ params }) => {
+    const session = currentSession();
+    if (!session) return unauthenticated();
+    return HttpResponse.json(marketState(String(params.workspaceId)).groups);
+  }),
+
+  http.post('*/api/v1/workspaces/:workspaceId/market-research/groups', async ({ params, request }) => {
+    const session = currentSession();
+    if (!session) return unauthenticated();
+    const state = marketState(String(params.workspaceId));
+    const body = (await request.json()) as Pick<MarketGroup, 'name' | 'industry' | 'region' | 'locale' | 'keywords'>;
+    const group: MarketGroup = {
+      id: nextId('market_group'), ...body, active: true, page_count: 0, source_count: 0,
+      next_due_at: null, last_cycle_at: null,
+    };
+    state.groups.push(group);
+    return HttpResponse.json(group, { status: 201 });
+  }),
+
+  http.get('*/api/v1/workspaces/:workspaceId/market-research/groups/:groupId/pages', ({ params }) => {
+    const session = currentSession();
+    if (!session) return unauthenticated();
+    const state = marketState(String(params.workspaceId));
+    return HttpResponse.json(state.pages.filter((page) => page.group_id === String(params.groupId)));
+  }),
+
+  http.post('*/api/v1/workspaces/:workspaceId/market-research/groups/:groupId/pages', () => {
+    const session = currentSession();
+    if (!session) return unauthenticated();
+    // The demo deliberately never accepts or stores Page credentials.
+    return fail(409, 'demo_live_meta_unavailable', 'Bản demo không kết nối Meta thật; dùng môi trường backend đã cấu hình để xác minh Page.');
+  }),
+
+  http.delete('*/api/v1/workspaces/:workspaceId/market-research/pages/:connectionId', ({ params }) => {
+    const session = currentSession();
+    if (!session) return unauthenticated();
+    const state = marketState(String(params.workspaceId));
+    state.pages = state.pages.filter((page) => page.id !== String(params.connectionId));
+    return new HttpResponse(null, { status: 204 });
+  }),
+
   http.get('*/api/v1/workspaces/:workspaceId/market-research/pages', () => {
     const session = currentSession();
     if (!session) return unauthenticated();
     return HttpResponse.json([]);
+  }),
+
+  http.get('*/api/v1/workspaces/:workspaceId/market-research/sources', ({ params, request }) => {
+    const session = currentSession();
+    if (!session) return unauthenticated();
+    const state = marketState(String(params.workspaceId));
+    const groupId = new URL(request.url).searchParams.get('group_id');
+    return HttpResponse.json(state.sources.filter((source) => source.active && (!groupId || source.group_id === groupId)));
+  }),
+
+  http.post('*/api/v1/workspaces/:workspaceId/market-research/sources', async ({ params, request }) => {
+    const session = currentSession();
+    if (!session) return unauthenticated();
+    const state = marketState(String(params.workspaceId));
+    const body = (await request.json()) as {
+      group_id: string; source_type: ResearchSource['source_type']; name: string; url: string;
+      competitor_name?: string; connection_id?: string;
+    };
+    const group = state.groups.find((item) => item.id === body.group_id);
+    if (!group) return notFound('nhóm nghiên cứu');
+    const automaticallyReadable = body.source_type === 'website' || body.source_type === 'owned_facebook_page';
+    const source: ResearchSource = {
+      id: nextId('market_source'), group_id: group.id, source_type: body.source_type, name: body.name,
+      url: body.url, competitor_name: body.competitor_name ?? null,
+      status: automaticallyReadable ? 'active' : 'manual_import_only', active: true,
+      next_due_at: automaticallyReadable ? new Date(new Date(DEMO_NOW).getTime() + 12 * 3_600_000).toISOString() : null,
+      last_crawled_at: null, error: null, connection_id: body.connection_id ?? null,
+    };
+    state.sources.push(source);
+    group.source_count = state.sources.filter((item) => item.group_id === group.id && item.active).length;
+    return HttpResponse.json(source, { status: 201 });
+  }),
+
+  http.delete('*/api/v1/workspaces/:workspaceId/market-research/sources/:sourceId', ({ params }) => {
+    const session = currentSession();
+    if (!session) return unauthenticated();
+    const state = marketState(String(params.workspaceId));
+    const source = state.sources.find((item) => item.id === String(params.sourceId));
+    if (!source) return notFound('nguồn nghiên cứu');
+    source.active = false;
+    source.status = 'disabled';
+    const group = state.groups.find((item) => item.id === source.group_id);
+    if (group) group.source_count = state.sources.filter((item) => item.group_id === group.id && item.active).length;
+    return new HttpResponse(null, { status: 204 });
+  }),
+
+  http.post('*/api/v1/workspaces/:workspaceId/market-research/sources/:sourceId/import', async ({ params, request }) => {
+    const session = currentSession();
+    if (!session) return unauthenticated();
+    const state = marketState(String(params.workspaceId));
+    const source = state.sources.find((item) => item.id === String(params.sourceId) && item.active);
+    if (!source) return notFound('nguồn nghiên cứu');
+    const body = (await request.json()) as { rows?: unknown[] };
+    return HttpResponse.json({ imported: body.rows?.length ?? 0, observed_at: nowIso() }, { status: 201 });
+  }),
+
+  http.post('*/api/v1/workspaces/:workspaceId/market-research/groups/:groupId/crawl', ({ params }) => {
+    const session = currentSession();
+    if (!session) return unauthenticated();
+    const state = marketState(String(params.workspaceId));
+    const group = state.groups.find((item) => item.id === String(params.groupId));
+    if (!group) return notFound('nhóm nghiên cứu');
+    const jobId = nextId('market_job');
+    const createdAt = nowIso();
+    return HttpResponse.json({
+      job_id: jobId,
+      job: {
+        id: jobId, kind: 'market_research', status: 'queued', title: `Thu thập dữ liệu: ${group.name}`,
+        progress: 0, steps: [{ key: 'collect_sources', label: 'Đọc nguồn demo', status: 'pending' }],
+        created_at: createdAt, cancellable: false,
+      },
+    }, { status: 202 });
+  }),
+
+  http.get('*/api/v1/workspaces/:workspaceId/market-research/groups/:groupId/reports', ({ params }) => {
+    const session = currentSession();
+    if (!session) return unauthenticated();
+    const state = marketState(String(params.workspaceId));
+    return HttpResponse.json(state.reports.filter((report) => report.group_id === String(params.groupId)));
+  }),
+
+  http.post('*/api/v1/workspaces/:workspaceId/market-research/reports/:reportId/draft', async ({ params, request }) => {
+    const session = currentSession();
+    if (!session) return unauthenticated();
+    const state = marketState(String(params.workspaceId));
+    if (!state.reports.some((report) => report.id === String(params.reportId))) return notFound('báo cáo');
+    await request.json();
+    return HttpResponse.json({
+      campaign_id: demoCampaigns[String(params.workspaceId)]?.[0]?.id ?? 'camp_fb',
+      message: 'Bản demo minh hoạ luồng tạo chiến dịch nháp; chưa tạo dữ liệu trên backend thật.',
+    }, { status: 201 });
   }),
 
   http.get('*/api/v1/workspaces/:workspaceId/meta/publications', () => {
@@ -1575,6 +1782,7 @@ function inferKind(filename: string, mimeType: string): DocumentUpload['kind'] |
 export function resetMockSession(): void {
   signedInUserId = null;
   activeWorkspaceId = WS_FB;
+  demoMarketStates.clear();
 }
 
 export const JOB_KIND_LABELS: Record<string, string> = {

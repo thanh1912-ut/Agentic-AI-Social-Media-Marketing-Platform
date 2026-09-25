@@ -335,13 +335,15 @@ export default function FanpagesMarketResearchPage() {
 
           <Card
             title="Nguồn thu thập"
-            description="Website công khai và Page bạn quản lý được đọc tự động mỗi 12 giờ. Page đối thủ/nhóm Facebook lưu link để theo dõi, nhưng cần nhập dữ liệu vì quyền Graph API không đảm bảo."
+            description="Website, Page của workspace và Fanpage đối thủ có quyền Meta phù hợp được đọc mỗi 12 giờ. Nhóm Facebook hiện lưu link và nhập dữ liệu thủ công; số liệu thiếu quyền sẽ để trống."
           >
             {canManageMarket ? (
               <form className="grid gap-3 sm:grid-cols-2" onSubmit={submitSource}>
                 <label className="text-sm text-slate-700">Loại nguồn<select value={sourceType} onChange={(event) => setSourceType(event.currentTarget.value as ResearchSourceType)} className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2">{Object.entries(SOURCE_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
                 <label className="text-sm text-slate-700">Tên nguồn<input name="name" required maxLength={200} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2" placeholder="Tên website/Page/nhóm" /></label>
                 <label className="text-sm text-slate-700 sm:col-span-2">Link website hoặc Facebook<input name="url" required type="url" maxLength={2048} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2" placeholder="https://…" /></label>
+                {sourceType === 'competitor_facebook_page' ? <p className="text-xs text-slate-500 sm:col-span-2">Tự thu thập Page đối thủ cần backend cấu hình access token của Meta App đã được duyệt quyền Page Public Content Access. Nếu chưa có quyền, link vẫn được lưu và có thể nhập số liệu thủ công.</p> : null}
+                {sourceType === 'facebook_group' ? <p className="text-xs text-slate-500 sm:col-span-2">Link nhóm được lưu để theo dõi. Chỉ nhập dữ liệu nhóm mà bạn có quyền sử dụng; bản hiện tại không tự scrape nhóm Facebook.</p> : null}
                 {sourceType === 'owned_facebook_page' ? (
                   <label className="text-sm text-slate-700 sm:col-span-2">Fanpage đã kết nối<select name="connection_id" required className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2"><option value="">Chọn Fanpage</option>{pages.filter((page) => page.status === 'verified').map((page) => <option key={page.id} value={page.id}>{page.page_name} · {page.page_id}</option>)}</select></label>
                 ) : null}
