@@ -13,7 +13,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from sqlalchemy.pool import StaticPool
 
-from database.models import Base, MarketEvidence, MarketObservation, MetaPageConnection, MetaPageGroup, ResearchCycle
+from database.models import Base, MarketEvidence, MarketObservation, MetaPageConnection, MetaPageGroup, ResearchCycle, ResearchSource, new_id
 from services.api import market_research as market_research_routes
 from services.api import meta_tokens
 from services.api.db import get_db
@@ -269,7 +269,7 @@ def test_competitor_page_uses_approved_public_api_token_when_configured(market_a
 
     saved, details = asyncio.run(collect())
     assert saved == 1
-    assert details["metrics_available"] == ["reactions", "comments", "shares", "followers"]
+    assert details["metrics_available"] == ["reactions", "comments", "shares", "interactions", "followers"]
     assert details["metrics_unavailable"] == ["views"]
 
     async def read_observation():
@@ -285,6 +285,115 @@ def test_competitor_page_uses_approved_public_api_token_when_configured(market_a
         "views": None, "followers": 2500,
     }
     assert observation.comments_json == ["Liên hệ [đã ẩn email]"]
+
+
+def test_owned_page_collection_saves_views_and_followers_when_meta_returns_them(market_api, monkeypatch) -> None:
+    client, session_factory, _encryption_key = market_api
+    monkeypatch.setattr(market_research_routes, "MetaGraphClient", FakeMetaGraphClient)
+    monkeypatch.setattr(research_tasks, "SessionLocal", session_factory)
+    monkeypatch.setattr(research_tasks, "settings", SimpleNamespace(meta_graph_version="v26.0"))
+    workspace_id, headers = _owner(client, "owned-page-owner@example.com")
+    group_id = _create_group(client, workspace_id, headers)
+    token = "opaque-owned-page-token-with-entropy-12345"
+    connected = client.post(
+        f"/api/v1/workspaces/{workspace_id}/market-research/groups/{group_id}/pages",
+        headers=headers,
+        json={"page_id": "123456789", "page_access_token": token},
+    )
+    assert connected.status_code == 201, connected.text
+    connection_id = connected.json()["id"]
+    created = client.post(
+        f"/api/v1/workspaces/{workspace_id}/market-research/sources",
+        headers=headers,
+        json={
+            "group_id": group_id, "source_type": "owned_facebook_page", "name": "Fanpage của tôi",
+            "url": "https://www.facebook.com/123456789", "connection_id": connection_id,
+        },
+    )
+    assert created.status_code == 201, created.text
+    source_id = created.json()["id"]
+
+    class FakeOwnedGraphClient:
+        def __init__(self, page_id: str, page_token: str, graph_version: str):
+            assert page_id == "123456789"
+            assert page_token == token
+            assert graph_version == "v26.0"
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *_args):
+            return None
+
+        async def read_page_followers_count(self):
+            return 5400
+
+        async def list_page_posts(self, limit: int = 100, after: str | None = None):
+            assert limit == 100 and after is None
+            return MetaPagePostsPage((MetaPagePost(
+                external_post_id="123456789_42", message="Bài viết mới", created_time=None,
+                permalink_url="https://www.facebook.com/123456789/posts/42",
+                reactions=22, comments=5, shares=3,
+            ),), None)
+
+        async def read_post_media_views(self, external_post_id: str):
+            assert external_post_id == "123456789_42"
+            return 7654
+
+        async def list_post_comments(self, external_post_id: str, limit: int = 50):
+            assert external_post_id == "123456789_42" and limit == 50
+            return ("Bài này hữu ích",)
+
+    monkeypatch.setattr(research_tasks, "MetaGraphClient", FakeOwnedGraphClient)
+
+    observed_at = datetime.now(timezone.utc)
+
+    async def collect():
+        async with session_factory() as db:
+            source = await db.get(ResearchSource, source_id)
+            assert source is not None
+        return await research_tasks._collect_page(workspace_id, group_id, source, observed_at)
+
+    saved, details = asyncio.run(collect())
+    assert saved == 1
+    assert details["metrics_available"] == ["reactions", "comments", "shares", "interactions", "views", "followers"]
+    assert details["metrics_unavailable"] == []
+
+    async def read_observation():
+        async with session_factory() as db:
+            evidence = await db.scalar(select(MarketEvidence).where(MarketEvidence.source_id == source_id))
+            return await db.scalar(select(MarketObservation).where(MarketObservation.evidence_id == evidence.id))
+
+    observation = asyncio.run(read_observation())
+    assert observation is not None
+    assert observation.metrics_json == {
+        "reactions": 22, "comments": 5, "shares": 3, "interactions": 30,
+        "views": 7654, "followers": 5400,
+    }
+    assert observation.comments_json == ["Bài này hữu ích"]
+
+    async def seed_previous_snapshot():
+        async with session_factory() as db:
+            evidence = await db.scalar(select(MarketEvidence).where(MarketEvidence.source_id == source_id))
+            assert evidence is not None
+            db.add(MarketObservation(
+                id=new_id(), company_id=workspace_id, evidence_id=evidence.id,
+                observed_at=observed_at - timedelta(hours=12),
+                metrics_json={
+                    "reactions": 10, "comments": 3, "shares": 2,
+                    "interactions": 15, "views": 7000, "followers": 5300,
+                }, comments_json=["snapshot cũ"],
+            ))
+            await db.commit()
+
+    asyncio.run(seed_previous_snapshot())
+    report_evidence = asyncio.run(research_tasks._evidence_for_report(workspace_id, group_id))
+    assert len(report_evidence) == 1
+    assert report_evidence[0]["metrics"]["followers"] == 5400
+    assert report_evidence[0]["metric_delta"] == {
+        "reactions": 12, "comments": 2, "shares": 1, "interactions": 15, "views": 654,
+    }
+    assert report_evidence[0]["comments"] == ["Bài này hữu ích"]
 
 
 def test_due_market_research_enqueues_one_durable_cycle(market_api) -> None:

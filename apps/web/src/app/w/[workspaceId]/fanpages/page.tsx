@@ -18,6 +18,35 @@ const SOURCE_LABELS: Record<ResearchSourceType, string> = {
   facebook_group: 'Nhóm Facebook',
 };
 
+const MARKET_METRIC_LABELS: Record<string, string> = {
+  reactions: 'Cảm xúc',
+  comments: 'Bình luận',
+  shares: 'Chia sẻ',
+  interactions: 'Tương tác',
+  views: 'Lượt xem',
+  followers: 'Người theo dõi Page',
+};
+
+function formatMetrics(metrics: Record<string, number | null> | undefined): string {
+  if (!metrics) return '';
+  return Object.entries(metrics)
+    .filter(([key, value]) => key in MARKET_METRIC_LABELS && typeof value === 'number' && Number.isFinite(value))
+    .map(([key, value]) => `${MARKET_METRIC_LABELS[key]}: ${new Intl.NumberFormat('vi-VN').format(value as number)}`)
+    .join(' · ');
+}
+
+function formatMetricChanges(metrics: Record<string, number | null> | undefined): string {
+  if (!metrics) return '';
+  return Object.entries(metrics)
+    .filter(([key, value]) => key in MARKET_METRIC_LABELS && typeof value === 'number' && Number.isFinite(value))
+    .map(([key, value]) => {
+      const amount = new Intl.NumberFormat('vi-VN').format(Math.abs(value as number));
+      const direction = (value as number) > 0 ? '+' : (value as number) < 0 ? '−' : '';
+      return `${MARKET_METRIC_LABELS[key]}: ${direction}${amount}`;
+    })
+    .join(' · ');
+}
+
 const SOURCE_STATUS: Record<string, { label: string; tone: 'neutral' | 'info' | 'success' | 'warning' | 'danger' }> = {
   active: { label: 'Tự động thu thập', tone: 'success' },
   manual_import_only: { label: 'Cần nhập dữ liệu thủ công', tone: 'info' },
@@ -55,6 +84,8 @@ export default function FanpagesMarketResearchPage() {
   const [manualReactions, setManualReactions] = useState('');
   const [manualCommentsCount, setManualCommentsCount] = useState('');
   const [manualShares, setManualShares] = useState('');
+  const [manualViews, setManualViews] = useState('');
+  const [manualFollowers, setManualFollowers] = useState('');
   const [manualCommentText, setManualCommentText] = useState('');
   const [manualResult, setManualResult] = useState<string | null>(null);
   const [pageNotice, setPageNotice] = useState<string | null>(null);
@@ -159,6 +190,8 @@ export default function FanpagesMarketResearchPage() {
           reactions: metric(manualReactions),
           comments: metric(manualCommentsCount),
           shares: metric(manualShares),
+          views: metric(manualViews),
+          followers: metric(manualFollowers),
         },
         comments,
       }]);
@@ -169,6 +202,11 @@ export default function FanpagesMarketResearchPage() {
       setManualTitle('');
       setManualText('');
       setManualCommentText('');
+      setManualReactions('');
+      setManualCommentsCount('');
+      setManualShares('');
+      setManualViews('');
+      setManualFollowers('');
       await refreshGroupData();
     },
   });
@@ -343,7 +381,7 @@ export default function FanpagesMarketResearchPage() {
                 <label className="text-sm text-slate-700">Tên nguồn<input name="name" required maxLength={200} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2" placeholder="Tên website/Page/nhóm" /></label>
                 <label className="text-sm text-slate-700 sm:col-span-2">Link website hoặc Facebook<input name="url" required type="url" maxLength={2048} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2" placeholder="https://…" /></label>
                 {sourceType === 'competitor_facebook_page' ? <p className="text-xs text-slate-500 sm:col-span-2">Tự thu thập Page đối thủ cần backend cấu hình access token của Meta App đã được duyệt quyền Page Public Content Access. Nếu chưa có quyền, link vẫn được lưu và có thể nhập số liệu thủ công.</p> : null}
-                {sourceType === 'facebook_group' ? <p className="text-xs text-slate-500 sm:col-span-2">Link nhóm được lưu để theo dõi. Chỉ nhập dữ liệu nhóm mà bạn có quyền sử dụng; bản hiện tại không tự scrape nhóm Facebook.</p> : null}
+                {sourceType === 'facebook_group' ? <p className="text-xs text-slate-500 sm:col-span-2">Link nhóm được lưu để tái sử dụng. Meta đã gỡ Groups API nên hệ thống không tự đọc bài trong nhóm; hãy nhập nội dung và số liệu mà bạn được phép sử dụng.</p> : null}
                 {sourceType === 'owned_facebook_page' ? (
                   <label className="text-sm text-slate-700 sm:col-span-2">Fanpage đã kết nối<select name="connection_id" required className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2"><option value="">Chọn Fanpage</option>{pages.filter((page) => page.status === 'verified').map((page) => <option key={page.id} value={page.id}>{page.page_name} · {page.page_id}</option>)}</select></label>
                 ) : null}
@@ -381,6 +419,8 @@ export default function FanpagesMarketResearchPage() {
                 <label className="text-sm text-slate-700">Lượt thích / cảm xúc<input inputMode="numeric" type="number" min="0" value={manualReactions} onChange={(event) => setManualReactions(event.currentTarget.value)} className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2" /></label>
                 <label className="text-sm text-slate-700">Số bình luận<input inputMode="numeric" type="number" min="0" value={manualCommentsCount} onChange={(event) => setManualCommentsCount(event.currentTarget.value)} className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2" /></label>
                 <label className="text-sm text-slate-700">Lượt chia sẻ<input inputMode="numeric" type="number" min="0" value={manualShares} onChange={(event) => setManualShares(event.currentTarget.value)} className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2" /></label>
+                <label className="text-sm text-slate-700">Lượt xem<input inputMode="numeric" type="number" min="0" value={manualViews} onChange={(event) => setManualViews(event.currentTarget.value)} className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2" /></label>
+                <label className="text-sm text-slate-700">Người theo dõi Page<input inputMode="numeric" type="number" min="0" value={manualFollowers} onChange={(event) => setManualFollowers(event.currentTarget.value)} className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2" /></label>
                 <label className="text-sm text-slate-700 sm:col-span-2">Nội dung bình luận (mỗi dòng một bình luận)<textarea rows={3} value={manualCommentText} onChange={(event) => setManualCommentText(event.currentTarget.value)} className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2" /></label>
                 <div className="flex gap-2 sm:col-span-2"><Button type="submit" loading={importManual.isPending} disabled={!manualText || !manualPostUrl} disabledReason="Nhập link và nội dung bài viết.">Lưu dữ liệu</Button><Button variant="secondary" onClick={() => setManualSourceId('')}>Đóng</Button></div>
                 {manualResult ? <p role="status" className="text-sm text-emerald-800 sm:col-span-2">{manualResult}</p> : null}
@@ -389,7 +429,7 @@ export default function FanpagesMarketResearchPage() {
             ) : null}
           </Card>
 
-          <Card title="Báo cáo xu hướng và gợi ý" description="DeepSeek phân tích nội dung nguồn, số tương tác và bình luận đã nhập. Chỉ số thiếu quyền sẽ để trống; từng kết luận có liên kết bằng chứng.">
+          <Card title="Báo cáo xu hướng và gợi ý" description="DeepSeek phân tích nội dung, tương tác, views, follower count và thay đổi giữa các lần crawl khi nguồn trả dữ liệu. Giá trị thiếu được để trống; kết luận có nguồn đối chiếu.">
             {reportsQuery.isLoading ? <LoadingBlock label="Đang tải báo cáo…" /> : null}
             {reportsQuery.error ? <ErrorPanel message={readableError(reportsQuery.error, 'Không tải được báo cáo.')} retryable onRetry={() => void reportsQuery.refetch()} /> : null}
             {reports.map((report) => (
@@ -415,12 +455,15 @@ export default function FanpagesMarketResearchPage() {
                             {reference.title || reference.url}
                           </a>
                           {reference.published_at ? ' · ' + formatDateTime(reference.published_at) : ''}
+                          {formatMetrics(reference.metrics) ? <p className="mt-1 text-xs text-slate-600">{formatMetrics(reference.metrics)}</p> : null}
+                          {formatMetricChanges(reference.metric_delta) ? <p className="mt-1 text-xs text-slate-600">Thay đổi giữa hai lần crawl: {formatMetricChanges(reference.metric_delta)}</p> : null}
+                          {reference.comments?.length ? <ul className="mt-1 list-inside list-disc text-xs text-slate-600">{reference.comments.map((comment, index) => <li key={`${reference.id}-comment-${index}`}>{comment}</li>)}</ul> : null}
                         </li>
                       ))}
                     </ul>
                   </details>
                 ) : null}
-                {(report.coverage.sources ?? []).length > 0 ? <details className="mt-4"><summary className="cursor-pointer text-sm font-medium text-slate-700">Chi tiết nguồn và quyền số liệu</summary><ul className="mt-2 space-y-1 text-xs text-slate-600">{report.coverage.sources?.map((source) => <li key={source.source_id}>{source.status} · {source.items_saved ?? 0} mục đã lưu{source.metrics_unavailable?.length ? ' · chưa có quyền: ' + source.metrics_unavailable.join(', ') : ''}{source.message ? ' · ' + source.message : ''}</li>)}</ul>{report.coverage.metrics_note ? <p className="mt-2 text-xs text-slate-500">{report.coverage.metrics_note}</p> : null}</details> : null}
+                {(report.coverage.sources ?? []).length > 0 ? <details className="mt-4"><summary className="cursor-pointer text-sm font-medium text-slate-700">Chi tiết nguồn và quyền số liệu</summary><ul className="mt-2 space-y-1 text-xs text-slate-600">{report.coverage.sources?.map((source) => <li key={source.source_id}>{source.status} · {source.items_saved ?? 0} mục đã lưu{source.metrics_available?.length ? ' · số liệu có: ' + source.metrics_available.join(', ') : ''}{source.metrics_unavailable?.length ? ' · số liệu thiếu: ' + source.metrics_unavailable.join(', ') : ''}{source.metrics_partial && Object.keys(source.metrics_partial).length ? ' · thiếu một phần: ' + Object.entries(source.metrics_partial).map(([key, value]) => `${key} (${value.observed_posts}/${value.total_posts})`).join(', ') : ''}{source.message ? ' · ' + source.message : ''}</li>)}</ul>{report.coverage.metrics_note ? <p className="mt-2 text-xs text-slate-500">{report.coverage.metrics_note}</p> : null}</details> : null}
               </article>
             ))}
             {!reportsQuery.isLoading && reports.length === 0 ? <EmptyState title="Chưa có báo cáo" description="Sau khi lưu nguồn, bấm Thu thập ngay hoặc chờ lượt tự động đầu tiên. Lịch tiếp theo chạy sau mỗi 12 giờ." /> : null}

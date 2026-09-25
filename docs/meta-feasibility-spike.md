@@ -59,6 +59,29 @@ có trang collection, nhưng trang công khai chưa hiển thị đủ nội dun
 xác nhận version, fields hay permissions. Vì vậy bảng trên không dựa vào ví dụ
 API cũ hoặc nguồn không thuộc Meta.
 
+## Nghiên cứu nhiều Page và Facebook Group — 2026-09-25
+
+Branch `codex/page-groups-market-research` thêm tới 5 Page connection đã xác minh
+trong một workspace và nguồn owned/competitor Page chạy theo chu kỳ thị trường
+12 giờ. Crawler owned Page thử `post_media_view` cho tối đa 25 bài và
+`followers_count` một lần mỗi lượt; các field này có unit/fixture tests nhưng
+chưa được gọi bằng token thật. Competitor Page không nhận Page Insights views;
+followers chỉ được lưu nếu token public-content trả field đó. UI import tay có
+trường views và follower count. Không gán 0 cho số thiếu.
+
+Tự crawl Group bị `BLOCKED_EXTERNAL`. Meta Graph API v19 changelog deprecates
+Groups API và các permission `publish_to_groups`/`groups_access_member_info`,
+áp dụng cho mọi API version từ 2024-04-22. Meta Content Library có public Group
+content nhưng Meta mô tả quyền truy cập cho tổ chức học thuật/phi lợi nhuận đủ
+điều kiện nghiên cứu khoa học/lợi ích công cộng; không phù hợp connector thương
+mại cho SME. Sản phẩm chỉ lưu link và nhập dữ liệu mà workspace được phép dùng.
+Không scrape hoặc dùng browser automation để né giới hạn.
+
+Nguồn chính thức: [Graph API v19 changelog](https://developers.facebook.com/docs/graph-api/changelog/version19.0),
+[Meta Content Library announcement](https://about.fb.com/news/2023/11/new-tools-to-support-independent-research/).
+Contract live cho Page views/followers, quyền App Review, metrics semantics và
+rate limits vẫn `VERIFY CURRENT META API`.
+
 ## Capability và bí mật
 
 Mỗi Page/connection cần trình bày riêng cho owner:

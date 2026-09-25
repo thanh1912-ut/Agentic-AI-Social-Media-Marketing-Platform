@@ -1,6 +1,24 @@
 # Báo cáo kiểm thử
 
-Cập nhật: 2026-09-24 15:19 (Asia/Ho_Chi_Minh). Snapshot gốc là PR branch head `1f99bb7709f356975637b241895a34bc50e9764f`; hosted backend workflow [#68](https://github.com/thanh1912-ut/Agentic-AI-Social-Media-Marketing-Platform/actions/runs/35961071754) pass. Meta Page connector đang được thêm trên branch riêng. Các lượt kiểm tra dưới đây thuộc snapshot Meta hiện tại và không được gộp với test của PR base.
+Cập nhật: 2026-09-25 15:18 (Asia/Ho_Chi_Minh).
+
+## Nhiều Fanpage và nghiên cứu thị trường — working tree, 2026-09-25
+
+| Check | Kết quả | Bằng chứng và giới hạn |
+|---|---|---|
+| Full Python suite | **185 passed, 1 skipped** | Python 3.13.9; chạy với SQLite/fake providers và pgvector shim vì môi trường test không có pgvector. Skip là live DeepSeek smoke opt-in; một LangGraph pending-deprecation warning. Không chứng minh PostgreSQL/Meta/provider thật. |
+| Frontend | **47 Vitest passed; ESLint PASS; TypeScript PASS** | TypeScript cần `--incremental false` vì sandbox không cho tạo `tsconfig.tsbuildinfo` trong worktree. |
+| Python source checks | **Ruff PASS; compileall PASS; `git diff --check` PASS** | Áp dụng lên worker, Meta client và các test liên quan. |
+| OpenAPI | **PASS** | `scripts/export_openapi.py --output <absolute openapi.json> --check`; schema không đổi trong phần metrics hiện tại. |
+| Production Next.js build | **INCOMPLETE — ENOSPC** | Compile và typecheck hoàn tất; Next dừng khi ghi cache/output vì ổ đĩa hết dung lượng. Không tính đây là build pass. Playwright 42/42 thuộc snapshot trước UI metrics mới và chưa chạy lại sau thay đổi này. |
+| Live crawler trial: `https://taphoammo.vn/` | **PASS — 4 URL cùng host** | Dùng `crawl_public_site`, xác minh `robots.txt`, giới hạn 4 trang. Đọc trang chủ, bài ưu đãi Moma Cloud, trang Chatbot AI 24/7 và Plugin WP Invoice Generator. Nội dung gợi ý website bán công cụ/dịch vụ MMO, ưu đãi VPS và use case chatbot/hoá đơn; không có số views, tương tác, bình luận hay follower. Đây là mẫu nội dung website, không đủ dữ liệu để khẳng định hot trend. |
+| Persistence, DeepSeek và Meta trong lần crawl này | **NOT RUN** | API backend tại `localhost:8000` không chạy; UI `localhost:3100` hiển thị Bản demo/mock. Crawl trả nội dung thử nghiệm trong tiến trình, không lưu workspace, không gọi DeepSeek hoặc Meta. |
+
+Các URL đã đọc: [trang chủ](https://taphoammo.vn/), [ưu đãi Moma Cloud](https://taphoammo.vn/mung-quoc-khanh-02-09-moma-cloud-giam-den-50), [Chatbot AI trả lời khách 24/7](https://taphoammo.vn/chatbot-ai-tra-loi-khach-24-7), [Plugin WP Invoice Generator](https://taphoammo.vn/plugin-wp-invoice-generator-tao-hoa-don-chuyen-nghiep).
+
+## Snapshot trước — Meta Page connector, 2026-09-24
+
+Snapshot gốc là PR branch head `1f99bb7709f356975637b241895a34bc50e9764f`; hosted backend workflow [#68](https://github.com/thanh1912-ut/Agentic-AI-Social-Media-Marketing-Platform/actions/runs/35961071754) pass. Các kiểm tra lịch sử bên dưới thuộc snapshot Meta/PR base, không phải bằng chứng runtime cho feature nghiên cứu thị trường.
 
 ## Meta Page connector — local snapshot, 2026-09-24
 

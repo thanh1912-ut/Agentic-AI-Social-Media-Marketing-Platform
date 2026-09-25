@@ -139,6 +139,20 @@ def _shares_count(value: object) -> int | None:
     return _nonnegative_count(value.get("count")) if isinstance(value, dict) else None
 
 
+def _insight_count(payload: dict[str, object], metric_name: str) -> int | None:
+    data = payload.get("data")
+    if not isinstance(data, list):
+        return None
+    for item in data:
+        if not isinstance(item, dict) or item.get("name") != metric_name:
+            continue
+        values = item.get("values")
+        if not isinstance(values, list) or not values or not isinstance(values[0], dict):
+            return None
+        return _nonnegative_count(values[0].get("value"))
+    return None
+
+
 def _valid_post_id(value: object, page_id: str) -> bool:
     return isinstance(value, str) and bool(_POST_ID.fullmatch(value)) and (
         "_" not in value or value.split("_", 1)[0] == page_id
@@ -283,6 +297,24 @@ class MetaGraphClient:
         except MetaGraphReadError:
             pass
         return MetaPublicPage(id=page_id, name=name.strip(), followers_count=followers_count)
+
+    async def read_page_followers_count(self) -> int | None:
+        """Read a Page's current audience count when the token exposes it."""
+        payload = await self._request(
+            "GET", f"/{self.graph_version}/{self.page_id}", publishing=False,
+            params={"fields": "followers_count"},
+        )
+        return _nonnegative_count(payload.get("followers_count"))
+
+    async def read_post_media_views(self, external_post_id: str) -> int | None:
+        """Read the current Page Insights view metric; unavailable values stay null."""
+        if not _valid_post_id(external_post_id, self.page_id):
+            raise ValueError("invalid external post ID for this Page")
+        payload = await self._request(
+            "GET", f"/{self.graph_version}/{external_post_id}/insights", publishing=False,
+            params={"metric": "post_media_view"},
+        )
+        return _insight_count(payload, "post_media_view")
 
     async def publish_text(self, message: str) -> MetaPublishedPost:
         if not isinstance(message, str) or not message.strip():

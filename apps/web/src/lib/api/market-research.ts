@@ -76,6 +76,11 @@ export interface MarketReport {
       title: string;
       url: string;
       published_at: string | null;
+      observed_at?: string | null;
+      previous_observed_at?: string | null;
+      metrics?: Record<string, number | null>;
+      metric_delta?: Record<string, number | null>;
+      comments?: string[];
     }>;
   };
   evidence_ids: string[];
@@ -87,6 +92,7 @@ export interface MarketReport {
       items_saved?: number;
       metrics_available?: string[];
       metrics_unavailable?: string[];
+      metrics_partial?: Record<string, { observed_posts: number; total_posts: number }>;
       message?: string;
     }>;
     ai_status?: string;

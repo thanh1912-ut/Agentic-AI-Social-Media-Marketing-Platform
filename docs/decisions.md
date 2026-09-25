@@ -205,3 +205,21 @@ Ngày tạo: 2026-09-23. Trạng thái dưới đây được ghi từ audit đ�
 - Không chọn: đưa token vào browser/chat/Git/LLM, cho agent tự đăng, tự retry một POST chưa rõ kết quả, scraping Page hoặc coi token của một Page là OAuth cho mọi khách hàng.
 - Ảnh hưởng: `META_APP_ID`/`META_APP_SECRET` chưa cần cho pilot; OAuth, Page discovery, App Review cho khách ngoài team, scheduling và webhooks để giai đoạn sau. Export/đăng thủ công/nhập metrics vẫn dùng được khi connector chưa khả dụng. Xem [Meta feasibility spike](meta-feasibility-spike.md) và [runbook](runbook.md).
 - Trạng thái: IN_PROGRESS. Chưa có live evidence với Page access token của chủ dự án. Các trang developer Meta trả HTTP 429 ngày 2026-09-24; Graph version, fields, permissions, token lifetime, error/rate-limit semantics vẫn `VERIFY CURRENT META API` cho đến khi thử với app/Page thật.
+
+## DEC-025 — Thu thập views/followers có điều kiện và giữ thay đổi theo snapshot
+
+- Ngày: 2026-09-25.
+- Vấn đề: yêu cầu nghiên cứu thị trường cần views, reactions, comments, shares, followers và tín hiệu bài đang tăng/giảm; API có thể không trả mọi metric cho mọi Page/post.
+- Quyết định: Page workspace thử `post_media_view` cho tối đa 25 bài gần nhất mỗi chu kỳ, đọc `followers_count` một lần và chỉ tính interactions khi cả reactions/comments/shares đều có. Lưu null cho field Meta thiếu/lỗi quyền; mẫu thủ công có thể nhập views/followers. Report so sánh hai snapshot gần nhất theo bài cho reactions/comments/shares/interactions/views, không so delta follower vì đó là số cấp Page. Tối đa 40 bằng chứng, 1.200 ký tự/bài và 3 comment mẫu vào DeepSeek để giữ input giới hạn.
+- Không chọn: fallback sang metric impressions đã cũ, coi missing là 0, cộng Page followers qua nhiều bài, hoặc lấy metric đối thủ bằng browser scraping.
+- Ảnh hưởng: không đổi schema; report JSON/UI hiển thị metrics, deltas, comments đã lọc PII và metric coverage. `post_media_view`/`followers_count` hiện chỉ có fixture contract test; quyền, version, metric semantics và data freshness cần thử trên Page thật.
+- Trạng thái: IMPLEMENTED; worker/API test bao gồm views/followers, redaction và delta giữa hai snapshot. Meta live `NOT_VERIFIED`.
+
+## DEC-026 — Facebook Group tự động crawl không thuộc connector thương mại
+
+- Ngày: 2026-09-25.
+- Vấn đề: người dùng muốn lưu link nhóm Facebook và tự động đọc bài/bình luận/số liệu mỗi 12 giờ để phân tích xu hướng.
+- Quyết định: lưu link nhóm và cung cấp nhập tay; không scrape hoặc dùng browser automation. Meta Graph API v19 đã deprecate Groups API và các permission liên quan, effective 2024-04-22 across API versions. Meta Content Library có public Group content cho nghiên cứu, nhưng access được giới hạn cho qualified academic/nonprofit institutions pursuing scientific/public-interest research. Đây không phải đường connector cho sản phẩm SME.
+- Không chọn: đăng nhập người dùng rồi parse HTML/browser, dùng credential người dùng để né quyền, hoặc giả báo cáo tự động khi không lấy được dữ liệu.
+- Ảnh hưởng: nhóm Facebook hiển thị `manual_import_only`; dữ liệu được nhập vẫn dùng chung report/trend/AI pipeline và metrics views/follower fields, nếu người dùng có số liệu được phép sử dụng. Tự động chỉ mở lại nếu Meta cấp một API sản phẩm hợp lệ hoặc dự án được cấp quyền phù hợp.
+- Bằng chứng: [Meta Graph API changelog v19](https://developers.facebook.com/docs/graph-api/changelog/version19.0), [Meta Content Library announcement](https://about.fb.com/news/2023/11/new-tools-to-support-independent-research/). Link nhóm và manual import có API/UI/tests; automatic group crawl `BLOCKED_EXTERNAL`.

@@ -88,6 +88,43 @@ def test_resolve_public_page_uses_app_reviewed_token_and_keeps_missing_followers
     assert requests == 2
 
 
+def test_read_page_followers_and_post_media_views_use_current_page_metrics() -> None:
+    async def handler(request: httpx.Request) -> httpx.Response:
+        assert request.headers["Authorization"] == f"Bearer {SECRET}"
+        assert SECRET not in str(request.url)
+        if request.url.path == "/v26.0/123":
+            assert request.url.params["fields"] == "followers_count"
+            return httpx.Response(200, json={"followers_count": 4321})
+        assert request.url.path == "/v26.0/123_456/insights"
+        assert request.url.params["metric"] == "post_media_view"
+        return httpx.Response(200, json={"data": [{
+            "name": "post_media_view", "period": "lifetime", "values": [{"value": 9876}],
+        }]})
+
+    async def exercise():
+        async with MetaGraphClient("123", SECRET, transport=httpx.MockTransport(handler)) as client:
+            followers = await client.read_page_followers_count()
+            views = await client.read_post_media_views("123_456")
+            return followers, views
+
+    assert _run(exercise()) == (4321, 9876)
+
+
+def test_unavailable_post_media_views_remain_null_and_reject_other_page_posts() -> None:
+    async def handler(_request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json={"data": [{
+            "name": "post_media_view", "period": "lifetime", "values": [{"value": None}],
+        }]})
+
+    async def exercise():
+        async with MetaGraphClient("123", SECRET, transport=httpx.MockTransport(handler)) as client:
+            assert await client.read_post_media_views("123_456") is None
+            with pytest.raises(ValueError):
+                await client.read_post_media_views("999_456")
+
+    _run(exercise())
+
+
 def test_text_and_photo_publish_require_post_ids() -> None:
     seen: list[str] = []
 
