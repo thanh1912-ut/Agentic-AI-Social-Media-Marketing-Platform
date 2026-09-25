@@ -50,6 +50,11 @@ def test_public_site_crawl_respects_robots_and_keeps_links_on_same_host() -> Non
     assert "Xu huong thi truong" in items[0].text
     assert "https://other.example/news" not in calls
 
+    calls.clear()
+    one_page = crawl_public_site("https://example.com", fetcher=fetcher, max_pages=1)
+    assert len(one_page) == 1
+    assert calls == ["https://example.com/robots.txt", "https://example.com/"]
+
     def disallowed(url: str) -> FetchResult:
         if url.endswith("/robots.txt"):
             return FetchResult(url, 200, "text/plain", b"User-agent: *\nDisallow: /")
@@ -57,6 +62,16 @@ def test_public_site_crawl_respects_robots_and_keeps_links_on_same_host() -> Non
 
     with pytest.raises(CrawlError, match="không cho phép"):
         crawl_public_site("https://example.com/private", fetcher=disallowed)
+
+
+def test_public_site_rejects_plain_text_content_after_reading_robots() -> None:
+    def plain_text_site(url: str) -> FetchResult:
+        if url.endswith("/robots.txt"):
+            return FetchResult(url, 200, "text/plain", b"User-agent: *\nAllow: /")
+        return FetchResult(url, 200, "text/plain", b"not an HTML or RSS source")
+
+    with pytest.raises(CrawlError, match="HTML hoặc RSS/XML"):
+        crawl_public_site("https://example.com", fetcher=plain_text_site)
 
 
 def test_feed_extraction_rejects_xml_entities_and_limits_to_safe_host() -> None:

@@ -24,9 +24,13 @@ from database.models import (
     CampaignPost,
     Document,
     Job,
+    MarketEvidence,
+    MarketObservation,
     MediaAsset,
+    MetaPageGroup,
     KnowledgeChunk,
     PostVersion,
+    ResearchSource,
     new_id,
 )
 from packages.contracts import GeneratedPost, SourceReference
@@ -247,7 +251,7 @@ def test_campaign_api_has_tenant_scoping_and_versioned_approval(workflow_api) ->
 
     other = TestClient(app)
     with other:
-        second = _register(other, "other-campaign@example.com")
+        _register(other, "other-campaign@example.com")
         denied = other.get(f"/api/v1/workspaces/{workspace_id}/campaigns/{campaign['id']}")
         assert denied.status_code == 404
         assert denied.json()["error"]["code"] == "not_found"
@@ -464,10 +468,59 @@ def test_content_generation_job_persists_cited_draft_and_is_idempotent(workflow_
     source_id = new_id()
     source_hash = "b" * 64
     chunk_text = "Bếp Mộc phục vụ cơm gà với nguyên liệu tươi cho bữa cơm gia đình."
+    market_group_id = new_id()
+    market_source_id = new_id()
+    market_evidence_id = new_id()
 
     async def seed_source():
         async with session_factory() as db:
             brand = await db.scalar(select(Brand).where(Brand.company_id == workspace_id))
+            campaign = await db.get(Campaign, campaign_id)
+            assert brand is not None and campaign is not None
+            campaign.group_id = market_group_id
+            db.add(MetaPageGroup(
+                id=market_group_id, company_id=workspace_id, name="Ẩm thực gia đình",
+                industry="Ẩm thực", region="TP. Hồ Chí Minh", locale="vi-VN",
+                keywords_json=["bữa tối"], active=True,
+            ))
+            db.add(ResearchSource(
+                id=market_source_id, company_id=workspace_id, group_id=market_group_id,
+                source_type="competitor_facebook_page", name="Page tham khảo",
+                url="https://www.facebook.com/rival/posts/42",
+                normalized_url="https://www.facebook.com/rival/posts/42",
+                status="active", active=True, created_by=owner["user"]["id"],
+            ))
+            db.add(MarketEvidence(
+                id=market_evidence_id, company_id=workspace_id, group_id=market_group_id,
+                source_id=market_source_id, canonical_url="https://www.facebook.com/rival/posts/42",
+                title="Bữa tối cuối tuần", published_at=now,
+                text="Món ăn gia đình trong video ngắn, nhiều người hỏi khẩu phần.",
+                content_hash="c" * 64, trust_level="external_unverified",
+                first_seen_at=now, last_seen_at=now,
+            ))
+            db.add(MarketObservation(
+                company_id=workspace_id, evidence_id=market_evidence_id, observed_at=now,
+                metrics_json={"reactions": 45, "comments": 8, "shares": 5, "interactions": 58,
+                              "views": 2400, "followers": 18000},
+                comments_json=["Món nhìn ngon, liên hệ hello@example.com hoặc 0901234567"],
+            ))
+            campaign.brief_json = {
+                **campaign.brief_json,
+                    "market_research_context": {
+                        "report_id": "market-report-1", "group_id": market_group_id,
+                        "suggestion": {
+                            "title": "Bữa tối cuối tuần", "angle": "Gợi ý món cho gia đình",
+                            "hook": "Bữa tối cuối tuần có gì ngon?", "format": "text",
+                            "evidence_ids": [market_evidence_id],
+                        },
+                        "evidence": [{
+                            "id": market_evidence_id, "title": "Bữa tối cuối tuần",
+                            "url": "https://www.facebook.com/rival/posts/42",
+                            "published_at": now.isoformat(),
+                        }],
+                    "trust_level": "external_unverified",
+                },
+            }
             document = Document(
                 id=document_id, company_id=workspace_id, source_id=source_id, source_version="1",
                 filename="menu.txt", kind="text", mime_type="text/plain", size_bytes=len(chunk_text),
@@ -536,6 +589,16 @@ def test_content_generation_job_persists_cited_draft_and_is_idempotent(workflow_
     assert fixed_model.last_input_payload["content_requirements"]["slot_topic"] == "Món cơm gà cho bữa tối cuối tuần"
     assert fixed_model.last_input_payload["content_requirements"]["start_date"] == "2026-09-15"
     assert "slot-family-dinner" not in model_payload
+    market_source = next(
+        item for item in fixed_model.last_input_payload["sources"]
+        if item.get("source_kind") == "market_research"
+    )
+    assert market_source["source_id"] == f"market:{market_evidence_id}"
+    assert "2400" in market_source["text"] and "58" in market_source["text"]
+    assert "example.com" not in market_source["text"] and "0901234567" not in market_source["text"]
+    assert fixed_model.last_input_payload["content_requirements"]["market_research_source_ids"] == [
+        f"market:{market_evidence_id}"
+    ]
 
     async def check_saved_draft():
         async with session_factory() as db:
@@ -582,7 +645,7 @@ def test_content_generation_job_persists_cited_draft_and_is_idempotent(workflow_
             "channels": current_campaign["channels"],
         },
     )
-    assert locked_update.status_code == 409
+    assert locked_update.status_code == 409, locked_update.text
     assert locked_update.json()["error"]["code"] == "content_slot_locked"
 
     post_url = f"/api/v1/workspaces/{workspace_id}/posts/{posts[0].id}"

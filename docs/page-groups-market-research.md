@@ -29,7 +29,7 @@ Cập nhật: 2026-09-25
 - Nhóm Facebook: lưu URL và hỗ trợ nhập dữ liệu thủ công. Không tự scrape nội dung nhóm; cần quyền API chính thức cho đúng ứng dụng/nhóm và chính sách Meta hiện hành, chưa có cấu hình này trong sản phẩm.
 - Worker và scheduler tạo job bền vững, chạy chu kỳ đầu khi có nguồn và lặp lại sau mỗi 12 giờ. Có nút chạy ngay. Nội dung response web thô trong object storage được lên lịch xóa sau 30 ngày; bản trích xuất, snapshot số liệu và báo cáo được giữ trong DB.
 - Báo cáo DeepSeek gồm tóm tắt, xu hướng, độ tin cậy, ID bằng chứng, gợi ý góc bài và coverage/quyền số liệu. Nếu không gọi được model, hệ thống tạo kết quả fallback có trạng thái lỗi phân tích thay vì coi là phân tích thành công.
-- Người dùng tự chọn gợi ý để tạo campaign nháp. Dữ liệu bên ngoài được ghi rõ là chưa xác minh và không được chuyển thành tuyên bố về sản phẩm/thương hiệu. AI tạo bài tiếp theo và người duyệt vẫn qua luồng campaign/approval hiện có; báo cáo không tự đăng bài.
+- Người dùng tự chọn gợi ý để tạo campaign nháp. Khi chủ động yêu cầu sinh bài theo slot, worker lấy tối đa 5 bằng chứng đã chọn, gồm trích nội dung, snapshot tương tác và tối đa 4 bình luận đã lọc email/số điện thoại, rồi gửi chúng cùng ngữ cảnh thương hiệu tới DeepSeek. Nguồn bên ngoài được đánh dấu `market_research`/`external_unverified`: chúng chỉ gợi ý chủ đề, định dạng và tín hiệu tương tác, không làm căn cứ cho tuyên bố về sản phẩm/thương hiệu; bài vẫn phải trích nguồn xác nhận của workspace cho tuyên bố sản phẩm. AI tạo bài nháp và người duyệt vẫn qua luồng campaign/approval hiện có; báo cáo không tự đăng bài.
 
 ### Những chỉ số chưa được cam kết
 

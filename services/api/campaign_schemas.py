@@ -12,6 +12,29 @@ class StrictModel(BaseModel):
     model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
 
 
+class CampaignMarketResearchSuggestion(StrictModel):
+    title: str = Field(min_length=1, max_length=200)
+    angle: str = Field(min_length=1, max_length=1000)
+    hook: str = Field(min_length=1, max_length=500)
+    format: str = Field(min_length=1, max_length=40)
+    evidence_ids: list[str] = Field(default_factory=list, max_length=10)
+
+
+class CampaignMarketEvidenceReference(StrictModel):
+    id: str = Field(min_length=1, max_length=64)
+    title: str = Field(default="", max_length=1000)
+    url: str = Field(min_length=1, max_length=2048)
+    published_at: str | None = None
+
+
+class CampaignMarketResearchContext(StrictModel):
+    report_id: str = Field(min_length=1, max_length=64)
+    group_id: str = Field(min_length=1, max_length=64)
+    suggestion: CampaignMarketResearchSuggestion
+    evidence: list[CampaignMarketEvidenceReference] = Field(default_factory=list, max_length=10)
+    trust_level: Literal["external_unverified"]
+
+
 class CampaignBriefIn(StrictModel):
     objective: Literal["awareness", "engagement", "traffic", "leads", "sales", "retention"]
     objective_note: str | None = Field(default=None, max_length=1000)
@@ -22,6 +45,7 @@ class CampaignBriefIn(StrictModel):
     must_avoid: list[str] = Field(default_factory=list, max_length=30)
     start_date: date
     end_date: date
+    market_research_context: CampaignMarketResearchContext | None = None
 
     @model_validator(mode="after")
     def date_range_is_valid(self) -> "CampaignBriefIn":

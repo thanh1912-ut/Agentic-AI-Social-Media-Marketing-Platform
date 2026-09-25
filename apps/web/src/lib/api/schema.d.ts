@@ -1523,6 +1523,7 @@ export interface components {
             readonly end_date: string;
             /** Key Message */
             readonly key_message: string;
+            readonly market_research_context?: components["schemas"]["CampaignMarketResearchContext"] | null;
             /** Must Avoid */
             readonly must_avoid?: readonly string[];
             /** Must Include */
@@ -1642,6 +1643,48 @@ export interface components {
             readonly name: string;
             /** Pillars */
             readonly pillars?: readonly ("education" | "entertainment" | "inspiration" | "promotion" | "community" | "behind_the_scenes" | "product" | "testimonial")[];
+        };
+        /** CampaignMarketEvidenceReference */
+        readonly CampaignMarketEvidenceReference: {
+            /** Id */
+            readonly id: string;
+            /** Published At */
+            readonly published_at?: string | null;
+            /**
+             * Title
+             * @default
+             */
+            readonly title: string;
+            /** Url */
+            readonly url: string;
+        };
+        /** CampaignMarketResearchContext */
+        readonly CampaignMarketResearchContext: {
+            /** Evidence */
+            readonly evidence?: readonly components["schemas"]["CampaignMarketEvidenceReference"][];
+            /** Group Id */
+            readonly group_id: string;
+            /** Report Id */
+            readonly report_id: string;
+            readonly suggestion: components["schemas"]["CampaignMarketResearchSuggestion"];
+            /**
+             * Trust Level
+             * @constant
+             */
+            readonly trust_level: "external_unverified";
+        };
+        /** CampaignMarketResearchSuggestion */
+        readonly CampaignMarketResearchSuggestion: {
+            /** Angle */
+            readonly angle: string;
+            /** Evidence Ids */
+            readonly evidence_ids?: readonly string[];
+            /** Format */
+            readonly format: string;
+            /** Hook */
+            readonly hook: string;
+            /** Title */
+            readonly title: string;
         };
         /** CampaignOut */
         readonly CampaignOut: {
@@ -3034,6 +3077,9 @@ export type SchemaCampaignContentPlanOut = components['schemas']['CampaignConten
 export type SchemaCampaignContentSlotIn = components['schemas']['CampaignContentSlotIn'];
 export type SchemaCampaignContentSlotOut = components['schemas']['CampaignContentSlotOut'];
 export type SchemaCampaignCreateRequest = components['schemas']['CampaignCreateRequest'];
+export type SchemaCampaignMarketEvidenceReference = components['schemas']['CampaignMarketEvidenceReference'];
+export type SchemaCampaignMarketResearchContext = components['schemas']['CampaignMarketResearchContext'];
+export type SchemaCampaignMarketResearchSuggestion = components['schemas']['CampaignMarketResearchSuggestion'];
 export type SchemaCampaignOut = components['schemas']['CampaignOut'];
 export type SchemaCampaignUpdateRequest = components['schemas']['CampaignUpdateRequest'];
 export type SchemaConfirmBrandProfileRequest = components['schemas']['ConfirmBrandProfileRequest'];

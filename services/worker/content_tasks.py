@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
+import re
 from datetime import timedelta
 from typing import Any
 
@@ -21,6 +23,9 @@ from database.models import (
     Job,
     JobEvent,
     JobStep,
+    MarketEvidence,
+    MarketObservation,
+    ResearchSource,
     PostApproval,
     PostVersion,
     new_id,
@@ -46,6 +51,124 @@ class ContentGenerationFailure(RuntimeError):
         super().__init__(message)
         self.code = code
         self.retryable = retryable
+
+
+_MARKET_METRIC_FIELDS = ("reactions", "comments", "shares", "interactions", "views", "followers")
+_MARKET_EMAIL_RE = re.compile(r"\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b", re.IGNORECASE)
+_MARKET_PHONE_RE = re.compile(r"(?<!\w)(?:\+?\d[\d ().-]{7,}\d)(?!\w)")
+
+
+def _market_comments(observation: MarketObservation | None) -> list[str]:
+    if observation is None or not isinstance(observation.comments_json, list):
+        return []
+    comments = []
+    for value in observation.comments_json:
+        if not isinstance(value, str) or not value.strip():
+            continue
+        clean = _MARKET_EMAIL_RE.sub("[đã ẩn email]", value)
+        clean = _MARKET_PHONE_RE.sub("[đã ẩn số điện thoại]", clean)
+        comments.append(" ".join(clean.split())[:300])
+        if len(comments) == 4:
+            break
+    return comments
+
+
+def _market_metrics(observation: MarketObservation | None) -> dict[str, int | float | None]:
+    if observation is None or not isinstance(observation.metrics_json, dict):
+        return {}
+    result: dict[str, int | float | None] = {}
+    for key in _MARKET_METRIC_FIELDS:
+        value = observation.metrics_json.get(key)
+        if isinstance(value, bool) or not isinstance(value, (int, float)):
+            continue
+        if value < 0 or (isinstance(value, float) and not math.isfinite(value)):
+            continue
+        result[key] = value
+    return result
+
+
+async def _market_evidence_context(
+    db,
+    *,
+    company_id: str,
+    brand_id: str,
+    campaign_group_id: str | None,
+    brief_data: dict[str, Any],
+) -> list[dict[str, str]]:
+    """Load only the selected, tenant-scoped market evidence for slot generation."""
+    market = brief_data.get("market_research_context")
+    if (
+        not isinstance(market, dict)
+        or not isinstance(market.get("group_id"), str)
+        or market.get("group_id") != campaign_group_id
+    ):
+        return []
+    references = market.get("evidence")
+    if not isinstance(references, list):
+        return []
+    evidence_ids = list(dict.fromkeys(
+        item.get("id") for item in references
+        if isinstance(item, dict) and isinstance(item.get("id"), str) and item.get("id")
+    ))[:5]
+    if not evidence_ids:
+        return []
+
+    rows = (await db.execute(
+        select(MarketEvidence, ResearchSource)
+        .join(ResearchSource, ResearchSource.id == MarketEvidence.source_id)
+        .where(
+            MarketEvidence.company_id == company_id,
+            MarketEvidence.group_id == market["group_id"],
+            MarketEvidence.id.in_(evidence_ids),
+            ResearchSource.company_id == company_id,
+            ResearchSource.group_id == market["group_id"],
+        )
+    )).all()
+    evidence_by_id = {evidence.id: (evidence, source) for evidence, source in rows}
+    observations = (await db.scalars(
+        select(MarketObservation)
+        .where(
+            MarketObservation.company_id == company_id,
+            MarketObservation.evidence_id.in_(list(evidence_by_id)),
+        )
+        .order_by(MarketObservation.observed_at.desc())
+    )).all() if evidence_by_id else []
+    latest_observation: dict[str, MarketObservation] = {}
+    for observation in observations:
+        latest_observation.setdefault(observation.evidence_id, observation)
+
+    result: list[dict[str, str]] = []
+    for evidence_id in evidence_ids:
+        pair = evidence_by_id.get(evidence_id)
+        if pair is None:
+            continue
+        evidence, source = pair
+        observation = latest_observation.get(evidence.id)
+        metrics = _market_metrics(observation)
+        comments = _market_comments(observation)
+        excerpt = " ".join((evidence.text or "").split())[:1800]
+        observed_at = observation.observed_at.isoformat() if observation else "Chưa có snapshot số liệu"
+        text = (
+            "DỮ LIỆU THỊ TRƯỜNG BÊN NGOÀI, CHƯA XÁC MINH; chỉ dùng để nhận biết chủ đề, định dạng và tín hiệu tương tác. "
+            "Không coi đây là dữ kiện về thương hiệu đang tạo bài và không sao chép câu chữ.\n"
+            f"Loại nguồn: {source.source_type}; tiêu đề: {evidence.title[:300]}\n"
+            f"Nội dung trích: {excerpt}\n"
+            f"Chỉ số quan sát lúc {observed_at}: {json.dumps(metrics, ensure_ascii=False, sort_keys=True)}\n"
+            f"Bình luận mẫu đã lọc thông tin liên hệ: {json.dumps(comments, ensure_ascii=False)}"
+        )
+        result.append({
+            "company_id": company_id,
+            "brand_id": brand_id,
+            "source_id": f"market:{evidence.id}",
+            "document_id": evidence.id,
+            "source_version": evidence.content_hash,
+            "source_hash": evidence.content_hash,
+            "locator": evidence.canonical_url,
+            "source_kind": "market_research",
+            "trust_level": evidence.trust_level,
+            "text": text,
+        })
+    return result
 
 
 async def _set_step(db, job_id: str, key: str, status: str, progress: int, message: str) -> None:
@@ -330,6 +453,14 @@ async def content_generation_task_async(
             context = source_context([item.chunk for item in retrieved])
             if not context:
                 raise ContentGenerationFailure("no_relevant_context", "Không có đoạn tài liệu đủ liên quan để làm căn cứ sinh nội dung.")
+            market_context = await _market_evidence_context(
+                db,
+                company_id=company_id,
+                brand_id=brand.id,
+                campaign_group_id=campaign.group_id,
+                brief_data=brief_data,
+            )
+            context.extend(market_context)
             snapshot_payload = {
                 "company_id": company_id,
                 "brand_id": brand.id,
@@ -340,7 +471,10 @@ async def content_generation_task_async(
                 "request": request_data,
                 "post_version": payload.get("post_version") if target_post else None,
                 "sources": [
-                    {key: item.get(key) for key in ("source_id", "document_id", "source_version", "source_hash", "locator")}
+                    {key: item.get(key) for key in (
+                        "source_id", "document_id", "source_version", "source_hash", "locator",
+                        "source_kind", "trust_level",
+                    )}
                     for item in context
                 ],
             }
@@ -369,6 +503,7 @@ async def content_generation_task_async(
                 "slot_topic": plan_slot.get("topic") if plan_slot else None,
                 "start_date": brief.start_date.isoformat() if brief.start_date else None,
                 "end_date": brief.end_date.isoformat() if brief.end_date else None,
+                "market_research_source_ids": [item["source_id"] for item in market_context],
             }
             if target_post:
                 content_requirements.update({

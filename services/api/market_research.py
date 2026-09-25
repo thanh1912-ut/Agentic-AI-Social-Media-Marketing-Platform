@@ -5,7 +5,7 @@ from __future__ import annotations
 import re
 import hashlib
 import math
-from datetime import datetime, timedelta, timezone
+from datetime import timedelta
 from urllib.parse import urlsplit
 
 from fastapi import APIRouter, Depends
@@ -601,7 +601,7 @@ async def create_draft_from_report(
         "start_date": today.isoformat(),
         "end_date": (today + timedelta(days=14)).isoformat(),
         "market_research_context": {
-            "report_id": report.id, "suggestion": suggestion,
+            "report_id": report.id, "group_id": group.id, "suggestion": suggestion,
             "evidence": sources, "trust_level": "external_unverified",
         },
     }

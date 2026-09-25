@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import http.client
 import ipaddress
-import re
 import socket
 import ssl
 import xml.etree.ElementTree as ET
@@ -139,10 +138,8 @@ def _pinned_request(url: str, *, timeout: float = 12.0) -> FetchResult:
                 raise CrawlError("source_too_large", "Trang web vượt giới hạn dung lượng cho một lần đọc.")
             if status >= 500:
                 raise CrawlError("source_server_error", "Website đang gặp lỗi tạm thời.", retryable=True)
-            if status >= 400:
-                raise CrawlError("source_http_error", f"Website trả về HTTP {status}.")
             content_type = headers.get("content-type", "application/octet-stream").split(";", 1)[0].strip().lower()
-            if content_type not in {"text/html", "application/xhtml+xml"} and "xml" not in content_type and not current.casefold().endswith((".xml", ".rss", ".atom")):
+            if content_type not in {"text/html", "application/xhtml+xml", "text/plain"} and "xml" not in content_type and not current.casefold().endswith((".xml", ".rss", ".atom")):
                 raise CrawlError("source_content_type_unsupported", "Nguồn cần trả về HTML hoặc RSS/XML công khai.")
             return FetchResult(current, status, content_type, body)
         except CrawlError:
@@ -172,7 +169,14 @@ def _safe_fetch(url: str, fetcher=_pinned_request) -> FetchResult:
             raise CrawlError("robots_disallowed", "Website không cho phép crawler đọc link này.")
     elif robots.status not in {404, 410}:
         raise CrawlError("robots_unavailable", "Website chưa cho phép xác minh quy tắc thu thập.", retryable=True)
-    return fetcher(current)
+    page = fetcher(current)
+    if page.status >= 500:
+        raise CrawlError("source_server_error", "Website đang gặp lỗi tạm thời.", retryable=True)
+    if page.status >= 400:
+        raise CrawlError("source_http_error", f"Website trả về HTTP {page.status}.")
+    if page.content_type not in {"text/html", "application/xhtml+xml"} and "xml" not in page.content_type and not page.url.casefold().endswith((".xml", ".rss", ".atom")):
+        raise CrawlError("source_content_type_unsupported", "Nguồn cần trả về HTML hoặc RSS/XML công khai.")
+    return page
 
 
 class _HTMLContentParser(HTMLParser):
@@ -266,15 +270,21 @@ def _feed_items(result: FetchResult) -> list[WebItem]:
     return found
 
 
-def crawl_public_site(url: str, *, fetcher=_pinned_request) -> list[WebItem]:
+def crawl_public_site(
+    url: str,
+    *,
+    fetcher=_pinned_request,
+    max_pages: int = MAX_PAGES_PER_SOURCE,
+) -> list[WebItem]:
     """Read an explicitly submitted public site and a bounded set of its links."""
-
+    if type(max_pages) is not int or not 1 <= max_pages <= MAX_PAGES_PER_SOURCE:
+        raise ValueError(f"max_pages must be between 1 and {MAX_PAGES_PER_SOURCE}")
     start = canonicalize_url(url)
     root = urlsplit(start)
     first = _safe_fetch(start, fetcher)
     if "xml" in first.content_type or first.content_type.endswith("rss") or first.url.casefold().endswith((".xml", ".rss", ".atom")):
         items = _feed_items(first)
-        return [item for item in items if (urlsplit(canonicalize_url(item.url)).hostname or "").casefold() == (root.hostname or "").casefold()][:MAX_PAGES_PER_SOURCE]
+        return [item for item in items if (urlsplit(canonicalize_url(item.url)).hostname or "").casefold() == (root.hostname or "").casefold()][:max_pages]
 
     parser = _HTMLContentParser()
     try:
@@ -292,6 +302,8 @@ def crawl_public_site(url: str, *, fetcher=_pinned_request) -> list[WebItem]:
     seen = {items[0].url}
     discovered: list[str] = []
     for href in parser.links:
+        if len(discovered) >= max_pages - 1:
+            break
         target = urljoin(first.url, href)
         try:
             normalized = canonicalize_url(target)
@@ -302,8 +314,6 @@ def crawl_public_site(url: str, *, fetcher=_pinned_request) -> list[WebItem]:
             continue
         seen.add(normalized)
         discovered.append(normalized)
-        if len(discovered) >= MAX_PAGES_PER_SOURCE - 1:
-            break
     for link in discovered:
         try:
             page = _safe_fetch(link, fetcher)

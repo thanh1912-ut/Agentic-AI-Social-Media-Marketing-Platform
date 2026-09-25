@@ -872,6 +872,16 @@
             "title": "Key Message",
             "type": "string"
           },
+          "market_research_context": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CampaignMarketResearchContext"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "must_avoid": {
             "items": {
               "type": "string"
@@ -1228,6 +1238,132 @@
           "brief"
         ],
         "title": "CampaignCreateRequest",
+        "type": "object"
+      },
+      "CampaignMarketEvidenceReference": {
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Id",
+            "type": "string"
+          },
+          "published_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Published At"
+          },
+          "title": {
+            "default": "",
+            "maxLength": 1000,
+            "title": "Title",
+            "type": "string"
+          },
+          "url": {
+            "maxLength": 2048,
+            "minLength": 1,
+            "title": "Url",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "url"
+        ],
+        "title": "CampaignMarketEvidenceReference",
+        "type": "object"
+      },
+      "CampaignMarketResearchContext": {
+        "additionalProperties": false,
+        "properties": {
+          "evidence": {
+            "items": {
+              "$ref": "#/components/schemas/CampaignMarketEvidenceReference"
+            },
+            "maxItems": 10,
+            "title": "Evidence",
+            "type": "array"
+          },
+          "group_id": {
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Group Id",
+            "type": "string"
+          },
+          "report_id": {
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Report Id",
+            "type": "string"
+          },
+          "suggestion": {
+            "$ref": "#/components/schemas/CampaignMarketResearchSuggestion"
+          },
+          "trust_level": {
+            "const": "external_unverified",
+            "title": "Trust Level",
+            "type": "string"
+          }
+        },
+        "required": [
+          "report_id",
+          "group_id",
+          "suggestion",
+          "trust_level"
+        ],
+        "title": "CampaignMarketResearchContext",
+        "type": "object"
+      },
+      "CampaignMarketResearchSuggestion": {
+        "additionalProperties": false,
+        "properties": {
+          "angle": {
+            "maxLength": 1000,
+            "minLength": 1,
+            "title": "Angle",
+            "type": "string"
+          },
+          "evidence_ids": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 10,
+            "title": "Evidence Ids",
+            "type": "array"
+          },
+          "format": {
+            "maxLength": 40,
+            "minLength": 1,
+            "title": "Format",
+            "type": "string"
+          },
+          "hook": {
+            "maxLength": 500,
+            "minLength": 1,
+            "title": "Hook",
+            "type": "string"
+          },
+          "title": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "title",
+          "angle",
+          "hook",
+          "format"
+        ],
+        "title": "CampaignMarketResearchSuggestion",
         "type": "object"
       },
       "CampaignOut": {

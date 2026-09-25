@@ -37,6 +37,8 @@ def context_payload(context: list[Mapping[str, str]]) -> list[dict[str, str]]:
         "source_version",
         "source_hash",
         "locator",
+        "source_kind",
+        "trust_level",
         "text",
     )
     return [{field: item[field] for field in safe_fields if field in item} for item in context]
