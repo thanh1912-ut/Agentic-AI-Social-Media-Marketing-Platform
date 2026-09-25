@@ -85,6 +85,12 @@ def test_feed_extraction_rejects_xml_entities_and_limits_to_safe_host() -> None:
     unsafe = FetchResult("https://example.com/rss.xml", 200, "application/xml", b"<!DOCTYPE x [<!ENTITY e SYSTEM 'file:///etc/passwd'>]><x>&e;</x>")
     with pytest.raises(CrawlError, match="thực thể"):
         _feed_items(unsafe)
+    utf16_unsafe = FetchResult(
+        "https://example.com/rss.xml", 200, "application/xml",
+        "<!DOCTYPE x [<!ENTITY e 'expanded'>]><x>&e;</x>".encode("utf-16"),
+    )
+    with pytest.raises(CrawlError, match="thực thể"):
+        _feed_items(utf16_unsafe)
 
 
 def test_page_tokens_are_encrypted_fingerprinted_and_key_rotation_is_supported(monkeypatch) -> None:

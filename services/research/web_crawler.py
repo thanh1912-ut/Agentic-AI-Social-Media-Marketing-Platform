@@ -238,7 +238,10 @@ def _parse_datetime(value: str | None) -> datetime | None:
 
 
 def _feed_items(result: FetchResult) -> list[WebItem]:
-    if b"<!DOCTYPE" in result.body.upper() or b"<!ENTITY" in result.body.upper():
+    # XML permits UTF-16/32 byte encodings; remove NUL bytes before checking so
+    # a DTD cannot bypass this guard by interleaving zero bytes between letters.
+    markup = result.body.upper().replace(b"\x00", b"")
+    if b"<!DOCTYPE" in markup or b"<!ENTITY" in markup:
         raise CrawlError("source_xml_unsafe", "Tệp XML có khai báo thực thể không được hỗ trợ.")
     try:
         root = ET.fromstring(result.body)
