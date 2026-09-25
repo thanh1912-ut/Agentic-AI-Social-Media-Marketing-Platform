@@ -2,9 +2,9 @@
 
 > Phần bổ sung Fanpage nhiều Page và nghiên cứu thị trường đang được triển khai trên branch riêng; trạng thái chi tiết, chức năng, giới hạn nguồn, cấu hình và kiểm tra xem tại [page-groups-market-research.md](page-groups-market-research.md). Không dùng trạng thái test cũ trong bảng dưới đây làm bằng chứng nghiệm thu cho branch mới.
 
-Cập nhật gần nhất: 2026-09-25 17:08 (Asia/Ho_Chi_Minh)
+Cập nhật gần nhất: 2026-09-25 17:40 (Asia/Ho_Chi_Minh)
 
-Branch feature hiện tại: `codex/page-groups-market-research`, code snapshot `c5748a7`; branch đã push và chưa merge. Core pilot kế thừa từ `origin/codex/product-v1-completion`; các trạng thái ở phần core bên dưới là bằng chứng lịch sử của snapshot tương ứng. Lượt mới nhất đã nghiệm thu FastAPI ASGI → Redis/Celery queue `agent` → worker và Celery Beat trên PostgreSQL/pgvector cô lập, worker `solo`; chưa nghiệm thu Compose/MinIO hoặc worker restart.
+Branch feature hiện tại: `codex/page-groups-market-research`; backend hardening được ghi thành các commit `06583ff`, `10d84bd` và `da5d395`. Core pilot kế thừa từ `origin/codex/product-v1-completion`; các trạng thái ở phần core bên dưới là bằng chứng lịch sử của snapshot tương ứng. Lượt mới nhất đã nghiệm thu FastAPI ASGI → Redis/Celery queue `agent` → worker và Celery Beat trên PostgreSQL/pgvector cô lập, worker `solo`; chưa nghiệm thu Compose/MinIO hoặc worker restart.
 
 ## Trạng thái hiện tại
 
@@ -23,6 +23,7 @@ Branch feature hiện tại: `codex/page-groups-market-research`, code snapshot 
 - Meta docs: đã thử đọc trực tiếp Graph API Page Feed, Page Insights, permission reference và access-token guide ngày 2026-09-24; các trang trả HTTP 429. Lượt audit lúc 12:37 thử lại tìm kiếm chính thức và các URL `developers.facebook.com`; tìm kiếm chính thức không trả kết quả và mở trang tiếp tục trả HTTP 429. Search chỉ đưa ra mirror không thuộc Meta, nên không được dùng làm nguồn chuẩn. Version, permission, token, publish, metrics, limits và webhook hiện hành vẫn `VERIFY CURRENT META API`. Không có app/Page/token/App Review; connector tự động tiếp tục `BLOCKED_EXTERNAL`, fallback manual vẫn có trong UI.
 - Docker/Podman/MinIO vẫn không có; PostgreSQL 18.3 test trên các port 55432/55433 và Redis 8.6.3 trên 56379 đều chạy trong cụm cô lập dưới `/private/tmp`, không chạm database dùng chung, và đã dừng sau test. SMTP variables chưa có; DeepSeek key chỉ có trong ignored local `.env`, chưa provision production secret store. Compose/Beat/MinIO, live SMTP, provider-backed Brand/content jobs, metrics từ Meta và deploy production chưa được nghiệm thu. Readiness latency đo được chỉ đại diện máy local; token usage/chi phí thực chưa có.
 - Playwright config giờ build rồi chạy đúng standalone server `node .next/standalone/apps/web/server.js`, đồng thời copy `public/` và `.next/static/` vào output như Dockerfile production. Lượt đầu thử standalone thiếu hai thư mục này và E2E không render form; sau khi thêm bước chuẩn bị, full mock và real-mode E2E đều pass, không còn cảnh báo `next start`. Pytest có một LangGraph pending-deprecation warning; Vitest in cảnh báo cấu hình Vite native loader.
+- Rà soát bảo mật backend mới: fail closed production với SQLite, thiếu CORS HTTPS allowlist hoặc S3 credentials mặc định; ẩn DB/Redis/JWT/SMTP/S3 credentials khỏi dataclass repr; giới hạn Meta Page verify và manual market crawl; chặn DTD XML UTF-16. Python full suite trên feature branch **190 passed, 1 skipped**. `npm audit` không lấy được dữ liệu do môi trường không phân giải `registry.npmjs.org`; Next.js hiện 15.5.25 và cần cập nhật patch/audit trong phần frontend khi registry khả dụng. Edge headers, Compose/MinIO và proxy production vẫn chưa được kiểm chứng.
 
 ## Tiến độ theo subsystem
 

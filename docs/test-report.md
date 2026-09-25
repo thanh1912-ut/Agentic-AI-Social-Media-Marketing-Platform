@@ -1,6 +1,18 @@
 # Báo cáo kiểm thử
 
-Cập nhật: 2026-09-25 17:08 (Asia/Ho_Chi_Minh).
+Cập nhật: 2026-09-25 17:40 (Asia/Ho_Chi_Minh).
+
+## Backend security regression acceptance — 2026-09-25
+
+| Check | Kết quả | Bằng chứng và giới hạn |
+|---|---|---|
+| Focused production config, Redis limiter, market API/source tests | **29 passed** | Python 3.11.16, dependencies cài trong target cô lập; SQLite/fake Meta/Redis. Bao gồm production chặn SQLite, wildcard CORS và S3 defaults; Settings repr không lộ credential; route wiring cho 6 crawl/10 Page-verification requests mỗi giờ; UTF-16 DTD regression. |
+| Full Python suite | **190 passed, 1 skipped** | Skip là opt-in live DeepSeek smoke; một LangGraph pending-deprecation warning. Chạy với Python 3.11.16 từ `/private/tmp`, không ghi `.data` hay pytest cache vào repo. |
+| `git diff --check` | PASS | Source và docs diff sạch tại thời điểm kiểm tra. |
+| `npm audit --json` | **BLOCKED — no registry DNS** | npm không phân giải `registry.npmjs.org`; lệnh không trả advisory result. Không được diễn giải là 0 vulnerabilities. Current manifest: Next.js 15.5.25. |
+| Next.js upstream release check | **15.5.26 available** | Official Sep 22 security note says 15.x is not affected by the described RCE; 15.5.26 contains related hardening. Frontend manifest/lockfile chưa được thay đổi trong lượt backend này. |
+
+Python runtime dependency target lấy từ lượt acceptance trước; không có DeepSeek/Meta request. Edge security headers, Compose/MinIO, production proxy và frontend dependency advisories chưa được xác minh.
 
 ## Nhiều Fanpage và nghiên cứu thị trường — API/PostgreSQL/Celery acceptance, 2026-09-25
 

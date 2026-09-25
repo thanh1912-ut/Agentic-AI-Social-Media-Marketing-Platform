@@ -1,10 +1,12 @@
-# Security review — core pilot
+# Security review — core pilot and market research feature
 
-Cập nhật: 2026-09-24. Branch: `codex/product-v1-completion`; request hardening code ở `c5bb13e` (hosted backend run #65 pass), base `origin/main` tại `07938bd`. Review này giới hạn ở app/API hiện có; không thay cho penetration test hoặc xác minh cấu hình production/edge.
+Cập nhật: 2026-09-25. Branch hiện tại: `codex/page-groups-market-research`; lượt rà soát mới nhất gồm các commit kế thừa hardening từ `codex/product-v1-completion` và phần backend market research bên dưới. Review giới hạn ở code/config trong repo; không thay cho penetration test hoặc xác minh cấu hình production/edge.
 
 ## Tóm tắt
 
 Đã xác nhận lỗi path traversal qua tên file upload và thiếu CSRF ở refresh/logout dùng cookie. Hai lỗi đã được sửa trong hai commit riêng, có regression tests. Hardening bổ sung chặn Host không được duyệt, giới hạn trusted proxy, body size ở ASGI và bắt buộc HTTPS cho DeepSeek khi chạy production.
+
+Rà soát bổ sung cho market research đã chặn DTD/XML entity kể cả feed UTF-16, thêm Redis limits cho crawl thủ công và xác minh Page token, giấu thông tin xác thực khỏi `Settings` repr, đồng thời làm production config fail closed nếu thiếu PostgreSQL/CORS HTTPS origin hoặc còn dùng MinIO credentials mặc định. Python full suite hiện tại: **190 passed, 1 skipped**. npm audit mới nhất chưa chạy được vì DNS không phân giải `registry.npmjs.org`; Next.js manifest đang ở 15.5.25. Theo [security update chính thức ngày 22-09](https://nextjs.org/blog/nextjs-security-update-september-22-2026), Next 15.x không bị ảnh hưởng bởi RCE được nêu, nhưng Vercel khuyến nghị 15.5.26 để nhận hardening liên quan.
 
 ## Finding
 
@@ -56,19 +58,64 @@ Cập nhật: 2026-09-24. Branch: `codex/product-v1-completion`; request hardeni
 - **Verification:** focused tests bao phủ Content-Length, streamed body, đúng ngưỡng, error envelope và request ID; full suite trên code `c5bb13e` **147 passed, 1 skipped**. Skip duy nhất là live DeepSeek smoke vì chưa có key.
 - **Limitations:** reverse proxy/ingress vẫn phải giới hạn request trước khi chuyển traffic vào API để bảo vệ băng thông và kết nối. Compose/runtime chưa được xác minh.
 
+### SEC-MARKET-001 — Đã khắc phục: DTD/XML entity guard bỏ sót UTF-16
+
+- **Severity:** Low.
+- **Location:** `services/research/web_crawler.py:240-249`; regression ở `tests/test_market_research_sources.py`.
+- **Evidence trước khi sửa:** `_feed_items` chỉ tìm byte ASCII `<!DOCTYPE` và `<!ENTITY`; XML UTF-16 chèn byte NUL giữa ký tự nên vượt qua phép tìm kiếm.
+- **Impact:** nguồn RSS/XML công khai có thể vượt qua chính sách từ chối DTD và đưa nội dung entity do nguồn kiểm soát vào parser/trích xuất.
+- **Fix:** chuẩn hóa chữ hoa rồi loại byte NUL trước khi kiểm tra cả `DOCTYPE` lẫn `ENTITY`; body nguyên bản vẫn bị giới hạn dung lượng trước khi parse.
+- **Verification:** `test_feed_extraction_rejects_xml_entities_and_limits_to_safe_host` xác nhận XML UTF-8 và UTF-16 có DTD đều bị từ chối; toàn bộ Python suite pass.
+- **Mitigation:** response vẫn bị giới hạn 2 MiB và chỉ nguồn RSS/XML công khai được parse.
+- **False-positive notes:** đây là bypass có thể tái hiện trên guard byte cũ; kiểm tra mới không phụ thuộc encoding UTF-8/16/32 có byte NUL.
+
+### SEC-MARKET-002 — Đã khắc phục: crawl và xác minh Page thiếu hạn mức riêng
+
+- **Severity:** Medium.
+- **Location:** `services/api/market_research.py:204-208` và `:417-424`; limiter Redis tại `services/api/rate_limits.py`.
+- **Evidence trước khi sửa:** endpoint gọi Meta để xác minh Page và endpoint bắt đầu chu kỳ crawl chưa dùng application rate limit, dù có thể gọi dịch vụ ngoài và kích hoạt phân tích tính phí.
+- **Impact:** thành viên có quyền quản lý nguồn có thể lặp các yêu cầu crawl/xác minh quá nhanh, tăng chi phí và tải website/Meta.
+- **Fix:** xác minh Page giới hạn 10 lần/giờ; crawl thủ công 6 lần/giờ. Dependency được đặt sau xác thực người dùng/quyền workspace. Production fail-closed nếu Redis limiter không khả dụng.
+- **Verification:** route-wiring regression xác nhận hai limiter chạy sau `current_user`; generic limiter tests xác nhận vượt ngưỡng trả 429 và production Redis outage trả 503.
+- **Mitigation:** cron 12 giờ vẫn độc lập với hạn mức manual; theo dõi Redis usage và điều chỉnh quotas từ workload pilot.
+- **False-positive notes:** giới hạn hiện dùng IP do ASGI cung cấp và chia sẻ giữa người dùng cùng IP; account/workspace quota còn cần đo thực tế.
+
+### SEC-PROD-002 — Đã khắc phục: production cho phép thiếu cấu hình hạ tầng bắt buộc
+
+- **Severity:** Medium.
+- **Location:** `services/api/config.py:158-193`; tests tại `tests/test_production_security_config.py`.
+- **Evidence trước khi sửa:** production đã bắt buộc Host allowlist nhưng vẫn có thể dùng SQLite, thiếu `CORS_ALLOWED_ORIGINS`, hoặc khởi động với `minioadmin` nếu S3 được bật.
+- **Impact:** cấu hình triển khai dễ khởi động với database không phù hợp cho pilot nhiều người dùng, CORS sai/không hoạt động hoặc object storage dùng credentials mặc định.
+- **Fix:** production giờ yêu cầu PostgreSQL URL, danh sách CORS rõ ràng gồm HTTPS origins không có wildcard/path/credentials/query/fragment, và credentials S3 khác `minioadmin` khi chọn S3.
+- **Verification:** subprocess config tests xác nhận production từ chối SQLite, wildcard CORS và S3 defaults; helper test production dùng PostgreSQL + HTTPS CORS hợp lệ.
+- **Mitigation:** các giá trị credentials thực tế phải được cấu hình qua secret store; không ghi chúng vào `.env.example` hoặc Git.
+- **False-positive notes:** local development vẫn giữ SQLite/local storage và HTTP CORS origins. Local Compose với `APP_ENV=development` không bị ảnh hưởng.
+
+### SEC-SECRETS-002 — Đã khắc phục: settings repr có thể in thông tin xác thực
+
+- **Severity:** Low.
+- **Location:** `services/api/config.py:24-70`; regression tại `tests/test_production_security_config.py`.
+- **Evidence trước khi sửa:** dataclass tự sinh `repr` cho database/Redis URL, JWT secret, SMTP username, S3 endpoint/access/secret.
+- **Impact:** nếu object settings bị in trong log/chẩn đoán, chuỗi kết nối và credentials có thể lộ.
+- **Fix:** các trường này dùng `repr=False`; trường API keys/Page tokens vốn đã ẩn tiếp tục được giữ ẩn.
+- **Verification:** test tạo `Settings` bằng các sentinel credentials và xác nhận không sentinel nào có trong `repr`.
+- **Mitigation:** tiếp tục tránh ghi nguyên environment/settings object vào log.
+- **False-positive notes:** chưa thấy call site hiện tại log toàn bộ object; fix loại bỏ nguy cơ rò rỉ ngoài ý muốn trong tương lai.
+
 ## Kiểm tra khác trong phạm vi
 
 - **Tenant authorization:** protected workspace routes kiểm tra active membership; tenant-cross-read được kiểm bằng API integration tests. Chưa chạy test trên PostgreSQL/production policy.
 - **Cookie/CSRF:** access/refresh cookie HttpOnly; mọi non-public mutation có dependency CSRF, refresh và logout kiểm tra double-submit token; production yêu cầu Secure cookie. Static route inventory còn 5 public auth writes (`register`, `login`, `forgot-password`, `reset-password`, invitation `accept`) không có CSRF dependency vì chúng không dựa trên cookie session; cần tiếp tục xác minh origin/body controls trên deployment.
-- **CORS:** origins lấy từ allowlist cấu hình; methods và headers API dùng allowlist tường minh. Preflight cho header cần thiết pass, header lạ bị từ chối. Cần xác nhận origin allowlist theo deployment tại edge trước pilot public.
+- **CORS:** origins lấy từ allowlist cấu hình; methods và headers API dùng allowlist tường minh. Preflight cho header cần thiết pass, header lạ bị từ chối. Production hiện bắt buộc danh sách HTTPS origins cụ thể; cần điền origin triển khai thật.
 - **JWT/docs:** access token kiểm tra chữ ký bằng algorithm đã cấu hình và `exp`; docs/OpenAPI bị tắt trong production; test cấu hình JWT yếu pass.
-- **Rate limits:** Redis application-level fixed-window limits đã được thêm cho auth, upload và content generation; production fail-closed khi Redis không dùng được. Host allowlist và trusted proxy được kiểm tra trong app/tests; edge limits, Redis runtime, proxy IP thực tế và account-aware login throttling chưa được kiểm chứng. Giữ `SEC-001` IN_PROGRESS.
+- **Rate limits:** Redis application-level fixed-window limits bao gồm auth, upload, content generation, Meta Page verification và manual market crawl; production fail-closed khi Redis không dùng được. Host allowlist và trusted proxy được kiểm tra trong app/tests; edge limits, Redis runtime, proxy IP thực tế và account-aware quotas chưa được kiểm chứng. Giữ `SEC-001` IN_PROGRESS.
 - **Upload/size:** API kiểm MIME/extension, từng file, toàn batch trước storage; parser giới hạn text/table/page/archive/image và đọc theo block 64 KiB. ASGI có aggregate body cap; edge/ingress vẫn cần cap riêng và runtime verification.
 - **Frontend sinks:** inline bootstrap script trong `apps/web/src/app/layout.tsx` dùng `dangerouslySetInnerHTML` cho runtime config từ deployment environment; serializer tại `apps/web/src/lib/runtime-config-script.ts` escape `<` và test xác nhận `</script>` không thể đóng script. Content Security Policy vẫn cần chốt khi triển khai.
-- **Dependency/infrastructure:** npm audit lần kiểm gần nhất không báo vulnerability; PostgreSQL, MinIO, Compose, proxy/TLS termination, backup/restore và production logs chưa được kiểm chứng trong runtime. App yêu cầu HTTPS cho URL DeepSeek production.
+- **Dependency/infrastructure:** lần `npm audit` mới nhất không hoàn tất vì DNS lỗi tới npm registry; không có kết quả audit dependency hiện hành. Web manifest dùng Next.js 15.5.25; 15.5.26 có hardening theo thông báo chính thức, còn browser build/runtime security headers chưa được xác minh ở edge. PostgreSQL/MinIO/Compose/proxy-TLS production chưa được chạy chung; Compose/backup/restore/logging còn giới hạn như phần trên. API yêu cầu HTTPS cho URL DeepSeek production.
 
 ## Việc còn lại
 
-1. Đặt Host allowlist/trusted proxy theo deployment; xác minh client IP, edge body/rate limits và CORS origin allowlist; đánh giá account-aware login throttling.
+1. Đặt Host allowlist/trusted proxy/CORS origins theo deployment; xác minh client IP, edge body/rate limits và account-aware quotas.
 2. Hoàn tất CSRF/authorization matrix cho mọi auth/write route và log redaction trên deployment test.
-3. Chạy PostgreSQL/MinIO/Compose hardening cùng backup/restore trên môi trường cô lập trước pilot.
+3. Cập nhật Next.js patch khi M1 xác nhận lockfile/build compatibility; chạy lại npm audit khi registry khả dụng.
+4. Chạy PostgreSQL/MinIO/Compose hardening cùng backup/restore trên môi trường cô lập trước pilot.
