@@ -1000,6 +1000,40 @@ export interface paths {
         readonly patch?: never;
         readonly trace?: never;
     };
+    readonly "/api/v1/workspaces/{company_id}/meta/page-posts/{post_id}/metrics": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /** List Page Post Metric History */
+        readonly get: operations["list_page_post_metric_history_api_v1_workspaces__company_id__meta_page_posts__post_id__metrics_get"];
+        readonly put?: never;
+        readonly post?: never;
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/v1/workspaces/{company_id}/meta/pages/{connection_id}/metrics": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /** List Page Metric History */
+        readonly get: operations["list_page_metric_history_api_v1_workspaces__company_id__meta_pages__connection_id__metrics_get"];
+        readonly put?: never;
+        readonly post?: never;
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
     readonly "/api/v1/workspaces/{company_id}/meta/publications": {
         readonly parameters: {
             readonly query?: never;
@@ -2317,6 +2351,56 @@ export interface components {
             /** Message */
             readonly message: string;
         };
+        /** MetaMetricHistoryOut */
+        readonly MetaMetricHistoryOut: {
+            /** Entity Id */
+            readonly entity_id: string;
+            /**
+             * Entity Type
+             * @enum {string}
+             */
+            readonly entity_type: "page" | "post";
+            /** Has More */
+            readonly has_more: boolean;
+            /** Next Offset */
+            readonly next_offset: number | null;
+            /** Page Id */
+            readonly page_id?: string | null;
+            /** Snapshots */
+            readonly snapshots: readonly components["schemas"]["MetaMetricSnapshotOut"][];
+            /** Total */
+            readonly total: number;
+        };
+        /** MetaMetricSnapshotOut */
+        readonly MetaMetricSnapshotOut: {
+            /** Comments */
+            readonly comments?: number | null;
+            /** Followers */
+            readonly followers?: number | null;
+            /** Id */
+            readonly id: string;
+            /** Metric Definition */
+            readonly metric_definition: string;
+            /** Missing Metrics */
+            readonly missing_metrics: readonly string[];
+            /**
+             * Observed At
+             * Format: date-time
+             */
+            readonly observed_at: string;
+            /** Reactions */
+            readonly reactions?: number | null;
+            /** Shares */
+            readonly shares?: number | null;
+            /** Source */
+            readonly source: string;
+            /** Views */
+            readonly views?: number | null;
+            /** Window End */
+            readonly window_end?: string | null;
+            /** Window Start */
+            readonly window_start?: string | null;
+        };
         /** MetaPagePostOut */
         readonly MetaPagePostOut: {
             /** Comments */
@@ -2833,6 +2917,10 @@ export interface components {
             readonly created_at: string;
             /** Evidence Ids */
             readonly evidence_ids: readonly string[];
+            /** Evidence Refs */
+            readonly evidence_refs?: readonly {
+                readonly [key: string]: unknown;
+            }[];
             /** Group Id */
             readonly group_id: string;
             /** Id */
@@ -2843,6 +2931,10 @@ export interface components {
             readonly report: {
                 readonly [key: string]: unknown;
             };
+            /** Source Audience */
+            readonly source_audience?: readonly {
+                readonly [key: string]: unknown;
+            }[];
             /**
              * Window End
              * Format: date-time
@@ -3115,6 +3207,8 @@ export type SchemaMediaAssetOut = components['schemas']['MediaAssetOut'];
 export type SchemaMemberOut = components['schemas']['MemberOut'];
 export type SchemaMetaConnectionOut = components['schemas']['MetaConnectionOut'];
 export type SchemaMetaErrorOut = components['schemas']['MetaErrorOut'];
+export type SchemaMetaMetricHistoryOut = components['schemas']['MetaMetricHistoryOut'];
+export type SchemaMetaMetricSnapshotOut = components['schemas']['MetaMetricSnapshotOut'];
 export type SchemaMetaPagePostOut = components['schemas']['MetaPagePostOut'];
 export type SchemaMetaPagePostsOut = components['schemas']['MetaPagePostsOut'];
 export type SchemaMetaPublicationOut = components['schemas']['MetaPublicationOut'];
@@ -5751,6 +5845,84 @@ export interface operations {
                 };
                 content: {
                     readonly "application/json": components["schemas"]["MetaPagePostsOut"];
+                };
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    readonly list_page_post_metric_history_api_v1_workspaces__company_id__meta_page_posts__post_id__metrics_get: {
+        readonly parameters: {
+            readonly query?: {
+                readonly observed_from?: string | null;
+                readonly observed_to?: string | null;
+                readonly limit?: number;
+                readonly offset?: number;
+            };
+            readonly header?: {
+                readonly authorization?: string | null;
+            };
+            readonly path: {
+                readonly company_id: string;
+                readonly post_id: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["MetaMetricHistoryOut"];
+                };
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    readonly list_page_metric_history_api_v1_workspaces__company_id__meta_pages__connection_id__metrics_get: {
+        readonly parameters: {
+            readonly query?: {
+                readonly observed_from?: string | null;
+                readonly observed_to?: string | null;
+                readonly limit?: number;
+                readonly offset?: number;
+            };
+            readonly header?: {
+                readonly authorization?: string | null;
+            };
+            readonly path: {
+                readonly company_id: string;
+                readonly connection_id: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["MetaMetricHistoryOut"];
                 };
             };
             /** @description Validation Error */

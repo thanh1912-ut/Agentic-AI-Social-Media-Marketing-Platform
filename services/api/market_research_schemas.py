@@ -109,6 +109,8 @@ class ResearchReportOut(StrictModel):
     coverage: dict[str, Any]
     model_name: str | None
     created_at: datetime
+    evidence_refs: list[dict[str, Any]] = Field(default_factory=list)
+    source_audience: list[dict[str, Any]] = Field(default_factory=list)
 
 
 class DraftFromReportIn(StrictModel):

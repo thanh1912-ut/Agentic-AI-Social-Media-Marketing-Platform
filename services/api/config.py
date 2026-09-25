@@ -26,6 +26,9 @@ class Settings:
         repr=False,
     )
     redis_url: str = field(default_factory=lambda: os.getenv("REDIS_URL", "redis://localhost:6379/0"), repr=False)
+    redis_cache_url: str = field(
+        default_factory=lambda: os.getenv("REDIS_CACHE_URL", "redis://localhost:6380/0"), repr=False
+    )
     rate_limits_enabled: bool = _bool(
         "RATE_LIMITS_ENABLED",
         os.getenv("APP_ENV", "development").strip().casefold() in {"prod", "production"},

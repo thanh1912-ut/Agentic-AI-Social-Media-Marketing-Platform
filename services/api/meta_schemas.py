@@ -82,3 +82,28 @@ class MetaPagePostsOut(StrictModel):
     next_offset: int | None
     sync_has_more: bool
     last_sync_at: datetime | None
+
+
+class MetaMetricSnapshotOut(StrictModel):
+    id: str
+    observed_at: datetime
+    source: str
+    metric_definition: str
+    window_start: datetime | None = None
+    window_end: datetime | None = None
+    followers: int | None = None
+    views: int | None = None
+    reactions: int | None = None
+    comments: int | None = None
+    shares: int | None = None
+    missing_metrics: list[str]
+
+
+class MetaMetricHistoryOut(StrictModel):
+    entity_type: Literal["page", "post"]
+    entity_id: str
+    page_id: str | None = None
+    snapshots: list[MetaMetricSnapshotOut]
+    total: int
+    has_more: bool
+    next_offset: int | None

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import datetime
 
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy import func, select
@@ -11,7 +11,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from database.models import (
     AuditEvent, Campaign, CampaignPost, Job, JobStep, MediaAsset, Membership, MetaPageConnection,
-    MetaPagePost, MetaPublication, MetaSyncState, PostApproval, PostVersion, User, utcnow,
+    MetaPageMetricSnapshot, MetaPagePost, MetaPostMetricSnapshot, MetaPublication,
+    MetaSyncState, PostApproval, PostVersion, User, utcnow,
 )
 from .config import settings
 from .content_integrity import content_sha256
@@ -22,7 +23,8 @@ from .job_service import accepted_response, dispatch_meta_job
 from .meta_client import MetaGraphClient, MetaGraphReadError, MetaGraphRejected, MetaGraphTokenExpired
 from .meta_tokens import TokenEncryptionUnavailable, decrypt_page_token
 from .meta_schemas import (
-    MetaConnectionOut, MetaPagePostOut, MetaPagePostsOut, MetaPublicationOut,
+    MetaConnectionOut, MetaMetricHistoryOut, MetaMetricSnapshotOut,
+    MetaPagePostOut, MetaPagePostsOut, MetaPublicationOut,
     MetaPublishIn, MetaReconcileIn,
 )
 from .schemas import AcceptedResponse
@@ -371,6 +373,83 @@ async def list_meta_page_posts(
                             has_more=has_more, next_offset=offset + len(rows) if has_more else None,
                             sync_has_more=state.has_more if state else True,
                             last_sync_at=state.last_sync_at if state else None)
+
+
+@router.get("/pages/{connection_id}/metrics", response_model=MetaMetricHistoryOut)
+async def list_page_metric_history(
+    company_id: str, connection_id: str,
+    observed_from: datetime | None = None, observed_to: datetime | None = None,
+    limit: int = Query(default=50, ge=1, le=200), offset: int = Query(default=0, ge=0),
+    user: User = Depends(current_user), db: AsyncSession = Depends(get_db),
+):
+    await membership_for(company_id, user, db)
+    if observed_from and observed_to and observed_to < observed_from:
+        raise ApiProblem(422, "validation_error", "Khoảng thời gian đo không hợp lệ.")
+    connection = await db.scalar(select(MetaPageConnection).where(
+        MetaPageConnection.company_id == company_id, MetaPageConnection.id == connection_id,
+    ))
+    if connection is None:
+        raise ApiProblem(404, "not_found", "Không tìm thấy Fanpage trong workspace.")
+    filters = [MetaPageMetricSnapshot.company_id == company_id,
+               MetaPageMetricSnapshot.connection_id == connection_id]
+    if observed_from:
+        filters.append(MetaPageMetricSnapshot.observed_at >= observed_from)
+    if observed_to:
+        filters.append(MetaPageMetricSnapshot.observed_at <= observed_to)
+    total = int(await db.scalar(select(func.count()).select_from(MetaPageMetricSnapshot).where(*filters)) or 0)
+    snapshots = (await db.scalars(select(MetaPageMetricSnapshot).where(*filters)
+                                  .order_by(MetaPageMetricSnapshot.observed_at.desc(), MetaPageMetricSnapshot.id.desc())
+                                  .offset(offset).limit(limit))).all()
+    has_more = offset + len(snapshots) < total
+    return MetaMetricHistoryOut(
+        entity_type="page", entity_id=connection.id, page_id=connection.page_id,
+        snapshots=[MetaMetricSnapshotOut(
+            id=row.id, observed_at=row.observed_at, source=row.source,
+            metric_definition=row.metric_definition, window_start=row.window_start,
+            window_end=row.window_end, followers=row.followers,
+            missing_metrics=row.missing_metrics_json,
+        ) for row in snapshots],
+        total=total, has_more=has_more, next_offset=offset + len(snapshots) if has_more else None,
+    )
+
+
+@router.get("/page-posts/{post_id}/metrics", response_model=MetaMetricHistoryOut)
+async def list_page_post_metric_history(
+    company_id: str, post_id: str,
+    observed_from: datetime | None = None, observed_to: datetime | None = None,
+    limit: int = Query(default=50, ge=1, le=200), offset: int = Query(default=0, ge=0),
+    user: User = Depends(current_user), db: AsyncSession = Depends(get_db),
+):
+    await membership_for(company_id, user, db)
+    if observed_from and observed_to and observed_to < observed_from:
+        raise ApiProblem(422, "validation_error", "Khoảng thời gian đo không hợp lệ.")
+    post = await db.scalar(select(MetaPagePost).where(
+        MetaPagePost.company_id == company_id, MetaPagePost.id == post_id,
+    ))
+    if post is None:
+        raise ApiProblem(404, "not_found", "Không tìm thấy bài viết Fanpage trong workspace.")
+    filters = [MetaPostMetricSnapshot.company_id == company_id,
+               MetaPostMetricSnapshot.meta_page_post_id == post.id]
+    if observed_from:
+        filters.append(MetaPostMetricSnapshot.observed_at >= observed_from)
+    if observed_to:
+        filters.append(MetaPostMetricSnapshot.observed_at <= observed_to)
+    total = int(await db.scalar(select(func.count()).select_from(MetaPostMetricSnapshot).where(*filters)) or 0)
+    snapshots = (await db.scalars(select(MetaPostMetricSnapshot).where(*filters)
+                                  .order_by(MetaPostMetricSnapshot.observed_at.desc(), MetaPostMetricSnapshot.id.desc())
+                                  .offset(offset).limit(limit))).all()
+    has_more = offset + len(snapshots) < total
+    return MetaMetricHistoryOut(
+        entity_type="post", entity_id=post.id, page_id=post.page_id,
+        snapshots=[MetaMetricSnapshotOut(
+            id=row.id, observed_at=row.observed_at, source=row.source,
+            metric_definition=row.metric_definition, window_start=row.window_start,
+            window_end=row.window_end, views=row.views, reactions=row.reactions,
+            comments=row.comments, shares=row.shares,
+            missing_metrics=row.missing_metrics_json,
+        ) for row in snapshots],
+        total=total, has_more=has_more, next_offset=offset + len(snapshots) if has_more else None,
+    )
 
 
 @router.post("/metrics/sync", response_model=AcceptedResponse, status_code=202,

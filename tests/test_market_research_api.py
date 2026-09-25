@@ -13,7 +13,10 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from sqlalchemy.pool import StaticPool
 
-from database.models import Base, MarketEvidence, MarketObservation, MetaPageConnection, MetaPageGroup, ResearchCycle, ResearchSource, new_id
+from database.models import (
+    Base, MarketEvidence, MarketEvidenceVersion, MarketObservation, MetaPageConnection,
+    MarketReport, MarketReportEvidence, MetaPageGroup, ResearchCycle, ResearchSource, new_id,
+)
 from services.api import market_research as market_research_routes
 from services.api import meta_tokens
 from services.api.db import get_db
@@ -177,6 +180,7 @@ def test_manual_competitor_import_masks_private_contact_data(market_api) -> None
             "url": "https://www.facebook.com/rival/posts/42",
             "title": "Bài đối thủ",
             "text": "Liên hệ 0901234567 hoặc trend@example.com",
+            "observed_at": "2026-09-25T12:00:00Z",
             "metrics": {"reactions": 45, "comments": 7, "shares": 3, "views": 1000},
             "comments": ["Nhắn tôi tại contact@example.com", "SĐT 0912345678"],
         }]},
@@ -188,15 +192,34 @@ def test_manual_competitor_import_masks_private_contact_data(market_api) -> None
         async with session_factory() as db:
             evidence = await db.scalar(select(MarketEvidence).where(MarketEvidence.source_id == source["id"]))
             observation = await db.scalar(select(MarketObservation).where(MarketObservation.evidence_id == evidence.id))
-            return evidence, observation
+            version = await db.get(MarketEvidenceVersion, observation.evidence_version_id)
+            return evidence, observation, version
 
-    evidence, observation = asyncio.run(read_evidence())
+    evidence, observation, version = asyncio.run(read_evidence())
     assert "trend@example.com" not in evidence.text
     assert "0901234567" not in evidence.text
     assert "[đã ẩn email]" in evidence.text
     assert "[đã ẩn số điện thoại]" in evidence.text
     assert all("contact@example.com" not in item and "0912345678" not in item for item in observation.comments_json)
     assert observation.metrics_json == {"reactions": 45, "comments": 7, "shares": 3, "views": 1000}
+    assert version is not None
+    assert version.text == evidence.text
+    assert version.parser_version == "manual-import-v1"
+    assert len(version.content_hash) == 64
+
+    changed_snapshot = client.post(
+        f"/api/v1/workspaces/{workspace_id}/market-research/sources/{source['id']}/import",
+        headers=headers,
+        json={"rows": [{
+            "url": "https://www.facebook.com/rival/posts/42",
+            "title": "Bài đã sửa",
+            "text": "Nội dung thay đổi không thể thay thế bằng chứng cũ.",
+            "observed_at": "2026-09-25T12:00:00Z",
+            "metrics": {"reactions": 45, "comments": 7, "shares": 3, "views": 1000},
+        }]},
+    )
+    assert changed_snapshot.status_code == 409
+    assert changed_snapshot.json()["error"]["code"] == "observation_version_conflict"
 
 
 def test_competitor_page_uses_approved_public_api_token_when_configured(market_api, monkeypatch) -> None:
@@ -269,7 +292,7 @@ def test_competitor_page_uses_approved_public_api_token_when_configured(market_a
 
     saved, details = asyncio.run(collect())
     assert saved == 1
-    assert details["metrics_available"] == ["reactions", "comments", "shares", "interactions", "followers"]
+    assert details["metrics_available"] == ["reactions", "comments", "shares", "interactions"]
     assert details["metrics_unavailable"] == ["views"]
 
     async def read_observation():
@@ -282,9 +305,21 @@ def test_competitor_page_uses_approved_public_api_token_when_configured(market_a
     assert evidence.text == "Ưu đãi mùa mới"
     assert observation.metrics_json == {
         "reactions": 17, "comments": 4, "shares": 2, "interactions": 23,
-        "views": None, "followers": 2500,
+        "views": None,
     }
     assert observation.comments_json == ["Liên hệ [đã ẩn email]"]
+
+    async def read_source_audience():
+        from database.models import ResearchSourceMetricSnapshot
+
+        async with session_factory() as db:
+            return await db.scalar(select(ResearchSourceMetricSnapshot).where(
+                ResearchSourceMetricSnapshot.source_id == source_id,
+            ))
+
+    audience = asyncio.run(read_source_audience())
+    assert audience.followers == 2500
+    assert audience.members is None
 
 
 def test_owned_page_collection_saves_views_and_followers_when_meta_returns_them(market_api, monkeypatch) -> None:
@@ -356,7 +391,7 @@ def test_owned_page_collection_saves_views_and_followers_when_meta_returns_them(
 
     saved, details = asyncio.run(collect())
     assert saved == 1
-    assert details["metrics_available"] == ["reactions", "comments", "shares", "interactions", "views", "followers"]
+    assert details["metrics_available"] == ["reactions", "comments", "shares", "interactions", "views"]
     assert details["metrics_unavailable"] == []
 
     async def read_observation():
@@ -368,9 +403,70 @@ def test_owned_page_collection_saves_views_and_followers_when_meta_returns_them(
     assert observation is not None
     assert observation.metrics_json == {
         "reactions": 22, "comments": 5, "shares": 3, "interactions": 30,
-        "views": 7654, "followers": 5400,
+        "views": 7654,
     }
     assert observation.comments_json == ["Bài này hữu ích"]
+
+    async def read_page_and_post_history():
+        from database.models import MetaPageMetricSnapshot, MetaPagePost, MetaPostMetricSnapshot
+
+        async with session_factory() as db:
+            page_snapshot = await db.scalar(select(MetaPageMetricSnapshot).where(
+                MetaPageMetricSnapshot.connection_id == connection_id,
+            ))
+            page_post = await db.scalar(select(MetaPagePost).where(
+                MetaPagePost.company_id == workspace_id,
+                MetaPagePost.external_post_id == "123456789_42",
+            ))
+            post_snapshot = await db.scalar(select(MetaPostMetricSnapshot).where(
+                MetaPostMetricSnapshot.meta_page_post_id == page_post.id,
+            ))
+            return page_snapshot, page_post, post_snapshot
+
+    page_snapshot, page_post, post_snapshot = asyncio.run(read_page_and_post_history())
+    assert page_snapshot.followers == 5400
+    assert post_snapshot.views == 7654
+    assert post_snapshot.reactions == 22
+    assert post_snapshot.missing_metrics_json == []
+
+    page_history = client.get(
+        f"/api/v1/workspaces/{workspace_id}/meta/pages/{connection_id}/metrics"
+    )
+    post_history = client.get(
+        f"/api/v1/workspaces/{workspace_id}/meta/page-posts/{page_post.id}/metrics"
+    )
+    assert page_history.status_code == 200, page_history.text
+    assert page_history.json()["snapshots"][0]["followers"] == 5400
+    assert post_history.status_code == 200, post_history.text
+    assert post_history.json()["snapshots"][0]["views"] == 7654
+
+    async def seed_report_with_pinned_evidence():
+        async with session_factory() as db:
+            evidence = await db.scalar(select(MarketEvidence).where(MarketEvidence.source_id == source_id))
+            observation = await db.scalar(select(MarketObservation).where(MarketObservation.evidence_id == evidence.id))
+            report = MarketReport(
+                company_id=workspace_id, group_id=group_id, cycle_id=None,
+                window_start=observed_at - timedelta(hours=12), window_end=observed_at,
+                report_json={"headline": "Xu hướng", "source_audience": [{"followers": 5400}]},
+                evidence_ids_json=[evidence.id], coverage_json={}, model_name="fixture",
+            )
+            db.add(report)
+            await db.flush()
+            db.add(MarketReportEvidence(
+                company_id=workspace_id, group_id=group_id, report_id=report.id,
+                evidence_id=evidence.id, observation_id=observation.id,
+                evidence_version_id=observation.evidence_version_id,
+            ))
+            await db.commit()
+            return report.id
+
+    report_id = asyncio.run(seed_report_with_pinned_evidence())
+    reports = client.get(f"/api/v1/workspaces/{workspace_id}/market-research/groups/{group_id}/reports")
+    assert reports.status_code == 200, reports.text
+    report_out = next(item for item in reports.json() if item["id"] == report_id)
+    assert report_out["evidence_refs"][0]["evidence_version_id"] == observation.evidence_version_id
+    assert report_out["evidence_refs"][0]["provenance_status"] == "verified"
+    assert report_out["source_audience"][0]["followers"] == 5400
 
     async def seed_previous_snapshot():
         async with session_factory() as db:
@@ -381,7 +477,7 @@ def test_owned_page_collection_saves_views_and_followers_when_meta_returns_them(
                 observed_at=observed_at - timedelta(hours=12),
                 metrics_json={
                     "reactions": 10, "comments": 3, "shares": 2,
-                    "interactions": 15, "views": 7000, "followers": 5300,
+                    "interactions": 15, "views": 7000,
                 }, comments_json=["snapshot cũ"],
             ))
             await db.commit()
@@ -389,7 +485,6 @@ def test_owned_page_collection_saves_views_and_followers_when_meta_returns_them(
     asyncio.run(seed_previous_snapshot())
     report_evidence = asyncio.run(research_tasks._evidence_for_report(workspace_id, group_id))
     assert len(report_evidence) == 1
-    assert report_evidence[0]["metrics"]["followers"] == 5400
     assert report_evidence[0]["metric_delta"] == {
         "reactions": 12, "comments": 2, "shares": 1, "interactions": 15, "views": 654,
     }

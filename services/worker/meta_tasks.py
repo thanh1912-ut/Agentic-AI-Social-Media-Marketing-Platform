@@ -10,14 +10,15 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from database.models import (
     AuditEvent, CampaignPost, Job, JobStep, MediaAsset, MetaPageConnection, MetaPagePost,
-    MetaPublication, MetaSyncState, PostApproval, PostMetricSnapshot, PostVersion, utcnow,
+    MetaPageMetricSnapshot, MetaPostMetricSnapshot, MetaPublication, MetaSyncState,
+    PostApproval, PostMetricSnapshot, PostVersion, utcnow,
 )
 from services.api.config import settings
 from services.api.content_integrity import content_sha256
 from services.api.db import SessionLocal
 from services.api.meta_client import (
     MetaGraphClient, MetaGraphOutcomeUnknown, MetaGraphReadError,
-    MetaGraphRejected, MetaGraphTokenExpired, MetaPostMetrics,
+    MetaGraphRejected, MetaGraphTokenExpired,
 )
 from services.api.meta_tokens import TokenEncryptionUnavailable, decrypt_page_token
 from services.api.storage import storage
@@ -223,7 +224,7 @@ async def _run_publish(job_id: str) -> None:
 
 
 async def _upsert_page_post(db: AsyncSession, company_id: str, page_id: str, item: object,
-                            linked_post_id: str | None) -> None:
+                            linked_post_id: str | None, snapshot_key: str) -> None:
     now = utcnow()
     external_id = item.external_post_id
     row = await db.scalar(select(MetaPagePost).where(
@@ -243,6 +244,46 @@ async def _upsert_page_post(db: AsyncSession, company_id: str, page_id: str, ite
     row.shares = item.shares
     row.last_synced_at = now
     row.updated_at = now
+    await db.flush()
+    snapshot = await db.scalar(select(MetaPostMetricSnapshot).where(
+        MetaPostMetricSnapshot.company_id == company_id,
+        MetaPostMetricSnapshot.meta_page_post_id == row.id,
+        MetaPostMetricSnapshot.snapshot_key == snapshot_key,
+    ))
+    values = {
+        "views": None,
+        "reactions": item.reactions,
+        "comments": item.comments,
+        "shares": item.shares,
+    }
+    missing = [name for name, value in values.items() if value is None]
+    if snapshot is None:
+        db.add(MetaPostMetricSnapshot(
+            company_id=company_id, meta_page_post_id=row.id, snapshot_key=snapshot_key,
+            observed_at=now, source="meta_graph_sync", metric_definition="meta_post_v1",
+            missing_metrics_json=missing, **values,
+        ))
+
+
+async def _record_page_followers_snapshot(
+    db: AsyncSession, company_id: str, connection_id: str | None, page_id: str,
+    snapshot_key: str, observed_at: datetime, followers: int | None,
+) -> None:
+    if connection_id is None:
+        return
+    exists = await db.scalar(select(MetaPageMetricSnapshot.id).where(
+        MetaPageMetricSnapshot.company_id == company_id,
+        MetaPageMetricSnapshot.connection_id == connection_id,
+        MetaPageMetricSnapshot.snapshot_key == snapshot_key,
+    ))
+    if exists:
+        return
+    db.add(MetaPageMetricSnapshot(
+        company_id=company_id, connection_id=connection_id, page_id=page_id,
+        snapshot_key=snapshot_key, observed_at=observed_at,
+        source="meta_graph_sync", metric_definition="page_followers_v1",
+        followers=followers, missing_metrics_json=["followers"] if followers is None else [],
+    ))
 
 
 async def _sync_published_metrics(db: AsyncSession, job: Job, client: MetaGraphClient, page_id: str) -> int:
@@ -275,7 +316,7 @@ async def _sync_published_metrics(db: AsyncSession, job: Job, client: MetaGraphC
         ))
         if metric.permalink_url:
             row.permalink = metric.permalink_url
-        await _upsert_page_post(db, job.company_id, page_id, metric, row.post_id)
+        await _upsert_page_post(db, job.company_id, page_id, metric, row.post_id, f"sync:{job.id}")
         count += 1
     return count
 
@@ -315,6 +356,17 @@ async def _run_sync(job_id: str) -> None:
         try:
             async with MetaGraphClient(page_id, page_token,
                                        settings.meta_graph_version) as client:
+                observed_at = utcnow()
+                try:
+                    followers = await client.read_page_followers_count()
+                except MetaGraphTokenExpired:
+                    raise
+                except (MetaGraphRejected, MetaGraphReadError, ValueError):
+                    followers = None
+                await _record_page_followers_snapshot(
+                    db, job.company_id, connection_id, page_id,
+                    f"sync:{job.id}", observed_at, followers,
+                )
                 # Always refresh the newest Page posts, then continue the old-post cursor.
                 first = await client.list_page_posts(limit=100)
                 cursor = state.next_cursor if state.has_more and state.next_cursor else first.next_cursor
@@ -327,7 +379,7 @@ async def _run_sync(job_id: str) -> None:
                 linked = {row.external_post_id: row.post_id for row in publications}
                 for item in first.posts:
                     await _upsert_page_post(db, job.company_id, page_id,
-                                            item, linked.get(item.external_post_id))
+                                            item, linked.get(item.external_post_id), f"sync:{job.id}")
                     imported += 1
                 seen = set()
                 for _ in range(4):  # Up to 500 Page posts per user-initiated job.
@@ -337,7 +389,7 @@ async def _run_sync(job_id: str) -> None:
                     page = await client.list_page_posts(limit=100, after=cursor)
                     for item in page.posts:
                         await _upsert_page_post(db, job.company_id, page_id,
-                                                item, linked.get(item.external_post_id))
+                                                item, linked.get(item.external_post_id), f"sync:{job.id}")
                         imported += 1
                     cursor = page.next_cursor
                     state.next_cursor = cursor

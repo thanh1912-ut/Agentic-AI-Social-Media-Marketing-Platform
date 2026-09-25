@@ -8,11 +8,12 @@ import math
 from datetime import timedelta
 from urllib.parse import urlsplit
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Request
 from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from database.evidence_versions import ensure_evidence_version
 from database.models import (
     AuditEvent,
     Campaign,
@@ -20,10 +21,13 @@ from database.models import (
     Job,
     JobStep,
     MarketEvidence,
+    MarketEvidenceVersion,
+    MarketReportEvidence,
     MarketObservation,
     MarketReport,
     MetaPageConnection,
     MetaPageGroup,
+    ResearchSourceMetricSnapshot,
     MetaSyncState,
     ResearchCycle,
     ResearchSource,
@@ -32,6 +36,7 @@ from database.models import (
     utcnow,
 )
 from .config import settings
+from .cache import cache_key, get_json_cache, set_json_cache
 from .db import get_db
 from .dependencies import current_user, membership_for, require_csrf, require_permission
 from .errors import ApiProblem
@@ -503,6 +508,11 @@ async def import_source_observations(
             evidence.last_seen_at = now
             if item.published_at:
                 evidence.published_at = item.published_at
+        version = await ensure_evidence_version(
+            db, evidence, title=item.title or evidence.title, text=text,
+            published_at=item.published_at or evidence.published_at, captured_at=item.observed_at or now,
+            parser_version="manual-import-v1",
+        )
         metrics = {
             key: value for key, value in item.metrics.items()
             if value is None or (type(value) in {int, float} and math.isfinite(value) and value >= 0)
@@ -516,11 +526,46 @@ async def import_source_observations(
         if observation is None:
             db.add(MarketObservation(
                 company_id=company_id, evidence_id=evidence.id, observed_at=observed,
+                evidence_version_id=version.id,
                 metrics_json=metrics, comments_json=comments,
             ))
         else:
-            observation.metrics_json = metrics
-            observation.comments_json = comments
+            if observation.evidence_version_id != version.id:
+                raise ApiProblem(
+                    409, "observation_version_conflict",
+                    "Thời điểm này đã được lưu với nội dung khác; hãy nhập lại với thời điểm quan sát chính xác.",
+                )
+            if observation.metrics_json != metrics or observation.comments_json != comments:
+                raise ApiProblem(
+                    409, "observation_snapshot_conflict",
+                    "Snapshot tại thời điểm này đã tồn tại và không thể sửa; hãy dùng thời điểm quan sát mới.",
+                )
+        if source.source_type != "owned_facebook_page":
+            followers = item.metrics.get("followers")
+            members = item.metrics.get("members")
+            followers = followers if type(followers) is int and followers >= 0 else None
+            members = members if type(members) is int and members >= 0 else None
+            if "followers" in item.metrics or "members" in item.metrics:
+                key = f"manual:{source.id}:{observed.isoformat()}"
+                snapshot = await db.scalar(select(ResearchSourceMetricSnapshot).where(
+                    ResearchSourceMetricSnapshot.company_id == company_id,
+                    ResearchSourceMetricSnapshot.source_id == source.id,
+                    ResearchSourceMetricSnapshot.snapshot_key == key,
+                ).with_for_update())
+                missing = [name for name, value in (("followers", followers), ("members", members)) if value is None]
+                if snapshot is None:
+                    db.add(ResearchSourceMetricSnapshot(
+                        company_id=company_id, source_id=source.id, snapshot_key=key,
+                        observed_at=observed, source="manual_import",
+                        metric_definition="source_audience_v1", followers=followers,
+                        members=members, missing_metrics_json=missing,
+                    ))
+                elif (snapshot.followers != followers or snapshot.members != members
+                      or snapshot.missing_metrics_json != missing):
+                    raise ApiProblem(
+                        409, "audience_snapshot_conflict",
+                        "Snapshot quy mô nguồn đã tồn tại và không thể sửa; hãy dùng thời điểm đo mới.",
+                    )
         created += 1
     source.last_crawled_at = now
     source.status = "manual_import_only" if source.source_type != "owned_facebook_page" else "active"
@@ -534,17 +579,72 @@ async def import_source_observations(
 
 @router.get("/groups/{group_id}/reports", response_model=list[ResearchReportOut])
 async def list_reports(
-    company_id: str, group_id: str, user: User = Depends(current_user), db: AsyncSession = Depends(get_db),
+    company_id: str, group_id: str, request: Request,
+    user: User = Depends(current_user), db: AsyncSession = Depends(get_db),
 ):
     await membership_for(company_id, user, db)
     await _tenant_group(db, company_id, group_id)
+    revision = await db.execute(select(func.count(MarketReport.id), func.max(MarketReport.created_at)).where(
+        MarketReport.company_id == company_id, MarketReport.group_id == group_id,
+    ))
+    count, latest = revision.one()
+    key = cache_key("market-reports", company_id,
+                    f"{group_id}|{count}|{latest.isoformat() if latest else 'none'}")
+    cache = getattr(request.app.state, "response_cache", None)
+    cached = await get_json_cache(cache, key)
+    if isinstance(cached, list):
+        try:
+            return [ResearchReportOut.model_validate(item) for item in cached]
+        except ValueError:
+            pass
     rows = (await db.scalars(select(MarketReport).where(
         MarketReport.company_id == company_id, MarketReport.group_id == group_id,
     ).order_by(MarketReport.created_at.desc()).limit(30))).all()
-    return [ResearchReportOut(id=row.id, group_id=row.group_id, window_start=row.window_start,
-                              window_end=row.window_end, report=row.report_json,
-                              evidence_ids=row.evidence_ids_json, coverage=row.coverage_json,
-                              model_name=row.model_name, created_at=row.created_at) for row in rows]
+    output = []
+    for row in rows:
+        linked = (await db.execute(
+            select(MarketReportEvidence, MarketEvidence, MarketEvidenceVersion, MarketObservation)
+            .join(MarketEvidence, (MarketEvidence.company_id == MarketReportEvidence.company_id)
+                  & (MarketEvidence.group_id == MarketReportEvidence.group_id)
+                  & (MarketEvidence.id == MarketReportEvidence.evidence_id))
+            .join(MarketEvidenceVersion, (MarketEvidenceVersion.company_id == MarketReportEvidence.company_id)
+                  & (MarketEvidenceVersion.evidence_id == MarketReportEvidence.evidence_id)
+                  & (MarketEvidenceVersion.id == MarketReportEvidence.evidence_version_id))
+            .join(MarketObservation, (MarketObservation.company_id == MarketReportEvidence.company_id)
+                  & (MarketObservation.evidence_id == MarketReportEvidence.evidence_id)
+                  & (MarketObservation.id == MarketReportEvidence.observation_id)
+                  & (MarketObservation.evidence_version_id == MarketReportEvidence.evidence_version_id))
+            .where(MarketReportEvidence.company_id == company_id,
+                   MarketReportEvidence.report_id == row.id)
+            .order_by(MarketObservation.observed_at.desc())
+        )).all()
+        evidence_refs = [{
+            "id": evidence.id,
+            "title": version.title,
+            "url": evidence.canonical_url,
+            "observed_at": observation.observed_at,
+            "evidence_version_id": version.id,
+            "observation_id": observation.id,
+            "content_hash": version.content_hash,
+            "provenance_status": "verified",
+        } for _link, evidence, version, observation in linked]
+        report_json = row.report_json if isinstance(row.report_json, dict) else {}
+        coverage = dict(row.coverage_json or {})
+        coverage["provenance_status"] = (
+            "verified" if len(evidence_refs) == len(row.evidence_ids_json or []) and evidence_refs
+            else "legacy_unverifiable" if row.evidence_ids_json
+            else "no_evidence"
+        )
+        output.append(ResearchReportOut(
+            id=row.id, group_id=row.group_id, window_start=row.window_start,
+            window_end=row.window_end, report=report_json,
+            evidence_ids=row.evidence_ids_json, coverage=coverage,
+            model_name=row.model_name, created_at=row.created_at,
+            evidence_refs=evidence_refs,
+            source_audience=report_json.get("source_audience", []),
+        ))
+    await set_json_cache(cache, key, [item.model_dump(mode="json") for item in output], 300)
+    return output
 
 
 @router.post("/reports/{report_id}/draft", status_code=201, dependencies=[Depends(require_csrf)])

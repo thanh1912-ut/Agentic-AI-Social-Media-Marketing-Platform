@@ -19,11 +19,22 @@ services:
 
   redis:
     image: redis:7.4-alpine
-    command: ["redis-server", "--appendonly", "yes"]
+    command: ["redis-server", "--appendonly", "yes", "--appendfsync", "everysec", "--maxmemory", "${REDIS_MAXMEMORY:-256mb}", "--maxmemory-policy", "noeviction"]
     ports:
       - "${REDIS_PORT:-6379}:6379"
     volumes:
       - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+
+  redis-cache:
+    image: redis:7.4-alpine
+    command: ["redis-server", "--maxmemory", "${REDIS_CACHE_MAXMEMORY:-64mb}", "--maxmemory-policy", "allkeys-lru"]
+    ports:
+      - "${REDIS_CACHE_PORT:-6380}:6379"
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
@@ -91,6 +102,7 @@ services:
     environment:
       DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-agentic_marketing}
       REDIS_URL: redis://redis:6379/0
+      REDIS_CACHE_URL: redis://redis-cache:6379/0
       S3_ENDPOINT: http://minio:9000
       STORAGE_BACKEND: s3
       COOKIE_SECURE: ${COOKIE_SECURE:-0}
@@ -120,6 +132,8 @@ services:
       migrate:
         condition: service_completed_successfully
       redis:
+        condition: service_healthy
+      redis-cache:
         condition: service_healthy
       minio:
         condition: service_healthy

@@ -3,9 +3,9 @@
 ## Tổng quan
 
 ```text
-web → api → PostgreSQL (source of truth)
-             ├── commit job/domain update
-             ├── dispatcher → Redis/Celery → worker / agent-worker
+web → api → PostgreSQL + pgvector (source of truth)
+             ├── commit job/domain update → Redis queue / Celery → worker / agent-worker
+             ├── derived API response ← Redis cache (best effort, separate instance)
              └── MinIO/S3-compatible object storage
 ```
 
@@ -20,8 +20,9 @@ web → api → PostgreSQL (source of truth)
 | `services/worker` | Job nền: publish, monitor, schedule | Queue worker |
 
 `services/agents` và `services/ingestion` là Python modules được worker gọi; không
-có Agent HTTP Service riêng trong MVP. Redis chỉ làm queue/cache, không là nơi duy
-nhất giữ lịch hoặc trạng thái job.
+có Agent HTTP Service riêng trong MVP. PostgreSQL lưu lịch, trạng thái job, nghiệp
+vụ và vectors. Redis queue chỉ vận chuyển job/rate-limit keys; Redis cache là
+instance riêng có thể bị eviction và không làm mất dữ liệu nghiệp vụ.
 
 ## Luồng dữ liệu
 
@@ -32,3 +33,10 @@ nhất giữ lịch hoặc trạng thái job.
 - Modular monolith giữ transaction nghiệp vụ, job ledger và tenant isolation ở cùng
   một boundary; Redis/Celery chỉ nhận job sau khi transaction DB đã commit.
 - PostgreSQL dùng pgvector-capable image; MinIO là storage local tương thích S3.
+- Mọi quan hệ nghiệp vụ quan trọng gắn tenant qua `company_id`; migration 0013
+  bổ sung khóa ngoại ghép để PostgreSQL chặn link chéo workspace.
+- Cache key gồm môi trường, workspace và signature của tham số/phiên bản dữ liệu;
+  cache lỗi là cache miss. Queue Redis dùng `noeviction` + AOF `everysec`, còn
+  cache Redis dùng `allkeys-lru` với TTL ngắn.
+- File gốc và raw crawl ở object storage; PostgreSQL giữ object key, checksum,
+  parser/model version và metadata truy vấn.

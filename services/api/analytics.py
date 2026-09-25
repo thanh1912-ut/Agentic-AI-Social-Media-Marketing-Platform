@@ -7,8 +7,8 @@ import json
 from collections import defaultdict
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Depends, Query
-from sqlalchemy import select
+from fastapi import APIRouter, Depends, Query, Request
+from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -46,6 +46,7 @@ from .analytics_schemas import (
     ExperimentOutcomeOut,
     SaveRecommendationRequest,
 )
+from .cache import cache_key, get_json_cache, set_json_cache
 from .db import get_db
 from .dependencies import current_user, membership_for, require_csrf, require_permission
 from .errors import ApiProblem
@@ -213,6 +214,7 @@ async def import_metrics(
 @router.get("/workspaces/{company_id}/analytics/dashboard", response_model=AnalyticsDashboardOut)
 async def get_analytics_dashboard(
     company_id: str,
+    request: Request,
     source_id: str = Query(min_length=1, max_length=160),
     min_post_age_hours: int = Query(default=0, ge=0, le=24 * 365),
     max_post_age_hours: int = Query(default=24 * 30, ge=0, le=24 * 365),
@@ -226,6 +228,26 @@ async def get_analytics_dashboard(
         raise ApiProblem(422, "validation_error", "Khoảng tuổi bài viết không hợp lệ.")
     if measured_from and measured_to and measured_to < measured_from:
         raise ApiProblem(422, "validation_error", "Khoảng thời gian đo không hợp lệ.")
+    revision = await db.execute(
+        select(func.count(PostMetricSnapshot.id), func.max(PostMetricSnapshot.measured_at)).where(
+            PostMetricSnapshot.company_id == company_id,
+            PostMetricSnapshot.source_id == source_id,
+        )
+    )
+    snapshot_count, latest_snapshot = revision.one()
+    signature = "|".join((
+        source_id, str(min_post_age_hours), str(max_post_age_hours),
+        measured_from.isoformat() if measured_from else "", measured_to.isoformat() if measured_to else "",
+        str(snapshot_count), latest_snapshot.isoformat() if latest_snapshot else "none",
+    ))
+    cache = getattr(request.app.state, "response_cache", None)
+    key = cache_key("analytics-dashboard", company_id, signature)
+    cached = await get_json_cache(cache, key)
+    if isinstance(cached, dict):
+        try:
+            return AnalyticsDashboardOut.model_validate(cached)
+        except ValueError:
+            pass
     rows = await _latest_points(
         db,
         company_id,
@@ -235,7 +257,9 @@ async def get_analytics_dashboard(
         measured_from=measured_from,
         measured_to=measured_to,
     )
-    return _dashboard(source_id, rows)
+    result = _dashboard(source_id, rows)
+    await set_json_cache(cache, key, result.model_dump(mode="json"), 60)
+    return result
 
 
 @router.get("/workspaces/{company_id}/analytics/recommendation", response_model=RecommendationOut)

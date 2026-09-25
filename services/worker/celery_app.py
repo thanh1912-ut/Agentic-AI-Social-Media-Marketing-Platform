@@ -24,6 +24,7 @@ celery_app.conf.update(
         "services.worker.scheduled_jobs.recover_due_jobs": {"queue": "default"},
     },
     task_track_started=True,
+    result_expires=3600,
     beat_schedule={
         "recover-due-jobs-every-minute": {
             "task": "services.worker.scheduled_jobs.recover_due_jobs",

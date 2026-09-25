@@ -1,5 +1,7 @@
 # Runbook phát triển và pilot
 
+> Data architecture and tenant-scoped ERD: [database-design.md](database-design.md). Migration `0013_metric_history_and_tenant_integrity` is the current branch's schema addition; validate it against disposable PostgreSQL before production rollout.
+
 > Hướng dẫn này phản ánh cấu hình hiện có và sẽ được cập nhật sau khi các lệnh được chạy thật. Không dùng ví dụ local cho production. Không ghi secrets vào Git, log hay tài liệu.
 
 ## Runtime yêu cầu
@@ -24,6 +26,8 @@ Nếu SMTP chưa được cấu hình, forgot-password luôn trả câu trung t�
 ## PostgreSQL migrations
 
 `alembic upgrade head` đã được xác minh tới migration 0012 trên PostgreSQL 18.3 cô lập, có pgvector 0.8.2. Migration 0010 đổi cột vector cố định thành flexible vector, giữ row cũ 1536 chiều; vector 384 chiều mới được insert và retrieval filter đúng model identity. Migration 0012 thêm nhóm Page/thị trường và evidence; API + inline worker crawl website thật đã lưu bằng chứng trên PostgreSQL test DB. SQLite upgrade/downgrade tới 0012 pass theo test branch. PostgreSQL migration 0010 downgrade có chủ ý từ chối khi còn vector không phải 1536 chiều. FastAPI/browser manual flow cũng pass trên PostgreSQL + local storage. Migration environment tự tạo/nâng `alembic_version.version_num` lên `VARCHAR(128)` trên PostgreSQL vì revision IDs dài hơn giới hạn mặc định 32 ký tự. Một smoke test tạo user/workspace/campaign qua API, clean-stop rồi khởi động lại FastAPI và PostgreSQL, sau đó login/đọc lại campaign thành công. Runtime recovery và upload TXT/DOCX/PDF/XLSX/CSV đã được xác minh trên PostgreSQL/Redis cô lập với Celery `solo`: worker đọc job từ queue `default`, lưu normalized/document/knowledge chunks; idempotent replay trả cùng job. XLSX parser đọc binary stream nên hỗ trợ storage key server sinh không có suffix. Khi thiếu DeepSeek key, document/knowledge vẫn ready, job/profile step kết thúc `ai_not_configured`. Compose, Beat, worker process restart, prefork Linux và MinIO vẫn chưa được nghiệm thu; xem [báo cáo upload runtime](test-report.md).
+
+Migration `0013_metric_history_and_tenant_integrity` thêm version text crawl, report evidence pinning, lịch sử metric Page/bài/nguồn và tenant-scoped composite FKs. SQLite upgrade/downgrade/upgrade; PostgreSQL 18.3 + pgvector migration 0012→0013, downgrade/upgrade, candidate-key/FK check và custom dump/restore đều đã pass trên database dùng một lần; restore giữ revision, pgvector extension và workspace mẫu. Redis 8.6.3 queue AOF/noeviction key sống qua restart; cache allkeys-lru và TTL đã kiểm tra trên instance khác. Không backfill nội dung lịch sử nếu không thể xác minh nguồn. Compose/MinIO chưa boot vì Docker chưa có trong môi trường.
 
 ## Document parser bounds and versioning
 
@@ -114,7 +118,7 @@ chủ dự án; xem [ma trận kiểm chứng](meta-feasibility-spike.md).
 
 ## Cấu hình production chung
 
-`.env.example` để `RATE_LIMITS_ENABLED=0` cho local development. Production phải đặt `APP_ENV=production`, `RATE_LIMITS_ENABLED=1`, `COOKIE_SECURE=1`, PostgreSQL `DATABASE_URL`, danh sách `CORS_ALLOWED_ORIGINS` chỉ gồm HTTPS origins cụ thể và một `REDIS_URL` khả dụng; cấu hình production từ chối SQLite, CORS wildcard, limiter bị tắt và S3 dùng credentials `minioadmin`. Auth, upload, content-generation, Meta Page verification và manual market-crawl routes dùng fixed-window Redis limits; production trả `503` cho route bị giới hạn khi Redis không dùng được. Các mức hiện tại được ghi trong [security-review.md](security-review.md). Limit key dựa trên `request.client.host`: sau reverse proxy, cấu hình Uvicorn chỉ tin forwarded headers từ proxy thực tế và xác nhận API không truy cập trực tiếp từ nguồn không tin cậy. Không lấy `X-Forwarded-For` tùy ý làm client identity.
+`.env.example` để `RATE_LIMITS_ENABLED=0` cho local development. Production phải đặt `APP_ENV=production`, `RATE_LIMITS_ENABLED=1`, `COOKIE_SECURE=1`, PostgreSQL `DATABASE_URL`, danh sách `CORS_ALLOWED_ORIGINS` chỉ gồm HTTPS origins cụ thể và một `REDIS_URL` khả dụng; cấu hình production từ chối SQLite, CORS wildcard, limiter bị tắt và S3 dùng credentials `minioadmin`. `REDIS_URL` là queue/rate-limit instance bền vững; `REDIS_CACHE_URL` là instance cache riêng, có thể bị loại bỏ. Compose mặc định dùng queue Redis `noeviction` + AOF `everysec` và cache Redis `allkeys-lru`; đặt `REDIS_CACHE_MAXMEMORY`/`REDIS_CACHE_PORT` nếu cần đổi dung lượng/cổng. Auth, upload, content-generation, Meta Page verification và manual market-crawl routes dùng fixed-window Redis limits; production trả `503` cho route bị giới hạn khi Redis không dùng được. Các mức hiện tại được ghi trong [security-review.md](security-review.md). Limit key dựa trên `request.client.host`: sau reverse proxy, cấu hình Uvicorn chỉ tin forwarded headers từ proxy thực tế và xác nhận API không truy cập trực tiếp từ nguồn không tin cậy. Không lấy `X-Forwarded-For` tùy ý làm client identity.
 
 Khi triển khai production, đặt `ALLOWED_HOSTS` thành hostname API thật, ví dụ `api.example.com`; để trống hoặc `*` sẽ làm API từ chối khởi động. `FORWARDED_ALLOW_IPS` phải là danh sách IP/CIDR mà API thực sự nhìn thấy ở proxy; mặc định là `127.0.0.1`, không dùng `*`. Chỉ expose API qua proxy đã tin cậy và giữ `CORS_ALLOWED_ORIGINS` khớp origin frontend.
 
@@ -224,7 +228,17 @@ alembic upgrade head
 alembic current
 ```
 
-Trên disposable PostgreSQL, `pg_dump -Fc` rồi `pg_restore` sang database mới đã giữ nguyên counts của company/campaign/post/version/approval/media/export. Thư mục local object storage gồm media và XLSX cũng đã archive/restore, so sánh đường dẫn và SHA-256 của 2 object. Đây là smoke test thủ công; chưa có lịch backup tự động, MinIO/S3 recovery hoặc production cutover drill.
+Trên disposable PostgreSQL, `pg_dump -Fc` rồi `pg_restore` sang database mới đã giữ nguyên counts của company/campaign/post/version/approval/media/export. Thư mục local object storage gồm media và XLSX cũng đã archive/restore, so sánh đường dẫn và SHA-256 của 2 object. `scripts/backup_postgres.sh` tạo custom-format dump, xác nhận dump đọc được bằng `pg_restore --list` và giữ 14 bản mới nhất trong một thư mục. Hãy gọi script mỗi ngày từ cron/systemd; script không tự cài lịch. Chưa có MinIO/S3 recovery hoặc production cutover drill.
+
+Ví dụ chạy thủ công trên một database đã xác nhận, dùng `.pgpass` hoặc PostgreSQL service file để cấp credential; không ghi password vào command line hoặc Git:
+
+```bash
+BACKUP_DIR=/secure/backups/agentic \
+PGHOST=127.0.0.1 PGPORT=5432 PGUSER=agentic_backup PGDATABASE=agentic_marketing \
+bash scripts/backup_postgres.sh
+```
+
+Đặt lời gọi tương tự vào cron/systemd chạy mỗi ngày lúc giờ ít tải; backup directory phải nằm ngoài container/workspace và được đồng bộ/encrypt theo chính sách lưu trữ. Sao lưu khóa mã hóa Page token riêng trong secret manager. Restore sang database mới, xác nhận Alembic revision, row counts và mẫu dữ liệu trước khi chuyển traffic; không restore đè database đang chạy.
 
 Với PostgreSQL tools đã cấu hình qua `PGHOST`/`PGPORT`/`PGUSER` và secret store/pgpass:
 

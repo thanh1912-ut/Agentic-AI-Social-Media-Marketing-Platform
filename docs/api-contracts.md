@@ -69,6 +69,16 @@ Nguồn sự thật cho schema dùng chung nằm ở `packages/contracts`.
 | POST | `/workspaces/{id}/meta/publications/{publication_id}/reconcile` | Owner xác nhận bài đã/chưa xuất hiện khi kết quả gửi chưa rõ |
 | GET | `/workspaces/{id}/meta/page-posts` | Danh sách bài Page đã đồng bộ, gồm bài ngoài sản phẩm |
 | POST | `/workspaces/{id}/meta/metrics/sync` | Owner đồng bộ tối đa 500 bài/lượt; cursor giữ tiến độ lịch sử |
+| GET | `/workspaces/{id}/meta/pages/{connection_id}/metrics` | Page followers snapshots có phân trang và bộ lọc `observed_from`/`observed_to` |
+| GET | `/workspaces/{id}/meta/page-posts/{post_id}/metrics` | Lịch sử views/reactions/comments/shares của bài, gồm bài cũ ngoài sản phẩm |
+
+### Market research — `services/api/market_research`
+
+| Method | Path | Mô tả |
+| --- | --- | --- |
+| GET | `/workspaces/{id}/market-research/groups/{group_id}/reports` | Report kèm `evidence_refs` pin vào `evidence_version_id`, `observation_id`, `content_hash` và `provenance_status`; audience Page/nguồn nằm ở `source_audience` |
+
+Mọi endpoint kiểm tra membership workspace trước khi đọc dữ liệu. Snapshot lịch sử có giá trị thiếu là `null` kèm `missing_metrics`; dữ liệu cũ không thể chứng minh provenance trả `legacy_unverifiable`.
 
 ## Lát cắt backend đã triển khai
 

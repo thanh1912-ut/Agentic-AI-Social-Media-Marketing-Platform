@@ -28,7 +28,12 @@ logger = logging.getLogger(__name__)
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     rate_limiter = Redis.from_url(settings.redis_url) if settings.rate_limits_enabled else None
+    response_cache = Redis.from_url(
+        settings.redis_cache_url, decode_responses=True,
+        socket_connect_timeout=2, socket_timeout=2,
+    )
     app.state.rate_limiter = rate_limiter
+    app.state.response_cache = response_cache
     try:
         if settings.auto_create_schema:
             await create_schema()
@@ -36,6 +41,7 @@ async def lifespan(app: FastAPI):
     finally:
         if rate_limiter is not None:
             await rate_limiter.aclose()
+        await response_cache.aclose()
 
 
 app = FastAPI(
@@ -107,7 +113,7 @@ async def healthz():
 
 @app.get("/readyz", tags=["health"])
 async def readyz():
-    components = {"database": False, "redis": False, "object_storage": False}
+    components = {"database": False, "redis": False, "cache": False, "object_storage": False}
     try:
         async with engine.connect() as connection:
             await connection.execute(text("SELECT 1"))
@@ -122,11 +128,19 @@ async def readyz():
         pass
     finally:
         await redis.aclose()
+    cache = Redis.from_url(settings.redis_cache_url, socket_connect_timeout=2, socket_timeout=2)
+    try:
+        await cache.ping()
+        components["cache"] = True
+    except Exception:
+        pass
+    finally:
+        await cache.aclose()
     try:
         components["object_storage"] = await storage_ready()
     except Exception:
         pass
-    ready = all(components.values())
+    ready = components["database"] and components["redis"] and components["object_storage"]
     return JSONResponse(
         status_code=200 if ready else 503,
         content={"status": "ready" if ready else "not_ready", "dependencies": components},

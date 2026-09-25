@@ -10,7 +10,19 @@ import uuid
 from datetime import datetime, timezone
 from typing import Any
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, Index, Integer, JSON, Numeric, String, Text, UniqueConstraint
+from sqlalchemy import (
+    Boolean,
+    DateTime,
+    ForeignKey,
+    ForeignKeyConstraint,
+    Index,
+    Integer,
+    JSON,
+    Numeric,
+    String,
+    Text,
+    UniqueConstraint,
+)
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 from pgvector.sqlalchemy import Vector
 
@@ -302,7 +314,12 @@ class AuditEvent(Base, IdMixin):
 
 class Campaign(Base, IdMixin, TimestampMixin):
     __tablename__ = "campaigns"
-    __table_args__ = (Index("ix_campaign_company_status", "company_id", "status"),)
+    __table_args__ = (
+        UniqueConstraint("company_id", "id", name="uq_campaign_tenant_id"),
+        ForeignKeyConstraint(["company_id", "group_id"], ["meta_page_groups.company_id", "meta_page_groups.id"],
+                             name="fk_campaign_group_tenant"),
+        Index("ix_campaign_company_status", "company_id", "status"),
+    )
 
     company_id: Mapped[str] = mapped_column(ForeignKey("companies.id", ondelete="CASCADE"), nullable=False)
     group_id: Mapped[str | None] = mapped_column(ForeignKey("meta_page_groups.id", ondelete="SET NULL"), index=True)
@@ -319,6 +336,13 @@ class Campaign(Base, IdMixin, TimestampMixin):
 class CampaignPost(Base, IdMixin, TimestampMixin):
     __tablename__ = "campaign_posts"
     __table_args__ = (
+        UniqueConstraint("company_id", "id", name="uq_campaign_post_tenant_id"),
+        UniqueConstraint("company_id", "campaign_id", "id", name="uq_campaign_post_tenant_campaign"),
+        ForeignKeyConstraint(["company_id", "campaign_id"], ["campaigns.company_id", "campaigns.id"],
+                             name="fk_campaign_post_campaign_tenant", ondelete="CASCADE"),
+        ForeignKeyConstraint(["company_id", "target_connection_id"],
+                             ["meta_page_connections.company_id", "meta_page_connections.id"],
+                             name="fk_campaign_post_target_tenant"),
         Index("ix_campaign_post_company_campaign", "company_id", "campaign_id"),
         Index("ix_campaign_post_company_status", "company_id", "status"),
     )
@@ -343,6 +367,10 @@ class PostVersion(Base, IdMixin):
     __tablename__ = "post_versions"
     __table_args__ = (
         UniqueConstraint("post_id", "version", name="uq_post_version_number"),
+        UniqueConstraint("company_id", "post_id", "version", name="uq_post_version_tenant_number"),
+        ForeignKeyConstraint(["company_id", "campaign_id", "post_id"],
+                             ["campaign_posts.company_id", "campaign_posts.campaign_id", "campaign_posts.id"],
+                             name="fk_post_version_post_tenant", ondelete="CASCADE"),
         Index("ix_post_version_company_post", "company_id", "post_id"),
     )
 
@@ -362,6 +390,11 @@ class PostVersion(Base, IdMixin):
 class PostApproval(Base, IdMixin):
     __tablename__ = "post_approvals"
     __table_args__ = (
+        ForeignKeyConstraint(
+            ["company_id", "post_id", "version"],
+            ["post_versions.company_id", "post_versions.post_id", "post_versions.version"],
+            name="fk_post_approval_version_tenant",
+        ),
         Index("ix_post_approval_company_post", "company_id", "post_id"),
     )
 
@@ -432,6 +465,11 @@ class MetaPublication(Base, IdMixin, TimestampMixin):
 
     __tablename__ = "meta_publications"
     __table_args__ = (
+        ForeignKeyConstraint(
+            ["company_id", "post_id", "post_version"],
+            ["post_versions.company_id", "post_versions.post_id", "post_versions.version"],
+            name="fk_meta_publication_version_tenant",
+        ),
         UniqueConstraint("company_id", "active_key", name="uq_meta_publication_active"),
         Index("ix_meta_publication_company_created", "company_id", "created_at"),
     )
@@ -458,6 +496,7 @@ class MetaPagePost(Base, IdMixin, TimestampMixin):
     __tablename__ = "meta_page_posts"
     __table_args__ = (
         UniqueConstraint("company_id", "page_id", "external_post_id", name="uq_meta_page_post_external"),
+        UniqueConstraint("company_id", "id", name="uq_meta_page_post_tenant_id"),
         Index("ix_meta_page_post_company_published", "company_id", "published_at"),
     )
 
@@ -492,7 +531,10 @@ class MetaPageGroup(Base, IdMixin, TimestampMixin):
     """A user-defined set of owned Pages sharing one market profile."""
 
     __tablename__ = "meta_page_groups"
-    __table_args__ = (UniqueConstraint("company_id", "name", name="uq_meta_page_group_name"),)
+    __table_args__ = (
+        UniqueConstraint("company_id", "id", name="uq_meta_page_group_tenant_id"),
+        UniqueConstraint("company_id", "name", name="uq_meta_page_group_name"),
+    )
 
     company_id: Mapped[str] = mapped_column(ForeignKey("companies.id", ondelete="CASCADE"), nullable=False, index=True)
     name: Mapped[str] = mapped_column(String(160), nullable=False)
@@ -511,6 +553,10 @@ class MetaPageConnection(Base, IdMixin, TimestampMixin):
     __tablename__ = "meta_page_connections"
     __table_args__ = (
         UniqueConstraint("company_id", "page_id", name="uq_meta_connection_company_page"),
+        UniqueConstraint("company_id", "id", name="uq_meta_connection_tenant_id"),
+        UniqueConstraint("company_id", "id", "page_id", name="uq_meta_connection_tenant_page"),
+        ForeignKeyConstraint(["company_id", "group_id"], ["meta_page_groups.company_id", "meta_page_groups.id"],
+                             name="fk_meta_connection_group_tenant", ondelete="CASCADE"),
         Index("ix_meta_connection_group_active", "company_id", "group_id", "active"),
     )
 
@@ -532,6 +578,12 @@ class ResearchSource(Base, IdMixin, TimestampMixin):
     __tablename__ = "research_sources"
     __table_args__ = (
         UniqueConstraint("company_id", "group_id", "normalized_url", name="uq_research_source_url"),
+        UniqueConstraint("company_id", "id", name="uq_research_source_tenant_id"),
+        ForeignKeyConstraint(["company_id", "group_id"], ["meta_page_groups.company_id", "meta_page_groups.id"],
+                             name="fk_research_source_group_tenant", ondelete="CASCADE"),
+        ForeignKeyConstraint(["company_id", "connection_id"],
+                             ["meta_page_connections.company_id", "meta_page_connections.id"],
+                             name="fk_research_source_connection_tenant"),
         Index("ix_research_source_due", "company_id", "group_id", "active", "next_due_at"),
     )
 
@@ -556,6 +608,10 @@ class ResearchCycle(Base, IdMixin, TimestampMixin):
     __tablename__ = "research_cycles"
     __table_args__ = (
         UniqueConstraint("company_id", "group_id", "cycle_key", name="uq_research_cycle_window"),
+        UniqueConstraint("company_id", "id", name="uq_research_cycle_tenant_id"),
+        UniqueConstraint("company_id", "group_id", "id", name="uq_research_cycle_tenant_group_id"),
+        ForeignKeyConstraint(["company_id", "group_id"], ["meta_page_groups.company_id", "meta_page_groups.id"],
+                             name="fk_research_cycle_group_tenant", ondelete="CASCADE"),
         Index("ix_research_cycle_group_created", "company_id", "group_id", "created_at"),
     )
 
@@ -565,7 +621,6 @@ class ResearchCycle(Base, IdMixin, TimestampMixin):
     cycle_key: Mapped[str] = mapped_column(String(100), nullable=False)
     status: Mapped[str] = mapped_column(String(32), default="queued", nullable=False)
     source_results_json: Mapped[list[dict[str, Any]]] = mapped_column(JSON, default=list, nullable=False)
-    report_id: Mapped[str | None] = mapped_column(String(36))
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
@@ -573,6 +628,12 @@ class MarketEvidence(Base, IdMixin, TimestampMixin):
     __tablename__ = "market_evidence"
     __table_args__ = (
         UniqueConstraint("company_id", "source_id", "canonical_url", name="uq_market_evidence_source_url"),
+        UniqueConstraint("company_id", "id", name="uq_market_evidence_tenant_id"),
+        UniqueConstraint("company_id", "group_id", "id", name="uq_market_evidence_tenant_group_id"),
+        ForeignKeyConstraint(["company_id", "group_id"], ["meta_page_groups.company_id", "meta_page_groups.id"],
+                             name="fk_market_evidence_group_tenant", ondelete="CASCADE"),
+        ForeignKeyConstraint(["company_id", "source_id"], ["research_sources.company_id", "research_sources.id"],
+                             name="fk_market_evidence_source_tenant", ondelete="CASCADE"),
         Index("ix_market_evidence_group_published", "company_id", "group_id", "published_at"),
     )
 
@@ -595,10 +656,21 @@ class MarketObservation(Base, IdMixin):
     __table_args__ = (
         Index("ix_market_observation_evidence_at", "evidence_id", "observed_at"),
         UniqueConstraint("evidence_id", "observed_at", name="uq_market_observation_at"),
+        UniqueConstraint("company_id", "evidence_id", "id", name="uq_market_observation_tenant_evidence"),
+        UniqueConstraint("company_id", "evidence_id", "id", "evidence_version_id",
+                         name="uq_market_observation_tenant_version"),
+        ForeignKeyConstraint(["company_id", "evidence_id"],
+                             ["market_evidence.company_id", "market_evidence.id"],
+                             name="fk_market_observation_evidence_tenant", ondelete="CASCADE"),
+        ForeignKeyConstraint(["company_id", "evidence_id", "evidence_version_id"],
+                             ["market_evidence_versions.company_id", "market_evidence_versions.evidence_id",
+                              "market_evidence_versions.id"],
+                             name="fk_market_observation_version_tenant"),
     )
 
     company_id: Mapped[str] = mapped_column(ForeignKey("companies.id", ondelete="CASCADE"), nullable=False)
     evidence_id: Mapped[str] = mapped_column(ForeignKey("market_evidence.id", ondelete="CASCADE"), nullable=False)
+    evidence_version_id: Mapped[str | None] = mapped_column(String(36))
     observed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     metrics_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict, nullable=False)
     comments_json: Mapped[list[str]] = mapped_column(JSON, default=list, nullable=False)
@@ -609,7 +681,17 @@ class MarketObservation(Base, IdMixin):
 
 class MarketReport(Base, IdMixin, TimestampMixin):
     __tablename__ = "market_reports"
-    __table_args__ = (Index("ix_market_report_group_created", "company_id", "group_id", "created_at"),)
+    __table_args__ = (
+        UniqueConstraint("company_id", "id", name="uq_market_report_tenant_id"),
+        UniqueConstraint("company_id", "group_id", "id", name="uq_market_report_tenant_group_id"),
+        UniqueConstraint("cycle_id", name="uq_market_report_cycle"),
+        ForeignKeyConstraint(["company_id", "group_id"], ["meta_page_groups.company_id", "meta_page_groups.id"],
+                             name="fk_market_report_group_tenant", ondelete="CASCADE"),
+        ForeignKeyConstraint(["company_id", "group_id", "cycle_id"],
+                             ["research_cycles.company_id", "research_cycles.group_id", "research_cycles.id"],
+                             name="fk_market_report_cycle_tenant"),
+        Index("ix_market_report_group_created", "company_id", "group_id", "created_at"),
+    )
 
     company_id: Mapped[str] = mapped_column(ForeignKey("companies.id", ondelete="CASCADE"), nullable=False)
     group_id: Mapped[str] = mapped_column(ForeignKey("meta_page_groups.id", ondelete="CASCADE"), nullable=False)
@@ -620,6 +702,143 @@ class MarketReport(Base, IdMixin, TimestampMixin):
     evidence_ids_json: Mapped[list[str]] = mapped_column(JSON, default=list, nullable=False)
     coverage_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict, nullable=False)
     model_name: Mapped[str | None] = mapped_column(String(160))
+
+
+class MarketEvidenceVersion(Base, IdMixin):
+    """Immutable extracted content used as exact provenance for a report."""
+
+    __tablename__ = "market_evidence_versions"
+    __table_args__ = (
+        UniqueConstraint(
+            "company_id", "evidence_id", "content_hash", "parser_version",
+            name="uq_market_evidence_version_fingerprint",
+        ),
+        UniqueConstraint("company_id", "evidence_id", "id", name="uq_market_evidence_version_tenant_id"),
+        ForeignKeyConstraint(["company_id", "evidence_id"],
+                             ["market_evidence.company_id", "market_evidence.id"],
+                             name="fk_market_evidence_version_evidence_tenant", ondelete="CASCADE"),
+        Index("ix_market_evidence_version_evidence_captured", "company_id", "evidence_id", "captured_at"),
+    )
+
+    company_id: Mapped[str] = mapped_column(String(36), nullable=False)
+    evidence_id: Mapped[str] = mapped_column(String(36), nullable=False)
+    content_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    parser_version: Mapped[str] = mapped_column(String(80), nullable=False)
+    title: Mapped[str] = mapped_column(String(1000), default="", nullable=False)
+    text: Mapped[str] = mapped_column(Text, nullable=False)
+    published_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    captured_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
+
+
+class MarketReportEvidence(Base, IdMixin):
+    """Links a report to the precise observation and extracted text version."""
+
+    __tablename__ = "market_report_evidence"
+    __table_args__ = (
+        UniqueConstraint("report_id", "observation_id", name="uq_market_report_evidence_observation"),
+        ForeignKeyConstraint(["company_id", "group_id", "report_id"],
+                             ["market_reports.company_id", "market_reports.group_id", "market_reports.id"],
+                             name="fk_market_report_evidence_report_tenant", ondelete="CASCADE"),
+        ForeignKeyConstraint(["company_id", "group_id", "evidence_id"],
+                             ["market_evidence.company_id", "market_evidence.group_id", "market_evidence.id"],
+                             name="fk_market_report_evidence_group_tenant", ondelete="CASCADE"),
+        ForeignKeyConstraint(["company_id", "evidence_id", "observation_id", "evidence_version_id"],
+                             ["market_observations.company_id", "market_observations.evidence_id",
+                              "market_observations.id", "market_observations.evidence_version_id"],
+                             name="fk_market_report_evidence_observation_version", ondelete="CASCADE"),
+        ForeignKeyConstraint(["company_id", "evidence_id", "evidence_version_id"],
+                             ["market_evidence_versions.company_id", "market_evidence_versions.evidence_id",
+                              "market_evidence_versions.id"],
+                             name="fk_market_report_evidence_version_tenant", ondelete="CASCADE"),
+        Index("ix_market_report_evidence_report", "company_id", "report_id"),
+    )
+
+    company_id: Mapped[str] = mapped_column(String(36), nullable=False)
+    group_id: Mapped[str] = mapped_column(String(36), nullable=False)
+    report_id: Mapped[str] = mapped_column(String(36), nullable=False)
+    observation_id: Mapped[str] = mapped_column(String(36), nullable=False)
+    evidence_id: Mapped[str] = mapped_column(String(36), nullable=False)
+    evidence_version_id: Mapped[str] = mapped_column(String(36), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
+
+
+class MetaPostMetricSnapshot(Base, IdMixin):
+    """Historical metrics for both system-published and externally-created Page posts."""
+
+    __tablename__ = "meta_post_metric_snapshots"
+    __table_args__ = (
+        UniqueConstraint("company_id", "meta_page_post_id", "snapshot_key", name="uq_meta_post_metric_snapshot_key"),
+        ForeignKeyConstraint(["company_id", "meta_page_post_id"],
+                             ["meta_page_posts.company_id", "meta_page_posts.id"],
+                             name="fk_meta_post_metric_post_tenant", ondelete="CASCADE"),
+        Index("ix_meta_post_metric_history", "company_id", "meta_page_post_id", "observed_at"),
+    )
+
+    company_id: Mapped[str] = mapped_column(String(36), nullable=False)
+    meta_page_post_id: Mapped[str] = mapped_column(String(36), nullable=False)
+    snapshot_key: Mapped[str] = mapped_column(String(200), nullable=False)
+    observed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    source: Mapped[str] = mapped_column(String(40), nullable=False, default="meta_graph")
+    metric_definition: Mapped[str] = mapped_column(String(100), nullable=False, default="meta_post_v1")
+    window_start: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    window_end: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    views: Mapped[int | None] = mapped_column(Integer)
+    reactions: Mapped[int | None] = mapped_column(Integer)
+    comments: Mapped[int | None] = mapped_column(Integer)
+    shares: Mapped[int | None] = mapped_column(Integer)
+    missing_metrics_json: Mapped[list[str]] = mapped_column(JSON, default=list, nullable=False)
+
+
+class MetaPageMetricSnapshot(Base, IdMixin):
+    """Page-level audience snapshots; never repeated on every post observation."""
+
+    __tablename__ = "meta_page_metric_snapshots"
+    __table_args__ = (
+        UniqueConstraint("company_id", "connection_id", "snapshot_key", name="uq_meta_page_metric_snapshot_key"),
+        ForeignKeyConstraint(["company_id", "connection_id", "page_id"],
+                             ["meta_page_connections.company_id", "meta_page_connections.id",
+                              "meta_page_connections.page_id"],
+                             name="fk_meta_page_metric_connection_tenant", ondelete="CASCADE"),
+        Index("ix_meta_page_metric_history", "company_id", "page_id", "observed_at"),
+    )
+
+    company_id: Mapped[str] = mapped_column(String(36), nullable=False)
+    connection_id: Mapped[str] = mapped_column(String(36), nullable=False)
+    page_id: Mapped[str] = mapped_column(String(100), nullable=False)
+    snapshot_key: Mapped[str] = mapped_column(String(200), nullable=False)
+    observed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    source: Mapped[str] = mapped_column(String(40), nullable=False, default="meta_graph")
+    metric_definition: Mapped[str] = mapped_column(String(100), nullable=False, default="page_followers_v1")
+    window_start: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    window_end: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    followers: Mapped[int | None] = mapped_column(Integer)
+    missing_metrics_json: Mapped[list[str]] = mapped_column(JSON, default=list, nullable=False)
+
+
+class ResearchSourceMetricSnapshot(Base, IdMixin):
+    """Page/group audience figures supplied by a permitted API or human import."""
+
+    __tablename__ = "research_source_metric_snapshots"
+    __table_args__ = (
+        UniqueConstraint("company_id", "source_id", "snapshot_key", name="uq_research_source_metric_snapshot_key"),
+        ForeignKeyConstraint(["company_id", "source_id"],
+                             ["research_sources.company_id", "research_sources.id"],
+                             name="fk_research_source_metric_source_tenant", ondelete="CASCADE"),
+        Index("ix_research_source_metric_history", "company_id", "source_id", "observed_at"),
+    )
+
+    company_id: Mapped[str] = mapped_column(String(36), nullable=False)
+    source_id: Mapped[str] = mapped_column(String(36), nullable=False)
+    snapshot_key: Mapped[str] = mapped_column(String(200), nullable=False)
+    observed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    source: Mapped[str] = mapped_column(String(40), nullable=False)
+    metric_definition: Mapped[str] = mapped_column(String(100), nullable=False)
+    window_start: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    window_end: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    followers: Mapped[int | None] = mapped_column(Integer)
+    members: Mapped[int | None] = mapped_column(Integer)
+    missing_metrics_json: Mapped[list[str]] = mapped_column(JSON, default=list, nullable=False)
 
 
 class AnalyticsRecommendationRecord(Base, IdMixin, TimestampMixin):

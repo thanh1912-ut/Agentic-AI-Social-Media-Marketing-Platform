@@ -2,7 +2,17 @@
 
 > Phần bổ sung Fanpage nhiều Page và nghiên cứu thị trường đang được triển khai trên branch riêng; trạng thái chi tiết, chức năng, giới hạn nguồn, cấu hình và kiểm tra xem tại [page-groups-market-research.md](page-groups-market-research.md). Không dùng trạng thái test cũ trong bảng dưới đây làm bằng chứng nghiệm thu cho branch mới.
 
-Cập nhật gần nhất: 2026-09-25 20:20 (Asia/Ho_Chi_Minh)
+Cập nhật gần nhất: 2026-09-25 21:47 (Asia/Ho_Chi_Minh)
+
+## PostgreSQL + Redis và lịch sử dữ liệu — 2026-09-25
+
+- Đã triển khai migration `0013_metric_history_and_tenant_integrity`: năm bảng cho version nội dung crawl, liên kết report-evidence và lịch sử metric Page/bài/nguồn; observation pin vào version; approval/publication và các quan hệ vận hành quan trọng được ràng buộc theo workspace. Report chuyển sang `market_reports.cycle_id` làm quan hệ chính.
+- Worker/API ghi snapshot audience riêng, giữ số liệu thiếu là `NULL`, lưu report provenance chính xác và không tái dựng bằng chứng lịch sử thiếu nguồn. API report trả evidence version/observation/hash/provenance; thêm endpoint phân trang cho lịch sử metric Page và bài.
+- Redis cache tách khỏi Celery/rate-limit Redis; Compose đặt queue `noeviction` + AOF `everysec`, cache `allkeys-lru`; dashboard TTL 60 giây, report TTL 300 giây, Celery result TTL 1 giờ. Thêm `REDIS_CACHE_URL` vào cấu hình và `.env.example`.
+- Đã sinh lại OpenAPI cùng TypeScript API schema và thêm [thiết kế dữ liệu](database-design.md). PostgreSQL 18.3 + pgvector đã nâng schema cũ `0012 → 0013`, downgrade/upgrade lại; `pg_dump`/restore sang database mới giữ revision, workspace và extension.
+- Redis 8.6.3 tạm xác nhận queue `AOF everysec` + `noeviction` giữ key qua restart, còn cache instance có `allkeys-lru` và TTL. Compose YAML đã parse; chưa boot toàn stack vì môi trường không có Docker.
+- Thêm `scripts/backup_postgres.sh`: custom-format dump được kiểm tra, atomic move vào thư mục chỉ định và giữ 14 bản gần nhất. Script cần được nối với cron/systemd mỗi ngày tại deployment; key mã hóa Meta phải được sao lưu riêng.
+- Kiểm tra hiện: full Python suite **193 passed, 1 skipped**; SQLite migration 0013 upgrade/downgrade/upgrade pass; OpenAPI check, Ruff, type generation, frontend typecheck và 47 Vitest pass. Live DeepSeek, Meta và dịch vụ production không được gọi.
 
 Branch feature hiện tại: `codex/page-groups-market-research`; code hardening frontend ở `67d4b2c`; worker restart smoke helper và full backend regression pass trên source commit `ae56b83`, đã push và remote đã xác nhận. Các commit backend hardening gồm `06583ff`, `10d84bd` và `da5d395`. Core pilot kế thừa từ `origin/codex/product-v1-completion`; trạng thái lịch sử được đối chiếu ở snapshot tương ứng. FastAPI ASGI → Redis/Celery queue `agent` → Celery solo worker, Beat và queued-job warm restart đã chạy trên PostgreSQL/pgvector cô lập; Compose/MinIO, in-flight crash redelivery và prefork Linux vẫn chưa nghiệm thu.
 

@@ -1,6 +1,23 @@
 # Báo cáo kiểm thử
 
-Cập nhật: 2026-09-25 20:20 (Asia/Ho_Chi_Minh).
+Cập nhật: 2026-09-25 21:47 (Asia/Ho_Chi_Minh).
+
+## PostgreSQL/Redis data layer migration 0013 — 2026-09-25
+
+Working-tree implementation on `codex/page-groups-market-research`; Python 3.11.16. DeepSeek/Meta/MinIO/production were not called. PostgreSQL and Redis ran as separate disposable local services under `/private/tmp`.
+
+| Check | Result | Scope |
+|---|---|---|
+| `pytest -q` | **193 passed, 1 skipped** | Full Python suite; only skipped case is opt-in live DeepSeek smoke; one existing LangGraph pending-deprecation warning. |
+| SQLite Alembic `upgrade head` → `downgrade 0012` → `upgrade head` | **PASS** | Fresh database and assertions that 0013-only column/tables are removed on downgrade and restored on upgrade. |
+| OpenAPI export + `--check`; frontend `gen:api` | **PASS** | Updated `packages/contracts/openapi.json` and generated `apps/web/src/lib/api/schema.d.ts`, including Page/post metric history and report provenance. |
+| Ruff changed Python files | **PASS** | Dead imports cleaned; no lint errors. |
+| Existing-schema PostgreSQL migration | **PASS** | PostgreSQL 18.3 + pgvector. Created a real schema using the preceding 0012 code, upgraded to 0013, and verified Alembic revision, vector extension and composite tenant FKs. |
+| PostgreSQL downgrade/upgrade + dump/restore | **PASS** | Downgraded 0013 to 0012 and upgraded again; restored `pg_dump -Fc` into a separate disposable database and verified revision 0013, one seeded workspace row and pgvector extension. |
+| Redis queue/cache policy | **PASS** | Redis 8.6.3: queue AOF `everysec` + `noeviction` retained a key after clean restart; cache instance reported `allkeys-lru` and accepted a 60-second TTL. Both services were stopped after the test. |
+| `scripts/backup_postgres.sh` against disposable PostgreSQL | **PASS** | Custom dump created, `pg_restore --list` validated it, and retention removed older dumps while keeping the configured newest copy. |
+
+The implementation stores five new version/history tables, pins each new observation/report reference to exact content, preserves unverified legacy provenance as such, separates Page audience from post engagement, exposes tenant-checked metric history, and uses separate queue/cache Redis services. See [database-design.md](database-design.md). Compose YAML parsing passed; full Compose boot remains unverified because Docker is unavailable.
 
 ## Backend regression — commit `ae56b83`, 2026-09-25 20:16
 
