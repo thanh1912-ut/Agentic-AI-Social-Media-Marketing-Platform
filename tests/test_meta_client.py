@@ -187,6 +187,23 @@ def test_list_page_posts_rejects_bad_page_and_cursor() -> None:
     _run(exercise())
 
 
+def test_list_post_comments_requests_text_without_author_identity() -> None:
+    async def handler(request: httpx.Request) -> httpx.Response:
+        assert request.url.path == "/v26.0/123_456/comments"
+        assert request.url.params["fields"] == "message"
+        assert request.url.params["limit"] == "2"
+        return httpx.Response(200, json={"data": [
+            {"message": "Nội dung bình luận", "from": {"id": "private-user", "name": "Tên riêng"}},
+            {"message": "  "},
+        ]})
+
+    async def exercise():
+        async with MetaGraphClient("123", SECRET, transport=httpx.MockTransport(handler)) as client:
+            return await client.list_post_comments("123_456", limit=2)
+
+    assert _run(exercise()) == ("Nội dung bình luận",)
+
+
 @pytest.mark.parametrize("status,code,expected", [
     (400, 190, MetaGraphTokenExpired),
     (401, None, MetaGraphTokenExpired),

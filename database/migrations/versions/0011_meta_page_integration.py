@@ -19,8 +19,23 @@ def _timestamps() -> list[sa.Column]:
     ]
 
 
+def _table_exists(name: str) -> bool:
+    return name in sa.inspect(op.get_bind()).get_table_names()
+
+
+def _create_table_if_missing(name: str, *columns, **kwargs) -> None:
+    if not _table_exists(name):
+        op.create_table(name, *columns, **kwargs)
+
+
+def _create_index_if_missing(name: str, table: str, columns: list[str]) -> None:
+    existing = {item["name"] for item in sa.inspect(op.get_bind()).get_indexes(table)}
+    if name not in existing:
+        op.create_index(name, table, columns)
+
+
 def upgrade() -> None:
-    op.create_table(
+    _create_table_if_missing(
         "meta_publications",
         sa.Column("id", sa.String(36), primary_key=True),
         sa.Column("company_id", sa.String(36), sa.ForeignKey("companies.id", ondelete="CASCADE"), nullable=False),
@@ -39,8 +54,8 @@ def upgrade() -> None:
         *_timestamps(),
         sa.UniqueConstraint("company_id", "active_key", name="uq_meta_publication_active"),
     )
-    op.create_index("ix_meta_publication_company_created", "meta_publications", ["company_id", "created_at"])
-    op.create_table(
+    _create_index_if_missing("ix_meta_publication_company_created", "meta_publications", ["company_id", "created_at"])
+    _create_table_if_missing(
         "meta_page_posts",
         sa.Column("id", sa.String(36), primary_key=True),
         sa.Column("company_id", sa.String(36), sa.ForeignKey("companies.id", ondelete="CASCADE"), nullable=False),
@@ -57,8 +72,8 @@ def upgrade() -> None:
         *_timestamps(),
         sa.UniqueConstraint("company_id", "page_id", "external_post_id", name="uq_meta_page_post_external"),
     )
-    op.create_index("ix_meta_page_post_company_published", "meta_page_posts", ["company_id", "published_at"])
-    op.create_table(
+    _create_index_if_missing("ix_meta_page_post_company_published", "meta_page_posts", ["company_id", "published_at"])
+    _create_table_if_missing(
         "meta_sync_states",
         sa.Column("id", sa.String(36), primary_key=True),
         sa.Column("company_id", sa.String(36), sa.ForeignKey("companies.id", ondelete="CASCADE"), nullable=False),

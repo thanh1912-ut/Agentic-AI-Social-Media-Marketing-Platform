@@ -30,7 +30,7 @@ test('mở dashboard số liệu và nhập snapshot demo có gắn nguồn', as
   await page.getByRole('button', { name: 'Lưu 1 bài' }).click();
 
   await expect(page.getByRole('status')).toContainText('Đã lưu 1 dòng số liệu');
-  await expect(page.getByRole('heading', { name: 'Báo cáo snapshot' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Báo cáo bài thuộc chiến dịch' })).toBeVisible();
   await expect(page.getByText('Dữ liệu minh họa — không phải kết quả thật.', { exact: false }).first()).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Đề xuất thử nghiệm' })).toBeVisible();
   await expect(page.getByText(/Chưa đủ bằng chứng/)).toBeVisible();

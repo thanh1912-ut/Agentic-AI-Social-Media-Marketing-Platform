@@ -125,6 +125,21 @@ async def dispatch_meta_job(job_id: str, kind: str) -> None:
         return
 
 
+async def dispatch_research_job(job_id: str) -> None:
+    """Dispatch a durable market-research cycle after its database commit."""
+    if settings.inline_jobs:
+        from services.worker.research_tasks import market_research_task_async
+
+        await market_research_task_async(job_id)
+        return
+    try:
+        from services.worker.celery_app import celery_app
+
+        celery_app.send_task("services.worker.research_tasks.market_research_task", args=[job_id], queue="agent")
+    except Exception:
+        return
+
+
 async def dispatch_queued_jobs(db: AsyncSession) -> int:
     now = datetime.now(timezone.utc)
     jobs = (
@@ -140,6 +155,7 @@ async def dispatch_queued_jobs(db: AsyncSession) -> int:
     dispatch: list[tuple[str, str, list[str]]] = []
     content_dispatch: list[str] = []
     meta_dispatch: list[tuple[str, str]] = []
+    research_dispatch: list[str] = []
     for job in jobs:
         if job.kind in {"content_generation", "content_revise"} and job.result and job.result.get("campaign_id"):
             if job.attempts >= settings.max_job_attempts:
@@ -180,6 +196,20 @@ async def dispatch_queued_jobs(db: AsyncSession) -> int:
             # A running send is never returned to this queue by recovery.
             job.lease_until = now + timedelta(minutes=settings.job_lease_minutes)
             meta_dispatch.append((job.id, job.kind))
+        elif job.kind == "market_research":
+            if job.attempts >= settings.max_job_attempts:
+                job.status = "failed"
+                job.progress = 100
+                job.finished_at = now
+                job.lease_until = None
+                job.error = {
+                    "code": "retry_limit_exceeded",
+                    "message": "Lượt nghiên cứu đã hết số lần thử tự động.",
+                    "retryable": False,
+                }
+                continue
+            job.lease_until = now + timedelta(minutes=settings.job_lease_minutes)
+            research_dispatch.append(job.id)
 
     # Persist the lease before queue delivery. If Redis is unavailable, the
     # scheduler can safely retry after expiry without losing the DB job.
@@ -193,5 +223,8 @@ async def dispatch_queued_jobs(db: AsyncSession) -> int:
         count += 1
     for job_id, kind in meta_dispatch:
         await dispatch_meta_job(job_id, kind)
+        count += 1
+    for job_id in research_dispatch:
+        await dispatch_research_job(job_id)
         count += 1
     return count

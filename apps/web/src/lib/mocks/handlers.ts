@@ -1530,6 +1530,14 @@ export const handlers = [
     });
   }),
 
+  // Research UI uses the real Page registry endpoint in real mode. In demo
+  // mode the registry is intentionally empty and never simulates credentials.
+  http.get('*/api/v1/workspaces/:workspaceId/market-research/pages', () => {
+    const session = currentSession();
+    if (!session) return unauthenticated();
+    return HttpResponse.json([]);
+  }),
+
   http.get('*/api/v1/workspaces/:workspaceId/meta/publications', () => {
     const session = currentSession();
     if (!session) return unauthenticated();

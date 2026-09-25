@@ -7,7 +7,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import { useSession } from '@/components/session-gate';
 import { Button, EmptyState, ErrorPanel, LoadingBlock, StatusBadge, UnavailableNotice } from '@/components/ui';
-import { ApiError, facebookPostUrl, metaApi, metaQueryKeys } from '@/lib/api';
+import { ApiError, facebookPostUrl, marketResearchApi, marketResearchKeys, metaApi, metaQueryKeys } from '@/lib/api';
 import type { ApiMetricImportRequest, ApiRecordExperimentOutcomeRequest } from '@/lib/api/types';
 import { formatDateTime } from '@/lib/format';
 import {
@@ -65,21 +65,40 @@ export default function AnalyticsPage() {
   const posts = usePosts(workspace ? workspaceId : '');
   const campaigns = useCampaigns(workspace ? workspaceId : '');
   const [pagePostOffset, setPagePostOffset] = useState(0);
+  const [selectedConnectionId, setSelectedConnectionId] = useState('');
   const [lastSyncJobId, setLastSyncJobId] = useState<string | null>(null);
   const metaConnection = useQuery({
     queryKey: metaQueryKeys.connection(workspace ? workspaceId : ''),
     queryFn: () => metaApi.connection(workspaceId),
     enabled: Boolean(workspace),
   });
-  const metaPageId = metaConnection.data?.page_id ?? null;
+  const pageConnections = useQuery({
+    queryKey: marketResearchKeys.pages(workspace ? workspaceId : '', 'all'),
+    queryFn: () => marketResearchApi.allPages(workspaceId),
+    enabled: Boolean(workspace),
+  });
+  const verifiedPages = useMemo(
+    () => pageConnections.data?.filter((page) => page.status === 'verified') ?? [],
+    [pageConnections.data],
+  );
+  useEffect(() => {
+    if (verifiedPages.length === 1 && selectedConnectionId !== verifiedPages[0]?.id) {
+      setSelectedConnectionId(verifiedPages[0]?.id ?? '');
+    }
+  }, [verifiedPages, selectedConnectionId]);
+  const selectedPage = verifiedPages.find((page) => page.id === selectedConnectionId) ?? null;
+  const connectionId = selectedPage?.id;
+  const metaPageId = selectedPage?.page_id ?? metaConnection.data?.page_id ?? null;
+  const metaPageName = selectedPage?.page_name ?? metaConnection.data?.page_name ?? null;
+  const canReadMetaPage = Boolean(selectedPage) || Boolean(metaConnection.data?.status === 'verified' && metaConnection.data.can_sync_metrics && metaConnection.data.page_id);
   const metaSourceId = metaPageId ? `meta:${metaPageId}` : '';
   const pagePosts = useQuery({
-    queryKey: metaQueryKeys.pagePosts(workspace ? workspaceId : '', pagePostOffset),
-    queryFn: () => metaApi.pagePosts(workspaceId, pagePostOffset),
+    queryKey: metaQueryKeys.pagePosts(workspace ? workspaceId : '', pagePostOffset, connectionId),
+    queryFn: () => metaApi.pagePosts(workspaceId, pagePostOffset, 25, connectionId),
     enabled: Boolean(workspace && metaPageId),
   });
   const syncMetaMetrics = useMutation({
-    mutationFn: () => metaApi.syncMetrics(workspaceId),
+    mutationFn: () => metaApi.syncMetrics(workspaceId, connectionId),
     onSuccess: (result) => {
       setLastSyncJobId(result.job_id);
       void queryClient.invalidateQueries({ queryKey: ['workspaces', workspaceId, 'meta', 'page-posts'] });
@@ -291,29 +310,43 @@ export default function AnalyticsPage() {
           </div>
           {metaConnection.data?.status === 'verified' ? <StatusBadge label="Nguồn Meta" tone="info" /> : null}
         </div>
+        {verifiedPages.length > 1 ? (
+          <label className="block max-w-xl space-y-1 text-sm font-medium text-slate-700">
+            Chọn Fanpage cần xem
+            <select value={selectedConnectionId} onChange={(event) => { setSelectedConnectionId(event.currentTarget.value); setPagePostOffset(0); setLastSyncJobId(null); }} className="block w-full rounded-lg border border-slate-300 bg-white px-3 py-2">
+              <option value="">Chọn Fanpage</option>
+              {verifiedPages.map((page) => <option key={page.id} value={page.id}>{page.page_name || 'Fanpage'} · {page.page_id}</option>)}
+            </select>
+          </label>
+        ) : null}
+        {pageConnections.isPending ? <LoadingBlock label="Đang tải Fanpage đã kết nối…" /> : null}
+        {pageConnections.isError ? <ErrorPanel title="Không tải được danh sách Fanpage" message={shortError(pageConnections.error)} retryable onRetry={() => void pageConnections.refetch()} /> : null}
         {metaConnection.isPending ? <LoadingBlock label="Đang tải kết nối Fanpage…" /> : null}
         {metaConnection.isError ? <ErrorPanel title="Không tải được kết nối Fanpage" message={shortError(metaConnection.error)} retryable onRetry={() => void metaConnection.refetch()} /> : null}
-        {metaConnection.data && !metaPageId ? (
+        {verifiedPages.length > 1 && !selectedPage ? (
+          <p role="note" className="rounded-lg border border-sky-200 bg-sky-50 px-3 py-2 text-sm text-sky-900">Chọn một Fanpage ở trên để xem lịch sử và đồng bộ bài cũ.</p>
+        ) : null}
+        {metaConnection.data && !metaPageId && verifiedPages.length === 0 ? (
           <UnavailableNotice title="Chưa có Fanpage để đồng bộ" reason={metaConnection.data.message}
-            remedy="Cấu hình và xác minh Page trong Cài đặt. Thông tin truy cập chỉ được lưu ở backend."
-            action={<Link href={`/w/${workspaceId}/settings`} className="font-medium underline">Mở Cài đặt</Link>} />
+            remedy="Kết nối Page ID và Page Access Token trong Fanpage & thị trường."
+            action={<Link href={'/w/' + workspaceId + '/fanpages'} className="font-medium underline">Mở Fanpage & thị trường</Link>} />
         ) : null}
         {metaPageId ? (
           <>
-            <p className="text-sm text-slate-700">{metaConnection.data?.page_name || 'Fanpage'} · Page ID {metaPageId}</p>
+            <p className="text-sm text-slate-700">{metaPageName || 'Fanpage'} · Page ID {metaPageId}</p>
             <div className="flex flex-wrap items-center gap-3">
               <Button
                 onClick={() => syncMetaMetrics.mutate()}
                 loading={syncMetaMetrics.isPending}
-                disabled={workspace?.role !== 'owner' || metaConnection.data?.status !== 'verified' || !metaConnection.data.can_sync_metrics || syncJob.data?.status === 'queued' || syncJob.data?.status === 'running'}
-                disabledReason={workspace?.role !== 'owner' ? 'Chỉ chủ sở hữu có quyền đồng bộ Fanpage.' : metaConnection.data?.status !== 'verified' || !metaConnection.data.can_sync_metrics ? 'Cần xác minh quyền đọc số liệu của Page trong Cài đặt.' : 'Đang đồng bộ, chờ job hoàn tất.'}
+                disabled={workspace?.role !== 'owner' || !canReadMetaPage || syncJob.data?.status === 'queued' || syncJob.data?.status === 'running'}
+                disabledReason={workspace?.role !== 'owner' ? 'Chỉ chủ sở hữu có quyền đồng bộ Fanpage.' : !canReadMetaPage ? 'Chọn Fanpage đã xác minh trước khi đồng bộ.' : 'Đang đồng bộ, chờ job hoàn tất.'}
               >
                 Đồng bộ bài và số liệu Meta
               </Button>
               <Button variant="secondary" onClick={() => void pagePosts.refetch()} loading={pagePosts.isFetching}>Tải lại bài trên Page</Button>
             </div>
-            {workspace?.role !== 'owner' || metaConnection.data?.status !== 'verified' || !metaConnection.data.can_sync_metrics ? (
-              <p className="text-xs text-slate-600">{workspace?.role !== 'owner' ? 'Chỉ chủ sở hữu có quyền đồng bộ Fanpage.' : 'Cần xác minh quyền đọc số liệu của Page trong Cài đặt.'}</p>
+            {workspace?.role !== 'owner' || !canReadMetaPage ? (
+              <p className="text-xs text-slate-600">{workspace?.role !== 'owner' ? 'Chỉ chủ sở hữu có quyền đồng bộ Fanpage.' : 'Chọn Fanpage đã xác minh để đồng bộ.'}</p>
             ) : null}
             {syncMetaMetrics.isError ? <p role="alert" className="text-sm text-rose-800">{shortError(syncMetaMetrics.error)}</p> : null}
             {lastSyncJobId ? (

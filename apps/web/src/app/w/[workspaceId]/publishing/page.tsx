@@ -7,9 +7,9 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import { useSession } from '@/components/session-gate';
 import { Button, Card, EmptyState, ErrorPanel, LoadingBlock, PermissionNotice, StatusBadge, UnavailableNotice, type Tone } from '@/components/ui';
-import { ApiError, facebookPostUrl, metaApi, metaQueryKeys, type MetaPublication, type MetaPublicationStatus } from '@/lib/api';
+import { ApiError, facebookPostUrl, marketResearchApi, marketResearchKeys, metaApi, metaQueryKeys, type MetaPublication, type MetaPublicationStatus } from '@/lib/api';
 import { formatDateTime } from '@/lib/format';
-import { usePosts } from '@/lib/hooks';
+import { useCampaigns, usePosts } from '@/lib/hooks';
 import { ACTION_REQUIREMENTS, hasPermission } from '@/lib/permissions';
 
 const PUBLICATION_STATUS: Record<MetaPublicationStatus, { label: string; tone: Tone; hint: string }> = {
@@ -24,8 +24,9 @@ const PUBLICATION_STATUS: Record<MetaPublicationStatus, { label: string; tone: T
 
 const BLOCKING_STATUSES: ReadonlySet<MetaPublicationStatus> = new Set(['queued', 'sending', 'published', 'outcome_unknown']);
 
-function latestPublication(publications: MetaPublication[], postId: string, version: number): MetaPublication | null {
+function latestPublication(publications: MetaPublication[], postId: string, version: number, pageId?: string): MetaPublication | null {
   return publications.filter((item) => item.post_id === postId && item.post_version === version)
+    .filter((item) => !pageId || item.page_id === pageId)
     .sort((a, b) => b.created_at.localeCompare(a.created_at))[0] ?? null;
 }
 
@@ -37,9 +38,15 @@ export default function PublishingPage() {
   const activeId = workspace ? workspaceId : '';
   const queryClient = useQueryClient();
   const posts = usePosts(activeId);
+  const campaigns = useCampaigns(activeId);
   const connection = useQuery({
     queryKey: metaQueryKeys.connection(activeId),
     queryFn: () => metaApi.connection(activeId),
+    enabled: activeId !== '',
+  });
+  const pageConnections = useQuery({
+    queryKey: marketResearchKeys.pages(activeId, 'all'),
+    queryFn: () => marketResearchApi.allPages(activeId),
     enabled: activeId !== '',
   });
   const publications = useQuery({
@@ -49,6 +56,7 @@ export default function PublishingPage() {
     refetchInterval: (query) => query.state.data?.some((item) => item.status === 'queued' || item.status === 'sending') ? 3_000 : false,
   });
   const [confirmPost, setConfirmPost] = useState<{ id: string; version: number } | null>(null);
+  const [selectedPageByPost, setSelectedPageByPost] = useState<Record<string, string>>({});
   const [reconcileId, setReconcileId] = useState<string | null>(null);
   const [reconcileOutcome, setReconcileOutcome] = useState<'published' | 'not_published'>('published');
   const [externalPostId, setExternalPostId] = useState('');
@@ -57,7 +65,8 @@ export default function PublishingPage() {
   const [reconcileError, setReconcileError] = useState<string | null>(null);
   const [lastJobId, setLastJobId] = useState<string | null>(null);
   const publish = useMutation({
-    mutationFn: ({ postId, version }: { postId: string; version: number }) => metaApi.publish(activeId, postId, version),
+    mutationFn: ({ postId, version, connectionId }: { postId: string; version: number; connectionId: string }) =>
+      metaApi.publish(activeId, postId, version, connectionId),
     onSuccess: (result) => {
       setLastJobId(result.job_id);
       setConfirmPost(null);
@@ -83,7 +92,8 @@ export default function PublishingPage() {
   const history = useMemo(() =>
     [...(publications.data ?? [])].sort((a, b) => b.created_at.localeCompare(a.created_at)), [publications.data]);
   const canPublish = workspace?.role === 'owner' && hasPermission(workspace, ACTION_REQUIREMENTS.publish);
-  const ready = connection.data?.status === 'verified' && connection.data.can_publish;
+  const verifiedPages = pageConnections.data?.filter((page) => page.status === 'verified') ?? [];
+  const ready = verifiedPages.length > 0 || (connection.data?.status === 'verified' && connection.data.can_publish);
 
   function submitReconciliation(publicationId: string) {
     setReconcileError(null);
@@ -115,7 +125,7 @@ export default function PublishingPage() {
         {connection.isError ? <ErrorPanel title="Không tải được kết nối" message={connection.error instanceof ApiError ? connection.error.message : 'Vui lòng tải lại trang.'} retryable onRetry={() => void connection.refetch()} /> : null}
         {connection.data ? (
           <div className="space-y-3 text-sm text-slate-700">
-            <p><strong>{connection.data.page_name || 'Fanpage chưa được xác minh'}</strong>{connection.data.page_id ? ` · Page ID ${connection.data.page_id}` : ''}</p>
+            <p><strong>{connection.data.status === 'unconfigured' ? 'Chưa kết nối Meta' : connection.data.page_name || 'Fanpage chưa được xác minh'}</strong>{connection.data.page_id ? ` · Page ID ${connection.data.page_id}` : ''}</p>
             <p>{connection.data.message}</p>
             {ready ? <StatusBadge label="Có thể gửi yêu cầu" tone="success" /> : (
               <UnavailableNotice title="Chưa thể đăng trực tiếp" reason={connection.data.message}
@@ -135,10 +145,16 @@ export default function PublishingPage() {
         ) : null}
         <div className="space-y-4">
           {approvedPosts.map((post) => {
-            const previous = latestPublication(history, post.id, post.version);
+            const campaign = campaigns.data?.items.find((item) => item.id === post.campaign_id);
+            const candidatePages = verifiedPages.filter((page) => !campaign?.group_id || page.group_id === campaign.group_id);
+            const selectedConnectionId = selectedPageByPost[post.id] || (candidatePages.length === 1 ? candidatePages[0]?.id ?? '' : '');
+            const selectedPage = candidatePages.find((page) => page.id === selectedConnectionId);
+            const previous = latestPublication(history, post.id, post.version, selectedPage?.page_id);
             const blocker = previous && BLOCKING_STATUSES.has(previous.status);
             const disabledReason = !canPublish ? 'Chỉ chủ sở hữu có quyền đăng bài lên Fanpage.'
-              : !ready ? 'Kết nối Fanpage chưa sẵn sàng để đăng.'
+              : campaigns.isPending ? 'Đang tải nhóm chiến dịch để lọc đúng Fanpage.'
+              : candidatePages.length === 0 ? 'Chiến dịch chưa có Fanpage đã xác minh trong nhóm tương ứng.'
+              : !selectedConnectionId ? 'Chọn Fanpage đích trước khi gửi.'
               : publications.isPending || publications.isError ? 'Cần tải lịch sử xuất bản trước để tránh gửi trùng.'
               : blocker ? `Phiên bản này đang ở trạng thái ${PUBLICATION_STATUS[previous.status].label.toLowerCase()}.` : undefined;
             const isConfirming = confirmPost?.id === post.id && confirmPost.version === post.version;
@@ -155,14 +171,27 @@ export default function PublishingPage() {
                 {previous ? <p className="mt-2 text-xs text-slate-600">{PUBLICATION_STATUS[previous.status].hint}</p> : null}
                 {isConfirming ? (
                   <div className="mt-4 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-950">
-                    <p>Gửi phiên bản {post.version} lên <strong>{connection.data?.page_name || 'Fanpage đã kết nối'}</strong> ngay bây giờ?</p>
+                    <p>Gửi phiên bản {post.version} lên <strong>{selectedPage?.page_name || 'Fanpage đã chọn'}</strong> ngay bây giờ?</p>
                     <div className="mt-3 flex flex-wrap gap-2">
-                      <Button onClick={() => publish.mutate({ postId: post.id, version: post.version })} loading={publish.isPending} disabled={Boolean(disabledReason)} disabledReason={disabledReason}>Xác nhận đăng bản {post.version}</Button>
+                      <Button onClick={() => publish.mutate({ postId: post.id, version: post.version, connectionId: selectedConnectionId })} loading={publish.isPending} disabled={Boolean(disabledReason)} disabledReason={disabledReason}>Xác nhận đăng bản {post.version}</Button>
                       <Button variant="secondary" onClick={() => setConfirmPost(null)}>Hủy</Button>
                     </div>
                   </div>
                 ) : (
                   <div className="mt-3">
+                    {candidatePages.length > 0 ? (
+                      <label className="mb-3 block max-w-lg space-y-1 text-sm text-slate-700">
+                        Fanpage đích{campaign?.group_id ? ' của nhóm chiến dịch' : ''}
+                        <select
+                          value={selectedConnectionId}
+                          onChange={(event) => setSelectedPageByPost({ ...selectedPageByPost, [post.id]: event.currentTarget.value })}
+                          className="block w-full rounded-lg border border-slate-300 bg-white px-3 py-2"
+                        >
+                          {candidatePages.length !== 1 ? <option value="">Chọn Fanpage</option> : null}
+                          {candidatePages.map((page) => <option key={page.id} value={page.id}>{page.page_name || 'Fanpage'} · {page.page_id}</option>)}
+                        </select>
+                      </label>
+                    ) : null}
                     <Button onClick={() => { publish.reset(); setConfirmPost({ id: post.id, version: post.version }); }} disabled={Boolean(disabledReason)} disabledReason={disabledReason}>Đăng bản {post.version} lên Fanpage</Button>
                     {disabledReason ? <p className="mt-1 text-xs text-slate-600">{disabledReason}</p> : null}
                   </div>

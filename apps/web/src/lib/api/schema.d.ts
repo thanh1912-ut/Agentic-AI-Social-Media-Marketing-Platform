@@ -673,6 +673,196 @@ export interface paths {
         readonly patch?: never;
         readonly trace?: never;
     };
+    readonly "/api/v1/workspaces/{company_id}/market-research/groups": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /** List Groups */
+        readonly get: operations["list_groups_api_v1_workspaces__company_id__market_research_groups_get"];
+        readonly put?: never;
+        /** Create Group */
+        readonly post: operations["create_group_api_v1_workspaces__company_id__market_research_groups_post"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/v1/workspaces/{company_id}/market-research/groups/{group_id}": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get?: never;
+        readonly put?: never;
+        readonly post?: never;
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        /** Update Group */
+        readonly patch: operations["update_group_api_v1_workspaces__company_id__market_research_groups__group_id__patch"];
+        readonly trace?: never;
+    };
+    readonly "/api/v1/workspaces/{company_id}/market-research/groups/{group_id}/crawl": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get?: never;
+        readonly put?: never;
+        /** Crawl Group Now */
+        readonly post: operations["crawl_group_now_api_v1_workspaces__company_id__market_research_groups__group_id__crawl_post"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/v1/workspaces/{company_id}/market-research/groups/{group_id}/pages": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /** List Pages */
+        readonly get: operations["list_pages_api_v1_workspaces__company_id__market_research_groups__group_id__pages_get"];
+        readonly put?: never;
+        /** Connect Page */
+        readonly post: operations["connect_page_api_v1_workspaces__company_id__market_research_groups__group_id__pages_post"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/v1/workspaces/{company_id}/market-research/groups/{group_id}/reports": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /** List Reports */
+        readonly get: operations["list_reports_api_v1_workspaces__company_id__market_research_groups__group_id__reports_get"];
+        readonly put?: never;
+        readonly post?: never;
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/v1/workspaces/{company_id}/market-research/pages": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /** List All Pages */
+        readonly get: operations["list_all_pages_api_v1_workspaces__company_id__market_research_pages_get"];
+        readonly put?: never;
+        readonly post?: never;
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/v1/workspaces/{company_id}/market-research/pages/{connection_id}": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get?: never;
+        readonly put?: never;
+        readonly post?: never;
+        /** Disconnect Page */
+        readonly delete: operations["disconnect_page_api_v1_workspaces__company_id__market_research_pages__connection_id__delete"];
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/v1/workspaces/{company_id}/market-research/reports/{report_id}/draft": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get?: never;
+        readonly put?: never;
+        /** Create Draft From Report */
+        readonly post: operations["create_draft_from_report_api_v1_workspaces__company_id__market_research_reports__report_id__draft_post"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/v1/workspaces/{company_id}/market-research/sources": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /** List Sources */
+        readonly get: operations["list_sources_api_v1_workspaces__company_id__market_research_sources_get"];
+        readonly put?: never;
+        /** Create Source */
+        readonly post: operations["create_source_api_v1_workspaces__company_id__market_research_sources_post"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/v1/workspaces/{company_id}/market-research/sources/{source_id}": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get?: never;
+        readonly put?: never;
+        readonly post?: never;
+        /** Delete Source */
+        readonly delete: operations["delete_source_api_v1_workspaces__company_id__market_research_sources__source_id__delete"];
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/v1/workspaces/{company_id}/market-research/sources/{source_id}/import": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get?: never;
+        readonly put?: never;
+        /** Import Source Observations */
+        readonly post: operations["import_source_observations_api_v1_workspaces__company_id__market_research_sources__source_id__import_post"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
     readonly "/api/v1/workspaces/{company_id}/media": {
         readonly parameters: {
             readonly query?: never;
@@ -1446,6 +1636,8 @@ export interface components {
             /** Channels */
             readonly channels?: readonly "facebook_page"[];
             readonly content_plan?: components["schemas"]["CampaignContentPlanIn"];
+            /** Group Id */
+            readonly group_id?: string | null;
             /** Name */
             readonly name: string;
             /** Pillars */
@@ -1469,6 +1661,8 @@ export interface components {
             readonly created_at: string;
             /** Created By */
             readonly created_by: string;
+            /** Group Id */
+            readonly group_id?: string | null;
             /** Id */
             readonly id: string;
             /** Name */
@@ -1500,6 +1694,8 @@ export interface components {
             /** Channels */
             readonly channels?: readonly "facebook_page"[];
             readonly content_plan: components["schemas"]["CampaignContentPlanIn"];
+            /** Group Id */
+            readonly group_id?: string | null;
             /** Name */
             readonly name: string;
             /** Pillars */
@@ -1611,6 +1807,11 @@ export interface components {
             readonly uploaded_by: string;
             /** Workspace Id */
             readonly workspace_id: string;
+        };
+        /** DraftFromReportIn */
+        readonly DraftFromReportIn: {
+            /** Suggestion Index */
+            readonly suggestion_index: number;
         };
         /** ExperimentOutcomeCohortOut */
         readonly ExperimentOutcomeCohortOut: {
@@ -1756,6 +1957,68 @@ export interface components {
              * @default 10
              */
             readonly max_count: number;
+        };
+        /** GroupCreate */
+        readonly GroupCreate: {
+            /** Industry */
+            readonly industry: string;
+            /** Keywords */
+            readonly keywords?: readonly string[];
+            /**
+             * Locale
+             * @default vi-VN
+             */
+            readonly locale: string;
+            /** Name */
+            readonly name: string;
+            /** Region */
+            readonly region: string;
+        };
+        /** GroupOut */
+        readonly GroupOut: {
+            /** Active */
+            readonly active: boolean;
+            /** Id */
+            readonly id: string;
+            /** Industry */
+            readonly industry: string;
+            /** Keywords */
+            readonly keywords: readonly string[];
+            /** Last Cycle At */
+            readonly last_cycle_at: string | null;
+            /** Locale */
+            readonly locale: string;
+            /** Name */
+            readonly name: string;
+            /** Next Due At */
+            readonly next_due_at: string | null;
+            /** Page Count */
+            readonly page_count: number;
+            /** Region */
+            readonly region: string;
+            /** Source Count */
+            readonly source_count: number;
+        };
+        /** GroupUpdate */
+        readonly GroupUpdate: {
+            /**
+             * Active
+             * @default true
+             */
+            readonly active: boolean;
+            /** Industry */
+            readonly industry: string;
+            /** Keywords */
+            readonly keywords?: readonly string[];
+            /**
+             * Locale
+             * @default vi-VN
+             */
+            readonly locale: string;
+            /** Name */
+            readonly name: string;
+            /** Region */
+            readonly region: string;
         };
         /** HTTPValidationError */
         readonly HTTPValidationError: {
@@ -1912,6 +2175,33 @@ export interface components {
             /** Workspaces */
             readonly workspaces: readonly components["schemas"]["WorkspaceOut"][];
         };
+        /** ManualImportIn */
+        readonly ManualImportIn: {
+            /** Rows */
+            readonly rows: readonly components["schemas"]["ManualObservationIn"][];
+        };
+        /** ManualObservationIn */
+        readonly ManualObservationIn: {
+            /** Comments */
+            readonly comments?: readonly string[];
+            /** Metrics */
+            readonly metrics?: {
+                readonly [key: string]: number | null;
+            };
+            /** Observed At */
+            readonly observed_at?: string | null;
+            /** Published At */
+            readonly published_at?: string | null;
+            /** Text */
+            readonly text: string;
+            /**
+             * Title
+             * @default
+             */
+            readonly title: string;
+            /** Url */
+            readonly url: string;
+        };
         /** MediaAssetOut */
         readonly MediaAssetOut: {
             /** Alt Text */
@@ -2031,6 +2321,8 @@ export interface components {
         };
         /** MetaPublicationOut */
         readonly MetaPublicationOut: {
+            /** Connection Id */
+            readonly connection_id?: string | null;
             /**
              * Created At
              * Format: date-time
@@ -2062,6 +2354,8 @@ export interface components {
         };
         /** MetaPublishIn */
         readonly MetaPublishIn: {
+            /** Connection Id */
+            readonly connection_id?: string | null;
             /** Post Id */
             readonly post_id: string;
             /** Version */
@@ -2177,6 +2471,35 @@ export interface components {
             readonly spend?: number | null;
             /** Views */
             readonly views?: number | null;
+        };
+        /** PageConnectIn */
+        readonly PageConnectIn: {
+            /** Page Access Token */
+            readonly page_access_token: string;
+            /** Page Id */
+            readonly page_id: string;
+        };
+        /** PageConnectionOut */
+        readonly PageConnectionOut: {
+            /** Active */
+            readonly active: boolean;
+            /** Group Id */
+            readonly group_id: string;
+            /** Id */
+            readonly id: string;
+            /** Last Error Code */
+            readonly last_error_code: string | null;
+            /** Page Id */
+            readonly page_id: string;
+            /** Page Name */
+            readonly page_name: string | null;
+            /**
+             * Status
+             * @enum {string}
+             */
+            readonly status: "configured" | "verified" | "error" | "needs_reconnect";
+            /** Verified At */
+            readonly verified_at: string | null;
         };
         /** PaginatedCampaigns */
         readonly PaginatedCampaigns: {
@@ -2454,6 +2777,87 @@ export interface components {
             /** Password */
             readonly password: string;
         };
+        /** ResearchReportOut */
+        readonly ResearchReportOut: {
+            /** Coverage */
+            readonly coverage: {
+                readonly [key: string]: unknown;
+            };
+            /**
+             * Created At
+             * Format: date-time
+             */
+            readonly created_at: string;
+            /** Evidence Ids */
+            readonly evidence_ids: readonly string[];
+            /** Group Id */
+            readonly group_id: string;
+            /** Id */
+            readonly id: string;
+            /** Model Name */
+            readonly model_name: string | null;
+            /** Report */
+            readonly report: {
+                readonly [key: string]: unknown;
+            };
+            /**
+             * Window End
+             * Format: date-time
+             */
+            readonly window_end: string;
+            /**
+             * Window Start
+             * Format: date-time
+             */
+            readonly window_start: string;
+        };
+        /** ResearchSourceCreate */
+        readonly ResearchSourceCreate: {
+            /** Competitor Name */
+            readonly competitor_name?: string | null;
+            /** Connection Id */
+            readonly connection_id?: string | null;
+            /** Group Id */
+            readonly group_id: string;
+            /** Name */
+            readonly name: string;
+            /**
+             * Source Type
+             * @enum {string}
+             */
+            readonly source_type: "website" | "owned_facebook_page" | "competitor_facebook_page" | "facebook_group";
+            /** Url */
+            readonly url: string;
+        };
+        /** ResearchSourceOut */
+        readonly ResearchSourceOut: {
+            /** Active */
+            readonly active: boolean;
+            /** Competitor Name */
+            readonly competitor_name: string | null;
+            /** Connection Id */
+            readonly connection_id: string | null;
+            /** Error */
+            readonly error: {
+                readonly [key: string]: unknown;
+            } | null;
+            /** Group Id */
+            readonly group_id: string;
+            /** Id */
+            readonly id: string;
+            /** Last Crawled At */
+            readonly last_crawled_at: string | null;
+            /** Name */
+            readonly name: string;
+            /** Next Due At */
+            readonly next_due_at: string | null;
+            /** Source Type */
+            readonly source_type: string;
+            /** Status */
+            readonly status: string;
+            /** Url */
+            readonly url: string;
+        };
         /** ResetPasswordRequest */
         readonly ResetPasswordRequest: {
             /** New Password */
@@ -2637,6 +3041,7 @@ export type SchemaCreateExportRequest = components['schemas']['CreateExportReque
 export type SchemaCreateManualPostRequest = components['schemas']['CreateManualPostRequest'];
 export type SchemaDocumentError = components['schemas']['DocumentError'];
 export type SchemaDocumentOut = components['schemas']['DocumentOut'];
+export type SchemaDraftFromReportIn = components['schemas']['DraftFromReportIn'];
 export type SchemaExperimentOutcomeCohortOut = components['schemas']['ExperimentOutcomeCohortOut'];
 export type SchemaExperimentOutcomeListOut = components['schemas']['ExperimentOutcomeListOut'];
 export type SchemaExperimentOutcomeOut = components['schemas']['ExperimentOutcomeOut'];
@@ -2645,6 +3050,9 @@ export type SchemaForgotPasswordRequest = components['schemas']['ForgotPasswordR
 export type SchemaForgotPasswordResponse = components['schemas']['ForgotPasswordResponse'];
 export type SchemaGenerateContentRequest = components['schemas']['GenerateContentRequest'];
 export type SchemaGenerateContentResponse = components['schemas']['GenerateContentResponse'];
+export type SchemaGroupCreate = components['schemas']['GroupCreate'];
+export type SchemaGroupOut = components['schemas']['GroupOut'];
+export type SchemaGroupUpdate = components['schemas']['GroupUpdate'];
 export type SchemaHttpValidationError = components['schemas']['HTTPValidationError'];
 export type SchemaInvitationPreviewOut = components['schemas']['InvitationPreviewOut'];
 export type SchemaInviteMemberRequest = components['schemas']['InviteMemberRequest'];
@@ -2655,6 +3063,8 @@ export type SchemaJobOut = components['schemas']['JobOut'];
 export type SchemaJobStepOut = components['schemas']['JobStepOut'];
 export type SchemaLoginRequest = components['schemas']['LoginRequest'];
 export type SchemaLoginResponse = components['schemas']['LoginResponse'];
+export type SchemaManualImportIn = components['schemas']['ManualImportIn'];
+export type SchemaManualObservationIn = components['schemas']['ManualObservationIn'];
 export type SchemaMediaAssetOut = components['schemas']['MediaAssetOut'];
 export type SchemaMemberOut = components['schemas']['MemberOut'];
 export type SchemaMetaConnectionOut = components['schemas']['MetaConnectionOut'];
@@ -2669,6 +3079,8 @@ export type SchemaMetricImportRequest = components['schemas']['MetricImportReque
 export type SchemaMetricImportResponse = components['schemas']['MetricImportResponse'];
 export type SchemaMetricObservation = components['schemas']['MetricObservation'];
 export type SchemaMetricPointIn = components['schemas']['MetricPointIn'];
+export type SchemaPageConnectIn = components['schemas']['PageConnectIn'];
+export type SchemaPageConnectionOut = components['schemas']['PageConnectionOut'];
 export type SchemaPaginatedCampaigns = components['schemas']['PaginatedCampaigns'];
 export type SchemaPaginatedPosts = components['schemas']['PaginatedPosts'];
 export type SchemaPostMediaAttachmentIn = components['schemas']['PostMediaAttachmentIn'];
@@ -2684,6 +3096,9 @@ export type SchemaRecommendationFeedbackRequest = components['schemas']['Recomme
 export type SchemaRecommendationOut = components['schemas']['RecommendationOut'];
 export type SchemaRecordExperimentOutcomeRequest = components['schemas']['RecordExperimentOutcomeRequest'];
 export type SchemaRegisterRequest = components['schemas']['RegisterRequest'];
+export type SchemaResearchReportOut = components['schemas']['ResearchReportOut'];
+export type SchemaResearchSourceCreate = components['schemas']['ResearchSourceCreate'];
+export type SchemaResearchSourceOut = components['schemas']['ResearchSourceOut'];
 export type SchemaResetPasswordRequest = components['schemas']['ResetPasswordRequest'];
 export type SchemaResetPasswordResponse = components['schemas']['ResetPasswordResponse'];
 export type SchemaReviseWithAiRequest = components['schemas']['ReviseWithAiRequest'];
@@ -4499,6 +4914,499 @@ export interface operations {
             };
         };
     };
+    readonly list_groups_api_v1_workspaces__company_id__market_research_groups_get: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: {
+                readonly authorization?: string | null;
+            };
+            readonly path: {
+                readonly company_id: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": readonly components["schemas"]["GroupOut"][];
+                };
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    readonly create_group_api_v1_workspaces__company_id__market_research_groups_post: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: {
+                readonly authorization?: string | null;
+            };
+            readonly path: {
+                readonly company_id: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": components["schemas"]["GroupCreate"];
+            };
+        };
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 201: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["GroupOut"];
+                };
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    readonly update_group_api_v1_workspaces__company_id__market_research_groups__group_id__patch: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: {
+                readonly authorization?: string | null;
+            };
+            readonly path: {
+                readonly company_id: string;
+                readonly group_id: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": components["schemas"]["GroupUpdate"];
+            };
+        };
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["GroupOut"];
+                };
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    readonly crawl_group_now_api_v1_workspaces__company_id__market_research_groups__group_id__crawl_post: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: {
+                readonly authorization?: string | null;
+            };
+            readonly path: {
+                readonly company_id: string;
+                readonly group_id: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 202: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["AcceptedResponse"];
+                };
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    readonly list_pages_api_v1_workspaces__company_id__market_research_groups__group_id__pages_get: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: {
+                readonly authorization?: string | null;
+            };
+            readonly path: {
+                readonly company_id: string;
+                readonly group_id: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": readonly components["schemas"]["PageConnectionOut"][];
+                };
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    readonly connect_page_api_v1_workspaces__company_id__market_research_groups__group_id__pages_post: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: {
+                readonly authorization?: string | null;
+            };
+            readonly path: {
+                readonly company_id: string;
+                readonly group_id: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": components["schemas"]["PageConnectIn"];
+            };
+        };
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 201: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["PageConnectionOut"];
+                };
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    readonly list_reports_api_v1_workspaces__company_id__market_research_groups__group_id__reports_get: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: {
+                readonly authorization?: string | null;
+            };
+            readonly path: {
+                readonly company_id: string;
+                readonly group_id: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": readonly components["schemas"]["ResearchReportOut"][];
+                };
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    readonly list_all_pages_api_v1_workspaces__company_id__market_research_pages_get: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: {
+                readonly authorization?: string | null;
+            };
+            readonly path: {
+                readonly company_id: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": readonly components["schemas"]["PageConnectionOut"][];
+                };
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    readonly disconnect_page_api_v1_workspaces__company_id__market_research_pages__connection_id__delete: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: {
+                readonly authorization?: string | null;
+            };
+            readonly path: {
+                readonly company_id: string;
+                readonly connection_id: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 204: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    readonly create_draft_from_report_api_v1_workspaces__company_id__market_research_reports__report_id__draft_post: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: {
+                readonly authorization?: string | null;
+            };
+            readonly path: {
+                readonly company_id: string;
+                readonly report_id: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": components["schemas"]["DraftFromReportIn"];
+            };
+        };
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 201: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    readonly list_sources_api_v1_workspaces__company_id__market_research_sources_get: {
+        readonly parameters: {
+            readonly query?: {
+                readonly group_id?: string | null;
+            };
+            readonly header?: {
+                readonly authorization?: string | null;
+            };
+            readonly path: {
+                readonly company_id: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": readonly components["schemas"]["ResearchSourceOut"][];
+                };
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    readonly create_source_api_v1_workspaces__company_id__market_research_sources_post: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: {
+                readonly authorization?: string | null;
+            };
+            readonly path: {
+                readonly company_id: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": components["schemas"]["ResearchSourceCreate"];
+            };
+        };
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 201: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ResearchSourceOut"];
+                };
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    readonly delete_source_api_v1_workspaces__company_id__market_research_sources__source_id__delete: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: {
+                readonly authorization?: string | null;
+            };
+            readonly path: {
+                readonly company_id: string;
+                readonly source_id: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 204: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    readonly import_source_observations_api_v1_workspaces__company_id__market_research_sources__source_id__import_post: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: {
+                readonly authorization?: string | null;
+            };
+            readonly path: {
+                readonly company_id: string;
+                readonly source_id: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": components["schemas"]["ManualImportIn"];
+            };
+        };
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 201: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     readonly upload_media_asset_api_v1_workspaces__company_id__media_post: {
         readonly parameters: {
             readonly query?: never;
@@ -4740,7 +5648,9 @@ export interface operations {
     };
     readonly sync_meta_metrics_api_v1_workspaces__company_id__meta_metrics_sync_post: {
         readonly parameters: {
-            readonly query?: never;
+            readonly query?: {
+                readonly connection_id?: string | null;
+            };
             readonly header?: {
                 readonly authorization?: string | null;
             };
@@ -4776,6 +5686,7 @@ export interface operations {
             readonly query?: {
                 readonly limit?: number;
                 readonly offset?: number;
+                readonly connection_id?: string | null;
             };
             readonly header?: {
                 readonly authorization?: string | null;

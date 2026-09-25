@@ -26,6 +26,7 @@ const NAV_ITEMS: NavItem[] = [
   { href: '/documents', label: 'Tài liệu', description: 'Tải lên và xem tình trạng xử lý' },
   { href: '/campaigns', label: 'Chiến dịch', description: 'Chiến dịch và lịch nội dung' },
   { href: '/publishing', label: 'Xuất bản', description: 'Kết nối Facebook và tình trạng đăng bài' },
+  { href: '/fanpages', label: 'Fanpage & thị trường', description: 'Nhóm Fanpage, nguồn đối thủ và báo cáo xu hướng' },
   { href: '/analytics', label: 'Hiệu quả', description: 'Số liệu và nguồn dữ liệu' },
   { href: '/analytics#recommendation', label: 'Đề xuất', description: 'Thử nghiệm dựa trên số liệu nhập' },
   { href: '/settings', label: 'Cài đặt', description: 'Thành viên và kết nối' },

@@ -305,6 +305,7 @@ class Campaign(Base, IdMixin, TimestampMixin):
     __table_args__ = (Index("ix_campaign_company_status", "company_id", "status"),)
 
     company_id: Mapped[str] = mapped_column(ForeignKey("companies.id", ondelete="CASCADE"), nullable=False)
+    group_id: Mapped[str | None] = mapped_column(ForeignKey("meta_page_groups.id", ondelete="SET NULL"), index=True)
     name: Mapped[str] = mapped_column(String(200), nullable=False)
     status: Mapped[str] = mapped_column(String(30), default="draft", nullable=False)
     brief_json: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
@@ -324,6 +325,7 @@ class CampaignPost(Base, IdMixin, TimestampMixin):
 
     company_id: Mapped[str] = mapped_column(ForeignKey("companies.id", ondelete="CASCADE"), nullable=False)
     campaign_id: Mapped[str] = mapped_column(ForeignKey("campaigns.id", ondelete="CASCADE"), nullable=False)
+    target_connection_id: Mapped[str | None] = mapped_column(ForeignKey("meta_page_connections.id", ondelete="SET NULL"))
     channel: Mapped[str] = mapped_column(String(40), nullable=False)
     pillar: Mapped[str] = mapped_column(String(80), nullable=False)
     format: Mapped[str] = mapped_column(String(40), nullable=False)
@@ -439,6 +441,7 @@ class MetaPublication(Base, IdMixin, TimestampMixin):
     post_version: Mapped[int] = mapped_column(Integer, nullable=False)
     approved_content_sha256: Mapped[str] = mapped_column(String(64), nullable=False)
     page_id: Mapped[str] = mapped_column(String(100), nullable=False)
+    connection_id: Mapped[str | None] = mapped_column(ForeignKey("meta_page_connections.id", ondelete="SET NULL"), index=True)
     status: Mapped[str] = mapped_column(String(30), default="queued", nullable=False)
     active_key: Mapped[str | None] = mapped_column(String(255))
     external_post_id: Mapped[str | None] = mapped_column(String(160))
@@ -483,6 +486,140 @@ class MetaSyncState(Base, IdMixin, TimestampMixin):
     has_more: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     last_sync_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     running_job_id: Mapped[str | None] = mapped_column(ForeignKey("jobs.id", ondelete="SET NULL"))
+
+
+class MetaPageGroup(Base, IdMixin, TimestampMixin):
+    """A user-defined set of owned Pages sharing one market profile."""
+
+    __tablename__ = "meta_page_groups"
+    __table_args__ = (UniqueConstraint("company_id", "name", name="uq_meta_page_group_name"),)
+
+    company_id: Mapped[str] = mapped_column(ForeignKey("companies.id", ondelete="CASCADE"), nullable=False, index=True)
+    name: Mapped[str] = mapped_column(String(160), nullable=False)
+    industry: Mapped[str] = mapped_column(String(160), nullable=False)
+    region: Mapped[str] = mapped_column(String(160), nullable=False)
+    locale: Mapped[str] = mapped_column(String(24), default="vi-VN", nullable=False)
+    keywords_json: Mapped[list[str]] = mapped_column(JSON, default=list, nullable=False)
+    next_due_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), index=True)
+    last_cycle_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+
+
+class MetaPageConnection(Base, IdMixin, TimestampMixin):
+    """One encrypted Page token; the plaintext is only materialized in workers."""
+
+    __tablename__ = "meta_page_connections"
+    __table_args__ = (
+        UniqueConstraint("company_id", "page_id", name="uq_meta_connection_company_page"),
+        Index("ix_meta_connection_group_active", "company_id", "group_id", "active"),
+    )
+
+    company_id: Mapped[str] = mapped_column(ForeignKey("companies.id", ondelete="CASCADE"), nullable=False, index=True)
+    group_id: Mapped[str] = mapped_column(ForeignKey("meta_page_groups.id", ondelete="CASCADE"), nullable=False)
+    page_id: Mapped[str] = mapped_column(String(100), nullable=False)
+    page_name: Mapped[str | None] = mapped_column(String(200))
+    encrypted_token: Mapped[str] = mapped_column(Text, nullable=False)
+    token_fingerprint: Mapped[str] = mapped_column(String(64), nullable=False)
+    status: Mapped[str] = mapped_column(String(32), default="configured", nullable=False)
+    verified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    last_error_code: Mapped[str | None] = mapped_column(String(80))
+    active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+
+
+class ResearchSource(Base, IdMixin, TimestampMixin):
+    """User-submitted web/Page/group URL; external text is never a brand document."""
+
+    __tablename__ = "research_sources"
+    __table_args__ = (
+        UniqueConstraint("company_id", "group_id", "normalized_url", name="uq_research_source_url"),
+        Index("ix_research_source_due", "company_id", "group_id", "active", "next_due_at"),
+    )
+
+    company_id: Mapped[str] = mapped_column(ForeignKey("companies.id", ondelete="CASCADE"), nullable=False, index=True)
+    group_id: Mapped[str] = mapped_column(ForeignKey("meta_page_groups.id", ondelete="CASCADE"), nullable=False, index=True)
+    connection_id: Mapped[str | None] = mapped_column(ForeignKey("meta_page_connections.id", ondelete="SET NULL"))
+    source_type: Mapped[str] = mapped_column(String(40), nullable=False)
+    name: Mapped[str] = mapped_column(String(200), nullable=False)
+    url: Mapped[str] = mapped_column(String(2048), nullable=False)
+    normalized_url: Mapped[str] = mapped_column(String(2048), nullable=False)
+    competitor_name: Mapped[str | None] = mapped_column(String(200))
+    status: Mapped[str] = mapped_column(String(32), default="active", nullable=False)
+    active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    next_due_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), index=True)
+    last_crawled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    latest_job_id: Mapped[str | None] = mapped_column(ForeignKey("jobs.id", ondelete="SET NULL"))
+    error_json: Mapped[dict[str, Any] | None] = mapped_column(JSON)
+    created_by: Mapped[str] = mapped_column(ForeignKey("users.id"), nullable=False)
+
+
+class ResearchCycle(Base, IdMixin, TimestampMixin):
+    __tablename__ = "research_cycles"
+    __table_args__ = (
+        UniqueConstraint("company_id", "group_id", "cycle_key", name="uq_research_cycle_window"),
+        Index("ix_research_cycle_group_created", "company_id", "group_id", "created_at"),
+    )
+
+    company_id: Mapped[str] = mapped_column(ForeignKey("companies.id", ondelete="CASCADE"), nullable=False)
+    group_id: Mapped[str] = mapped_column(ForeignKey("meta_page_groups.id", ondelete="CASCADE"), nullable=False)
+    job_id: Mapped[str] = mapped_column(ForeignKey("jobs.id", ondelete="CASCADE"), nullable=False, unique=True)
+    cycle_key: Mapped[str] = mapped_column(String(100), nullable=False)
+    status: Mapped[str] = mapped_column(String(32), default="queued", nullable=False)
+    source_results_json: Mapped[list[dict[str, Any]]] = mapped_column(JSON, default=list, nullable=False)
+    report_id: Mapped[str | None] = mapped_column(String(36))
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class MarketEvidence(Base, IdMixin, TimestampMixin):
+    __tablename__ = "market_evidence"
+    __table_args__ = (
+        UniqueConstraint("company_id", "source_id", "canonical_url", name="uq_market_evidence_source_url"),
+        Index("ix_market_evidence_group_published", "company_id", "group_id", "published_at"),
+    )
+
+    company_id: Mapped[str] = mapped_column(ForeignKey("companies.id", ondelete="CASCADE"), nullable=False)
+    group_id: Mapped[str] = mapped_column(ForeignKey("meta_page_groups.id", ondelete="CASCADE"), nullable=False)
+    source_id: Mapped[str] = mapped_column(ForeignKey("research_sources.id", ondelete="CASCADE"), nullable=False)
+    canonical_url: Mapped[str] = mapped_column(String(2048), nullable=False)
+    external_id: Mapped[str | None] = mapped_column(String(255))
+    title: Mapped[str] = mapped_column(String(1000), default="", nullable=False)
+    published_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    text: Mapped[str] = mapped_column(Text, nullable=False)
+    content_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    trust_level: Mapped[str] = mapped_column(String(32), default="external_unverified", nullable=False)
+    first_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    last_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
+class MarketObservation(Base, IdMixin):
+    __tablename__ = "market_observations"
+    __table_args__ = (
+        Index("ix_market_observation_evidence_at", "evidence_id", "observed_at"),
+        UniqueConstraint("evidence_id", "observed_at", name="uq_market_observation_at"),
+    )
+
+    company_id: Mapped[str] = mapped_column(ForeignKey("companies.id", ondelete="CASCADE"), nullable=False)
+    evidence_id: Mapped[str] = mapped_column(ForeignKey("market_evidence.id", ondelete="CASCADE"), nullable=False)
+    observed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    metrics_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict, nullable=False)
+    comments_json: Mapped[list[str]] = mapped_column(JSON, default=list, nullable=False)
+    raw_object_key: Mapped[str | None] = mapped_column(String(1024))
+    raw_sha256: Mapped[str | None] = mapped_column(String(64))
+    raw_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), index=True)
+
+
+class MarketReport(Base, IdMixin, TimestampMixin):
+    __tablename__ = "market_reports"
+    __table_args__ = (Index("ix_market_report_group_created", "company_id", "group_id", "created_at"),)
+
+    company_id: Mapped[str] = mapped_column(ForeignKey("companies.id", ondelete="CASCADE"), nullable=False)
+    group_id: Mapped[str] = mapped_column(ForeignKey("meta_page_groups.id", ondelete="CASCADE"), nullable=False)
+    cycle_id: Mapped[str | None] = mapped_column(ForeignKey("research_cycles.id", ondelete="SET NULL"))
+    window_start: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    window_end: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    report_json: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
+    evidence_ids_json: Mapped[list[str]] = mapped_column(JSON, default=list, nullable=False)
+    coverage_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict, nullable=False)
+    model_name: Mapped[str | None] = mapped_column(String(160))
 
 
 class AnalyticsRecommendationRecord(Base, IdMixin, TimestampMixin):

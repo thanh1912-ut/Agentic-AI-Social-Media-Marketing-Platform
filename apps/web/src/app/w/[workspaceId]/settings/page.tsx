@@ -83,12 +83,6 @@ export default function TrangCaiDat() {
     queryFn: () => metaApi.connection(activeId),
     enabled: activeId !== '',
   });
-  const verifyMetaConnection = useMutation({
-    mutationFn: () => metaApi.verifyConnection(activeId),
-    onSuccess: (connection) => {
-      queryClient.setQueryData(metaQueryKeys.connection(activeId), connection);
-    },
-  });
   const refreshMembers = async () => {
     await queryClient.invalidateQueries({ queryKey: queryKeys.members(activeId) });
   };
@@ -122,17 +116,9 @@ export default function TrangCaiDat() {
   const loadError = membersQuery.error instanceof ApiError ? membersQuery.error : null;
   const members = membersQuery.data ?? null;
   const canInvite = hasPermission(workspace, ACTION_REQUIREMENTS.inviteMember);
-  const canManageConnection =
-    workspace.role === 'owner' &&
-    hasPermission(workspace, ACTION_REQUIREMENTS.manageConnection);
   const inviteDeniedReason = permissionDeniedReason(workspace, ACTION_REQUIREMENTS.inviteMember);
   const connection = metaConnectionQuery.data;
   const connectionStatus = connection ? META_STATUS[connection.status] : null;
-  const verifyDisabledReason = !canManageConnection
-    ? 'Chỉ chủ sở hữu có quyền xác minh kết nối Fanpage.'
-    : connection?.status === 'unconfigured'
-      ? 'Cần cấu hình thông tin Page trong môi trường backend trước.'
-      : undefined;
 
   function submitInvitation(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -428,7 +414,7 @@ export default function TrangCaiDat() {
         )}
       </Card>
 
-      <Card title="Kết nối Facebook" description="Kênh đăng bài của doanh nghiệp.">
+      <Card title="Kết nối Facebook" description="Xem trạng thái Page. Thêm Page ID và Page Access Token trong Fanpage & thị trường.">
         {metaConnectionQuery.isPending ? (
           <LoadingBlock label="Đang kiểm tra trạng thái Fanpage…" />
         ) : metaConnectionQuery.isError ? (
@@ -457,31 +443,18 @@ export default function TrangCaiDat() {
             {connection.status === 'unconfigured' ? (
               <UnavailableNotice
                 title="Chưa cấu hình Fanpage"
-                reason="Thông tin Page và quyền truy cập cần được cấu hình ở backend cho pilot này."
-                remedy="Cấu hình secret trên máy chủ rồi tải lại trạng thái. Không nhập hoặc gửi token trong trình duyệt."
+                reason="Workspace chưa có Fanpage đã kết nối."
+                remedy="Chủ workspace có thể thêm Page ID và Page Access Token trong trang Fanpage & thị trường."
               />
             ) : null}
             <div className="flex flex-wrap items-center gap-2">
-              <Button
-                onClick={() => verifyMetaConnection.mutate()}
-                loading={verifyMetaConnection.isPending}
-                disabled={Boolean(verifyDisabledReason)}
-                disabledReason={verifyDisabledReason}
-              >
-                Kiểm tra kết nối Fanpage
-              </Button>
               <Button variant="secondary" onClick={() => void metaConnectionQuery.refetch()} loading={metaConnectionQuery.isFetching}>
                 Tải lại trạng thái
               </Button>
+              <Link href={'/w/' + workspaceId + '/fanpages'} className="inline-flex items-center rounded-lg border border-slate-300 px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50">
+                Quản lý Fanpage
+              </Link>
             </div>
-            {verifyDisabledReason ? <p className="text-xs text-slate-600">{verifyDisabledReason}</p> : null}
-            {verifyMetaConnection.isError ? (
-              <ErrorPanel
-                title="Không xác minh được Fanpage"
-                message={verifyMetaConnection.error instanceof ApiError ? verifyMetaConnection.error.message : 'Vui lòng kiểm tra cấu hình backend.'}
-              />
-            ) : null}
-            {verifyMetaConnection.isSuccess ? <p role="status" className="text-sm text-emerald-800">Đã cập nhật trạng thái kết nối.</p> : null}
           </div>
         ) : null}
       </Card>

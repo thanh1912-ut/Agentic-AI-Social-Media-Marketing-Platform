@@ -24,6 +24,7 @@ class MetaConnectionOut(StrictModel):
 class MetaPublishIn(StrictModel):
     post_id: str = Field(min_length=1, max_length=36)
     version: int = Field(ge=1)
+    connection_id: str | None = Field(default=None, min_length=1, max_length=36)
 
 
 class MetaErrorOut(StrictModel):
@@ -37,6 +38,7 @@ class MetaPublicationOut(StrictModel):
     post_id: str
     post_version: int
     page_id: str
+    connection_id: str | None = None
     status: Literal["queued", "sending", "published", "failed", "needs_reconnect", "outcome_unknown", "not_published"]
     external_post_id: str | None
     permalink: str | None

@@ -28,6 +28,7 @@ from database.models import (
     JobStep,
     Membership,
     MediaAsset,
+    MetaPageGroup,
     PostApproval,
     PostVersion,
     User,
@@ -137,6 +138,7 @@ async def _campaign_out(db: AsyncSession, row: Campaign) -> CampaignOut:
     return CampaignOut(
         id=row.id,
         workspace_id=row.company_id,
+        group_id=row.group_id,
         name=row.name,
         status=row.status,
         brief=row.brief_json,
@@ -265,9 +267,14 @@ async def create_campaign(
     _validate_campaign_plan(request)
     now = utcnow()
     brief = request.brief.model_dump(mode="json")
+    if request.group_id and not await db.scalar(select(MetaPageGroup.id).where(
+        MetaPageGroup.id == request.group_id, MetaPageGroup.company_id == company_id,
+    )):
+        raise ApiProblem(422, "group_not_found", "Nhóm thị trường không thuộc workspace này.")
     row = Campaign(
         id=new_id(),
         company_id=company_id,
+        group_id=request.group_id,
         name=request.name,
         status="draft",
         brief_json=brief,
@@ -328,6 +335,11 @@ async def update_campaign(
         )
     _validate_campaign_plan(request)
 
+    if "group_id" in request.model_fields_set:
+        if request.group_id and not await db.scalar(select(MetaPageGroup.id).where(
+            MetaPageGroup.id == request.group_id, MetaPageGroup.company_id == company_id,
+        )):
+            raise ApiProblem(422, "group_not_found", "Nhóm thị trường không thuộc workspace này.")
     updated_plan = request.content_plan.model_dump(mode="json")
     previous_plan = row.content_plan_json or {"strategy_summary": "", "slots": []}
     previous_slots = {
@@ -353,6 +365,8 @@ async def update_campaign(
     previous_version = row.version
     row.name = request.name
     row.brief_json = request.brief.model_dump(mode="json")
+    if "group_id" in request.model_fields_set:
+        row.group_id = request.group_id
     row.content_plan_json = updated_plan
     row.pillars_json = request.pillars
     row.channels_json = request.channels

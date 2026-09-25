@@ -9,7 +9,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from database.models import (
-    AuditEvent, CampaignPost, Job, JobStep, MediaAsset, MetaPagePost,
+    AuditEvent, CampaignPost, Job, JobStep, MediaAsset, MetaPageConnection, MetaPagePost,
     MetaPublication, MetaSyncState, PostApproval, PostMetricSnapshot, PostVersion, utcnow,
 )
 from services.api.config import settings
@@ -19,6 +19,7 @@ from services.api.meta_client import (
     MetaGraphClient, MetaGraphOutcomeUnknown, MetaGraphReadError,
     MetaGraphRejected, MetaGraphTokenExpired, MetaPostMetrics,
 )
+from services.api.meta_tokens import TokenEncryptionUnavailable, decrypt_page_token
 from services.api.storage import storage
 from .async_runtime import run_worker_coroutine
 from .celery_app import celery_app
@@ -59,9 +60,23 @@ async def _claim(job_id: str, kind: str) -> bool:
         return True
 
 
-async def _publish_preflight(db: AsyncSession, row: MetaPublication) -> tuple[str, bytes | None, str | None]:
-    if not settings.meta_configured or row.company_id != settings.meta_workspace_id or row.page_id != settings.meta_page_id:
-        raise ValueError("connection_changed")
+async def _publish_preflight(db: AsyncSession, row: MetaPublication) -> tuple[str, bytes | None, str | None, str]:
+    if row.connection_id:
+        connection = await db.scalar(select(MetaPageConnection).where(
+            MetaPageConnection.company_id == row.company_id, MetaPageConnection.id == row.connection_id,
+            MetaPageConnection.page_id == row.page_id, MetaPageConnection.active.is_(True),
+            MetaPageConnection.status == "verified", MetaPageConnection.verified_at.is_not(None),
+        ).with_for_update())
+        if connection is None:
+            raise ValueError("connection_changed")
+        try:
+            page_token = decrypt_page_token(connection.encrypted_token)
+        except TokenEncryptionUnavailable as error:
+            raise ValueError("connection_changed") from error
+    else:
+        if not settings.meta_configured or row.company_id != settings.meta_workspace_id or row.page_id != settings.meta_page_id:
+            raise ValueError("connection_changed")
+        page_token = settings.meta_page_access_token
     post = await db.scalar(select(CampaignPost).where(
         CampaignPost.id == row.post_id, CampaignPost.company_id == row.company_id
     ).with_for_update())
@@ -90,7 +105,7 @@ async def _publish_preflight(db: AsyncSession, row: MetaPublication) -> tuple[st
     message = caption.strip() + ("\n\n" + " ".join(tags) if tags else "")
     media = version.content_json.get("media") or []
     if post.format == "text" and not media:
-        return message, None, None
+        return message, None, None, page_token
     if post.format != "image" or not isinstance(media, list) or len(media) != 1 or not isinstance(media[0], dict):
         raise ValueError("media_unsupported")
     item = media[0]
@@ -109,7 +124,7 @@ async def _publish_preflight(db: AsyncSession, row: MetaPublication) -> tuple[st
         raise ValueError("media_unavailable") from exc
     if hashlib.sha256(image_bytes).hexdigest() != asset.content_sha256:
         raise ValueError("media_changed")
-    return message, image_bytes, asset.mime_type
+    return message, image_bytes, asset.mime_type, page_token
 
 
 async def _finish_publish(job_id: str, status: str, *, external_post_id: str | None = None,
@@ -146,6 +161,13 @@ async def _finish_publish(job_id: str, status: str, *, external_post_id: str | N
                           metadata_json={"page_id": row.page_id, "post_id": row.post_id,
                                          "external_post_id": external_post_id}))
         if status == "needs_reconnect":
+            connection = await db.scalar(select(MetaPageConnection).where(
+                MetaPageConnection.company_id == row.company_id, MetaPageConnection.id == row.connection_id,
+            ).with_for_update()) if row.connection_id else None
+            if connection:
+                connection.status = "needs_reconnect"
+                connection.last_error_code = error_code or "token_invalid"
+                connection.verified_at = None
             state = await db.scalar(select(MetaSyncState).where(
                 MetaSyncState.company_id == row.company_id, MetaSyncState.page_id == row.page_id
             ))
@@ -160,7 +182,7 @@ async def _run_publish(job_id: str) -> None:
         if row is None or row.status != "queued":
             return
         try:
-            message, image_bytes, mime_type = await _publish_preflight(db, row)
+            message, image_bytes, mime_type, page_token = await _publish_preflight(db, row)
         except (ValueError, OSError):
             # No request to Meta was made; releasing the post is safe.
             row.status = "failed"
@@ -181,7 +203,7 @@ async def _run_publish(job_id: str) -> None:
         row.updated_at = utcnow()
         await db.commit()
     try:
-        async with MetaGraphClient(settings.meta_page_id, settings.meta_page_access_token,
+        async with MetaGraphClient(row.page_id, page_token,
                                    settings.meta_graph_version) as client:
             if image_bytes is None:
                 result = await client.publish_text(message)
@@ -223,10 +245,10 @@ async def _upsert_page_post(db: AsyncSession, company_id: str, page_id: str, ite
     row.updated_at = now
 
 
-async def _sync_published_metrics(db: AsyncSession, job: Job, client: MetaGraphClient) -> int:
+async def _sync_published_metrics(db: AsyncSession, job: Job, client: MetaGraphClient, page_id: str) -> int:
     rows = (await db.scalars(select(MetaPublication).where(
         MetaPublication.company_id == job.company_id,
-        MetaPublication.page_id == settings.meta_page_id,
+        MetaPublication.page_id == page_id,
         MetaPublication.status == "published",
         MetaPublication.external_post_id.is_not(None),
     ).order_by(MetaPublication.published_at.desc()).limit(100))).all()
@@ -246,14 +268,14 @@ async def _sync_published_metrics(db: AsyncSession, job: Job, client: MetaGraphC
             published = published.replace(tzinfo=timezone.utc)
         age_hours = max(0, int((now - published).total_seconds() // 3600))
         db.add(PostMetricSnapshot(
-            company_id=job.company_id, post_id=row.post_id, source_id=f"meta:{settings.meta_page_id}",
+            company_id=job.company_id, post_id=row.post_id, source_id=f"meta:{page_id}",
             measured_at=now, post_age_hours=age_hours, reach=None, views=None,
             engagements=engagements, clicks=None, spend=None, attributed_revenue=None,
             attribution_valid=False, imported_by=job.created_by,
         ))
         if metric.permalink_url:
             row.permalink = metric.permalink_url
-        await _upsert_page_post(db, job.company_id, settings.meta_page_id, metric, row.post_id)
+        await _upsert_page_post(db, job.company_id, page_id, metric, row.post_id)
         count += 1
     return count
 
@@ -263,11 +285,27 @@ async def _run_sync(job_id: str) -> None:
         job = await db.get(Job, job_id)
         if job is None:
             return
+        job_result = job.result or {}
+        page_id = str(job_result.get("page_id") or "")
+        connection_id = job_result.get("connection_id")
+        page_token = ""
+        if connection_id:
+            connection = await db.scalar(select(MetaPageConnection).where(
+                MetaPageConnection.company_id == job.company_id, MetaPageConnection.id == connection_id,
+                MetaPageConnection.page_id == page_id, MetaPageConnection.active.is_(True),
+                MetaPageConnection.status == "verified", MetaPageConnection.verified_at.is_not(None),
+            ))
+            if connection:
+                try:
+                    page_token = decrypt_page_token(connection.encrypted_token)
+                except TokenEncryptionUnavailable:
+                    page_token = ""
+        elif settings.meta_configured and settings.meta_workspace_id == job.company_id and page_id == settings.meta_page_id:
+            page_token = settings.meta_page_access_token
         state = await db.scalar(select(MetaSyncState).where(
-            MetaSyncState.company_id == job.company_id,
-            MetaSyncState.page_id == settings.meta_page_id,
+            MetaSyncState.company_id == job.company_id, MetaSyncState.page_id == page_id,
         ))
-        if state is None or state.running_job_id != job_id or not settings.meta_configured or settings.meta_workspace_id != job.company_id:
+        if state is None or state.running_job_id != job_id or not page_token:
             await _finish_job(db, job, succeeded=False,
                               error=_safe_error("meta_connection_changed", "Cấu hình Fanpage đã thay đổi."))
             await db.commit()
@@ -275,20 +313,20 @@ async def _run_sync(job_id: str) -> None:
         imported = 0
         refreshed = 0
         try:
-            async with MetaGraphClient(settings.meta_page_id, settings.meta_page_access_token,
+            async with MetaGraphClient(page_id, page_token,
                                        settings.meta_graph_version) as client:
                 # Always refresh the newest Page posts, then continue the old-post cursor.
                 first = await client.list_page_posts(limit=100)
                 cursor = state.next_cursor if state.has_more and state.next_cursor else first.next_cursor
                 publications = (await db.scalars(select(MetaPublication).where(
                     MetaPublication.company_id == job.company_id,
-                    MetaPublication.page_id == settings.meta_page_id,
+                    MetaPublication.page_id == page_id,
                     MetaPublication.status == "published",
                     MetaPublication.external_post_id.is_not(None),
                 ))).all()
                 linked = {row.external_post_id: row.post_id for row in publications}
                 for item in first.posts:
-                    await _upsert_page_post(db, job.company_id, settings.meta_page_id,
+                    await _upsert_page_post(db, job.company_id, page_id,
                                             item, linked.get(item.external_post_id))
                     imported += 1
                 seen = set()
@@ -298,7 +336,7 @@ async def _run_sync(job_id: str) -> None:
                     seen.add(cursor)
                     page = await client.list_page_posts(limit=100, after=cursor)
                     for item in page.posts:
-                        await _upsert_page_post(db, job.company_id, settings.meta_page_id,
+                        await _upsert_page_post(db, job.company_id, page_id,
                                                 item, linked.get(item.external_post_id))
                         imported += 1
                     cursor = page.next_cursor
@@ -308,7 +346,7 @@ async def _run_sync(job_id: str) -> None:
                 if not seen:
                     state.next_cursor = first.next_cursor
                     state.has_more = bool(first.next_cursor)
-                refreshed = await _sync_published_metrics(db, job, client)
+                refreshed = await _sync_published_metrics(db, job, client, page_id)
         except MetaGraphTokenExpired:
             state.verified_at = None
             error = _safe_error("meta_token_invalid", "Token Fanpage không còn hợp lệ; hãy cấu hình lại trên backend.")
@@ -321,13 +359,13 @@ async def _run_sync(job_id: str) -> None:
         state.running_job_id = None
         state.last_sync_at = utcnow() if error is None else state.last_sync_at
         state.updated_at = utcnow()
-        job.result = {"page_id": settings.meta_page_id, "posts_seen": imported,
+        job.result = {"page_id": page_id, "posts_seen": imported,
                       "published_metrics_refreshed": refreshed, "has_more_history": state.has_more}
         await _finish_job(db, job, succeeded=error is None, error=error)
         db.add(AuditEvent(company_id=job.company_id, actor_user_id=job.created_by,
                           action="meta.metrics.sync.complete" if error is None else "meta.metrics.sync.failed",
                           entity_type="meta_page", entity_id=None,
-                          metadata_json={"page_id": settings.meta_page_id, "posts_seen": imported,
+                          metadata_json={"page_id": page_id, "posts_seen": imported,
                                          "published_metrics_refreshed": refreshed}))
         await db.commit()
 

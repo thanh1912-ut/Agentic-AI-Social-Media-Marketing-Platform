@@ -14,7 +14,7 @@ from redis.asyncio import Redis
 from sqlalchemy import text
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 
-from . import analytics, auth, brand_profiles, campaign_workflows, documents, jobs, media, meta, workspaces
+from . import analytics, auth, brand_profiles, campaign_workflows, documents, jobs, market_research, media, meta, workspaces
 from .config import settings
 from .db import create_schema, engine
 from .errors import ApiProblem, api_problem_handler, error_body
@@ -97,6 +97,7 @@ app.include_router(campaign_workflows.router, prefix="/api/v1")
 app.include_router(analytics.router, prefix="/api/v1")
 app.include_router(jobs.router, prefix="/api/v1")
 app.include_router(meta.router, prefix="/api/v1")
+app.include_router(market_research.router, prefix="/api/v1")
 
 
 @app.get("/healthz", tags=["health"])

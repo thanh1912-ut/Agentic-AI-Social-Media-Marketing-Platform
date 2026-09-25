@@ -1,5 +1,7 @@
 # Tiến độ triển khai
 
+> Phần bổ sung Fanpage nhiều Page và nghiên cứu thị trường đang được triển khai trên branch riêng; trạng thái chi tiết, chức năng, giới hạn nguồn, cấu hình và kiểm tra xem tại [page-groups-market-research.md](page-groups-market-research.md). Không dùng trạng thái test cũ trong bảng dưới đây làm bằng chứng nghiệm thu cho branch mới.
+
 Cập nhật gần nhất: 2026-09-24 13:12 (Asia/Ho_Chi_Minh)
 
 ## Trạng thái hiện tại
@@ -68,3 +70,11 @@ Cập nhật gần nhất: 2026-09-24 13:12 (Asia/Ho_Chi_Minh)
 3. Dùng model cache/corpus SME được phép để kiểm tra retrieval; xác minh Meta docs/quyền/app khi có credential, và nghiệm thu duplicate-safe publisher. Manual publishing tiếp tục là fallback.
 
 Không có URL service nào đang chạy. Hướng dẫn chạy và các giới hạn vận hành nằm ở [runbook.md](runbook.md); kế hoạch/phạm vi ở [implementation-plan.md](implementation-plan.md); kiểm thử ở [test-report.md](test-report.md).
+
+## Bổ sung Fanpage nhiều Page và nghiên cứu thị trường — 2026-09-25
+
+- Tính năng đang làm ở branch riêng `codex/page-groups-market-research`; chưa merge/push. Đã có UI cấu hình nhóm ngành/khu vực/từ khóa, Page ID + Page Access Token, danh sách link nguồn, nhập dữ liệu thủ công, chạy ngay, báo cáo/gợi ý và tạo campaign nháp.
+- Backend có token mã hóa, tenant checks, giới hạn 5 Page/20 URL/10 nhóm mỗi workspace, job/scheduler 12 giờ, collector website công khai và Page thuộc workspace, report DeepSeek/fallback, nguồn bằng chứng và cleanup raw web snapshot 30 ngày. Competitor Page/Facebook group được lưu link và nhận dữ liệu nhập tay; hệ thống không scrape các nguồn Meta chưa được cấp quyền.
+- Migration mới `0012_market_research_and_page_groups`; đã sửa idempotence để tương thích bootstrap migration hiện tại, kiểm tra SQLite upgrade/downgrade/upgrade và `alembic check`. OpenAPI và type frontend đã sinh lại.
+- Kiểm chứng hiện tại: 24 Python test mục tiêu pass, gồm API SQLite với Meta client giả lập và che PII cho import tay; 47 Vitest, typecheck, ESLint, Next production build pass; Playwright **42/42** desktop/mobile pass; Python compileall, OpenAPI `--check` và diff check pass. Schema migration dùng pgvector shim trong SQLite test; chưa xác minh PostgreSQL/pgvector thật, worker/Beat/Redis, Meta, crawl trực tiếp hoặc DeepSeek cho flow mới.
+- Chi tiết chức năng, thiết lập, API, dữ liệu, giới hạn và bước vận hành tiếp theo ở [page-groups-market-research.md](page-groups-market-research.md).

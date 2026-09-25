@@ -18,6 +18,7 @@ ROLE_PERMISSIONS: dict[str, frozenset[str]] = {
             "post:reject",
             "export:create",
             "connection:manage",
+            "market:manage",
             "publish:create",
             "metric:import",
             "recommendation:apply",
@@ -33,6 +34,7 @@ ROLE_PERMISSIONS: dict[str, frozenset[str]] = {
             "post:generate",
             "export:create",
             "metric:import",
+            "market:manage",
         }
     ),
     "viewer": frozenset(),

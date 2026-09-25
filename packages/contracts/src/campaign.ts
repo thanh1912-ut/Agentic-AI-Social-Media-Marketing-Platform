@@ -63,6 +63,8 @@ export interface CampaignContentPlan {
 export interface Campaign {
   id: Id;
   workspace_id: Id;
+  /** Nhóm thị trường dùng để giới hạn Fanpage đích, nếu chiến dịch đã chọn nhóm. */
+  group_id?: Id | null;
   name: string;
   status: CampaignStatus;
   brief: CampaignBrief;

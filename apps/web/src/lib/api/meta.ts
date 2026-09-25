@@ -5,7 +5,6 @@ import type {
   ApiMetaPagePost,
   ApiMetaPagePosts,
   ApiMetaPublication,
-  ApiMetaPublishRequest,
   ApiMetaReconcileRequest,
 } from './types';
 import { apiRequest } from './client';
@@ -38,7 +37,8 @@ export function facebookPostUrl(value: string | null): string | null {
 export const metaQueryKeys = {
   connection: (workspaceId: string) => ['workspaces', workspaceId, 'meta', 'connection'] as const,
   publications: (workspaceId: string) => ['workspaces', workspaceId, 'meta', 'publications'] as const,
-  pagePosts: (workspaceId: string, offset: number) => ['workspaces', workspaceId, 'meta', 'page-posts', offset] as const,
+  pagePosts: (workspaceId: string, offset: number, connectionId?: string) =>
+    ['workspaces', workspaceId, 'meta', 'page-posts', connectionId ?? 'default', offset] as const,
 };
 
 function workspacePath(workspaceId: string): string {
@@ -54,18 +54,19 @@ export const metaApi = {
     }),
   publications: (workspaceId: string) =>
     apiRequest<MetaPublication[]>(`${workspacePath(workspaceId)}/publications`),
-  pagePosts: (workspaceId: string, offset = 0, limit = 25) =>
+  pagePosts: (workspaceId: string, offset = 0, limit = 25, connectionId?: string) =>
     apiRequest<MetaPagePostPage>(`${workspacePath(workspaceId)}/page-posts`, {
-      query: { offset, limit },
+      query: { offset, limit, connection_id: connectionId },
     }),
-  publish: (workspaceId: string, postId: string, version: number) =>
+  publish: (workspaceId: string, postId: string, version: number, connectionId?: string) =>
     apiRequest<ApiAcceptedResponse>(`${workspacePath(workspaceId)}/publications`, {
       method: 'POST',
-      body: { post_id: postId, version } satisfies ApiMetaPublishRequest,
+      body: { post_id: postId, version, connection_id: connectionId },
     }),
-  syncMetrics: (workspaceId: string) =>
+  syncMetrics: (workspaceId: string, connectionId?: string) =>
     apiRequest<ApiAcceptedResponse>(`${workspacePath(workspaceId)}/metrics/sync`, {
       method: 'POST',
+      query: { connection_id: connectionId },
     }),
   reconcile: (
     workspaceId: string,

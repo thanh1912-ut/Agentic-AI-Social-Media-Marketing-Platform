@@ -34,6 +34,10 @@ class LocalObjectStorage:
     async def read(self, key: str) -> bytes:
         return await asyncio.to_thread(self.path(key).read_bytes)
 
+    async def delete(self, key: str) -> None:
+        path = self.path(key)
+        await asyncio.to_thread(path.unlink, missing_ok=True)
+
     def path(self, key: str) -> Path:
         parts = _storage_key_parts(key)
         root = self.root.resolve()
@@ -81,6 +85,10 @@ class S3ObjectStorage:
         _storage_key_parts(key)
         response = await asyncio.to_thread(self.client.get_object, Bucket=settings.s3_bucket, Key=key)
         return await asyncio.to_thread(response["Body"].read)
+
+    async def delete(self, key: str) -> None:
+        _storage_key_parts(key)
+        await asyncio.to_thread(self.client.delete_object, Bucket=settings.s3_bucket, Key=key)
 
 
 storage = S3ObjectStorage() if settings.storage_backend == "s3" else LocalObjectStorage(settings.storage_root)

@@ -10,8 +10,8 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from database.models import (
-    AuditEvent, CampaignPost, Job, JobStep, MediaAsset, Membership, MetaPagePost,
-    MetaPublication, MetaSyncState, PostApproval, PostVersion, User, utcnow,
+    AuditEvent, Campaign, CampaignPost, Job, JobStep, MediaAsset, Membership, MetaPageConnection,
+    MetaPagePost, MetaPublication, MetaSyncState, PostApproval, PostVersion, User, utcnow,
 )
 from .config import settings
 from .content_integrity import content_sha256
@@ -20,6 +20,7 @@ from .dependencies import current_user, membership_for, require_csrf, require_pe
 from .errors import ApiProblem
 from .job_service import accepted_response, dispatch_meta_job
 from .meta_client import MetaGraphClient, MetaGraphReadError, MetaGraphRejected, MetaGraphTokenExpired
+from .meta_tokens import TokenEncryptionUnavailable, decrypt_page_token
 from .meta_schemas import (
     MetaConnectionOut, MetaPagePostOut, MetaPagePostsOut, MetaPublicationOut,
     MetaPublishIn, MetaReconcileIn,
@@ -44,17 +45,63 @@ def _require_connection(company_id: str) -> None:
 
 
 async def _state(db: AsyncSession, company_id: str, *, lock: bool = False) -> MetaSyncState | None:
-    query = select(MetaSyncState).where(
-        MetaSyncState.company_id == company_id, MetaSyncState.page_id == settings.meta_page_id
-    )
+    return await _state_for_page(db, company_id, settings.meta_page_id, lock=lock)
+
+
+async def _state_for_page(db: AsyncSession, company_id: str, page_id: str, *, lock: bool = False) -> MetaSyncState | None:
+    query = select(MetaSyncState).where(MetaSyncState.company_id == company_id, MetaSyncState.page_id == page_id)
     if lock:
         query = query.with_for_update()
     return await db.scalar(query)
 
 
+async def _verified_connection(db: AsyncSession, company_id: str, connection_id: str) -> MetaPageConnection:
+    connection = await db.scalar(select(MetaPageConnection).where(
+        MetaPageConnection.company_id == company_id, MetaPageConnection.id == connection_id,
+        MetaPageConnection.active.is_(True), MetaPageConnection.status == "verified",
+        MetaPageConnection.verified_at.is_not(None),
+    ))
+    if connection is None:
+        raise ApiProblem(409, "meta_not_verified", "Fanpage chưa kết nối hoặc cần xác minh lại.")
+    return connection
+
+
+async def _connection_for_post(
+    db: AsyncSession, company_id: str, post: CampaignPost, requested_id: str | None,
+) -> tuple[MetaPageConnection | None, str]:
+    connection_id = requested_id or post.target_connection_id
+    campaign = await db.scalar(select(Campaign).where(Campaign.company_id == company_id, Campaign.id == post.campaign_id))
+    if connection_id:
+        connection = await _verified_connection(db, company_id, connection_id)
+        if campaign and campaign.group_id and connection.group_id != campaign.group_id:
+            raise ApiProblem(422, "meta_connection_wrong_group", "Fanpage đích không thuộc nhóm thị trường của chiến dịch.")
+        return connection, connection.page_id
+    if campaign and campaign.group_id:
+        candidates = (await db.scalars(select(MetaPageConnection).where(
+            MetaPageConnection.company_id == company_id, MetaPageConnection.group_id == campaign.group_id,
+            MetaPageConnection.active.is_(True), MetaPageConnection.status == "verified",
+            MetaPageConnection.verified_at.is_not(None),
+        ))).all()
+    else:
+        candidates = (await db.scalars(select(MetaPageConnection).where(
+            MetaPageConnection.company_id == company_id, MetaPageConnection.active.is_(True),
+            MetaPageConnection.status == "verified", MetaPageConnection.verified_at.is_not(None),
+        ))).all()
+    if len(candidates) == 1:
+        return candidates[0], candidates[0].page_id
+    if len(candidates) > 1:
+        raise ApiProblem(422, "meta_connection_required", "Chọn Fanpage đích trước khi đăng bài.")
+    if _configured_for(company_id):
+        state = await _state(db, company_id)
+        if state and state.verified_at:
+            return None, settings.meta_page_id
+    raise ApiProblem(409, "meta_not_verified", "Kết nối và xác minh Fanpage trước khi đăng bài.")
+
+
 def _publication_out(row: MetaPublication) -> MetaPublicationOut:
     return MetaPublicationOut(
         id=row.id, post_id=row.post_id, post_version=row.post_version, page_id=row.page_id,
+        connection_id=row.connection_id,
         status=row.status, external_post_id=row.external_post_id, permalink=row.permalink,
         error=row.error_json, created_at=row.created_at, updated_at=row.updated_at,
     )
@@ -76,6 +123,20 @@ async def get_meta_connection(
     company_id: str, user: User = Depends(current_user), db: AsyncSession = Depends(get_db),
 ):
     await membership_for(company_id, user, db)
+    connections = (await db.scalars(select(MetaPageConnection).where(
+        MetaPageConnection.company_id == company_id, MetaPageConnection.active.is_(True),
+    ).order_by(MetaPageConnection.created_at))).all()
+    if connections:
+        verified = [row for row in connections if row.status == "verified" and row.verified_at]
+        single = connections[0] if len(connections) == 1 else None
+        return MetaConnectionOut(
+            status="verified" if verified else "configured",
+            page_id=single.page_id if single else None,
+            page_name=single.page_name if single else f"{len(verified)} Fanpage đã kết nối",
+            can_publish=bool(verified), can_sync_metrics=bool(verified),
+            message=("Chọn Page đích khi gửi từng bài. Meta kiểm tra quyền đăng ở thời điểm gửi."
+                     if verified else "Có Fanpage đã lưu nhưng cần xác minh lại trong Fanpage & thị trường."),
+        )
     if not _configured_for(company_id):
         return MetaConnectionOut(status="unconfigured", page_id=None, page_name=None,
                                  can_publish=False, can_sync_metrics=False,
@@ -143,11 +204,13 @@ async def publish_meta_post(
     membership: Membership = Depends(require_permission("publish:create")),
     db: AsyncSession = Depends(get_db),
 ):
-    _require_connection(company_id)
-    state = await _state(db, company_id)
-    if state is None or not state.verified_at:
-        raise ApiProblem(409, "meta_not_verified", "Hãy xác minh Fanpage trước khi đăng bài.")
-    active_key = f"{request.post_id}:{request.version}:{settings.meta_page_id}"
+    post = await db.scalar(select(CampaignPost).where(
+        CampaignPost.company_id == company_id, CampaignPost.id == request.post_id
+    ).with_for_update())
+    if post is None:
+        raise ApiProblem(404, "not_found", "Không tìm thấy bài viết.")
+    connection, page_id = await _connection_for_post(db, company_id, post, request.connection_id)
+    active_key = f"{request.post_id}:{request.version}:{page_id}"
     existing = await db.scalar(select(MetaPublication).where(
         MetaPublication.company_id == company_id, MetaPublication.active_key == active_key
     ))
@@ -155,11 +218,6 @@ async def publish_meta_post(
         existing_job = await db.get(Job, existing.job_id)
         if existing_job is not None:
             return await accepted_response(db, existing_job)
-    post = await db.scalar(select(CampaignPost).where(
-        CampaignPost.company_id == company_id, CampaignPost.id == request.post_id
-    ).with_for_update())
-    if post is None:
-        raise ApiProblem(404, "not_found", "Không tìm thấy bài viết.")
     if post.channel != "facebook_page" or post.format not in {"text", "image"}:
         raise ApiProblem(422, "meta_format_unsupported", "Fanpage hiện hỗ trợ bài chữ hoặc một ảnh đã tải lên.")
     if post.status != "approved" or post.current_version != request.version or post.requires_reapproval:
@@ -196,7 +254,8 @@ async def publish_meta_post(
     await db.flush()
     publication = MetaPublication(
         company_id=company_id, post_id=post.id, post_version=request.version,
-        approved_content_sha256=approval.content_sha256, page_id=settings.meta_page_id,
+        approved_content_sha256=approval.content_sha256, page_id=page_id,
+        connection_id=connection.id if connection else None,
         status="queued", active_key=active_key, job_id=job.id,
     )
     db.add(publication)
@@ -206,10 +265,12 @@ async def publish_meta_post(
     post.status = "scheduled"  # Prevent edits while delivery is queued or uncertain.
     post.publish_mode = "now"
     post.updated_at = utcnow()
+    post.target_connection_id = connection.id if connection else None
     db.add(AuditEvent(company_id=company_id, actor_user_id=user.id, action="meta.publish.request",
                       entity_type="post", entity_id=post.id,
                       metadata_json={"version": request.version, "publication_id": publication.id,
-                                     "page_id": settings.meta_page_id, "content_sha256": approval.content_sha256}))
+                                     "page_id": page_id, "connection_id": connection.id if connection else None,
+                                     "content_sha256": approval.content_sha256}))
     try:
         await db.commit()
     except IntegrityError:
@@ -236,12 +297,21 @@ async def reconcile_meta_publication(
     if row.status != "outcome_unknown":
         raise ApiProblem(409, "state_conflict", "Chỉ bài có kết quả chưa rõ mới được đối soát.")
     if request.outcome == "published":
-        _require_connection(company_id)
-        try:
-            async with _client() as client:
-                confirmed = await client.read_post_metrics(request.external_post_id or "")
-        except (ValueError, MetaGraphRejected, MetaGraphReadError):
-            raise ApiProblem(409, "meta_post_not_verified", "Không xác minh được ID bài đăng trên Fanpage.") from None
+        if row.connection_id:
+            connection = await _verified_connection(db, company_id, row.connection_id)
+            try:
+                token = decrypt_page_token(connection.encrypted_token)
+                async with MetaGraphClient(row.page_id, token, settings.meta_graph_version) as client:
+                    confirmed = await client.read_post_metrics(request.external_post_id or "")
+            except (TokenEncryptionUnavailable, ValueError, MetaGraphRejected, MetaGraphReadError):
+                raise ApiProblem(409, "meta_post_not_verified", "Không xác minh được ID bài đăng trên Fanpage.") from None
+        else:
+            _require_connection(company_id)
+            try:
+                async with _client() as client:
+                    confirmed = await client.read_post_metrics(request.external_post_id or "")
+            except (ValueError, MetaGraphRejected, MetaGraphReadError):
+                raise ApiProblem(409, "meta_post_not_verified", "Không xác minh được ID bài đăng trên Fanpage.") from None
         row.external_post_id = confirmed.external_post_id
         row.permalink = confirmed.permalink_url
         row.published_at = confirmed.created_time or utcnow()
@@ -269,18 +339,33 @@ async def reconcile_meta_publication(
 async def list_meta_page_posts(
     company_id: str, limit: int = Query(default=25, ge=1, le=100),
     offset: int = Query(default=0, ge=0),
+    connection_id: str | None = Query(default=None, min_length=1, max_length=36),
     user: User = Depends(current_user), db: AsyncSession = Depends(get_db),
 ):
     await membership_for(company_id, user, db)
-    if not _configured_for(company_id):
-        return MetaPagePostsOut(items=[], total=0, has_more=False, next_offset=None,
-                                sync_has_more=False, last_sync_at=None)
-    filters = (MetaPagePost.company_id == company_id, MetaPagePost.page_id == settings.meta_page_id)
+    if connection_id:
+        connection = await _verified_connection(db, company_id, connection_id)
+        page_id = connection.page_id
+    else:
+        candidates = (await db.scalars(select(MetaPageConnection).where(
+            MetaPageConnection.company_id == company_id, MetaPageConnection.active.is_(True),
+            MetaPageConnection.status == "verified", MetaPageConnection.verified_at.is_not(None),
+        ))).all()
+        if len(candidates) > 1:
+            raise ApiProblem(422, "meta_connection_required", "Chọn Fanpage để xem lịch sử bài viết.")
+        if len(candidates) == 1:
+            page_id = candidates[0].page_id
+        elif _configured_for(company_id):
+            page_id = settings.meta_page_id
+        else:
+            return MetaPagePostsOut(items=[], total=0, has_more=False, next_offset=None,
+                                    sync_has_more=False, last_sync_at=None)
+    filters = (MetaPagePost.company_id == company_id, MetaPagePost.page_id == page_id)
     total = await db.scalar(select(func.count()).select_from(MetaPagePost).where(*filters)) or 0
     rows = (await db.scalars(select(MetaPagePost).where(*filters)
                              .order_by(MetaPagePost.published_at.desc(), MetaPagePost.id.desc())
                              .offset(offset).limit(limit))).all()
-    state = await _state(db, company_id)
+    state = await _state_for_page(db, company_id, page_id)
     has_more = offset + len(rows) < total
     return MetaPagePostsOut(items=[_page_post_out(row) for row in rows], total=total,
                             has_more=has_more, next_offset=offset + len(rows) if has_more else None,
@@ -292,12 +377,31 @@ async def list_meta_page_posts(
              dependencies=[Depends(require_csrf)])
 async def sync_meta_metrics(
     company_id: str,
+    connection_id: str | None = Query(default=None, min_length=1, max_length=36),
     user: User = Depends(current_user),
     membership: Membership = Depends(require_permission("connection:manage")),
     db: AsyncSession = Depends(get_db),
 ):
-    _require_connection(company_id)
-    state = await _state(db, company_id, lock=True)
+    connection = None
+    if connection_id:
+        connection = await _verified_connection(db, company_id, connection_id)
+        page_id = connection.page_id
+    else:
+        candidates = (await db.scalars(select(MetaPageConnection).where(
+            MetaPageConnection.company_id == company_id, MetaPageConnection.active.is_(True),
+            MetaPageConnection.status == "verified", MetaPageConnection.verified_at.is_not(None),
+        ))).all()
+        if len(candidates) > 1:
+            raise ApiProblem(422, "meta_connection_required", "Chọn Fanpage cần đồng bộ.")
+        if len(candidates) == 1:
+            connection = candidates[0]
+            page_id = connection.page_id
+        elif _configured_for(company_id):
+            page_id = settings.meta_page_id
+        else:
+            _require_connection(company_id)
+            page_id = settings.meta_page_id
+    state = await _state_for_page(db, company_id, page_id, lock=True)
     if state is None or not state.verified_at:
         raise ApiProblem(409, "meta_not_verified", "Hãy xác minh Fanpage trước khi đồng bộ.")
     if state.running_job_id:
@@ -306,7 +410,7 @@ async def sync_meta_metrics(
             raise ApiProblem(409, "meta_sync_in_progress", "Đang đồng bộ số liệu Fanpage.")
     job = Job(company_id=company_id, created_by=user.id, kind="meta_metrics_sync",
               title="Đồng bộ bài cũ và số liệu Fanpage", status="queued", progress=0,
-              result={"page_id": settings.meta_page_id}, attempts=0)
+              result={"page_id": page_id, "connection_id": connection.id if connection else None}, attempts=0)
     db.add(job)
     await db.flush()
     state.running_job_id = job.id
@@ -314,7 +418,8 @@ async def sync_meta_metrics(
     db.add(JobStep(job_id=job.id, step_key="sync", label="Đọc bài đăng và số liệu Fanpage", status="pending"))
     db.add(AuditEvent(company_id=company_id, actor_user_id=user.id, action="meta.metrics.sync.request",
                       entity_type="meta_page", entity_id=None,
-                      metadata_json={"page_id": settings.meta_page_id, "job_id": job.id}))
+                      metadata_json={"page_id": page_id, "connection_id": connection.id if connection else None,
+                                     "job_id": job.id}))
     await db.commit()
     await dispatch_meta_job(job.id, "meta_metrics_sync")
     await db.refresh(job)

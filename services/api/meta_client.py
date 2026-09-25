@@ -272,6 +272,25 @@ class MetaGraphClient:
             created_time=_created_time(payload.get("created_time")),
         )
 
+    async def list_post_comments(self, external_post_id: str, limit: int = 50) -> tuple[str, ...]:
+        """Return comment text only; author IDs and names are never requested."""
+        if not _valid_post_id(external_post_id, self.page_id):
+            raise ValueError("invalid external post ID for this Page")
+        if type(limit) is not int or not 1 <= limit <= 100:
+            raise ValueError("limit must be between 1 and 100")
+        payload = await self._request(
+            "GET", f"/{self.graph_version}/{external_post_id}/comments", publishing=False,
+            params={"fields": "message", "limit": limit},
+        )
+        data = payload.get("data")
+        if not isinstance(data, list):
+            raise MetaGraphReadError("Meta Graph returned an invalid comments list.")
+        return tuple(
+            item["message"][:4000]
+            for item in data
+            if isinstance(item, dict) and isinstance(item.get("message"), str) and item["message"].strip()
+        )
+
     async def list_page_posts(self, limit: int = 25, after: str | None = None) -> MetaPagePostsPage:
         """List posts authored by this Page, including posts made outside this app."""
         if type(limit) is not int or not 1 <= limit <= 100:

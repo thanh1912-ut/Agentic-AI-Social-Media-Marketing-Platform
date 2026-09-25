@@ -68,6 +68,7 @@ class CampaignContentPlanOut(StrictModel):
 
 class CampaignCreateRequest(StrictModel):
     name: str = Field(min_length=1, max_length=200)
+    group_id: str | None = Field(default=None, max_length=36)
     brief: CampaignBriefIn
     content_plan: CampaignContentPlanIn = Field(default_factory=CampaignContentPlanIn)
     pillars: list[ContentPillarValue] = Field(default_factory=lambda: ["product", "education"], max_length=8)
@@ -82,6 +83,7 @@ class CampaignUpdateRequest(CampaignCreateRequest):
 class CampaignOut(StrictModel):
     id: str
     workspace_id: str
+    group_id: str | None = None
     name: str
     status: Literal["draft", "active", "completed", "archived"]
     brief: dict[str, Any]
