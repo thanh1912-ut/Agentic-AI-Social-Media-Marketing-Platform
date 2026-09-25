@@ -153,7 +153,19 @@ celery -A services.worker.celery_app:celery_app beat --loglevel=INFO --schedule=
 
 Dùng worker và Beat sau khi PostgreSQL/Redis health checks pass; không chạy nhiều Beat instance dùng chung lịch.
 
-Runtime smoke chạy trên PostgreSQL 18.3/pgvector 0.8.2, Redis 8.6.3 và Celery 5.6.3 `solo`. Recovery task đã được route tới `default`; worker xử lý upload/content/research trên các lần acceptance riêng. Lượt 17:02–17:08 xác nhận FastAPI ASGI enqueue market job vào queue `agent`, worker lưu evidence/report, và Beat phát `recover_due_jobs` theo schedule cấu hình; recovery trả 1 khi tạo scheduled cycle rồi market task hoàn tất. Không có `DEEPSEEK_API_KEY`, nên report ghi `deepseek_not_configured` và không phát sinh request model. Beat test chỉ quan sát một due tick, không đợi lịch 12h. Chưa kiểm tra worker process restart, Compose, MinIO hoặc prefork Linux; lần thử prefork macOS trước đây dừng bên trong Celery/Billiard. Upload TXT, DOCX, PDF, XLSX, CSV có smoke runtime riêng; xem test report. Các dịch vụ disposable đã được dừng; PostgreSQL dùng chung trên máy không bị chạm.
+Runtime smoke chạy trên PostgreSQL 18.3/pgvector 0.8.2, Redis 8.6.3 và Celery 5.6.3 `solo`. Recovery task đã được route tới `default`; worker xử lý upload/content/research trên các lần acceptance riêng. Lượt 17:02–17:08 xác nhận FastAPI ASGI enqueue market job vào queue `agent`, worker lưu evidence/report, và Beat phát `recover_due_jobs` theo schedule cấu hình; recovery trả 1 khi tạo scheduled cycle rồi market task hoàn tất. Lượt 20:13–20:15 warm-stop worker 1, enqueue job khi worker dừng (Redis `agent` depth 1), start worker 2 và xác nhận job/report/evidence persisted bằng `scripts/worker_restart_smoke.py`. Job dùng một manual-only Facebook Group source cùng dữ liệu tổng hợp; không scrape Facebook, không gọi DeepSeek và báo `deepseek_not_configured`. Beat test chỉ quan sát một due tick, không đợi lịch 12h. Chưa kiểm tra crash khi task đang chạy, `acks_late` redelivery, Compose, MinIO hoặc prefork Linux; lần thử prefork macOS trước đây dừng bên trong Celery/Billiard. Upload TXT, DOCX, PDF, XLSX, CSV có smoke runtime riêng; xem test report. Các dịch vụ disposable đã được dừng; PostgreSQL dùng chung trên máy không bị chạm.
+
+### Nghiệm thu queued job qua worker restart
+
+Chỉ chạy trên PostgreSQL và Redis **loopback, disposable**; database name phải chứa `test`, `smoke`, `acceptance` hoặc `restart`. Script ghi thêm user/workspace/nhóm/nguồn/evidence giả lập và không xóa dữ liệu sau khi chạy. Không cấu hình DeepSeek hay Meta credential; đặt `INLINE_JOBS=0`. Migration phải ở head và Redis `agent`/`default` queues phải trống.
+
+1. Khởi động PostgreSQL/Redis và chạy `.venv/bin/python -m alembic upgrade head`.
+2. Khởi động worker 1 bằng lệnh ở mục worker bên trên; chờ `ready`, sau đó dừng bằng Ctrl+C và chờ warm shutdown hoàn tất.
+3. Khi không có worker, chạy `.venv/bin/python scripts/worker_restart_smoke.py enqueue`; lưu `job_id` được in ra.
+4. Khởi động worker mới với cùng DATABASE_URL/REDIS_URL; chờ task kết thúc.
+5. Chạy `.venv/bin/python scripts/worker_restart_smoke.py verify --job-id <job_id>`.
+
+Smoke này chứng minh queued work được xử lý sau khi worker process được thay thế. Nó không chứng minh kill giữa task, unacked message redelivery, production broker failover, Compose, MinIO hoặc Linux prefork.
 
 ## Tạo tài khoản và seed
 

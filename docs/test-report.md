@@ -1,6 +1,20 @@
 # Báo cáo kiểm thử
 
-Cập nhật: 2026-09-25 19:43 (Asia/Ho_Chi_Minh).
+Cập nhật: 2026-09-25 20:15 (Asia/Ho_Chi_Minh).
+
+## Queued job across Celery worker restart — 2026-09-25 20:13–20:15
+
+Source snapshot: branch `codex/page-groups-market-research` at `9e28b9b`; the final `scripts/worker_restart_smoke.py` working-tree version was exercised before commit. Environment: macOS 15.6 arm64, Python 3.11.16, PostgreSQL 18.3 + pgvector 0.8.2, Redis 8.6.3, Celery 5.6.3 `solo`; disposable PostgreSQL database `agentic_worker_restart`, Redis port 56380 and local object storage under `/private/tmp`. Alembic `upgrade head` applied migrations 0001→0012.
+
+| Check | Result | Evidence and limits |
+|---|---|---|
+| Worker 1 start and warm stop | **PASS** | Celery reported `ready`, then exited on Ctrl+C warm shutdown while idle. |
+| API enqueue while worker was stopped | **PASS** | FastAPI ASGI app registered an isolated owner/workspace, created a manual-only Facebook Group source and imported one synthetic observation. `POST .../crawl` returned 202/queued; Redis `agent` list depth was 1. No group scraping occurred. |
+| Replacement worker processing | **PASS** | Worker 2 started on the same isolated Redis broker, received the queued `market_research_task` and succeeded. |
+| Durable readback | **PASS** | PostgreSQL showed job and cycle `succeeded`, one report, one evidence and one observation; `analysis_status=deepseek_not_configured`; source stayed `manual_import_only`; Redis `agent`/`default` queues both drained to 0. |
+| Smoke utility | **PASS** | `py_compile`, `--help`, `enqueue`, `verify --job-id ...`, `ruff check` and `ruff format --check` pass. The CLI refuses non-loopback/production targets, non-empty queues on enqueue, `INLINE_JOBS=1`, or configured DeepSeek/Meta credentials. |
+
+The smoke uses synthetic data and makes no DeepSeek or Meta request. The API is exercised through in-process `httpx.ASGITransport`; this does not prove a Uvicorn deployment. The worker was warm-stopped while idle, then the API queued a job during downtime and a replacement worker completed it. It does **not** test killing a worker while a task is running, Redis broker restart with an unacknowledged task, `acks_late` redelivery, Compose/MinIO, Linux prefork, or the real 12-hour Beat interval. Services were cleanly stopped afterward; test data remains in the disposable `/private/tmp/agentic-worker-restart-acceptance-20260925` directory.
 
 ## Frontend Next.js security hardening acceptance — 2026-09-25 18:34
 
