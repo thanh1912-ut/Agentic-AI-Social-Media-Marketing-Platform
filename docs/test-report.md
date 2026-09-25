@@ -1,6 +1,19 @@
 # Báo cáo kiểm thử
 
-Cập nhật: 2026-09-25 20:15 (Asia/Ho_Chi_Minh).
+Cập nhật: 2026-09-25 20:20 (Asia/Ho_Chi_Minh).
+
+## Backend regression — commit `ae56b83`, 2026-09-25 20:16
+
+Environment: macOS arm64, Python 3.11.16, isolated dependency target under `/private/tmp`; SQLite database and local object storage under `/private/tmp/agentic-current-full-suite-20260925`. No DeepSeek/Meta credentials or provider calls.
+
+| Check | Result | Scope |
+|---|---|---|
+| `python -m pytest -q -p no:cacheprovider` | **190 passed, 1 skipped** | Full Python suite; the skipped case is the opt-in live DeepSeek API smoke. One existing LangGraph pending-deprecation warning. |
+| `python scripts/export_openapi.py --check` | **PASS** | `packages/contracts/openapi.json` matches current FastAPI schema. |
+| `ruff check` / `ruff format --check scripts/worker_restart_smoke.py` | **PASS** | New operational smoke utility. |
+| `py_compile` / `git diff --check` | **PASS** | Syntax and whitespace. |
+
+This SQLite/fixture suite does not replace the separate PostgreSQL/Redis/Celery warm-restart acceptance below.
 
 ## Queued job across Celery worker restart — 2026-09-25 20:13–20:15
 
