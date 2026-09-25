@@ -7,7 +7,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import { useSession } from '@/components/session-gate';
 import { Badge, Button, Card, EmptyState, ErrorPanel, LoadingBlock, PermissionNotice, StatusBadge } from '@/components/ui';
-import { ApiError, marketResearchApi, marketResearchKeys } from '@/lib/api';
+import { ApiError, marketResearchApi, marketResearchKeys, useMocks } from '@/lib/api';
 import type { ResearchSourceType } from '@/lib/api/market-research';
 import { formatDateTime } from '@/lib/format';
 
@@ -65,6 +65,7 @@ export default function FanpagesMarketResearchPage() {
   const router = useRouter();
   const queryClient = useQueryClient();
   const { workspaces } = useSession();
+  const mocksOn = useMocks();
   const workspace = workspaces.find((item) => item.id === workspaceId) ?? null;
   const canManageMarket = Boolean(workspace?.permissions.includes('market:manage'));
   const canConnectPage = Boolean(workspace?.permissions.includes('connection:manage'));
@@ -293,7 +294,8 @@ export default function FanpagesMarketResearchPage() {
       {pageNotice ? <p role="status" className="rounded-lg border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-900">{pageNotice}</p> : null}
       {lastCrawlJob?.groupId === activeGroupId ? (
         <p role="status" className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900">
-          Đã đưa yêu cầu crawl vào hàng đợi. <Link className="font-medium underline" href={'/w/' + workspaceId + '/jobs/' + lastCrawlJob.jobId}>Theo dõi tiến độ</Link>.
+          {mocksOn ? 'Bản demo chỉ mô phỏng job, chưa crawl website thật. ' : 'Đã đưa yêu cầu crawl vào hàng đợi. '}
+          <Link className="font-medium underline" href={'/w/' + workspaceId + '/jobs/' + lastCrawlJob.jobId}>Theo dõi tiến độ</Link>.
         </p>
       ) : null}
       {crawlNow.error ? <ErrorPanel title="Không xếp được lượt thu thập" message={readableError(crawlNow.error, 'Hãy kiểm tra worker và nguồn đã lưu.')} code={crawlNow.error instanceof ApiError ? crawlNow.error.code : undefined} /> : null}

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import http.client
 import ipaddress
+import json
 import socket
 import ssl
 import xml.etree.ElementTree as ET
@@ -18,6 +19,14 @@ MAX_PAGES_PER_SOURCE = 25
 MAX_REDIRECTS = 3
 CRAWLER_AGENT = "AgenticMarketResearch/1.0"
 SENSITIVE_QUERY_KEYS = {"access_token", "token", "api_key", "apikey", "key", "secret", "code", "auth"}
+MAX_JSON_LD_SCRIPTS = 20
+MAX_JSON_LD_SCRIPT_CHARS = 100_000
+MAX_JSON_LD_NODES = 100
+MAX_JSON_LD_TEXT_CHARS = 10_000
+JSON_LD_CONTENT_TYPES = {
+    "article", "blogposting", "collectionpage", "faqpage", "itemlist", "localbusiness",
+    "newsarticle", "organization", "product", "service", "webpage", "website",
+}
 
 
 class CrawlError(ValueError):
@@ -192,10 +201,19 @@ class _HTMLContentParser(HTMLParser):
         self.canonical: str | None = None
         self.published_at: datetime | None = None
         self.meta: dict[str, str] = {}
+        self.json_ld_scripts: list[str] = []
+        self._json_ld_buffer: list[str] = []
+        self._json_ld_chars = 0
+        self._capturing_json_ld = False
 
     def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
         values = {name.casefold(): value or "" for name, value in attrs}
-        if tag in self._SKIP:
+        is_json_ld = tag == "script" and values.get("type", "").split(";", 1)[0].strip().casefold() == "application/ld+json"
+        if is_json_ld:
+            self._capturing_json_ld = True
+            self._json_ld_buffer = []
+            self._json_ld_chars = 0
+        elif tag in self._SKIP:
             self.skip_depth += 1
         if tag == "title":
             self.in_title = True
@@ -214,10 +232,25 @@ class _HTMLContentParser(HTMLParser):
     def handle_endtag(self, tag: str) -> None:
         if tag == "title":
             self.in_title = False
+        if tag == "script" and self._capturing_json_ld:
+            script = "".join(self._json_ld_buffer).strip()
+            if script and len(self.json_ld_scripts) < MAX_JSON_LD_SCRIPTS:
+                self.json_ld_scripts.append(script)
+            self._json_ld_buffer = []
+            self._json_ld_chars = 0
+            self._capturing_json_ld = False
+            return
         if tag in self._SKIP and self.skip_depth:
             self.skip_depth -= 1
 
     def handle_data(self, data: str) -> None:
+        if self._capturing_json_ld:
+            remaining = MAX_JSON_LD_SCRIPT_CHARS - self._json_ld_chars
+            if remaining > 0:
+                chunk = data[:remaining]
+                self._json_ld_buffer.append(chunk)
+                self._json_ld_chars += len(chunk)
+            return
         text = " ".join(data.split())
         if not text:
             return
@@ -225,6 +258,97 @@ class _HTMLContentParser(HTMLParser):
             self.title_parts.append(text)
         elif self.skip_depth == 0:
             self.text_parts.append(text)
+
+
+def _json_ld_nodes(value: object):
+    """Walk only bounded JSON-LD graph/list nodes; never execute page scripts."""
+    pending = [value]
+    visited = 0
+    while pending and visited < MAX_JSON_LD_NODES:
+        current = pending.pop()
+        if isinstance(current, list):
+            pending.extend(reversed(current[:MAX_JSON_LD_NODES - visited]))
+            continue
+        if not isinstance(current, dict):
+            continue
+        visited += 1
+        yield current
+        for key in ("@graph", "itemListElement", "item"):
+            child = current.get(key)
+            if isinstance(child, (dict, list)):
+                pending.append(child)
+
+
+def _json_ld_scalar(value: object) -> str:
+    if isinstance(value, str):
+        return " ".join(value.split())[:1200]
+    if isinstance(value, (int, float)) and not isinstance(value, bool):
+        return str(value)
+    if isinstance(value, list):
+        parts = [_json_ld_scalar(item) for item in value[:20]]
+        return ", ".join(part for part in parts if part)[:1200]
+    return ""
+
+
+def _json_ld_summary(scripts: list[str]) -> str:
+    """Extract public product/article facts while omitting author and account fields."""
+    output: list[str] = []
+    output_chars = 0
+    for script in scripts[:MAX_JSON_LD_SCRIPTS]:
+        try:
+            document = json.loads(script)
+        except (json.JSONDecodeError, RecursionError):
+            continue
+        for node in _json_ld_nodes(document):
+            raw_types = node.get("@type")
+            types = raw_types if isinstance(raw_types, list) else [raw_types]
+            type_names = [
+                str(value).rsplit("/", 1)[-1].rsplit(":", 1)[-1].casefold()
+                for value in types if isinstance(value, str)
+            ]
+            relevant_types = [value for value in type_names if value in JSON_LD_CONTENT_TYPES]
+            if not relevant_types:
+                continue
+            fields: list[str] = []
+            for key, label in (
+                ("name", "name"), ("headline", "headline"), ("description", "description"),
+                ("articleBody", "content"), ("keywords", "keywords"), ("category", "category"),
+                ("sku", "SKU"), ("datePublished", "published"), ("dateModified", "updated"),
+            ):
+                value = _json_ld_scalar(node.get(key))
+                if value:
+                    fields.append(f"{label}: {value}")
+            for key, label, nested_keys in (
+                ("brand", "brand", ("name",)),
+                ("offers", "offer", ("price", "priceCurrency", "availability")),
+                ("aggregateRating", "rating", ("ratingValue", "reviewCount", "ratingCount")),
+            ):
+                nested = node.get(key)
+                nested_items = nested if isinstance(nested, list) else [nested]
+                for nested_item in nested_items[:10]:
+                    if isinstance(nested_item, str):
+                        value = _json_ld_scalar(nested_item)
+                        if value and key == "brand":
+                            fields.append(f"{label}: {value}")
+                        continue
+                    if not isinstance(nested_item, dict):
+                        continue
+                    nested_values = [
+                        f"{nested_key}: {value}"
+                        for nested_key in nested_keys
+                        if (value := _json_ld_scalar(nested_item.get(nested_key)))
+                    ]
+                    rendered = "; ".join(nested_values)
+                    if rendered:
+                        fields.append(f"{label}: {rendered}")
+            if fields:
+                line = "JSON-LD " + "/".join(relevant_types) + " — " + "; ".join(fields)
+                remaining = MAX_JSON_LD_TEXT_CHARS - output_chars
+                if remaining <= 0:
+                    return "\n".join(output)
+                output.append(line[:remaining])
+                output_chars += min(len(line), remaining)
+    return "\n".join(output)
 
 
 def _parse_datetime(value: str | None) -> datetime | None:
@@ -296,6 +420,9 @@ def crawl_public_site(
         raise CrawlError("source_html_invalid", "Không trích xuất được nội dung trang web.") from exc
     title = parser.meta.get("og:title") or parser.meta.get("twitter:title") or " ".join(parser.title_parts)
     text = parser.meta.get("og:description") or " ".join(parser.text_parts)
+    structured_text = _json_ld_summary(parser.json_ld_scripts)
+    if structured_text:
+        text = (text + "\n" + structured_text).strip()
     canonical = urljoin(first.url, parser.canonical) if parser.canonical else first.url
     items = [WebItem(
         url=canonicalize_url(canonical), title=title[:1000], text=" ".join(text.split())[:12000],
@@ -328,6 +455,9 @@ def crawl_public_site(
         page_parser.feed(page.body.decode("utf-8", errors="replace"))
         page_title = page_parser.meta.get("og:title") or " ".join(page_parser.title_parts)
         page_text = page_parser.meta.get("og:description") or " ".join(page_parser.text_parts)
+        page_structured_text = _json_ld_summary(page_parser.json_ld_scripts)
+        if page_structured_text:
+            page_text = (page_text + "\n" + page_structured_text).strip()
         page_url = urljoin(page.url, page_parser.canonical) if page_parser.canonical else page.url
         items.append(WebItem(
             url=canonicalize_url(page_url), title=page_title[:1000], text=" ".join(page_text.split())[:12000],

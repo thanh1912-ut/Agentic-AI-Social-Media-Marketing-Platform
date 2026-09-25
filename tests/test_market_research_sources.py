@@ -74,6 +74,31 @@ def test_public_site_rejects_plain_text_content_after_reading_robots() -> None:
         crawl_public_site("https://example.com", fetcher=plain_text_site)
 
 
+def test_public_site_extracts_json_ld_without_author_or_executable_scripts() -> None:
+    def structured_site(url: str) -> FetchResult:
+        if url.endswith("/robots.txt"):
+            return FetchResult(url, 404, "text/plain", b"")
+        body = b'''<html><head><title>Demo shop</title>
+        <script type="application/ld+json">
+        {"@context":"https://schema.org","@type":"Product","name":"Tai khoan hoc truc tuyen",
+         "description":"Goi dich vu hoc tap cho nguoi mua.","sku":"public-item-1",
+         "offers":{"@type":"Offer","price":"125000","priceCurrency":"VND"},
+         "author":{"@type":"Person","name":"Private Example"}}
+        </script>
+        <script>window.privateExample = "must not be collected";</script></head>
+        <body><p>Public product summary.</p></body></html>'''
+        return FetchResult(url, 200, "text/html", body)
+
+    items = crawl_public_site("https://example.com", fetcher=structured_site, max_pages=1)
+
+    assert len(items) == 1
+    assert "Tai khoan hoc truc tuyen" in items[0].text
+    assert "price: 125000" in items[0].text
+    assert "priceCurrency: VND" in items[0].text
+    assert "Private Example" not in items[0].text
+    assert "window.privateExample" not in items[0].text
+
+
 def test_feed_extraction_rejects_xml_entities_and_limits_to_safe_host() -> None:
     feed = FetchResult(
         "https://example.com/rss.xml", 200, "application/rss+xml",
