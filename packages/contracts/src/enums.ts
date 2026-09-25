@@ -100,6 +100,7 @@ export const JOB_KINDS = {
   CONTENT_REVISE: 'content_revise',
   EXPORT_BUILD: 'export_build',
   METRIC_IMPORT: 'metric_import',
+  MARKET_RESEARCH: 'market_research',
   PUBLICATION_SEND: 'publication_send',
   RECOMMENDATION_RUN: 'recommendation_run',
 } as const;

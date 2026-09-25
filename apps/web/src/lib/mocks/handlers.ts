@@ -1716,13 +1716,21 @@ export const handlers = [
     if (!group) return notFound('nhóm nghiên cứu');
     const jobId = nextId('market_job');
     const createdAt = nowIso();
+    const job: Job = {
+      id: jobId,
+      kind: JOB_KINDS.MARKET_RESEARCH,
+      status: JOB_STATUSES.QUEUED,
+      title: 'Thu thập dữ liệu: ' + group.name,
+      progress: 0,
+      steps: [{ key: 'collect_sources', label: 'Đọc nguồn demo', status: JOB_STEP_STATUSES.PENDING }],
+      result: { group_id: group.id },
+      created_at: createdAt,
+      cancellable: false,
+    };
+    demoJobs[jobId] = job;
     return HttpResponse.json({
       job_id: jobId,
-      job: {
-        id: jobId, kind: 'market_research', status: 'queued', title: `Thu thập dữ liệu: ${group.name}`,
-        progress: 0, steps: [{ key: 'collect_sources', label: 'Đọc nguồn demo', status: 'pending' }],
-        created_at: createdAt, cancellable: false,
-      },
+      job,
     }, { status: 202 });
   }),
 

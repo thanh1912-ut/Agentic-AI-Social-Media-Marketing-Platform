@@ -89,6 +89,7 @@ export default function FanpagesMarketResearchPage() {
   const [manualCommentText, setManualCommentText] = useState('');
   const [manualResult, setManualResult] = useState<string | null>(null);
   const [pageNotice, setPageNotice] = useState<string | null>(null);
+  const [lastCrawlJob, setLastCrawlJob] = useState<{ jobId: string; groupId: string } | null>(null);
   const [draftCampaign, setDraftCampaign] = useState<string | null>(null);
   const [draftError, setDraftError] = useState<string | null>(null);
 
@@ -124,12 +125,12 @@ export default function FanpagesMarketResearchPage() {
   const sources = sourcesQuery.data ?? [];
   const reports = reportsQuery.data ?? [];
 
-  const refreshGroupData = async () => {
+  const refreshGroupData = async (groupId = activeGroupId) => {
     await Promise.all([
       queryClient.invalidateQueries({ queryKey: marketResearchKeys.groups(workspaceId) }),
-      queryClient.invalidateQueries({ queryKey: marketResearchKeys.pages(workspaceId, activeGroupId) }),
-      queryClient.invalidateQueries({ queryKey: marketResearchKeys.sources(workspaceId, activeGroupId) }),
-      queryClient.invalidateQueries({ queryKey: marketResearchKeys.reports(workspaceId, activeGroupId) }),
+      queryClient.invalidateQueries({ queryKey: marketResearchKeys.pages(workspaceId, groupId) }),
+      queryClient.invalidateQueries({ queryKey: marketResearchKeys.sources(workspaceId, groupId) }),
+      queryClient.invalidateQueries({ queryKey: marketResearchKeys.reports(workspaceId, groupId) }),
     ]);
   };
 
@@ -162,7 +163,7 @@ export default function FanpagesMarketResearchPage() {
   });
   const deleteSource = useMutation({
     mutationFn: (sourceId: string) => marketResearchApi.deleteSource(workspaceId, sourceId),
-    onSuccess: refreshGroupData,
+    onSuccess: () => refreshGroupData(),
   });
   const disconnectPage = useMutation({
     mutationFn: (connectionId: string) => marketResearchApi.disconnectPage(workspaceId, connectionId),
@@ -172,10 +173,11 @@ export default function FanpagesMarketResearchPage() {
     },
   });
   const crawlNow = useMutation({
-    mutationFn: () => marketResearchApi.crawlNow(workspaceId, activeGroupId),
-    onSuccess: async () => {
-      setPageNotice('Đã xếp lượt thu thập vào hàng đợi. Báo cáo sẽ xuất hiện sau khi worker hoàn tất.');
-      await refreshGroupData();
+    mutationFn: (groupId: string) => marketResearchApi.crawlNow(workspaceId, groupId),
+    onMutate: () => setLastCrawlJob(null),
+    onSuccess: (accepted, groupId) => {
+      setLastCrawlJob({ jobId: accepted.job_id, groupId });
+      void refreshGroupData(groupId);
     },
   });
   const importManual = useMutation({
@@ -281,14 +283,19 @@ export default function FanpagesMarketResearchPage() {
             Báo cáo chỉ gợi ý; người trong workspace xem lại trước khi tạo nội dung.
           </p>
         </div>
-        {activeGroupId ? (
-          <Button variant="secondary" loading={crawlNow.isPending} onClick={() => crawlNow.mutate()}>
-            Thu thập ngay
+        {activeGroupId && canManageMarket ? (
+          <Button loading={crawlNow.isPending} onClick={() => crawlNow.mutate(activeGroupId)}>
+            Crawl ngay
           </Button>
         ) : null}
       </header>
 
       {pageNotice ? <p role="status" className="rounded-lg border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-900">{pageNotice}</p> : null}
+      {lastCrawlJob?.groupId === activeGroupId ? (
+        <p role="status" className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900">
+          Đã đưa yêu cầu crawl vào hàng đợi. <Link className="font-medium underline" href={'/w/' + workspaceId + '/jobs/' + lastCrawlJob.jobId}>Theo dõi tiến độ</Link>.
+        </p>
+      ) : null}
       {crawlNow.error ? <ErrorPanel title="Không xếp được lượt thu thập" message={readableError(crawlNow.error, 'Hãy kiểm tra worker và nguồn đã lưu.')} code={crawlNow.error instanceof ApiError ? crawlNow.error.code : undefined} /> : null}
       {draftError ? <ErrorPanel title="Chưa tạo được chiến dịch nháp" message={draftError} /> : null}
       {draftCampaign ? (
