@@ -21,13 +21,18 @@ def _bool(name: str, default: bool) -> bool:
 class Settings:
     app_name: str = os.getenv("APP_NAME", "agentic-marketing")
     app_env: str = os.getenv("APP_ENV", "development")
-    database_url: str = os.getenv("DATABASE_URL", "sqlite+aiosqlite:///./.data/agentic-marketing.db")
-    redis_url: str = os.getenv("REDIS_URL", "redis://localhost:6379/0")
+    database_url: str = field(
+        default_factory=lambda: os.getenv("DATABASE_URL", "sqlite+aiosqlite:///./.data/agentic-marketing.db"),
+        repr=False,
+    )
+    redis_url: str = field(default_factory=lambda: os.getenv("REDIS_URL", "redis://localhost:6379/0"), repr=False)
     rate_limits_enabled: bool = _bool(
         "RATE_LIMITS_ENABLED",
         os.getenv("APP_ENV", "development").strip().casefold() in {"prod", "production"},
     )
-    jwt_secret: str = os.getenv("JWT_SECRET", "change-me-in-development-only-secret")
+    jwt_secret: str = field(
+        default_factory=lambda: os.getenv("JWT_SECRET", "change-me-in-development-only-secret"), repr=False
+    )
     jwt_algorithm: str = os.getenv("JWT_ALGORITHM", "HS256")
     access_token_expire_minutes: int = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "15"))
     refresh_token_expire_days: int = int(os.getenv("REFRESH_TOKEN_EXPIRE_DAYS", "30"))
@@ -52,7 +57,7 @@ class Settings:
     web_base_url: str = os.getenv("WEB_BASE_URL", "http://localhost:3000").rstrip("/")
     smtp_host: str = os.getenv("SMTP_HOST", "").strip()
     smtp_port: int = int(os.getenv("SMTP_PORT", "587"))
-    smtp_username: str = os.getenv("SMTP_USERNAME", "").strip()
+    smtp_username: str = field(default_factory=lambda: os.getenv("SMTP_USERNAME", "").strip(), repr=False)
     smtp_password: str = field(default_factory=lambda: os.getenv("SMTP_PASSWORD", ""), repr=False)
     smtp_starttls: bool = _bool("SMTP_STARTTLS", True)
     smtp_ssl: bool = _bool("SMTP_SSL", False)
@@ -60,9 +65,9 @@ class Settings:
     email_from: str = os.getenv("EMAIL_FROM", "").strip()
     storage_backend: str = os.getenv("STORAGE_BACKEND", "local")
     storage_root: Path = Path(os.getenv("STORAGE_ROOT", ".data/uploads"))
-    s3_endpoint: str = os.getenv("S3_ENDPOINT", "http://localhost:9000")
-    s3_access_key: str = os.getenv("S3_ACCESS_KEY", "minioadmin")
-    s3_secret_key: str = os.getenv("S3_SECRET_KEY", "minioadmin")
+    s3_endpoint: str = field(default_factory=lambda: os.getenv("S3_ENDPOINT", "http://localhost:9000"), repr=False)
+    s3_access_key: str = field(default_factory=lambda: os.getenv("S3_ACCESS_KEY", "minioadmin"), repr=False)
+    s3_secret_key: str = field(default_factory=lambda: os.getenv("S3_SECRET_KEY", "minioadmin"), repr=False)
     s3_bucket: str = os.getenv("S3_BUCKET", "agentic-marketing")
     max_upload_bytes: int = int(os.getenv("MAX_UPLOAD_BYTES", str(25 * 1024 * 1024)))
     max_request_body_bytes: int = int(os.getenv("MAX_REQUEST_BODY_BYTES", str(256 * 1024 * 1024)))
@@ -151,6 +156,7 @@ if settings.smtp_starttls and settings.smtp_ssl:
 if settings.smtp_host and not settings.email_from:
     raise ValueError("EMAIL_FROM is required when SMTP_HOST is configured")
 if settings.app_env.casefold() in {"prod", "production"}:
+    # Fail before serving traffic when production could fall back to local/dev defaults.
     if settings.jwt_secret == "change-me-in-development-only-secret" or len(settings.jwt_secret.encode("utf-8")) < 32:
         raise ValueError("Production requires a random JWT_SECRET with at least 32 bytes")
     if not settings.cookie_secure:
@@ -159,6 +165,34 @@ if settings.app_env.casefold() in {"prod", "production"}:
         raise ValueError("Production requires RATE_LIMITS_ENABLED=1")
     if not os.getenv("ALLOWED_HOSTS", "").strip() or not settings.allowed_hosts or "*" in settings.allowed_hosts:
         raise ValueError("Production requires an explicit ALLOWED_HOSTS list without '*'")
+    if not settings.database_url.casefold().startswith("postgresql"):
+        raise ValueError("Production requires a PostgreSQL DATABASE_URL")
+    if not os.getenv("CORS_ALLOWED_ORIGINS", "").strip() or not settings.cors_allowed_origins:
+        raise ValueError("Production requires an explicit CORS_ALLOWED_ORIGINS list")
+    for origin in settings.cors_allowed_origins:
+        try:
+            parsed_origin = urlsplit(origin)
+            _port = parsed_origin.port
+        except ValueError as exc:
+            raise ValueError("Production CORS origins must be valid HTTPS origins") from exc
+        if (
+            origin == "*"
+            or parsed_origin.scheme != "https"
+            or not parsed_origin.netloc
+            or parsed_origin.username
+            or parsed_origin.password
+            or parsed_origin.path
+            or parsed_origin.query
+            or parsed_origin.fragment
+            or "*" in parsed_origin.netloc
+        ):
+            raise ValueError(
+                "Production CORS origins must be HTTPS origins without paths, credentials, query, fragments, or wildcards"
+            )
+    if settings.storage_backend.casefold() == "s3" and (
+        settings.s3_access_key == "minioadmin" or settings.s3_secret_key == "minioadmin"
+    ):
+        raise ValueError("Production S3 storage requires non-default S3_ACCESS_KEY and S3_SECRET_KEY")
 if any(
     "*" in host and host != "*" and (not host.startswith("*.") or host.count("*") != 1)
     for host in settings.allowed_hosts

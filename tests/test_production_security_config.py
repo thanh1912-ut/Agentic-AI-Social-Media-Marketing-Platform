@@ -6,21 +6,43 @@ import os
 import subprocess
 import sys
 
+from services.api.config import Settings
+
 
 def _production_env() -> dict[str, str]:
     environment = os.environ.copy()
     environment.update({
         "APP_ENV": "production",
         "WEB_BASE_URL": "https://marketing.example.test",
+        "CORS_ALLOWED_ORIGINS": "https://marketing.example.test",
         "COOKIE_SECURE": "1",
         "JWT_SECRET": "test-only-random-secret-with-at-least-32-bytes",
-        "DATABASE_URL": "sqlite+aiosqlite:///:memory:",
+        "DATABASE_URL": "postgresql+asyncpg://agentic:test-only-long-password@db.example.test/agentic_marketing",
         "DEEPSEEK_BASE_URL": "https://api.deepseek.com",
         "STORAGE_BACKEND": "local",
         "RATE_LIMITS_ENABLED": "1",
         "ALLOWED_HOSTS": "marketing.example.test",
     })
     return environment
+
+
+def test_settings_repr_does_not_expose_credentials() -> None:
+    sentinels = {
+        "database_url": "postgresql+asyncpg://user:db-secret@db.example.test/app",
+        "redis_url": "redis://:redis-secret@cache.example.test/0",
+        "jwt_secret": "jwt-secret-sentinel",
+        "smtp_username": "smtp-user-sentinel",
+        "s3_endpoint": "https://user:s3-secret@storage.example.test",
+        "s3_access_key": "s3-access-sentinel",
+        "s3_secret_key": "s3-secret-sentinel",
+        "deepseek_api_key": "deepseek-secret-sentinel",
+        "embedding_api_key": "embedding-secret-sentinel",
+        "meta_page_access_token": "meta-page-token-sentinel",
+        "meta_public_content_access_token": "meta-public-token-sentinel",
+        "meta_token_encryption_key": "meta-key-sentinel",
+    }
+    rendered = repr(Settings(**sentinels))
+    assert all(secret not in rendered for secret in sentinels.values())
 
 
 def test_production_rejects_a_short_jwt_secret() -> None:
@@ -63,6 +85,50 @@ def test_production_requires_explicit_host_allowlist() -> None:
     )
     assert result.returncode != 0
     assert "Production requires an explicit ALLOWED_HOSTS list" in result.stderr
+
+
+def test_production_requires_postgresql() -> None:
+    environment = _production_env()
+    environment["DATABASE_URL"] = "sqlite+aiosqlite:///:memory:"
+    result = subprocess.run(
+        [sys.executable, "-c", "import services.api.config"],
+        env=environment,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode != 0
+    assert "Production requires a PostgreSQL DATABASE_URL" in result.stderr
+
+
+def test_production_requires_explicit_https_cors_origins() -> None:
+    environment = _production_env()
+    environment["CORS_ALLOWED_ORIGINS"] = "*"
+    result = subprocess.run(
+        [sys.executable, "-c", "import services.api.config"],
+        env=environment,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode != 0
+    assert "Production CORS origins must be HTTPS origins" in result.stderr
+
+
+def test_production_s3_storage_rejects_default_credentials() -> None:
+    environment = _production_env()
+    environment["STORAGE_BACKEND"] = "s3"
+    environment["S3_ACCESS_KEY"] = "minioadmin"
+    environment["S3_SECRET_KEY"] = "minioadmin"
+    result = subprocess.run(
+        [sys.executable, "-c", "import services.api.config"],
+        env=environment,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode != 0
+    assert "Production S3 storage requires non-default" in result.stderr
 
 
 def test_production_rejects_wildcard_host_allowlist() -> None:
