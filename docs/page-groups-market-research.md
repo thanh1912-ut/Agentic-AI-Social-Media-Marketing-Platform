@@ -1,6 +1,6 @@
 # Fanpage, nhóm thị trường và nghiên cứu định kỳ
 
-Cập nhật: 2026-09-25
+Cập nhật: 2026-09-25 16:43 (Asia/Ho_Chi_Minh)
 
 ## Chức năng nền tảng hiện có
 
@@ -71,6 +71,6 @@ Prefix: `/api/v1/workspaces/{company_id}/market-research`.
 
 ## Tiến độ và kiểm chứng
 
-Phần này ở branch `codex/page-groups-market-research`. Implementation và fixture tests có cho lưu Page ID/token mã hóa, nhóm, nguồn, scheduler 12h, crawler website, Pages được Meta cấp quyền, báo cáo, import tay và tạo campaign. Backend snapshot hiện tại đạt **185 passed, 1 skipped** trên Python 3.13.9 với pgvector shim và SQLite/fake providers; frontend đạt **47 Vitest**, ESLint và TypeScript check pass. OpenAPI check pass. Production build đã compile/typecheck nhưng không hoàn tất do ổ đĩa đầy (`ENOSPC`); không ghi nhận lỗi build từ source. Crawl website `taphoammo.vn` đã lấy 4 trang công khai trực tiếp, nhưng lượt thử không lưu workspace, không gọi DeepSeek.
+Phần này ở branch `codex/page-groups-market-research`, code snapshot `c5748a7`. Implementation và fixture tests có cho lưu Page ID/token mã hóa, nhóm, nguồn, scheduler 12h, crawler website, Pages được Meta cấp quyền, báo cáo, import tay và tạo campaign. Backend suite đạt **185 passed, 1 skipped** trên Python 3.11.16 với SQLite/fake providers; frontend đạt **47 Vitest**, ESLint và TypeScript check pass. OpenAPI check pass. Production Next.js 15.5.25 build pass; Playwright mock E2E **42/42** pass trên branch hiện tại. UI walkthrough xác nhận route Fanpage/thị trường cùng form nguồn ở demo mode. Migration PostgreSQL 18.3/pgvector 0.8.2 0001→0012 và API→inline-worker crawl cũng pass trên DB cô lập: 4 evidence, 4 observations, 4 raw SHA-256 snapshots, report fallback và lịch 12 giờ.
 
-Chưa có PostgreSQL migration/runtime, Redis worker/Beat, Meta Page thật hoặc DeepSeek request cho tính năng này. Contract cho `post_media_view`/`followers_count` mới được test bằng fixture; cần Page token, encryption key và quyền Meta phù hợp để xác minh live. Nhóm Facebook tự động là `BLOCKED_EXTERNAL`: API chính thức đã bị gỡ và Content Library không dành cho connector thương mại của SME. Các file test/crawler không thay thế xác minh Meta/DeepSeek hoặc boot Compose.
+Celery worker qua queue `agent` và Beat chưa chạy trong lần nghiệm thu này (worker được gọi inline); Meta Page thật và DeepSeek thật cũng chưa được xác minh. Report cho lần crawl ghi `deepseek_not_configured`, không gọi mô hình. Contract cho `post_media_view`/`followers_count` mới được test bằng fixture; cần Page token, encryption key và quyền Meta phù hợp để kiểm chứng live. Nhóm Facebook tự động là `BLOCKED_EXTERNAL`: không scrape group hoặc tự động hóa trình duyệt; hiện hỗ trợ lưu link và nhập dữ liệu thủ công. Compose/MinIO vẫn chưa được nghiệm thu.

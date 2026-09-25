@@ -1,20 +1,24 @@
 # Báo cáo kiểm thử
 
-Cập nhật: 2026-09-25 15:18 (Asia/Ho_Chi_Minh).
+Cập nhật: 2026-09-25 16:43 (Asia/Ho_Chi_Minh).
 
-## Nhiều Fanpage và nghiên cứu thị trường — working tree, 2026-09-25
+## Nhiều Fanpage và nghiên cứu thị trường — API/PostgreSQL acceptance, 2026-09-25
 
 | Check | Kết quả | Bằng chứng và giới hạn |
 |---|---|---|
-| Full Python suite | **185 passed, 1 skipped** | Python 3.13.9; chạy với SQLite/fake providers và pgvector shim vì môi trường test không có pgvector. Skip là live DeepSeek smoke opt-in; một LangGraph pending-deprecation warning. Không chứng minh PostgreSQL/Meta/provider thật. |
+| Full Python suite | **185 passed, 1 skipped** | Python 3.11.16; chạy với dependency target cô lập và SQLite/fake providers. Skip là live DeepSeek smoke opt-in; một LangGraph pending-deprecation warning. PostgreSQL được kiểm tra riêng ở acceptance bên dưới. |
 | Frontend | **47 Vitest passed; ESLint PASS; TypeScript PASS** | TypeScript cần `--incremental false` vì sandbox không cho tạo `tsconfig.tsbuildinfo` trong worktree. |
 | Python source checks | **Ruff PASS; compileall PASS; `git diff --check` PASS** | Áp dụng lên worker, Meta client và các test liên quan. |
 | OpenAPI | **PASS** | `scripts/export_openapi.py --output <absolute openapi.json> --check`; schema không đổi trong phần metrics hiện tại. |
-| Production Next.js build | **INCOMPLETE — ENOSPC** | Compile và typecheck hoàn tất; Next dừng khi ghi cache/output vì ổ đĩa hết dung lượng. Không tính đây là build pass. Playwright 42/42 thuộc snapshot trước UI metrics mới và chưa chạy lại sau thay đổi này. |
-| Live crawler trial: `https://taphoammo.vn/` | **PASS — 4 URL cùng host** | Dùng `crawl_public_site`, xác minh `robots.txt`, giới hạn 4 trang. Đọc trang chủ, bài ưu đãi Moma Cloud, trang Chatbot AI 24/7 và Plugin WP Invoice Generator. Nội dung gợi ý website bán công cụ/dịch vụ MMO, ưu đãi VPS và use case chatbot/hoá đơn; không có số views, tương tác, bình luận hay follower. Đây là mẫu nội dung website, không đủ dữ liệu để khẳng định hot trend. |
-| Persistence, DeepSeek và Meta trong lần crawl này | **NOT RUN** | API backend tại `localhost:8000` không chạy; UI `localhost:3100` hiển thị Bản demo/mock. Crawl trả nội dung thử nghiệm trong tiến trình, không lưu workspace, không gọi DeepSeek hoặc Meta. |
+| Production Next.js build | **PASS** | Next.js 15.5.25 compile, typecheck, generate static pages và hoàn tất build. |
+| Playwright mock E2E | **42/42 PASS** | Chạy trên branch hiện tại bằng Chromium, desktop/mobile, sau build; không gọi backend thật. |
+| Fanpage & market UI walkthrough | **PASS — demo mode** | Playwright CLI mở route, xác nhận form nhóm/nguồn/crawl và report mẫu; UI hiện rõ nhãn demo. Đây không phải bằng chứng UI real-mode cho market crawl. |
+| Direct crawler trial (15:18), `https://taphoammo.vn/` | **PASS — 4 URL cùng host** | `crawl_public_site` xác minh `robots.txt`, giới hạn 4 trang; lượt này chỉ giữ kết quả trong tiến trình. Site có trang chủ, ưu đãi Moma Cloud, chatbot AI và Plugin WP Invoice Generator; website không cung cấp views/interactions/comments/follower, nên không đủ để kết luận hot trend. |
+| API + worker market crawl trên PostgreSQL (16:27) | **PASS — persisted flow** | PostgreSQL 18.3/pgvector 0.8.2 đã migrate 0001→0012. API tạo tài khoản/workspace, nhóm và nguồn; `POST .../crawl` chạy inline worker, job `succeeded`; lưu **4 MarketEvidence, 4 MarketObservation, 4 raw snapshots có SHA-256**, report và `next_due_at` đúng 12 giờ. Raw file nằm trong local storage cô lập. |
 
-Các URL đã đọc: [trang chủ](https://taphoammo.vn/), [ưu đãi Moma Cloud](https://taphoammo.vn/mung-quoc-khanh-02-09-moma-cloud-giam-den-50), [Chatbot AI trả lời khách 24/7](https://taphoammo.vn/chatbot-ai-tra-loi-khach-24-7), [Plugin WP Invoice Generator](https://taphoammo.vn/plugin-wp-invoice-generator-tao-hoa-don-chuyen-nghiep).
+URL của crawl persisted: [trang chủ](https://taphoammo.vn/), [Chatbot AI 24/7](https://taphoammo.vn/chatbot-ai-tra-loi-khach-24-7), [ưu đãi Moma Cloud](https://taphoammo.vn/mung-quoc-khanh-02-09-moma-cloud-giam-den-50), [Plugin WP Multi SMTP](https://taphoammo.vn/plugin-wp-multi-smtp-gui-email-khong-gioi-han-qua-gmail).
+
+| Celery queue/Beat, DeepSeek và browser cho market crawl | **NOT RUN** | DB/Redis services đã được khởi động cô lập; lần nghiệm thu đặt `INLINE_JOBS=1`, vì vậy không chứng minh consumer của queue `agent` hoặc Celery Beat. Không có `DEEPSEEK_API_KEY` trong process/env đã kiểm tra; report ghi `deepseek_not_configured`. Không gọi Meta; không chạy UI/browser real mode. |
 
 ## Snapshot trước — Meta Page connector, 2026-09-24
 
