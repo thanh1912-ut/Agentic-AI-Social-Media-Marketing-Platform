@@ -1,6 +1,6 @@
 # Fanpage, nhóm thị trường và nghiên cứu định kỳ
 
-Cập nhật: 2026-09-25 16:43 (Asia/Ho_Chi_Minh)
+Cập nhật: 2026-09-25 17:08 (Asia/Ho_Chi_Minh)
 
 ## Chức năng nền tảng hiện có
 
@@ -71,6 +71,6 @@ Prefix: `/api/v1/workspaces/{company_id}/market-research`.
 
 ## Tiến độ và kiểm chứng
 
-Phần này ở branch `codex/page-groups-market-research`, code snapshot `c5748a7`. Implementation và fixture tests có cho lưu Page ID/token mã hóa, nhóm, nguồn, scheduler 12h, crawler website, Pages được Meta cấp quyền, báo cáo, import tay và tạo campaign. Backend suite đạt **185 passed, 1 skipped** trên Python 3.11.16 với SQLite/fake providers; frontend đạt **47 Vitest**, ESLint và TypeScript check pass. OpenAPI check pass. Production Next.js 15.5.25 build pass; Playwright mock E2E **42/42** pass trên branch hiện tại. UI walkthrough xác nhận route Fanpage/thị trường cùng form nguồn ở demo mode. Migration PostgreSQL 18.3/pgvector 0.8.2 0001→0012 và API→inline-worker crawl cũng pass trên DB cô lập: 4 evidence, 4 observations, 4 raw SHA-256 snapshots, report fallback và lịch 12 giờ.
+Phần code này ở branch `codex/page-groups-market-research`, snapshot `c5748a7`. Implementation và fixture tests có cho lưu Page ID/token mã hóa, nhóm, nguồn, scheduler 12h, crawler website, Pages được Meta cấp quyền, báo cáo, import tay và tạo campaign. Backend suite đạt **185 passed, 1 skipped** trên Python 3.11.16 với SQLite/fake providers; frontend đạt **47 Vitest**, ESLint và TypeScript check pass. OpenAPI check pass. Production Next.js 15.5.25 build pass; Playwright mock E2E **42/42** pass. UI walkthrough xác nhận route Fanpage/thị trường cùng form nguồn ở demo mode. Migration PostgreSQL 18.3/pgvector 0.8.2 0001→0012 và `taphoammo.vn` API→inline-worker crawl pass: 4 evidence, 4 observations, 4 raw SHA-256 snapshots, report fallback và lịch +12h. Runtime acceptance tiếp theo xác nhận API ASGI dispatch lên Celery queue `agent`, worker `solo` và Beat recovery thật: manual và scheduled crawl Example Domain đều có job/cycle `succeeded`, report/evidence persisted và lịch +12h.
 
-Celery worker qua queue `agent` và Beat chưa chạy trong lần nghiệm thu này (worker được gọi inline); Meta Page thật và DeepSeek thật cũng chưa được xác minh. Report cho lần crawl ghi `deepseek_not_configured`, không gọi mô hình. Contract cho `post_media_view`/`followers_count` mới được test bằng fixture; cần Page token, encryption key và quyền Meta phù hợp để kiểm chứng live. Nhóm Facebook tự động là `BLOCKED_EXTERNAL`: không scrape group hoặc tự động hóa trình duyệt; hiện hỗ trợ lưu link và nhập dữ liệu thủ công. Compose/MinIO vẫn chưa được nghiệm thu.
+Meta Page thật và DeepSeek thật chưa được xác minh; report runtime ghi `deepseek_not_configured`, không gọi mô hình. Contract cho `post_media_view`/`followers_count` mới được test bằng fixture; cần Page token, encryption key và quyền Meta phù hợp để kiểm chứng live. Nhóm Facebook tự động là `BLOCKED_EXTERNAL`: không scrape group hoặc tự động hóa trình duyệt; hiện hỗ trợ lưu link và nhập dữ liệu thủ công. Beat được kiểm tra một tick, chưa chờ chu kỳ 12h thực; Compose/MinIO, worker restart và prefork Linux vẫn chưa được nghiệm thu.

@@ -1,8 +1,8 @@
 # Báo cáo kiểm thử
 
-Cập nhật: 2026-09-25 16:43 (Asia/Ho_Chi_Minh).
+Cập nhật: 2026-09-25 17:08 (Asia/Ho_Chi_Minh).
 
-## Nhiều Fanpage và nghiên cứu thị trường — API/PostgreSQL acceptance, 2026-09-25
+## Nhiều Fanpage và nghiên cứu thị trường — API/PostgreSQL/Celery acceptance, 2026-09-25
 
 | Check | Kết quả | Bằng chứng và giới hạn |
 |---|---|---|
@@ -15,10 +15,14 @@ Cập nhật: 2026-09-25 16:43 (Asia/Ho_Chi_Minh).
 | Fanpage & market UI walkthrough | **PASS — demo mode** | Playwright CLI mở route, xác nhận form nhóm/nguồn/crawl và report mẫu; UI hiện rõ nhãn demo. Đây không phải bằng chứng UI real-mode cho market crawl. |
 | Direct crawler trial (15:18), `https://taphoammo.vn/` | **PASS — 4 URL cùng host** | `crawl_public_site` xác minh `robots.txt`, giới hạn 4 trang; lượt này chỉ giữ kết quả trong tiến trình. Site có trang chủ, ưu đãi Moma Cloud, chatbot AI và Plugin WP Invoice Generator; website không cung cấp views/interactions/comments/follower, nên không đủ để kết luận hot trend. |
 | API + worker market crawl trên PostgreSQL (16:27) | **PASS — persisted flow** | PostgreSQL 18.3/pgvector 0.8.2 đã migrate 0001→0012. API tạo tài khoản/workspace, nhóm và nguồn; `POST .../crawl` chạy inline worker, job `succeeded`; lưu **4 MarketEvidence, 4 MarketObservation, 4 raw snapshots có SHA-256**, report và `next_due_at` đúng 12 giờ. Raw file nằm trong local storage cô lập. |
+| FastAPI ASGI → Redis/Celery queue `agent` (17:05) | **PASS — actual worker process** | PostgreSQL 18.3/pgvector 0.8.2, Redis 8.6.3, Celery 5.6.3 `solo`; API tạo disposable owner/workspace/group/source cho `https://example.com/`, dispatch `market_research_task` lên `agent`; worker hoàn thành job/cycle, report `deepseek_not_configured`, lưu 1 evidence/observation/raw snapshot và next due +12h. Không gọi LLM hoặc Meta. |
+| Celery Beat → recovery/default → market/agent queue (17:07) | **PASS — scheduled cycle** | Beat chạy cấu hình thật của app (recovery mỗi phút), gửi `recover_due_jobs`; worker trả `1`, tạo scheduled cycle, dispatch market task và lưu report/evidence. DB readback: `scheduled:20260925T100610`, cycle/job `succeeded`, 1 evidence, observation và raw snapshot; source/group next due +12h. Beat chỉ được chạy qua một tick có due job; chưa chờ lịch 12h thật. |
 
 URL của crawl persisted: [trang chủ](https://taphoammo.vn/), [Chatbot AI 24/7](https://taphoammo.vn/chatbot-ai-tra-loi-khach-24-7), [ưu đãi Moma Cloud](https://taphoammo.vn/mung-quoc-khanh-02-09-moma-cloud-giam-den-50), [Plugin WP Multi SMTP](https://taphoammo.vn/plugin-wp-multi-smtp-gui-email-khong-gioi-han-qua-gmail).
 
-| Celery queue/Beat, DeepSeek và browser cho market crawl | **NOT RUN** | DB/Redis services đã được khởi động cô lập; lần nghiệm thu đặt `INLINE_JOBS=1`, vì vậy không chứng minh consumer của queue `agent` hoặc Celery Beat. Không có `DEEPSEEK_API_KEY` trong process/env đã kiểm tra; report ghi `deepseek_not_configured`. Không gọi Meta; không chạy UI/browser real mode. |
+| DeepSeek, Meta và browser real mode cho market crawl | **NOT RUN** | Không có `DEEPSEEK_API_KEY` trong process/env đã kiểm tra; report ghi `deepseek_not_configured`. Không gọi Meta. API acceptance dùng ASGI in-process, chưa chạy Uvicorn/Compose hoặc browser real mode; worker `solo` trên macOS, chưa kiểm chứng prefork Linux/process restart/MinIO. |
+
+Runtime acceptance commands/config: Python 3.11.16 dependency target isolated; `alembic upgrade head` against fresh PostgreSQL 18.3/pgvector 0.8.2; Redis 8.6.3; `python -m celery -A services.worker.celery_app:celery_app worker --loglevel=INFO --queues=default,agent --pool=solo --concurrency=1`; `python -m celery -A services.worker.celery_app:celery_app beat --loglevel=INFO --schedule=/private/tmp/.../celerybeat-schedule`. API was exercised with `httpx.ASGITransport` and `INLINE_JOBS=0`; storage was local, `EMBEDDING_PROVIDER=none`, retrieval lexical, DeepSeek key empty. Services and database were isolated under `/private/tmp`; no shared/production database was used.
 
 ## Snapshot trước — Meta Page connector, 2026-09-24
 
@@ -187,7 +191,7 @@ Cập nhật: 2026-09-24 05:32 (Asia/Ho_Chi_Minh). Kết quả real-mode mới n
 
 Môi trường: Python 3.11.16, Node.js 26.7.0, SQLite và PostgreSQL 18.3 disposable, local object storage, Chromium desktop/mobile. Bộ Playwright mock dùng MSW; real-mode Playwright kết nối FastAPI thật và đã chạy riêng với cả SQLite lẫn PostgreSQL.
 
-## Snapshot nghiệm thu MEDIA-001 mới nhất
+## Snapshot MEDIA-001 trước đó — historical runtime checks
 
 | Check | Kết quả | Giới hạn |
 |---|---|---|
@@ -203,9 +207,9 @@ Môi trường: Python 3.11.16, Node.js 26.7.0, SQLite và PostgreSQL 18.3 dispo
 | Local object storage archive/restore checksum roundtrip | **PASS — 2 objects** | Tệp media và export được tar vào thư mục test mới; danh sách đường dẫn và SHA-256 trước/sau giống nhau. Đây không phải MinIO/S3 backup acceptance. |
 | Disposable PostgreSQL + Redis + FastAPI runtime | **PASS — `/healthz` 200, `/readyz` ready** | PostgreSQL test DB, Redis và local object storage riêng; readiness báo `database`, `redis`, `object_storage` đều true. Không phải Compose/production deployment. |
 | Celery recovery trên PostgreSQL/Redis | **PASS — một job được phục hồi** | PostgreSQL 18.3, Redis 8.6.3, Celery 5.6.3 `solo`. Gửi task không chỉ định queue; route đưa task vào `default`. Recovery tìm thấy job có lease hết hạn, đưa job về hàng chờ, xóa lease; worker xử lý lại content job và ghi lỗi cấu hình `ai_not_configured` ở attempt 2 vì không có key. Không gửi request tới DeepSeek. |
-| Celery worker event loop và queue routing | **PASS — 4 focused worker tests** | Hai lần gọi coroutine dùng lại event loop của process; Beat entry và router đều chọn queue `default`. Beat process chưa được khởi chạy. |
+| Celery worker event loop và queue routing trong snapshot này | **PASS — 4 focused worker tests** | Hai lần gọi coroutine dùng lại event loop của process; Beat entry và router đều chọn queue `default`. Lúc chạy snapshot này chưa khởi chạy Beat; Beat process được nghiệm thu riêng ở mục đầu tài liệu ngày 2026-09-25. |
 
-Không có DeepSeek key nên chưa có model-list/live JSON request hoặc chi phí/latency thực. Không có Meta credentials và không đăng bài thật. Docker/Podman và MinIO không khả dụng, nên Compose, Beat process, document-ingestion task, worker process restart và object-store deployment chưa được kiểm tra. Recovery với job có lease hết hạn đã chạy qua Redis; worker dùng Celery `solo` trên macOS. Lần thử pool prefork dừng trong Celery/Billiard trước khi vào code dự án, nên prefork Linux vẫn cần chạy. 14 campaign-slice E2E dùng MSW; real-mode E2E riêng kết nối FastAPI và PostgreSQL/SQLite thật. Backend media integration tests dùng API fixture suite; các kiểu kiểm thử không gộp chung.
+Trong snapshot này không có DeepSeek key nên không có model-list/live JSON request hoặc usage cost/latency thực. Không có Meta credentials và không đăng bài thật. Docker/Podman và MinIO không khả dụng, nên Compose, document-ingestion task, worker process restart và object-store deployment chưa được kiểm tra ở thời điểm đó. Recovery với job có lease hết hạn đã chạy qua Redis; worker dùng Celery `solo` trên macOS. Lần thử pool prefork dừng trong Celery/Billiard trước khi vào code dự án, nên prefork Linux vẫn cần chạy. 14 campaign-slice E2E dùng MSW; real-mode E2E riêng kết nối FastAPI và PostgreSQL/SQLite thật. Backend media integration tests dùng API fixture suite; các kiểu kiểm thử không gộp chung.
 
 ## Đã chạy
 

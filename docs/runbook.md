@@ -145,9 +145,15 @@ python -m services.api
 celery -A services.worker.celery_app:celery_app worker --loglevel=INFO --queues=default,agent --concurrency=2
 ```
 
-Scheduler task `services.worker.scheduled_jobs.recover_due_jobs` được route tới queue `default`, queue mà Compose worker consume. Celery Beat process chưa được nghiệm thu. Dùng worker command trên đây sau khi PostgreSQL/Redis health checks pass.
+Scheduler task `services.worker.scheduled_jobs.recover_due_jobs` được route tới queue `default`, queue mà Compose worker consume. Chạy một Beat process duy nhất:
 
-Runtime smoke riêng đã chạy trên PostgreSQL 18.3 và Redis 8.6.3 cô lập với Celery 5.6.3 `solo`. Lệnh `send_task` không chỉ định queue; routing đưa `recover_due_jobs` tới `default`. Recovery phát hiện job có lease hết hạn, đưa job về queue và xóa lease. Worker sau đó xử lý job content; vì môi trường không có `DEEPSEEK_API_KEY`, job ghi lỗi dự kiến `ai_not_configured` ở attempt 2. Không có request tới DeepSeek. Test xác nhận recovery có trạng thái thật và worker xử lý nhiều task trên cùng process. Test recovery này không chạy Beat, worker process restart, Compose hoặc MinIO; prefork cần nghiệm thu trên Linux vì lần thử macOS dừng bên trong Celery/Billiard. Upload TXT, DOCX, PDF, XLSX và CSV có smoke runtime riêng trên service stack cô lập; xem test report. Các dịch vụ disposable đã được dừng sau lượt chạy; PostgreSQL dùng chung trên máy không bị chạm.
+```bash
+celery -A services.worker.celery_app:celery_app beat --loglevel=INFO --schedule=.data/celerybeat-schedule
+```
+
+Dùng worker và Beat sau khi PostgreSQL/Redis health checks pass; không chạy nhiều Beat instance dùng chung lịch.
+
+Runtime smoke chạy trên PostgreSQL 18.3/pgvector 0.8.2, Redis 8.6.3 và Celery 5.6.3 `solo`. Recovery task đã được route tới `default`; worker xử lý upload/content/research trên các lần acceptance riêng. Lượt 17:02–17:08 xác nhận FastAPI ASGI enqueue market job vào queue `agent`, worker lưu evidence/report, và Beat phát `recover_due_jobs` theo schedule cấu hình; recovery trả 1 khi tạo scheduled cycle rồi market task hoàn tất. Không có `DEEPSEEK_API_KEY`, nên report ghi `deepseek_not_configured` và không phát sinh request model. Beat test chỉ quan sát một due tick, không đợi lịch 12h. Chưa kiểm tra worker process restart, Compose, MinIO hoặc prefork Linux; lần thử prefork macOS trước đây dừng bên trong Celery/Billiard. Upload TXT, DOCX, PDF, XLSX, CSV có smoke runtime riêng; xem test report. Các dịch vụ disposable đã được dừng; PostgreSQL dùng chung trên máy không bị chạm.
 
 ## Tạo tài khoản và seed
 
