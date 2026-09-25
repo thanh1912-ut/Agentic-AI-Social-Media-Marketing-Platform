@@ -1,12 +1,12 @@
 # Security review — core pilot and market research feature
 
-Cập nhật: 2026-09-25. Branch hiện tại: `codex/page-groups-market-research`; lượt rà soát mới nhất gồm các commit kế thừa hardening từ `codex/product-v1-completion` và phần backend market research bên dưới. Review giới hạn ở code/config trong repo; không thay cho penetration test hoặc xác minh cấu hình production/edge.
+Cập nhật: 2026-09-25. Branch hiện tại: `codex/page-groups-market-research`, code commit `67d4b2c`; lượt rà soát mới nhất gồm các commit kế thừa hardening từ `codex/product-v1-completion` và phần backend market research bên dưới. Review giới hạn ở code/config trong repo; không thay cho penetration test hoặc xác minh cấu hình production/edge.
 
 ## Tóm tắt
 
 Đã xác nhận lỗi path traversal qua tên file upload và thiếu CSRF ở refresh/logout dùng cookie. Hai lỗi đã được sửa trong hai commit riêng, có regression tests. Hardening bổ sung chặn Host không được duyệt, giới hạn trusted proxy, body size ở ASGI và bắt buộc HTTPS cho DeepSeek khi chạy production.
 
-Rà soát bổ sung cho market research đã chặn DTD/XML entity kể cả feed UTF-16, thêm Redis limits cho crawl thủ công và xác minh Page token, giấu thông tin xác thực khỏi `Settings` repr, đồng thời làm production config fail closed nếu thiếu PostgreSQL/CORS HTTPS origin hoặc còn dùng MinIO credentials mặc định. Python full suite hiện tại: **190 passed, 1 skipped**. npm audit mới nhất chưa chạy được vì DNS không phân giải `registry.npmjs.org`; Next.js manifest đang ở 15.5.25. Theo [security update chính thức ngày 22-09](https://nextjs.org/blog/nextjs-security-update-september-22-2026), Next 15.x không bị ảnh hưởng bởi RCE được nêu, nhưng Vercel khuyến nghị 15.5.26 để nhận hardening liên quan.
+Rà soát market research chặn DTD/XML entity kể cả feed UTF-16, thêm Redis limits cho crawl thủ công và xác minh Page token, ẩn credentials khỏi `Settings` repr, đồng thời làm production config fail closed nếu thiếu PostgreSQL/CORS HTTPS origin hoặc còn MinIO credentials mặc định. Python full suite: **190 passed, 1 skipped**. Frontend dependency audit hiện tại: **0 vulnerabilities trên 508 dependency nodes** sau nâng Next.js và `@next/eslint-plugin-next` lên 15.5.26. Theo [security update chính thức ngày 22-09](https://nextjs.org/blog/nextjs-security-update-september-22-2026), 15.5.26 bổ sung hardening liên quan; Next 15.x không bị ảnh hưởng bởi RCE trong advisory đó. Next.js thông báo [15.5.27 ngày 30-09](https://nextjs.org/blog/upcoming-nextjs-security-release-september-2026) để xử lý chín vấn đề khác; re-audit sau khi bản đó có sẵn.
 
 ## Finding
 
@@ -111,11 +111,11 @@ Rà soát bổ sung cho market research đã chặn DTD/XML entity kể cả fee
 - **Rate limits:** Redis application-level fixed-window limits bao gồm auth, upload, content generation, Meta Page verification và manual market crawl; production fail-closed khi Redis không dùng được. Host allowlist và trusted proxy được kiểm tra trong app/tests; edge limits, Redis runtime, proxy IP thực tế và account-aware quotas chưa được kiểm chứng. Giữ `SEC-001` IN_PROGRESS.
 - **Upload/size:** API kiểm MIME/extension, từng file, toàn batch trước storage; parser giới hạn text/table/page/archive/image và đọc theo block 64 KiB. ASGI có aggregate body cap; edge/ingress vẫn cần cap riêng và runtime verification.
 - **Frontend sinks:** inline bootstrap script trong `apps/web/src/app/layout.tsx` dùng `dangerouslySetInnerHTML` cho runtime config từ deployment environment; serializer tại `apps/web/src/lib/runtime-config-script.ts` escape `<` và test xác nhận `</script>` không thể đóng script. Content Security Policy vẫn cần chốt khi triển khai.
-- **Dependency/infrastructure:** lần `npm audit` mới nhất không hoàn tất vì DNS lỗi tới npm registry; không có kết quả audit dependency hiện hành. Web manifest dùng Next.js 15.5.25; 15.5.26 có hardening theo thông báo chính thức, còn browser build/runtime security headers chưa được xác minh ở edge. PostgreSQL/MinIO/Compose/proxy-TLS production chưa được chạy chung; Compose/backup/restore/logging còn giới hạn như phần trên. API yêu cầu HTTPS cho URL DeepSeek production.
+- **Dependency/infrastructure:** manifest và lockfile dùng Next.js/`@next/eslint-plugin-next` 15.5.26; `npm audit --json` ngày 2026-09-25 báo 0 vulnerabilities/508 dependency nodes. Clean `npm ci`, production build và mock E2E pass. Re-audit sau [Next.js 15.5.27 dự kiến 2026-09-30](https://nextjs.org/blog/upcoming-nextjs-security-release-september-2026). Browser security headers ở edge chưa xác minh; PostgreSQL/MinIO/Compose/proxy-TLS production chưa chạy chung; backup/restore/logging còn giới hạn như phần trên. API production yêu cầu HTTPS cho URL DeepSeek.
 
 ## Việc còn lại
 
 1. Đặt Host allowlist/trusted proxy/CORS origins theo deployment; xác minh client IP, edge body/rate limits và account-aware quotas.
 2. Hoàn tất CSRF/authorization matrix cho mọi auth/write route và log redaction trên deployment test.
-3. Cập nhật Next.js patch khi M1 xác nhận lockfile/build compatibility; chạy lại npm audit khi registry khả dụng.
+3. Recheck Next.js 15.5.27 và chạy `npm audit` sau khi bản dự kiến 2026-09-30 được phát hành; xác minh dependency patch cùng CI lockfile.
 4. Chạy PostgreSQL/MinIO/Compose hardening cùng backup/restore trên môi trường cô lập trước pilot.

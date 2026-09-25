@@ -223,3 +223,12 @@ Ngày tạo: 2026-09-23. Trạng thái dưới đây được ghi từ audit đ�
 - Không chọn: đăng nhập người dùng rồi parse HTML/browser, dùng credential người dùng để né quyền, hoặc giả báo cáo tự động khi không lấy được dữ liệu.
 - Ảnh hưởng: nhóm Facebook hiển thị `manual_import_only`; dữ liệu được nhập vẫn dùng chung report/trend/AI pipeline và metrics views/follower fields, nếu người dùng có số liệu được phép sử dụng. Tự động chỉ mở lại nếu Meta cấp một API sản phẩm hợp lệ hoặc dự án được cấp quyền phù hợp.
 - Bằng chứng: [Meta Graph API changelog v19](https://developers.facebook.com/docs/graph-api/changelog/version19.0), [Meta Content Library announcement](https://about.fb.com/news/2023/11/new-tools-to-support-independent-research/). Link nhóm và manual import có API/UI/tests; automatic group crawl `BLOCKED_EXTERNAL`.
+
+## DEC-027 — Giữ nhánh Next.js 15 và áp dụng hardening 15.5.26
+
+- Ngày: 2026-09-25.
+- Vấn đề: frontend dùng Next.js 15.5.25; npm audit trước đó không lấy được advisory vì DNS registry lỗi.
+- Quyết định: giữ maintenance line Next.js 15, cập nhật `next` và `@next/eslint-plugin-next` lên 15.5.26, đồng bộ integrity lockfile và giữ các optional SWC entries mà Next lockfile check yêu cầu.
+- Không chọn: nâng major sang Next.js 16 trong cùng thay đổi; chưa cần mở migration API/React để nhận hardening trong line hiện tại.
+- Ảnh hưởng: chỉ đổi phiên bản frontend và lockfile; không đổi API/schema. `npm audit` ngày 2026-09-25 báo 0 vulnerabilities/508 dependency nodes; clean install, lint, typecheck, 47 Vitest, build và 42 mock E2E pass.
+- Trạng thái: IMPLEMENTED + VERIFIED. Recheck [15.5.27 dự kiến 2026-09-30](https://nextjs.org/blog/upcoming-nextjs-security-release-september-2026) khi bản phát hành.

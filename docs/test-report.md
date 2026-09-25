@@ -1,8 +1,24 @@
 # Báo cáo kiểm thử
 
-Cập nhật: 2026-09-25 17:40 (Asia/Ho_Chi_Minh).
+Cập nhật: 2026-09-25 19:38 (Asia/Ho_Chi_Minh).
 
-## Backend security regression acceptance — 2026-09-25
+## Frontend Next.js security hardening acceptance — 2026-09-25 18:34
+
+Code snapshot: feature branch `codex/page-groups-market-research`, code commit `67d4b2c`. Environment: macOS arm64, Node.js 26.7.0, npm 11.19.0, isolated clone under `/private/tmp`.
+
+| Check | Result | Evidence and limits |
+|---|---|---|
+| `npm ci --ignore-scripts --offline --no-audit --no-fund` | **PASS** | Clean install from the committed lockfile using cached tarballs; no lifecycle scripts were run. |
+| `npm audit --json` | **PASS — 0 vulnerabilities** | npm reported 508 dependency nodes: 27 production, 431 dev, 101 optional and 40 peer. This is the audit result for this dependency tree on 2026-09-25, not a guarantee about future advisories. |
+| ESLint | **PASS** | `npm run lint --workspace=@agentic/web`. |
+| TypeScript | **PASS** | `npm run typecheck --workspace=@agentic/web -- --incremental false`. |
+| Vitest | **47/47 PASS** | `npm test --workspace=@agentic/web`; Vite emitted its existing native config-loader warning. |
+| Production build | **PASS** | `npm run build --workspace=@agentic/web`; Next.js 15.5.26 compiled and traced all routes without an SWC lockfile repair warning. |
+| Mock browser E2E | **42/42 PASS** | `DEBUG=pw:webserver E2E_PORT=3110 npm run test:e2e --workspace=@agentic/web`; desktop and mobile Chromium, MSW/demo data only, no backend/DeepSeek/Meta call. |
+
+The npm 11-generated lock initially dropped eight hoisted optional SWC package entries that Next's own lockfile check expects. Those exact 15.5.26 entries were retained with registry integrity metadata; a clean offline `npm ci` and production build then passed without the warning. Official Next.js notes say 15.5.26 adds related hardening and the 15.x line is not affected by the cited RCE. Next.js announced [15.5.27 for 2026-09-30](https://nextjs.org/blog/upcoming-nextjs-security-release-september-2026) to address nine vulnerabilities; recheck the release and audit after publication.
+
+## Backend security regression acceptance — 2026-09-25 17:40 snapshot (audit rerun at 18:34)
 
 | Check | Kết quả | Bằng chứng và giới hạn |
 |---|---|---|
@@ -12,7 +28,7 @@ Cập nhật: 2026-09-25 17:40 (Asia/Ho_Chi_Minh).
 | `npm audit --json` | **BLOCKED — no registry DNS** | npm không phân giải `registry.npmjs.org`; lệnh không trả advisory result. Không được diễn giải là 0 vulnerabilities. Current manifest: Next.js 15.5.25. |
 | Next.js upstream release check | **15.5.26 available** | Official Sep 22 security note says 15.x is not affected by the described RCE; 15.5.26 contains related hardening. Frontend manifest/lockfile chưa được thay đổi trong lượt backend này. |
 
-Python runtime dependency target lấy từ lượt acceptance trước; không có DeepSeek/Meta request. Edge security headers, Compose/MinIO, production proxy và frontend dependency advisories chưa được xác minh.
+Ghi chú theo thời điểm: các hàng npm audit/Next.js trong bảng trên là kết quả lúc 17:40 và đã được thay thế bởi lần kiểm tra frontend lúc 18:34 ở đầu báo cáo; audit lúc 18:34 trả 0 vulnerabilities và code đã được cập nhật lên Next.js 15.5.26. Python runtime dependency target lấy từ lượt acceptance trước; không có DeepSeek/Meta request. Edge security headers, Compose/MinIO và production proxy vẫn chưa được xác minh.
 
 ## Nhiều Fanpage và nghiên cứu thị trường — API/PostgreSQL/Celery acceptance, 2026-09-25
 
