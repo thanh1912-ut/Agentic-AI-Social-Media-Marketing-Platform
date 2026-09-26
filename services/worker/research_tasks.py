@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import json
+import logging
 import math
 import re
 from datetime import datetime, timedelta, timezone
@@ -14,6 +15,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import select
 
 from database.evidence_versions import ensure_evidence_version
+from database.job_fencing import claim_job_fence, isolated_job_fence
 from database.models import (
     AuditEvent, Job, JobEvent, JobStep, MarketEvidence, MarketEvidenceVersion,
     MarketObservation,
@@ -35,6 +37,9 @@ from services.research.web_crawler import CrawlError, crawl_public_site
 from services.research.website_entities import PARSER_VERSION
 from .async_runtime import run_worker_coroutine
 from .celery_app import celery_app
+
+
+logger = logging.getLogger(__name__)
 from .model_provider import AIConfigurationError, configured_structured_model
 
 
@@ -111,6 +116,7 @@ def _aware(value: datetime | None, fallback: datetime) -> datetime:
 
 
 async def _claim(job_id: str) -> bool:
+    claim_token = new_id()
     async with SessionLocal() as db:
         job = await db.scalar(select(Job).where(Job.id == job_id, Job.kind == "market_research").with_for_update())
         if job is None or job.status != "queued":
@@ -118,6 +124,7 @@ async def _claim(job_id: str) -> bool:
         job.status = "running"
         job.started_at = utcnow()
         job.lease_until = utcnow() + timedelta(minutes=settings.job_lease_minutes)
+        job.claim_token = claim_token
         job.attempts += 1
         cycle = await db.scalar(select(ResearchCycle).where(ResearchCycle.job_id == job.id).with_for_update())
         if cycle:
@@ -127,6 +134,7 @@ async def _claim(job_id: str) -> bool:
             step.status = "running"
             step.started_at = utcnow()
         await db.commit()
+        claim_job_fence(job.id, claim_token)
         return True
 
 
@@ -367,6 +375,28 @@ async def _collect_website(
                                          "coverage": "failed_before_page_persistence"}
                     await db.commit()
         raise
+    except Exception as error:
+        if run_id:
+            try:
+                async with SessionLocal() as db:
+                    run = await db.scalar(select(WebCrawlRun).where(
+                        WebCrawlRun.company_id == company_id, WebCrawlRun.id == run_id,
+                    ).with_for_update())
+                    if run:
+                        run.status = "failed"
+                        run.completed_at = utcnow()
+                        run.counters_json = {
+                            **(run.counters_json or {}),
+                            "error_code": type(error).__name__,
+                            "coverage": "failed_during_persistence",
+                        }
+                        await db.commit()
+            except Exception:
+                logger.exception(
+                    "Could not persist website crawl failure state",
+                    extra={"company_id": company_id, "source_id": source.id, "run_id": run_id},
+                )
+        raise
     saved = 0
     entity_counts = {"product": 0, "article": 0, "business_info": 0}
     for item in items:
@@ -392,20 +422,27 @@ async def _collect_website(
                     WebCrawlPage.company_id == company_id, WebCrawlPage.run_id == run_id,
                     WebCrawlPage.url == item.url,
                 ))
-                if page is None:
-                    page = WebCrawlPage(company_id=company_id, run_id=run_id, url=item.url, depth=0)
-                    db.add(page)
-                    await db.flush()
-                page.status = "saved"
-                page.evidence_id = evidence_id
                 observation = await db.scalar(select(MarketObservation).where(
                     MarketObservation.company_id == company_id,
                     MarketObservation.evidence_id == evidence_id,
                     MarketObservation.observed_at == observed_at,
                 ))
-                if observation:
+                if page is None:
+                    page = WebCrawlPage(company_id=company_id, run_id=run_id, url=item.url, depth=0)
+                    db.add(page)
+                    await db.flush()
+                if observation is not None and observation.evidence_version_id is not None:
+                    # Assign all three references together. A query after setting
+                    # only evidence_id would autoflush a row rejected by the DB
+                    # check constraint before the observation lookup completes.
+                    page.status = "saved"
+                    page.evidence_id = evidence_id
                     page.observation_id = observation.id
                     page.evidence_version_id = observation.evidence_version_id
+                    page.error_json = None
+                else:
+                    page.status = "failed"
+                    page.error_json = {"code": "observation_missing"}
                 await db.commit()
     if run_id:
         async with SessionLocal() as db:
@@ -926,7 +963,11 @@ async def _run(job_id: str) -> None:
                 } else "manual_import_only"
                 source.last_crawled_at = utcnow()
                 source.error_json = None
-                source.next_due_at = utcnow() + timedelta(hours=12) if source.status == "active" else None
+                source.next_due_at = (
+                    utcnow() + timedelta(hours=12)
+                    if source.status == "active" and source.schedule_enabled
+                    else None
+                )
             except CrawlError as error:
                 outcome = {"status": "failed", "code": error.code, "message": str(error), "items_saved": 0}
                 source.status = "needs_access" if error.code in {
@@ -935,6 +976,17 @@ async def _run(job_id: str) -> None:
                 } else "error"
                 source.error_json = {"code": error.code, "message": str(error), "retryable": error.retryable}
             except Exception:
+                logger.exception(
+                    "Unexpected error while collecting a research source",
+                    extra={
+                        "company_id": company_id,
+                        "group_id": group_id,
+                        "source_id": source.id,
+                        "cycle_id": cycle.id,
+                        "job_id": job_id,
+                        "source_type": source.source_type,
+                    },
+                )
                 outcome = {"status": "failed", "code": "source_processing_failed",
                            "message": "Không xử lý được nguồn này trong chu kỳ hiện tại.", "items_saved": 0}
                 source.status = "error"
@@ -1010,7 +1062,15 @@ async def _run(job_id: str) -> None:
         cycle.completed_at = finished_at
         if group:
             group.last_cycle_at = finished_at
-            group.next_due_at = finished_at + timedelta(hours=12)
+            scheduled_due_times = (await db.scalars(select(ResearchSource.next_due_at).where(
+                ResearchSource.company_id == company_id,
+                ResearchSource.group_id == group_id,
+                ResearchSource.active.is_(True),
+                ResearchSource.schedule_enabled.is_(True),
+            ))).all()
+            group.next_due_at = min(
+                (value for value in scheduled_due_times if value is not None), default=None,
+            )
         job.status = "succeeded"
         job.progress = 100
         job.result = {"group_id": group_id, "report_id": report.id, "evidence_count": len(evidence_rows),
@@ -1031,6 +1091,7 @@ async def _run(job_id: str) -> None:
         await db.commit()
 
 
+@isolated_job_fence
 async def market_research_task_async(job_id: str) -> None:
     if await _claim(job_id):
         await _run(job_id)

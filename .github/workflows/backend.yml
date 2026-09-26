@@ -21,11 +21,53 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: pgvector/pgvector:0.8.0-pg16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: agentic_marketing
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d agentic_marketing"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+      redis-queue:
+        image: redis:7.4-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 12
+      redis-cache:
+        image: redis:7.4-alpine
+        ports:
+          - 6380:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 12
+    env:
+      DATABASE_URL: postgresql+asyncpg://postgres:postgres@127.0.0.1:5432/agentic_marketing
+      POSTGRES_TEST_URL: postgresql+asyncpg://postgres:postgres@127.0.0.1:5432/agentic_marketing
+      REDIS_URL: redis://127.0.0.1:6379/0
+      REDIS_CACHE_URL: redis://127.0.0.1:6380/0
+      REDIS_QUEUE_TEST_URL: redis://127.0.0.1:6379/0
+      REDIS_CACHE_TEST_URL: redis://127.0.0.1:6380/0
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
       - run: pip install -e ".[dev]"
+      - run: psql postgresql://postgres:postgres@127.0.0.1:5432/agentic_marketing -c "CREATE EXTENSION IF NOT EXISTS vector"
+      - run: alembic upgrade head
+      - run: alembic check
       - run: pytest
       - run: python scripts/export_openapi.py --check

@@ -525,3 +525,36 @@ def test_due_market_research_enqueues_one_durable_cycle(market_api) -> None:
             return await db.scalar(select(ResearchCycle.status).where(ResearchCycle.group_id == group_id))
 
     assert asyncio.run(cycle_state()) == "queued"
+
+
+def test_disabling_last_source_schedule_clears_group_due_time(market_api) -> None:
+    client, session_factory, _encryption_key = market_api
+    workspace_id, headers = _owner(client, "schedule-settings-owner@example.com")
+    group_id = _create_group(client, workspace_id, headers)
+    response = client.post(
+        f"/api/v1/workspaces/{workspace_id}/market-research/sources",
+        headers=headers,
+        json={"group_id": group_id, "source_type": "website", "name": "Website", "url": "https://example.com"},
+    )
+    assert response.status_code == 201, response.text
+    source_id = response.json()["id"]
+
+    disabled = client.patch(
+        f"/api/v1/workspaces/{workspace_id}/market-research/sources/{source_id}/crawl-settings",
+        headers=headers,
+        json={"crawl_mode": "site_catalog", "crawl_page_limit": 25, "render_mode": "http_only",
+              "resource_hosts": [], "schedule_enabled": False},
+    )
+    assert disabled.status_code == 200, disabled.text
+    assert disabled.json()["schedule_enabled"] is False
+    assert disabled.json()["next_due_at"] is None
+
+    async def read_due_times():
+        async with session_factory() as db:
+            source = await db.get(ResearchSource, source_id)
+            group = await db.get(MetaPageGroup, group_id)
+            return source.next_due_at, group.next_due_at
+
+    source_due, group_due = asyncio.run(read_due_times())
+    assert source_due is None
+    assert group_due is None

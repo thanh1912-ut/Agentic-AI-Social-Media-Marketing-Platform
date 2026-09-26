@@ -24,6 +24,7 @@ from database.models import (
     new_id,
     utcnow,
 )
+from database.job_fencing import claim_job_fence, isolated_job_fence
 from packages.contracts import BrandProfile as InternalBrandProfile
 from packages.contracts import NormalizedDocument, SourceReference, TableBlock, TextBlock
 from services.agents.brand_agent import BrandAgent
@@ -81,6 +82,7 @@ async def _claim_job(job_id: str, fallback_document_ids: list[str]) -> tuple[str
     """CAS claim ensures only one worker delivery can own a queued job."""
 
     now = utcnow()
+    claim_token = new_id()
     async with SessionLocal() as db:
         claimed = await db.execute(
             update(Job)
@@ -94,6 +96,7 @@ async def _claim_job(job_id: str, fallback_document_ids: list[str]) -> tuple[str
                 started_at=func.coalesce(Job.started_at, now),
                 attempts=Job.attempts + 1,
                 lease_until=now + timedelta(minutes=settings.job_lease_minutes),
+                claim_token=claim_token,
                 progress=5,
             )
         )
@@ -135,6 +138,7 @@ async def _claim_job(job_id: str, fallback_document_ids: list[str]) -> tuple[str
         job.progress = 10
         await append_job_event(db, job, "status", "Worker đã nhận job.", 10)
         await db.commit()
+        claim_job_fence(job.id, claim_token)
         return job.company_id, job.created_by, document_ids
 
 
@@ -637,6 +641,7 @@ async def _fail_job(job_id: str, *, code: str, message: str, hint: str, retryabl
         await db.commit()
 
 
+@isolated_job_fence
 async def ingest_document_task_batch_async(
     job_id: str,
     document_ids: list[str],

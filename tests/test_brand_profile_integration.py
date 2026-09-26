@@ -470,6 +470,7 @@ def test_expired_worker_lease_is_requeued(api_env, monkeypatch):
             job = await db.get(Job, job_id)
             job.status = "running"
             job.attempts = 1
+            job.claim_token = "expired-claim"
             job.lease_until = utcnow() - timedelta(minutes=1)
             await db.commit()
 
@@ -478,6 +479,7 @@ def test_expired_worker_lease_is_requeued(api_env, monkeypatch):
 
     async def capture_dispatch(recovered_job_id, recovered_document_id, document_ids=None):
         dispatched.append((recovered_job_id, recovered_document_id, document_ids or []))
+        return True
 
     monkeypatch.setattr("services.api.job_service.dispatch_document_job", capture_dispatch)
     from services.worker import scheduled_jobs
@@ -491,12 +493,13 @@ def test_expired_worker_lease_is_requeued(api_env, monkeypatch):
 
         async with sessions() as db:
             job = await db.get(Job, job_id)
-            return job.status, job.attempts, job.lease_until
+            return job.status, job.attempts, job.lease_until, job.claim_token
 
-    status, attempts, lease_until = asyncio.run(recovered_state())
+    status, attempts, lease_until, claim_token = asyncio.run(recovered_state())
     assert status == "queued"
     assert attempts == 1  # the next claim, not scheduler dispatch, consumes an attempt
     assert lease_until is not None
+    assert claim_token is not None and claim_token != "expired-claim"
 
 
 @pytest.mark.fixture_integration

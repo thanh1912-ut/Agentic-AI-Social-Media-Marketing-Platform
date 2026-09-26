@@ -11,8 +11,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from database.models import (
     AuditEvent, CampaignPost, Job, JobStep, MediaAsset, MetaPageConnection, MetaPagePost,
     MetaPageMetricSnapshot, MetaPostMetricSnapshot, MetaPublication, MetaSyncState,
-    PostApproval, PostMetricSnapshot, PostVersion, utcnow,
+    PostApproval, PostMetricSnapshot, PostVersion, new_id, utcnow,
 )
+from database.job_fencing import claim_job_fence, isolated_job_fence
 from services.api.config import settings
 from services.api.content_integrity import content_sha256
 from services.api.db import SessionLocal
@@ -45,6 +46,7 @@ async def _finish_job(db: AsyncSession, job: Job, *, succeeded: bool, error: dic
 
 
 async def _claim(job_id: str, kind: str) -> bool:
+    claim_token = new_id()
     async with SessionLocal() as db:
         job = await db.scalar(select(Job).where(Job.id == job_id, Job.kind == kind).with_for_update())
         if job is None or job.status != "queued":
@@ -52,12 +54,14 @@ async def _claim(job_id: str, kind: str) -> bool:
         job.status = "running"
         job.started_at = utcnow()
         job.lease_until = utcnow() + timedelta(minutes=settings.job_lease_minutes)
+        job.claim_token = claim_token
         job.attempts += 1
         step = await db.scalar(select(JobStep).where(JobStep.job_id == job.id))
         if step:
             step.status = "running"
             step.started_at = utcnow()
         await db.commit()
+        claim_job_fence(job.id, claim_token)
         return True
 
 
@@ -422,6 +426,7 @@ async def _run_sync(job_id: str) -> None:
         await db.commit()
 
 
+@isolated_job_fence
 async def meta_job_async(job_id: str, kind: str) -> None:
     if kind not in {"meta_publish", "meta_metrics_sync"} or not await _claim(job_id, kind):
         return

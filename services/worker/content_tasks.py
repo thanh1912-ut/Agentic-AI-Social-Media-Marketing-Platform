@@ -31,6 +31,7 @@ from database.models import (
     new_id,
     utcnow,
 )
+from database.job_fencing import claim_job_fence, isolated_job_fence
 from packages.contracts import BrandProfile as InternalBrandProfile
 from packages.contracts import CampaignBrief
 from packages.prompts import CONTENT_POST_PROMPT_VERSION, CONTENT_REVISE_PROMPT_VERSION
@@ -311,6 +312,7 @@ async def _fail(job_id: str, failure: ContentGenerationFailure, *, attempts: int
         await db.commit()
 
 
+@isolated_job_fence
 async def content_generation_task_async(
     job_id: str,
     *,
@@ -321,6 +323,7 @@ async def content_generation_task_async(
     """Claim one queued job, retrieve approved workspace context, and save drafts atomically."""
 
     now = utcnow()
+    claim_token = new_id()
     async with SessionLocal() as db:
         claimed = await db.execute(
             update(Job)
@@ -330,6 +333,7 @@ async def content_generation_task_async(
                 started_at=func.coalesce(Job.started_at, now),
                 attempts=Job.attempts + 1,
                 lease_until=now + timedelta(minutes=settings.job_lease_minutes),
+                claim_token=claim_token,
                 progress=5,
             )
         )
@@ -345,6 +349,7 @@ async def content_generation_task_async(
         await _set_step(db, job_id, "prepare_context", "running", 5, "Đang kiểm tra campaign, Brand Profile và tài liệu nguồn.")
         await _append_event(db, job, "progress", "Đã nhận job sinh nội dung.", 5)
         await db.commit()
+        claim_job_fence(job_id, claim_token)
 
     try:
         agent = agent or ContentAgent(configured_structured_model())

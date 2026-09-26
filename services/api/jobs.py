@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from datetime import timedelta
+
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -11,7 +13,13 @@ from .config import settings
 from .db import get_db
 from .dependencies import current_user, membership_for, require_csrf
 from .errors import ApiProblem
-from .job_service import accepted_response, dispatch_content_generation_job, dispatch_document_job, serialize_job
+from .job_service import (
+    _record_dispatch,
+    accepted_response,
+    dispatch_content_generation_job,
+    dispatch_document_job,
+    serialize_job,
+)
 from .schemas import AcceptedResponse, JobEventOut, JobOut
 
 
@@ -116,7 +124,8 @@ async def retry_job(job_id: str, user: User = Depends(current_user), db: AsyncSe
     job.progress = 0
     job.error = None
     job.finished_at = None
-    job.lease_until = None
+    job.lease_until = utcnow() + timedelta(minutes=settings.job_lease_minutes)
+    job.claim_token = None
     for step in (await db.scalars(select(JobStep).where(JobStep.job_id == job.id))).all():
         step.status = "pending"
         step.progress = None
@@ -126,7 +135,9 @@ async def retry_job(job_id: str, user: User = Depends(current_user), db: AsyncSe
         step.finished_at = None
     await db.commit()
     if job.kind == "document_ingest":
-        await dispatch_document_job(job.id, str(document_id))
+        sent = await dispatch_document_job(job.id, str(document_id))
     else:
-        await dispatch_content_generation_job(job.id)
+        sent = await dispatch_content_generation_job(job.id)
+    await _record_dispatch(db, job.id, sent)
+    await db.refresh(job)
     return await accepted_response(db, job)

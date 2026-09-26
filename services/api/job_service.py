@@ -77,38 +77,40 @@ async def append_job_event(db: AsyncSession, job: Job, event_type: str, message:
     db.add(JobEvent(job_id=job.id, sequence=sequence, event_type=event_type, message=message, progress=progress))
 
 
-async def dispatch_document_job(job_id: str, document_id: str, document_ids: list[str] | None = None) -> None:
+async def dispatch_document_job(job_id: str, document_id: str, document_ids: list[str] | None = None) -> bool:
     if settings.inline_jobs:
         from services.worker.tasks import ingest_document_task_batch_async
 
         await ingest_document_task_batch_async(job_id, document_ids or [document_id])
-        return
+        return True
     try:
         from services.worker.celery_app import celery_app
 
         celery_app.send_task("services.worker.tasks.ingest_document_task", args=[job_id, document_id, document_ids or [document_id]], queue="default")
+        return True
     except Exception:
         # The database job remains queued and the scheduler can recover it;
         # API availability must not depend on Redis being reachable.
-        return
+        return False
 
 
-async def dispatch_content_generation_job(job_id: str) -> None:
+async def dispatch_content_generation_job(job_id: str) -> bool:
     if settings.inline_jobs:
         from services.worker.content_tasks import content_generation_task_async
 
         await content_generation_task_async(job_id)
-        return
+        return True
     try:
         from services.worker.celery_app import celery_app
 
         celery_app.send_task("services.worker.content_tasks.content_generation_task", args=[job_id], queue="agent")
+        return True
     except Exception:
         # The durable job remains queued and is recovered by the scheduler.
-        return
+        return False
 
 
-async def dispatch_meta_job(job_id: str, kind: str) -> None:
+async def dispatch_meta_job(job_id: str, kind: str) -> bool:
     """Dispatch only committed Meta jobs; delivery failure leaves a recoverable queue row."""
     if kind not in {"meta_publish", "meta_metrics_sync"}:
         raise ValueError("unsupported Meta job kind")
@@ -116,28 +118,40 @@ async def dispatch_meta_job(job_id: str, kind: str) -> None:
         from services.worker.meta_tasks import meta_job_async
 
         await meta_job_async(job_id, kind)
-        return
+        return True
     try:
         from services.worker.celery_app import celery_app
 
         celery_app.send_task("services.worker.meta_tasks.meta_job", args=[job_id, kind], queue="default")
+        return True
     except Exception:
-        return
+        return False
 
 
-async def dispatch_research_job(job_id: str) -> None:
+async def dispatch_research_job(job_id: str) -> bool:
     """Dispatch a durable market-research cycle after its database commit."""
     if settings.inline_jobs:
         from services.worker.research_tasks import market_research_task_async
 
         await market_research_task_async(job_id)
-        return
+        return True
     try:
         from services.worker.celery_app import celery_app
 
         celery_app.send_task("services.worker.research_tasks.market_research_task", args=[job_id], queue="agent")
+        return True
     except Exception:
+        return False
+
+
+async def _record_dispatch(db: AsyncSession, job_id: str, sent: bool) -> None:
+    job = await db.get(Job, job_id)
+    if job is None:
         return
+    job.dispatch_attempts += 1
+    job.last_dispatch_at = datetime.now(timezone.utc)
+    job.last_dispatch_error = None if sent else "queue_unavailable"
+    await db.commit()
 
 
 async def dispatch_queued_jobs(db: AsyncSession) -> int:
@@ -216,15 +230,19 @@ async def dispatch_queued_jobs(db: AsyncSession) -> int:
     if jobs:
         await db.commit()
     for job_id, document_id, document_ids in dispatch:
-        await dispatch_document_job(job_id, document_id, document_ids)
-        count += 1
+        sent = await dispatch_document_job(job_id, document_id, document_ids)
+        await _record_dispatch(db, job_id, sent)
+        count += int(sent)
     for job_id in content_dispatch:
-        await dispatch_content_generation_job(job_id)
-        count += 1
+        sent = await dispatch_content_generation_job(job_id)
+        await _record_dispatch(db, job_id, sent)
+        count += int(sent)
     for job_id, kind in meta_dispatch:
-        await dispatch_meta_job(job_id, kind)
-        count += 1
+        sent = await dispatch_meta_job(job_id, kind)
+        await _record_dispatch(db, job_id, sent)
+        count += int(sent)
     for job_id in research_dispatch:
-        await dispatch_research_job(job_id)
-        count += 1
+        sent = await dispatch_research_job(job_id)
+        await _record_dispatch(db, job_id, sent)
+        count += int(sent)
     return count

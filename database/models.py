@@ -13,6 +13,7 @@ from typing import Any
 
 from sqlalchemy import (
     Boolean,
+    CheckConstraint,
     DateTime,
     ForeignKey,
     ForeignKeyConstraint,
@@ -262,6 +263,10 @@ class Job(Base, IdMixin, TimestampMixin):
     finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     lease_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     attempts: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    claim_token: Mapped[str | None] = mapped_column(String(36))
+    dispatch_attempts: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    last_dispatch_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    last_dispatch_error: Mapped[str | None] = mapped_column(String(80))
 
 
 class JobStep(Base, IdMixin, TimestampMixin):
@@ -768,6 +773,7 @@ class MarketReportEvidence(Base, IdMixin):
     observation_id: Mapped[str] = mapped_column(String(36), nullable=False)
     evidence_id: Mapped[str] = mapped_column(String(36), nullable=False)
     evidence_version_id: Mapped[str] = mapped_column(String(36), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
 
 
 class MarketReportWebSnapshot(Base, IdMixin):
@@ -953,6 +959,8 @@ class WebCrawlRun(Base, IdMixin, TimestampMixin):
                              name="fk_web_crawl_run_group_tenant", ondelete="CASCADE"),
         ForeignKeyConstraint(["company_id", "cycle_id"], ["research_cycles.company_id", "research_cycles.id"],
                              name="fk_web_crawl_run_cycle_tenant", ondelete="CASCADE"),
+        ForeignKeyConstraint(["company_id", "job_id"], ["jobs.company_id", "jobs.id"],
+                             name="fk_web_crawl_run_job_tenant", ondelete="CASCADE"),
         Index("ix_web_crawl_run_status_updated", "status", "updated_at"),
     )
 
@@ -960,7 +968,7 @@ class WebCrawlRun(Base, IdMixin, TimestampMixin):
     group_id: Mapped[str] = mapped_column(String(36), nullable=False)
     source_id: Mapped[str] = mapped_column(String(36), nullable=False)
     cycle_id: Mapped[str] = mapped_column(String(36), nullable=False)
-    job_id: Mapped[str] = mapped_column(ForeignKey("jobs.id", ondelete="CASCADE"), nullable=False)
+    job_id: Mapped[str] = mapped_column(String(36), nullable=False)
     status: Mapped[str] = mapped_column(String(32), default="queued", nullable=False)
     page_limit: Mapped[int] = mapped_column(Integer, default=1000, nullable=False)
     counters_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict, nullable=False)
@@ -975,8 +983,21 @@ class WebCrawlPage(Base, IdMixin, TimestampMixin):
     __tablename__ = "web_crawl_pages"
     __table_args__ = (
         UniqueConstraint("company_id", "run_id", "url", name="uq_web_crawl_page_url"),
+        CheckConstraint(
+            "(evidence_id IS NULL AND observation_id IS NULL AND evidence_version_id IS NULL) OR "
+            "(evidence_id IS NOT NULL AND observation_id IS NOT NULL AND evidence_version_id IS NOT NULL)",
+            name="ck_web_crawl_page_evidence_refs_all_or_none",
+        ),
         ForeignKeyConstraint(["company_id", "run_id"], ["web_crawl_runs.company_id", "web_crawl_runs.id"],
                              name="fk_web_crawl_page_run_tenant", ondelete="CASCADE"),
+        ForeignKeyConstraint(["company_id", "evidence_id", "evidence_version_id"],
+                             ["market_evidence_versions.company_id", "market_evidence_versions.evidence_id",
+                              "market_evidence_versions.id"],
+                             name="fk_web_crawl_page_evidence_version_tenant"),
+        ForeignKeyConstraint(["company_id", "evidence_id", "observation_id", "evidence_version_id"],
+                             ["market_observations.company_id", "market_observations.evidence_id",
+                              "market_observations.id", "market_observations.evidence_version_id"],
+                             name="fk_web_crawl_page_observation_version_tenant"),
         Index("ix_web_crawl_page_frontier", "company_id", "run_id", "status", "depth"),
     )
 
@@ -1028,6 +1049,7 @@ class WebEntitySnapshot(Base, IdMixin):
     __table_args__ = (
         UniqueConstraint("company_id", "run_id", "entity_id", "content_hash", name="uq_web_entity_snapshot_run_hash"),
         UniqueConstraint("company_id", "id", name="uq_web_entity_snapshot_tenant_id"),
+        UniqueConstraint("company_id", "entity_id", "id", name="uq_web_entity_snapshot_entity_tenant_id"),
         ForeignKeyConstraint(["company_id", "entity_id"], ["web_entities.company_id", "web_entities.id"],
                              name="fk_web_entity_snapshot_entity_tenant", ondelete="CASCADE"),
         ForeignKeyConstraint(["company_id", "run_id"], ["web_crawl_runs.company_id", "web_crawl_runs.id"],

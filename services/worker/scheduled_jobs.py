@@ -113,6 +113,10 @@ def recover_due_jobs() -> int:
             stale = (await db.scalars(select(Job).where(Job.status == "running", Job.lease_until.is_not(None), Job.lease_until < now))).all()
             for job in stale:
                 job.lease_until = None
+                # Revoke the previous delivery before returning the durable row
+                # to the queue, including when the replacement claim has not
+                # happened yet.
+                job.claim_token = new_id()
                 if job.kind == "meta_publish":
                     publication = await db.scalar(select(MetaPublication).where(
                         MetaPublication.job_id == job.id

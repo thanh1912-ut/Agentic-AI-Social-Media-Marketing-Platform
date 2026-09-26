@@ -132,8 +132,9 @@ def test_failed_content_revision_job_can_be_retried(workflow_api, monkeypatch) -
     asyncio.run(seed_job())
     dispatched: list[str] = []
 
-    async def dispatch(job_id: str) -> None:
+    async def dispatch(job_id: str) -> bool:
         dispatched.append(job_id)
+        return False
 
     monkeypatch.setattr(job_routes, "dispatch_content_generation_job", dispatch)
     response = client.post(
@@ -144,6 +145,17 @@ def test_failed_content_revision_job_can_be_retried(workflow_api, monkeypatch) -
     assert response.json()["job"]["kind"] == "content_revise"
     assert response.json()["job"]["status"] == "queued"
     assert dispatched == [job_id]
+
+    async def dispatch_state():
+        async with session_factory() as db:
+            job = await db.get(Job, job_id)
+            return job.dispatch_attempts, job.last_dispatch_error, job.claim_token, job.lease_until
+
+    dispatch_attempts, dispatch_error, claim_token, lease_until = asyncio.run(dispatch_state())
+    assert dispatch_attempts == 1
+    assert dispatch_error == "queue_unavailable"
+    assert claim_token is None
+    assert lease_until is not None
 
 
 @pytest.fixture

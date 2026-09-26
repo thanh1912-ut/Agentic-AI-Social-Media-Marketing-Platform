@@ -5,11 +5,14 @@ from __future__ import annotations
 import logging
 import uuid
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from alembic.migration import MigrationContext
+from alembic.script import ScriptDirectory
 from redis.asyncio import Redis
 from sqlalchemy import text
 from starlette.middleware.trustedhost import TrustedHostMiddleware
@@ -23,6 +26,9 @@ from .storage import storage_ready
 
 
 logger = logging.getLogger(__name__)
+EXPECTED_DATABASE_REVISION = ScriptDirectory(
+    str(Path(__file__).resolve().parents[2] / "database" / "migrations")
+).get_current_head()
 
 
 @asynccontextmanager
@@ -113,11 +119,15 @@ async def healthz():
 
 @app.get("/readyz", tags=["health"])
 async def readyz():
-    components = {"database": False, "redis": False, "cache": False, "object_storage": False}
+    components = {"database": False, "schema": False, "redis": False, "cache": False, "object_storage": False}
     try:
         async with engine.connect() as connection:
             await connection.execute(text("SELECT 1"))
+            current_revision = await connection.run_sync(
+                lambda sync_connection: MigrationContext.configure(sync_connection).get_current_revision()
+            )
         components["database"] = True
+        components["schema"] = current_revision == EXPECTED_DATABASE_REVISION
     except Exception:
         pass
     redis = Redis.from_url(settings.redis_url, socket_connect_timeout=2, socket_timeout=2)
@@ -140,7 +150,7 @@ async def readyz():
         components["object_storage"] = await storage_ready()
     except Exception:
         pass
-    ready = components["database"] and components["redis"] and components["object_storage"]
+    ready = components["database"] and components["schema"] and components["redis"] and components["object_storage"]
     return JSONResponse(
         status_code=200 if ready else 503,
         content={"status": "ready" if ready else "not_ready", "dependencies": components},

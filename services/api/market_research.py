@@ -215,6 +215,14 @@ async def update_web_crawl_settings(
     source.schedule_enabled = request.schedule_enabled
     source.next_due_at = (utcnow() if request.schedule_enabled else None)
     source.updated_at = utcnow()
+    group = await _tenant_group(db, company_id, source.group_id, lock=True)
+    scheduled_due_times = (await db.scalars(select(ResearchSource.next_due_at).where(
+        ResearchSource.company_id == company_id,
+        ResearchSource.group_id == source.group_id,
+        ResearchSource.active.is_(True),
+        ResearchSource.schedule_enabled.is_(True),
+    ))).all()
+    group.next_due_at = min((value for value in scheduled_due_times if value is not None), default=None)
     db.add(AuditEvent(company_id=company_id, actor_user_id=user.id, action="market.source.crawl_settings",
                       entity_type="research_source", entity_id=source.id,
                       metadata_json={"crawl_mode": source.crawl_mode, "page_limit": source.crawl_page_limit,
