@@ -27,6 +27,7 @@ The structured-catalog foundation is implemented and the extractor has been chec
 - Worktree: `/Users/lethanh/.codex/worktrees/website-catalog-intelligence/agent`.
 - Branch: `codex/website-catalog-intelligence`.
 - Base commit: `31935df990027d40fd83b7c55e2f92fee1abd8a0`.
+- Feature commit: `a8b7afb` (`feat: add structured website catalog intelligence`).
 - Shared checkout `/Users/lethanh/agent` was not modified.
 - Schema head before this feature: `0013_metric_history_and_tenant_integrity`.
 - The group crawl API already dispatched durable research jobs; this change adds catalog extraction/persistence and reads on that path.
@@ -44,7 +45,8 @@ The structured-catalog foundation is implemented and the extractor has been chec
 | 2026-09-26 22:18 | DONE | Read three public product URLs with `max_pages=1` each and checked title and displayed price against fetched page text. Gamma: 359000 VND, 6 reviews; Cursor: 489000 VND, 2 reviews; Office 365: 250000 VND. The pages did not publish a sold count, so it remains NULL. No raw page was saved. |
 | 2026-09-26 22:20 | DONE | Final focused Python suite (20), Ruff focused checks, Python compilation, frontend lint/typecheck/tests (47), Next.js production build, `git diff --check`, and SQLite Alembic upgrade passed. |
 | 2026-09-26 | BLOCKED | PostgreSQL/Redis integration, real browser smoke test, full persistent multi-batch workflow, and isolated JavaScript renderer are not verified/implemented; this environment has no isolated PostgreSQL/Redis service or browser egress boundary. |
-| 2026-09-26 | IN_PROGRESS | Review final diff, commit only this feature's paths, push `codex/website-catalog-intelligence`, and confirm remote SHA. |
+| 2026-09-26 22:21 | DONE | Reviewed the staged paths and secret scan; committed only the 17 feature paths as `a8b7afb`. |
+| 2026-09-26 | IN_PROGRESS | Push `codex/website-catalog-intelligence` and confirm that GitHub points to the final commit. |
 
 ## Remaining acceptance work
 
