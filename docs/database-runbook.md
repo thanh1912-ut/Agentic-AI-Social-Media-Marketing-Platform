@@ -33,6 +33,8 @@ Logs are in /Users/lethanh/.local/share/agentic-marketing/logs. Stop only these 
 
 To start them again, run the installer. This leaves unrelated services and their data untouched.
 
+The API, Celery worker, Celery Beat, and Next.js preview run in separate terminal sessions. Press `Ctrl+C` in each corresponding session to stop those application processes. The database and Redis LaunchAgents can stay loaded while you stop the application, or use the `launchctl bootout` commands above when you want to stop the isolated data services too.
+
 ## Environment variables
 
 Keep credentials in the local secret directory, not in the repository. The installer writes only non-secret backup settings to secrets/backup.env; PostgreSQL credentials and pgpass stay in files with restricted permissions.
