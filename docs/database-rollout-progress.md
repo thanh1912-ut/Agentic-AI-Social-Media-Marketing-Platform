@@ -1,6 +1,6 @@
 # Tiến trình hoàn thiện PostgreSQL/Redis
 
-Cập nhật: 2026-09-27 01:14 Asia/Ho_Chi_Minh
+Cập nhật: 2026-09-27 01:15 Asia/Ho_Chi_Minh
 
 ## Phạm vi và baseline
 
@@ -24,7 +24,7 @@ Cập nhật: 2026-09-27 01:14 Asia/Ho_Chi_Minh
 | DONE | Crawl website từ frontend real mode và kiểm tra sau reload | `taphoammo.vn`, 10 trang; job thành công, run báo `partial` đúng budget, 9 entity và 10 report evidence đã lưu. Lịch nguồn test đã tắt. |
 | DONE | Backup, checksum và restore PostgreSQL + storage | Bundle `20260926T170759Z`; checksum hợp lệ; restore ở DB/storage mới; API login và web-items đọc được 9 entity. |
 | DONE | Chạy và bàn giao frontend real mode | API `/readyz` trả ready cho DB, schema, Redis queue/cache và storage; trang Fanpage trả HTTP 200 ở cổng 3100. API, worker và beat đang chạy từ worktree này. |
-| IN_PROGRESS | Commit và push feature branch | Backend suite trên head `0017`: 215 passed, 1 skipped; frontend checks, compileall, shell syntax và readiness pass. Đã stage riêng 26 file thuộc nhiệm vụ; commit/push và xác minh SHA là bước cuối. |
+| DONE | Commit và push feature branch | Commit `28b40f02cb62b92b0100615a11e3d0351558769b` đã push lên `origin/codex/project-database-hardening`; `git ls-remote` trả cùng SHA. |
 | NOT RUN | DeepSeek và Meta live, MinIO/S3 | Không có credential được dùng trong nghiệm thu; object storage local đã được backup/restore. |
 | NOT RUN | Thử rút Redis thật giữa khi job đang chờ hoặc chạy | Không dừng Redis dùng bởi frontend. Thay bằng kiểm thử dispatch-failure deterministic trên PostgreSQL và stale-fence/lease integration; CI có thể bổ sung service-chaos job sau này. |
 | NOT RUN | Bản sao backup ngoài máy và kiểm tra restore định kỳ tự động | Bundle hiện cùng máy; LaunchAgent chạy khi user session hoạt động, không thay thế disaster recovery ngoài máy. |
@@ -43,4 +43,4 @@ Cập nhật: 2026-09-27 01:14 Asia/Ho_Chi_Minh
 - 2026-09-27: Xác nhận fresh/upgrade/test/restore schema parity; backup checksum pass; restore và app-role API read pass.
 - 2026-09-27: Thêm forward migration `0017` sau khi rà thấy cần chặn cả cập nhật snapshot latest; chạy upgrade/check trên fresh, upgrade, test, verify và owner-restored database. Full suite sau migration cuối tiếp tục 215 passed, 1 skipped.
 - 2026-09-27: Restart API, worker, beat sau migration `0017`; `/readyz` trả tất cả dependency `true`, trang Fanpage test trả HTTP 200. Frontend được mở trong Codex để người dùng kiểm tra.
-- 2026-09-27: Compile Python, kiểm tra cú pháp backup/installer, và `git diff --check` pass. Tiếp: commit/push branch và xác minh SHA remote.
+- 2026-09-27: Compile Python, kiểm tra cú pháp backup/installer, `git diff --check` và secret scan pass. Commit `28b40f02cb62b92b0100615a11e3d0351558769b` được push và SHA từ `git ls-remote` khớp.

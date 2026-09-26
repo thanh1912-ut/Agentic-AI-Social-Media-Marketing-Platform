@@ -1,6 +1,6 @@
 # Báo cáo nghiệm thu PostgreSQL/Redis
 
-Cập nhật: 2026-09-27 01:14 Asia/Ho_Chi_Minh
+Cập nhật: 2026-09-27 01:15 Asia/Ho_Chi_Minh
 
 ## Môi trường và phiên bản
 
@@ -34,6 +34,7 @@ Cập nhật: 2026-09-27 01:14 Asia/Ho_Chi_Minh
 | Restore và API read | PASS | Restore vào database/storage riêng; revision `0017`, 1 user test, crawl/run/entity snapshot/report và 10 report evidence còn nguyên. Storage restore có 13 file. App-role login và GET `web-items` trả HTTP 200 với 9 entity. |
 | Lịch backup local | PASS | PostgreSQL/Redis/backup LaunchAgents được nạp lại. Backup chạy mỗi ngày 03:00 và bù khi đăng nhập nếu bundle mới nhất quá 24 giờ. |
 | Chất lượng mã và tài liệu | PASS | Python `compileall`, `bash -n` cho installer/backup và `git diff --check` pass. Frontend lint/typecheck/47 tests/build đã pass trên cùng checkout. |
+| Nhánh GitHub | PASS | `codex/project-database-hardening` đã push; SHA remote `28b40f02cb62b92b0100615a11e3d0351558769b` khớp local HEAD. |
 | Redis bị dừng thật, worker bị kill giữa transaction | NOT RUN | Không dừng queue mà frontend đang sử dụng. Đã kiểm thử queue-dispatch failure, lease expiry logic hiện có, claim race và stale fencing trên PostgreSQL thật. |
 | MinIO/S3, backup ngoài máy | NOT RUN | Đợt local dùng storage filesystem và bundle cùng máy; cần môi trường triển khai riêng để nghiệm thu. |
 
