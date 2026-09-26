@@ -197,6 +197,10 @@ class _HTMLContentParser(HTMLParser):
         self.in_title = False
         self.title_parts: list[str] = []
         self.text_parts: list[str] = []
+        self.main_parts: list[str] = []
+        self.article_parts: list[str] = []
+        self.main_depth = 0
+        self.article_depth = 0
         self.links: list[str] = []
         self.canonical: str | None = None
         self.published_at: datetime | None = None
@@ -208,6 +212,10 @@ class _HTMLContentParser(HTMLParser):
 
     def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
         values = {name.casefold(): value or "" for name, value in attrs}
+        if tag == "main":
+            self.main_depth += 1
+        elif tag == "article":
+            self.article_depth += 1
         is_json_ld = tag == "script" and values.get("type", "").split(";", 1)[0].strip().casefold() == "application/ld+json"
         if is_json_ld:
             self._capturing_json_ld = True
@@ -232,6 +240,10 @@ class _HTMLContentParser(HTMLParser):
     def handle_endtag(self, tag: str) -> None:
         if tag == "title":
             self.in_title = False
+        if tag == "main" and self.main_depth:
+            self.main_depth -= 1
+        elif tag == "article" and self.article_depth:
+            self.article_depth -= 1
         if tag == "script" and self._capturing_json_ld:
             script = "".join(self._json_ld_buffer).strip()
             if script and len(self.json_ld_scripts) < MAX_JSON_LD_SCRIPTS:
@@ -258,6 +270,43 @@ class _HTMLContentParser(HTMLParser):
             self.title_parts.append(text)
         elif self.skip_depth == 0:
             self.text_parts.append(text)
+            if self.main_depth:
+                self.main_parts.append(text)
+            if self.article_depth:
+                self.article_parts.append(text)
+
+
+def _page_text(parser: _HTMLContentParser) -> str:
+    """Prefer article/main text and use metadata only as distinct supporting text."""
+
+    def normalize(value: str) -> str:
+        return " ".join(value.split())
+
+    primary = normalize(" ".join(parser.article_parts) or " ".join(parser.main_parts) or " ".join(parser.text_parts))
+    fragments: list[str] = []
+
+    def append_distinct(value: str, label: str | None = None) -> None:
+        normalized = normalize(value)
+        if not normalized:
+            return
+        folded = normalized.casefold()
+        for fragment in fragments:
+            existing = fragment.casefold()
+            if folded == existing or (min(len(folded), len(existing)) >= 12 and (folded in existing or existing in folded)):
+                return
+        fragments.append(f"{label}: {normalized}" if label else normalized)
+
+    append_distinct(primary)
+    append_distinct(parser.meta.get("og:description", ""))
+    append_distinct(parser.meta.get("description", ""))
+    structured_text = _json_ld_summary(parser.json_ld_scripts)
+    for line in structured_text.splitlines():
+        label, separator, value = line.partition(": ")
+        if separator:
+            append_distinct(value, label)
+        else:
+            append_distinct(line)
+    return " ".join(fragments)[:12000]
 
 
 def _json_ld_nodes(value: object):
@@ -419,10 +468,7 @@ def crawl_public_site(
     except Exception as exc:
         raise CrawlError("source_html_invalid", "Không trích xuất được nội dung trang web.") from exc
     title = parser.meta.get("og:title") or parser.meta.get("twitter:title") or " ".join(parser.title_parts)
-    text = parser.meta.get("og:description") or " ".join(parser.text_parts)
-    structured_text = _json_ld_summary(parser.json_ld_scripts)
-    if structured_text:
-        text = (text + "\n" + structured_text).strip()
+    text = _page_text(parser)
     canonical = urljoin(first.url, parser.canonical) if parser.canonical else first.url
     items = [WebItem(
         url=canonicalize_url(canonical), title=title[:1000], text=" ".join(text.split())[:12000],
@@ -454,10 +500,7 @@ def crawl_public_site(
         page_parser = _HTMLContentParser()
         page_parser.feed(page.body.decode("utf-8", errors="replace"))
         page_title = page_parser.meta.get("og:title") or " ".join(page_parser.title_parts)
-        page_text = page_parser.meta.get("og:description") or " ".join(page_parser.text_parts)
-        page_structured_text = _json_ld_summary(page_parser.json_ld_scripts)
-        if page_structured_text:
-            page_text = (page_text + "\n" + page_structured_text).strip()
+        page_text = _page_text(page_parser)
         page_url = urljoin(page.url, page_parser.canonical) if page_parser.canonical else page.url
         items.append(WebItem(
             url=canonicalize_url(page_url), title=page_title[:1000], text=" ".join(page_text.split())[:12000],

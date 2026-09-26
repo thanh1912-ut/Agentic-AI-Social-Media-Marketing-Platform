@@ -64,6 +64,35 @@ def test_public_site_crawl_respects_robots_and_keeps_links_on_same_host() -> Non
         crawl_public_site("https://example.com/private", fetcher=disallowed)
 
 
+def test_public_site_keeps_main_and_child_body_when_seo_description_exists() -> None:
+    pages = {
+        "https://example.com/": b'''<html><head><title>Home</title>
+        <meta property="og:description" content="Root SEO summary."></head>
+        <body><nav>Navigation noise</nav><main><h1>Root heading</h1>
+        <p>ROOT_BODY_SENTINEL: shoppers now compare delivery speed before price.</p>
+        <a href="/article">Article</a></main></body></html>''',
+        "https://example.com/article": b'''<html><head><title>Article</title>
+        <meta property="og:description" content="Child SEO summary."></head>
+        <body><article><h1>Article heading</h1>
+        <p>CHILD_BODY_SENTINEL: small sellers are adding same-day fulfillment.</p>
+        </article></body></html>''',
+    }
+
+    def fetcher(url: str) -> FetchResult:
+        if url.endswith("/robots.txt"):
+            return FetchResult(url, 404, "text/plain", b"")
+        return FetchResult(url, 200, "text/html", pages[url])
+
+    items = crawl_public_site("https://example.com", fetcher=fetcher, max_pages=2)
+
+    assert len(items) == 2
+    assert "ROOT_BODY_SENTINEL" in items[0].text
+    assert "Root SEO summary." in items[0].text
+    assert "CHILD_BODY_SENTINEL" in items[1].text
+    assert "Child SEO summary." in items[1].text
+    assert "Navigation noise" not in items[0].text
+
+
 def test_public_site_rejects_plain_text_content_after_reading_robots() -> None:
     def plain_text_site(url: str) -> FetchResult:
         if url.endswith("/robots.txt"):

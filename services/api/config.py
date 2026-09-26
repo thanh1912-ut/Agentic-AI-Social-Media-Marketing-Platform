@@ -106,6 +106,7 @@ class Settings:
     ai_request_timeout_seconds: int = int(os.getenv("AI_REQUEST_TIMEOUT_SECONDS", "120"))
     max_job_attempts: int = int(os.getenv("MAX_JOB_ATTEMPTS", "3"))
     job_lease_minutes: int = int(os.getenv("JOB_LEASE_MINUTES", "30"))
+    market_crawl_max_pages: int = int(os.getenv("MARKET_CRAWL_MAX_PAGES", "25"))
     meta_workspace_id: str = os.getenv("META_WORKSPACE_ID", "").strip()
     meta_page_id: str = os.getenv("META_PAGE_ID", "").strip()
     meta_page_access_token: str = field(default_factory=lambda: os.getenv("META_PAGE_ACCESS_TOKEN", "").strip(), repr=False)
@@ -239,6 +240,8 @@ if (
     raise ValueError("Relevance thresholds must be between 0 and 1")
 if settings.llm_max_tokens < 1 or settings.llm_max_input_chars < 1 or settings.ai_request_timeout_seconds < 1:
     raise ValueError("LLM token, input, and request-timeout limits must be positive")
+if not 1 <= settings.market_crawl_max_pages <= 25:
+    raise ValueError("MARKET_CRAWL_MAX_PAGES must be between 1 and 25")
 if not settings.llm_default_model:
     raise ValueError("LLM_DEFAULT_MODEL must name a DeepSeek model")
 deepseek_url = urlsplit(settings.deepseek_base_url)

@@ -236,7 +236,11 @@ async def _persist_evidence(
 
 
 async def _collect_website(company_id: str, group_id: str, source: ResearchSource, observed_at: datetime) -> tuple[int, dict[str, Any]]:
-    items = await asyncio.to_thread(crawl_public_site, source.url)
+    items = await asyncio.to_thread(
+        crawl_public_site,
+        source.url,
+        max_pages=settings.market_crawl_max_pages,
+    )
     saved = 0
     for item in items:
         evidence_id = await _persist_evidence(
