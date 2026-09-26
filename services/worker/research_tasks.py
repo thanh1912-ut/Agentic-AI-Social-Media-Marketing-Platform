@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+import json
 import math
 import re
 from datetime import datetime, timedelta, timezone
@@ -16,9 +17,10 @@ from database.evidence_versions import ensure_evidence_version
 from database.models import (
     AuditEvent, Job, JobEvent, JobStep, MarketEvidence, MarketEvidenceVersion,
     MarketObservation,
-    MarketReport, MarketReportEvidence, MetaPageConnection, MetaPageGroup,
+    MarketReport, MarketReportEvidence, MarketReportWebSnapshot, MetaPageConnection, MetaPageGroup,
     MetaPageMetricSnapshot, MetaPagePost, MetaPostMetricSnapshot, ResearchCycle,
     ResearchSource, ResearchSourceMetricSnapshot,
+    WebCrawlPage, WebCrawlRun, WebEntity, WebEntitySnapshot, WebOfferSnapshot,
     new_id, utcnow,
 )
 from services.api.config import settings
@@ -30,6 +32,7 @@ from services.api.meta_client import (
 from services.api.meta_tokens import TokenEncryptionUnavailable, decrypt_page_token
 from services.api.storage import storage
 from services.research.web_crawler import CrawlError, crawl_public_site
+from services.research.website_entities import PARSER_VERSION
 from .async_runtime import run_worker_coroutine
 from .celery_app import celery_app
 from .model_provider import AIConfigurationError, configured_structured_model
@@ -40,6 +43,7 @@ PHONE_RE = re.compile(r"(?<!\w)(?:\+?\d[\d ().-]{7,}\d)(?!\w)")
 REPORT_METRIC_KEYS = ("reactions", "comments", "shares", "interactions", "views")
 REPORT_DELTA_KEYS = ("reactions", "comments", "shares", "interactions", "views")
 MAX_REPORT_EVIDENCE = 40
+MAX_REPORT_WEB_SNAPSHOTS = 50
 
 
 def _sanitize_comment(value: str) -> str:
@@ -78,6 +82,7 @@ class TrendResult(BaseModel):
     title: str = Field(min_length=1, max_length=200)
     explanation: str = Field(min_length=1, max_length=1200)
     evidence_ids: list[str] = Field(default_factory=list, max_length=10)
+    web_snapshot_ids: list[str] = Field(default_factory=list, max_length=10)
     confidence: float = Field(ge=0, le=1)
 
 
@@ -88,6 +93,7 @@ class ContentSuggestion(BaseModel):
     hook: str = Field(min_length=1, max_length=500)
     format: str = Field(min_length=1, max_length=40)
     evidence_ids: list[str] = Field(default_factory=list, max_length=10)
+    web_snapshot_ids: list[str] = Field(default_factory=list, max_length=10)
 
 
 class MarketAnalysis(BaseModel):
@@ -235,13 +241,134 @@ async def _persist_evidence(
         return evidence.id
 
 
-async def _collect_website(company_id: str, group_id: str, source: ResearchSource, observed_at: datetime) -> tuple[int, dict[str, Any]]:
-    items = await asyncio.to_thread(
-        crawl_public_site,
-        source.url,
-        max_pages=settings.market_crawl_max_pages,
-    )
+async def _persist_web_entities(
+    *, company_id: str, group_id: str, source_id: str, run_id: str,
+    evidence_id: str, observed_at: datetime, entities: list[dict[str, Any]],
+) -> int:
+    if not entities:
+        return 0
+    async with SessionLocal() as db:
+        evidence_version = await db.scalar(select(MarketEvidenceVersion).where(
+            MarketEvidenceVersion.company_id == company_id,
+            MarketEvidenceVersion.evidence_id == evidence_id,
+        ).order_by(MarketEvidenceVersion.captured_at.desc()))
+        if evidence_version is None:
+            return 0
+        observation = await db.scalar(select(MarketObservation).where(
+            MarketObservation.company_id == company_id,
+            MarketObservation.evidence_id == evidence_id,
+            MarketObservation.observed_at == observed_at,
+            MarketObservation.evidence_version_id == evidence_version.id,
+        ))
+        if observation is None:
+            return 0
+        saved = 0
+        for data in entities:
+            kind = data.get("kind")
+            identity = data.get("identity_url")
+            if kind not in {"product", "article", "business_info"} or not isinstance(identity, str):
+                continue
+            canonical = json.dumps(data, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+            content_hash = hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+            entity = await db.scalar(select(WebEntity).where(
+                WebEntity.company_id == company_id, WebEntity.source_id == source_id,
+                WebEntity.kind == kind, WebEntity.identity_key == identity,
+            ).with_for_update())
+            if entity is None:
+                entity = WebEntity(
+                    company_id=company_id, group_id=group_id, source_id=source_id,
+                    kind=kind, identity_key=identity, canonical_url=identity,
+                    title=str(data.get("title") or "")[:1000],
+                )
+                db.add(entity)
+                await db.flush()
+            else:
+                entity.title = str(data.get("title") or entity.title)[:1000]
+                entity.canonical_url = identity
+            snapshot = await db.scalar(select(WebEntitySnapshot).where(
+                WebEntitySnapshot.company_id == company_id,
+                WebEntitySnapshot.run_id == run_id,
+                WebEntitySnapshot.entity_id == entity.id,
+                WebEntitySnapshot.content_hash == content_hash,
+            ))
+            if snapshot is None:
+                snapshot = WebEntitySnapshot(
+                    company_id=company_id, entity_id=entity.id, run_id=run_id,
+                    evidence_id=evidence_id, evidence_version_id=evidence_version.id,
+                    observation_id=observation.id, observed_at=observed_at, content_hash=content_hash,
+                    parser_version=PARSER_VERSION, data_json=data,
+                )
+                db.add(snapshot)
+                await db.flush()
+                if kind == "product":
+                    for index, offer in enumerate(data.get("offers", [])[:100]):
+                        if not isinstance(offer, dict):
+                            continue
+                        price = offer.get("price")
+                        low = offer.get("low_price")
+                        high = offer.get("high_price")
+                        db.add(WebOfferSnapshot(
+                            company_id=company_id, entity_snapshot_id=snapshot.id,
+                            offer_key=str(offer.get("identity") or f"offer-{index}")[:500],
+                        price_kind=str(offer.get("price_kind") or "unknown"),
+                        price=price, low_price=low, high_price=high,
+                        original_price=offer.get("original_price"),
+                        currency=offer.get("currency"), availability=offer.get("availability"),
+                            seller=offer.get("seller"), offer_url=str(offer.get("url") or identity)[:2048],
+                            provenance_json=offer.get("price_provenance") or {},
+                        ))
+            entity.latest_snapshot_id = snapshot.id
+            saved += 1
+        await db.commit()
+        return saved
+
+
+async def _collect_website(
+    company_id: str, group_id: str, source: ResearchSource, observed_at: datetime,
+    *, cycle_id: str, job_id: str,
+) -> tuple[int, dict[str, Any]]:
+    catalog_enabled = source.crawl_mode == "site_catalog"
+    max_pages = min(25, settings.market_crawl_max_pages, source.crawl_page_limit)
+    run_id: str | None = None
+    if catalog_enabled:
+        async with SessionLocal() as db:
+            run = await db.scalar(select(WebCrawlRun).where(
+                WebCrawlRun.company_id == company_id, WebCrawlRun.source_id == source.id,
+                WebCrawlRun.cycle_id == cycle_id,
+            ).with_for_update())
+            if run is None:
+                run = WebCrawlRun(
+                    company_id=company_id, group_id=group_id, source_id=source.id,
+                    cycle_id=cycle_id, job_id=job_id, status="running", page_limit=max_pages,
+                    config_json={"mode": "http", "requested_page_limit": source.crawl_page_limit,
+                                 "effective_page_limit": max_pages, "continuation": False},
+                    counters_json={"pages_discovered": 0, "pages_processed": 0, "pages_failed": 0,
+                                   "requested_page_limit": source.crawl_page_limit,
+                                   "effective_page_limit": max_pages},
+                    started_at=observed_at,
+                )
+                db.add(run)
+                await db.flush()
+            run_id = run.id
+            run.status = "running"
+            await db.commit()
+    try:
+        items = await asyncio.to_thread(crawl_public_site, source.url, max_pages=max_pages)
+    except CrawlError as error:
+        if run_id:
+            async with SessionLocal() as db:
+                run = await db.scalar(select(WebCrawlRun).where(
+                    WebCrawlRun.company_id == company_id, WebCrawlRun.id == run_id,
+                ).with_for_update())
+                if run:
+                    run.status = "failed"
+                    run.completed_at = utcnow()
+                    run.counters_json = {**(run.counters_json or {}), "error_code": error.code,
+                                         "coverage": "failed_before_page_persistence"}
+                    await db.commit()
+        raise
     saved = 0
+    entity_counts = {"product": 0, "article": 0, "business_info": 0}
     for item in items:
         evidence_id = await _persist_evidence(
             company_id=company_id, group_id=group_id, source=source, url=item.url,
@@ -249,7 +376,56 @@ async def _collect_website(company_id: str, group_id: str, source: ResearchSourc
             comments=[], raw_body=item.raw_body, observed_at=observed_at,
         )
         saved += bool(evidence_id)
-    return saved, {"items_seen": len(items), "items_saved": saved}
+        page_entities = item.entities if catalog_enabled else []
+        for entity in page_entities:
+            kind = entity.get("kind")
+            if isinstance(kind, str) and kind in entity_counts:
+                entity_counts[kind] += 1
+        if evidence_id and run_id:
+            await _persist_web_entities(
+                company_id=company_id, group_id=group_id, source_id=source.id,
+                run_id=run_id, evidence_id=evidence_id, observed_at=observed_at,
+                entities=page_entities,
+            )
+            async with SessionLocal() as db:
+                page = await db.scalar(select(WebCrawlPage).where(
+                    WebCrawlPage.company_id == company_id, WebCrawlPage.run_id == run_id,
+                    WebCrawlPage.url == item.url,
+                ))
+                if page is None:
+                    page = WebCrawlPage(company_id=company_id, run_id=run_id, url=item.url, depth=0)
+                    db.add(page)
+                    await db.flush()
+                page.status = "saved"
+                page.evidence_id = evidence_id
+                observation = await db.scalar(select(MarketObservation).where(
+                    MarketObservation.company_id == company_id,
+                    MarketObservation.evidence_id == evidence_id,
+                    MarketObservation.observed_at == observed_at,
+                ))
+                if observation:
+                    page.observation_id = observation.id
+                    page.evidence_version_id = observation.evidence_version_id
+                await db.commit()
+    if run_id:
+        async with SessionLocal() as db:
+            run = await db.scalar(select(WebCrawlRun).where(
+                WebCrawlRun.company_id == company_id, WebCrawlRun.id == run_id,
+            ).with_for_update())
+            if run:
+                run.status = "partial"
+                run.completed_at = utcnow()
+                run.counters_json = {
+                    "pages_fetched": len(items), "pages_saved": saved,
+                    "products_extracted": entity_counts["product"],
+                    "articles_extracted": entity_counts["article"],
+                    "business_info_extracted": entity_counts["business_info"],
+                    "coverage": "bounded_single_pass_incomplete_discovery",
+                    "discovery_complete": False,
+                }
+                await db.commit()
+    return saved, {"items_seen": len(items), "items_saved": saved, **entity_counts,
+                   "coverage": "bounded_single_pass_incomplete_discovery", "crawl_run_id": run_id}
 
 
 async def _record_owned_page_audience(
@@ -485,11 +661,16 @@ async def _collect_competitor_page(
     }
 
 
-def _trim_evidence_ids(payload: dict[str, Any], valid_ids: set[str]) -> dict[str, Any]:
+def _trim_evidence_ids(
+    payload: dict[str, Any], valid_ids: set[str], valid_snapshot_ids: set[str] | None = None,
+) -> dict[str, Any]:
+    snapshot_ids = valid_snapshot_ids or set()
     for item in payload.get("trends", []):
         item["evidence_ids"] = [value for value in item.get("evidence_ids", []) if value in valid_ids]
+        item["web_snapshot_ids"] = [value for value in item.get("web_snapshot_ids", []) if value in snapshot_ids]
     for item in payload.get("suggestions", []):
         item["evidence_ids"] = [value for value in item.get("evidence_ids", []) if value in valid_ids]
+        item["web_snapshot_ids"] = [value for value in item.get("web_snapshot_ids", []) if value in snapshot_ids]
     return payload
 
 
@@ -497,8 +678,9 @@ async def _make_report(
     group: MetaPageGroup,
     evidence_rows: list[dict[str, Any]],
     audience_rows: list[dict[str, Any]],
+    web_snapshot_rows: list[dict[str, Any]] | None = None,
 ) -> tuple[dict[str, Any], str | None, str]:
-    if not evidence_rows:
+    if not evidence_rows and not web_snapshot_rows:
         return {
             "headline": "Chưa có dữ liệu thị trường trong kỳ này",
             "summary": "Chưa thu thập được nội dung để phân tích. Kiểm tra quyền truy cập nguồn hoặc nhập dữ liệu thủ công.",
@@ -517,6 +699,7 @@ async def _make_report(
                          "keywords": group.keywords_json or []},
         "source_audience": audience_rows,
         "evidence": evidence_rows[:MAX_REPORT_EVIDENCE],
+        "web_entity_snapshots": (web_snapshot_rows or [])[:MAX_REPORT_WEB_SNAPSHOTS],
     }
     prompt = (
         "Phân tích dữ liệu nghiên cứu thị trường cho một doanh nghiệp marketing. "
@@ -525,7 +708,9 @@ async def _make_report(
         "Metrics là snapshot của từng bài; metric_delta là thay đổi giữa hai lần thu thập, không chứng minh quan hệ nhân quả. "
         "source_audience là số cấp Page/nguồn, tách khỏi số liệu từng bài; chỉ so cùng một nguồn theo thời gian và không cộng qua các bài. "
         "Chỉ dùng lượt xem hoặc người theo dõi khi giá trị có trong dữ liệu; không suy đoán giá trị thiếu. "
-        "Dùng evidence_ids đúng như dữ liệu đầu vào. "
+        "Dùng evidence_ids và web_snapshot_ids đúng như dữ liệu đầu vào; không tạo mã nguồn giả. "
+        "Chỉ trích giá, tiền tệ, tình trạng và số bán từ web_entity_snapshots. "
+        "Giữ nguyên cờ xấp xỉ/cận dưới và nêu rõ các số này do website tự công bố; không quy đổi tiền hoặc suy doanh thu. "
         "Đề xuất tối đa 5 góc nội dung để con người xem xét; không tự đăng bài."
     )
     try:
@@ -534,7 +719,8 @@ async def _make_report(
         )
         report = parsed.model_dump(mode="json")
         valid_ids = {str(item["id"]) for item in evidence_rows}
-        report = _trim_evidence_ids(report, valid_ids)
+        valid_snapshot_ids = {str(item["snapshot_id"]) for item in (web_snapshot_rows or [])}
+        report = _trim_evidence_ids(report, valid_ids, valid_snapshot_ids)
         report["analysis_status"] = "completed"
         return report, metadata.model if metadata else getattr(model, "model_name", None), "completed"
     except Exception:
@@ -604,6 +790,34 @@ async def _evidence_for_report(company_id: str, group_id: str) -> list[dict[str,
                 "trust_level": row.trust_level,
             })
         return output
+
+
+async def _web_snapshots_for_report(company_id: str, group_id: str, cycle_id: str) -> list[dict[str, Any]]:
+    async with SessionLocal() as db:
+        rows = (await db.execute(
+            select(WebEntitySnapshot, WebEntity)
+            .join(WebEntity, (WebEntity.company_id == WebEntitySnapshot.company_id)
+                  & (WebEntity.id == WebEntitySnapshot.entity_id))
+            .join(WebCrawlRun, (WebCrawlRun.company_id == WebEntitySnapshot.company_id)
+                  & (WebCrawlRun.id == WebEntitySnapshot.run_id))
+            .where(WebEntitySnapshot.company_id == company_id,
+                   WebEntity.group_id == group_id,
+                   WebCrawlRun.cycle_id == cycle_id)
+            .order_by(WebEntitySnapshot.observed_at.desc(), WebEntity.kind, WebEntity.title)
+            .limit(MAX_REPORT_WEB_SNAPSHOTS)
+        )).all()
+        return [{
+            "snapshot_id": snapshot.id,
+            "evidence_id": snapshot.evidence_id,
+            "evidence_version_id": snapshot.evidence_version_id,
+            "observation_id": snapshot.observation_id,
+            "source_id": entity.source_id,
+            "url": entity.canonical_url,
+            "kind": entity.kind,
+            "title": entity.title,
+            "observed_at": snapshot.observed_at.isoformat(),
+            "data": snapshot.data_json,
+        } for snapshot, entity in rows]
 
 
 async def _audience_for_report(company_id: str, group_id: str) -> list[dict[str, Any]]:
@@ -695,7 +909,9 @@ async def _run(job_id: str) -> None:
                     outcome = {"status": "manual_import_only", "items_saved": 0,
                                "message": "Nguồn Facebook chưa có quyền API phù hợp; có thể nhập dữ liệu thủ công."}
                 elif source_type == "website":
-                    _count, details = await _collect_website(company_id, group_id, source, observed_at)
+                    _count, details = await _collect_website(
+                        company_id, group_id, source, observed_at, cycle_id=cycle.id, job_id=job_id,
+                    )
                     outcome = {"status": "collected", **details}
                 elif source_type == "owned_facebook_page":
                     _count, details = await _collect_page(company_id, group_id, source, observed_at)
@@ -738,7 +954,10 @@ async def _run(job_id: str) -> None:
 
     evidence_rows = await _evidence_for_report(company_id, group_id)
     audience_rows = await _audience_for_report(company_id, group_id)
-    report_json, model_name, analysis_status = await _make_report(group_snapshot, evidence_rows, audience_rows)
+    web_snapshot_rows = await _web_snapshots_for_report(company_id, group_id, cycle.id)
+    report_json, model_name, analysis_status = await _make_report(
+        group_snapshot, evidence_rows, audience_rows, web_snapshot_rows,
+    )
     report_json["source_audience"] = audience_rows
     report_json["evidence_refs"] = [
         {
@@ -767,6 +986,7 @@ async def _run(job_id: str) -> None:
             report_json=report_json, evidence_ids_json=[item["id"] for item in evidence_rows],
             coverage_json={"sources": source_results, "ai_status": analysis_status,
                            "evidence_analyzed": len(evidence_rows),
+                           "web_snapshot_ids": [item["snapshot_id"] for item in web_snapshot_rows],
                            "metrics_note": "Views and Page follower counts appear only when Meta returns them for an authorized source. Per-post metric changes compare the latest two snapshots; missing values are not treated as zero."},
             model_name=model_name,
         )
@@ -779,6 +999,11 @@ async def _run(job_id: str) -> None:
                 evidence_version_id=item["evidence_version_id"],
             )
             for item in evidence_rows
+        ])
+        db.add_all([
+            MarketReportWebSnapshot(company_id=company_id, report_id=report.id,
+                                    snapshot_id=item["snapshot_id"])
+            for item in web_snapshot_rows
         ])
         cycle.status = "succeeded"
         cycle.source_results_json = source_results

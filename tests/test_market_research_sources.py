@@ -126,6 +126,185 @@ def test_public_site_extracts_json_ld_without_author_or_executable_scripts() -> 
     assert "priceCurrency: VND" in items[0].text
     assert "Private Example" not in items[0].text
     assert "window.privateExample" not in items[0].text
+    assert len(items[0].entities) == 1
+    assert items[0].entities[0]["kind"] == "product"
+    assert items[0].entities[0]["offers"][0]["price"] == "125000"
+
+
+def test_public_site_extracts_microdata_product_and_offer() -> None:
+    body = b'''<html><body><main>
+    <div itemscope itemtype="https://schema.org/Product">
+      <h1 itemprop="name">Microdata product</h1>
+      <meta itemprop="sku" content="micro-1">
+      <div itemprop="offers" itemscope itemtype="https://schema.org/Offer">
+        <meta itemprop="price" content="129000">
+        <meta itemprop="priceCurrency" content="VND">
+        <link itemprop="availability" href="https://schema.org/InStock">
+      </div>
+    </div>
+    </main></body></html>'''
+
+    def fetcher(url: str) -> FetchResult:
+        if url.endswith("/robots.txt"):
+            return FetchResult(url, 404, "text/plain", b"")
+        return FetchResult(url, 200, "text/html", body)
+
+    item = crawl_public_site("https://example.com/microdata", fetcher=fetcher, max_pages=1)[0]
+    product = next(entity for entity in item.entities if entity["kind"] == "product")
+    assert product["title"] == "Microdata product"
+    assert product["sku"] == "micro-1"
+    assert product["offers"][0]["price"] == "129000"
+    assert product["offers"][0]["currency"] == "VND"
+    assert product["extraction_method"] == "microdata"
+
+
+def test_structured_price_conflict_is_retained_instead_of_chosen_silently() -> None:
+    body = b'''<html><head><script type="application/ld+json">
+    {"@type":"Product","name":"Conflict product","offers":{"@type":"Offer","price":"100","priceCurrency":"VND"}}
+    </script></head><body><div itemscope itemtype="https://schema.org/Product">
+    <span itemprop="name">Conflict product</span><div itemprop="offers" itemscope itemtype="https://schema.org/Offer">
+    <meta itemprop="price" content="200"><meta itemprop="priceCurrency" content="VND">
+    </div></div></body></html>'''
+
+    def fetcher(url: str) -> FetchResult:
+        if url.endswith("/robots.txt"):
+            return FetchResult(url, 404, "text/plain", b"")
+        return FetchResult(url, 200, "text/html", body)
+
+    item = crawl_public_site("https://example.com/conflict", fetcher=fetcher, max_pages=1)[0]
+    product = next(entity for entity in item.entities if entity["kind"] == "product")
+    assert product["offers"][0]["price"] == "100"
+    conflicts = product["extraction_conflicts"]
+    assert any(conflict["field"] == "offers" and conflict["alternate_method"] == "microdata"
+               for conflict in conflicts)
+
+
+def test_woocommerce_style_dom_product_keeps_current_original_price_and_review_count() -> None:
+    body = '''<html><body><div class="product type-product">
+    <h1 class="product_title entry-title">Gamma Pro subscription</h1>
+    <p class="price"><del><span class="woocommerce-Price-amount amount"><bdi>499.000&nbsp;<span class="woocommerce-Price-currencySymbol">&#8363;</span></bdi></span></del>
+    <ins><span class="woocommerce-Price-amount amount"><bdi>359.000&nbsp;<span class="woocommerce-Price-currencySymbol">&#8363;</span></bdi></span></ins></p>
+    <div class="product-short-description">Public warranty and cloud storage.</div>
+    <div class="woocommerce-product-rating">5.00 dựa trên 6 đánh giá</div>
+    </div></body></html>'''.encode("utf-8")
+
+    def fetcher(url: str) -> FetchResult:
+        if url.endswith("/robots.txt"):
+            return FetchResult(url, 404, "text/plain", b"")
+        return FetchResult(url, 200, "text/html", body)
+
+    item = crawl_public_site("https://example.com/product", fetcher=fetcher, max_pages=1)[0]
+    product = next(entity for entity in item.entities if entity["kind"] == "product")
+    offer = product["offers"][0]
+    assert product["title"] == "Gamma Pro subscription"
+    assert offer["price"] == "359000"
+    assert offer["original_price"] == "499000"
+    assert offer["currency"] == "VND"
+    assert product["review_count"] == 6
+    assert product["sold_count"] is None
+
+
+def test_multiple_dom_prices_without_variant_context_are_marked_ambiguous() -> None:
+    body = '''<html><body><div class="product type-product"><h2>Unclear product</h2>
+    <p class="price"><span class="amount">100.000 ₫</span><span class="amount">200.000 ₫</span></p>
+    </div></body></html>'''.encode("utf-8")
+
+    def fetcher(url: str) -> FetchResult:
+        if url.endswith("/robots.txt"):
+            return FetchResult(url, 404, "text/plain", b"")
+        return FetchResult(url, 200, "text/html", body)
+
+    item = crawl_public_site("https://example.com/unclear", fetcher=fetcher, max_pages=1)[0]
+    product = next(entity for entity in item.entities if entity["kind"] == "product")
+    assert product["variants_truncated"] is True
+    assert product["offers"][0]["price_kind"] == "ambiguous"
+    assert product["offers"][0]["price"] is None
+
+
+def test_related_product_cards_keep_their_own_prices() -> None:
+    body = '''<html><body><section class="product related-products">
+    <h2>Gợi ý sản phẩm</h2>
+    <article class="product-small"><a href="/wink"><h3 class="woocommerce-loop-product__title">Wink Pro</h3></a>
+      <span class="price"><span class="amount">29.000 ₫</span></span></article>
+    <article class="product-small"><a href="/gamma"><h3 class="woocommerce-loop-product__title">Gamma Pro</h3></a>
+      <span class="price"><span class="amount">359.000 ₫</span></span></article>
+    </section></body></html>'''.encode("utf-8")
+
+    def fetcher(url: str) -> FetchResult:
+        if url.endswith("/robots.txt"):
+            return FetchResult(url, 404, "text/plain", b"")
+        return FetchResult(url, 200, "text/html", body)
+
+    item = crawl_public_site("https://example.com/product", fetcher=fetcher, max_pages=1)[0]
+    products = {entity["title"]: entity for entity in item.entities if entity["kind"] == "product"}
+    assert set(products) == {"Wink Pro", "Gamma Pro"}
+    assert products["Wink Pro"]["identity_url"] == "https://example.com/wink"
+    assert products["Wink Pro"]["offers"][0]["price"] == "29000"
+    assert products["Gamma Pro"]["identity_url"] == "https://example.com/gamma"
+    assert products["Gamma Pro"]["offers"][0]["price"] == "359000"
+
+
+def test_public_site_uses_sitemap_index_to_fetch_real_product_pages() -> None:
+    pages = {
+        "https://example.com/": FetchResult("https://example.com/", 200, "text/html", b"<html><main>Home</main></html>"),
+        "https://example.com/sitemap.xml": FetchResult(
+            "https://example.com/sitemap.xml", 200, "application/xml",
+            b"<sitemapindex><sitemap><loc>https://example.com/catalog.xml</loc></sitemap></sitemapindex>",
+        ),
+        "https://example.com/catalog.xml": FetchResult(
+            "https://example.com/catalog.xml", 200, "application/xml",
+            b"<urlset><url><loc>https://example.com/p1</loc></url><url><loc>https://example.com/p2?utm_source=x</loc></url></urlset>",
+        ),
+        "https://example.com/p1": FetchResult("https://example.com/p1", 200, "text/html", b'<html><script type="application/ld+json">{"@type":"Product","name":"Product One","offers":{"price":"10","priceCurrency":"USD"}}</script><main>One</main></html>'),
+        "https://example.com/p2": FetchResult("https://example.com/p2", 200, "text/html", b'<html><script type="application/ld+json">{"@type":"Product","name":"Product Two","offers":{"price":"20","priceCurrency":"USD"}}</script><main>Two</main></html>'),
+    }
+
+    def fetcher(url: str) -> FetchResult:
+        if url.endswith("/robots.txt"):
+            return FetchResult(url, 404, "text/plain", b"")
+        if url not in pages:
+            raise AssertionError(f"unexpected request: {url}")
+        return pages[url]
+
+    items = crawl_public_site("https://example.com/", fetcher=fetcher, max_pages=3)
+    products = [entity["title"] for item in items for entity in item.entities if entity["kind"] == "product"]
+    assert products == ["Product One", "Product Two"]
+    assert all("utm_source" not in item.url for item in items)
+
+
+def test_article_content_over_12000_chars_is_kept_for_structured_data() -> None:
+    article_body = "Long public article content. " * 700
+
+    def fetcher(url: str) -> FetchResult:
+        if url.endswith("/robots.txt"):
+            return FetchResult(url, 404, "text/plain", b"")
+        return FetchResult(url, 200, "text/html", f"<html><title>Long article</title><article>{article_body}</article></html>".encode())
+
+    item = crawl_public_site("https://example.com/post", fetcher=fetcher, max_pages=1)[0]
+    article = next(entity for entity in item.entities if entity["kind"] == "article")
+    assert len(article["content"]) > 12_000
+    assert article["content"] == article_body.strip()
+    assert not article["content_truncated"]
+
+
+def test_article_body_dom_overrides_short_jsonld_description() -> None:
+    article_body = "Detailed body text for readers. " * 80
+    markup = (
+        '<html><head><script type="application/ld+json">'
+        '{"@type":"Article","headline":"News","description":"Short SEO summary."}'
+        "</script></head><body><article>" + article_body + "</article></body></html>"
+    ).encode()
+
+    def fetcher(url: str) -> FetchResult:
+        if url.endswith("/robots.txt"):
+            return FetchResult(url, 404, "text/plain", b"")
+        return FetchResult(url, 200, "text/html", markup)
+
+    item = crawl_public_site("https://example.com/news", fetcher=fetcher, max_pages=1)[0]
+    article = next(entity for entity in item.entities if entity["kind"] == "article")
+    assert len(article["content"]) > len("Short SEO summary.")
+    assert article["content"] == article_body.strip()
+    assert article["field_provenance"]["content"]["method"] == "html_article"
 
 
 def test_feed_extraction_rejects_xml_entities_and_limits_to_safe_host() -> None:

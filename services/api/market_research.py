@@ -4,8 +4,11 @@ from __future__ import annotations
 
 import re
 import hashlib
+import base64
+import json
 import math
-from datetime import timedelta
+from datetime import datetime, timedelta, timezone
+from decimal import Decimal
 from urllib.parse import urlsplit
 
 from fastapi import APIRouter, Depends, Request
@@ -28,6 +31,7 @@ from database.models import (
     MetaPageConnection,
     MetaPageGroup,
     ResearchSourceMetricSnapshot,
+    WebCrawlRun, WebEntity, WebEntitySnapshot, WebOfferSnapshot,
     MetaSyncState,
     ResearchCycle,
     ResearchSource,
@@ -52,6 +56,7 @@ from .market_research_schemas import (
     ResearchReportOut,
     ResearchSourceCreate,
     ResearchSourceOut,
+    WebCrawlSettingsIn, WebCrawlRunOut, WebItemOut, WebItemsPage, WebOfferOut,
 )
 from .meta_client import MetaGraphClient, MetaGraphReadError, MetaGraphRejected, MetaGraphTokenExpired
 from .meta_tokens import TokenEncryptionUnavailable, encrypt_page_token, token_fingerprint
@@ -89,6 +94,9 @@ def _source_out(row: ResearchSource) -> ResearchSourceOut:
         url=row.url, competitor_name=row.competitor_name, status=row.status, active=row.active,
         next_due_at=row.next_due_at, last_crawled_at=row.last_crawled_at,
         error=row.error_json, connection_id=row.connection_id,
+        crawl_mode=row.crawl_mode, crawl_page_limit=row.crawl_page_limit,
+        render_mode=row.render_mode, resource_hosts=row.resource_hosts_json or [],
+        schedule_enabled=row.schedule_enabled,
     )
 
 
@@ -129,6 +137,199 @@ async def list_groups(
         page_count, source_count = await _group_counts(db, company_id, row.id)
         output.append(_group_out(row, page_count, source_count))
     return output
+
+
+def _encode_web_cursor(created_at: datetime, entity_id: str) -> str:
+    raw = json.dumps([created_at.isoformat(), entity_id], separators=(",", ":")).encode()
+    return base64.urlsafe_b64encode(raw).decode().rstrip("=")
+
+
+def _decode_web_cursor(value: str | None) -> tuple[datetime, str] | None:
+    if not value:
+        return None
+    try:
+        padded = value + "=" * (-len(value) % 4)
+        created, entity_id = json.loads(base64.urlsafe_b64decode(padded.encode()))
+        parsed = datetime.fromisoformat(created)
+        if parsed.tzinfo is None:
+            parsed = parsed.replace(tzinfo=timezone.utc)
+        if not isinstance(entity_id, str) or len(entity_id) > 36:
+            raise ValueError
+        return parsed, entity_id
+    except (ValueError, TypeError, json.JSONDecodeError):
+        raise ApiProblem(422, "invalid_cursor", "Con trỏ phân trang không hợp lệ.") from None
+
+
+def _decimal_text(value: Decimal | None) -> str | None:
+    return format(value, "f") if value is not None else None
+
+
+async def _web_item_out(db: AsyncSession, entity: WebEntity, snapshot: WebEntitySnapshot | None) -> WebItemOut:
+    offers: list[WebOfferOut] = []
+    if snapshot:
+        rows = (await db.scalars(select(WebOfferSnapshot).where(
+            WebOfferSnapshot.company_id == entity.company_id,
+            WebOfferSnapshot.entity_snapshot_id == snapshot.id,
+        ).order_by(WebOfferSnapshot.currency, WebOfferSnapshot.price, WebOfferSnapshot.id))).all()
+        offers = [WebOfferOut(
+            id=row.id, offer_key=row.offer_key, price_kind=row.price_kind,
+            price=_decimal_text(row.price), low_price=_decimal_text(row.low_price),
+            original_price=_decimal_text(row.original_price),
+            high_price=_decimal_text(row.high_price), currency=row.currency,
+            availability=row.availability, billing_unit=row.billing_unit, seller=row.seller,
+            offer_url=row.offer_url, provenance=row.provenance_json,
+        ) for row in rows]
+    return WebItemOut(
+        id=entity.id, source_id=entity.source_id, kind=entity.kind, title=entity.title,
+        url=entity.canonical_url, observed_at=snapshot.observed_at if snapshot else None,
+        data=snapshot.data_json if snapshot else None, offers=offers,
+    )
+
+
+@router.patch("/sources/{source_id}/crawl-settings", response_model=ResearchSourceOut,
+              dependencies=[Depends(require_csrf)])
+async def update_web_crawl_settings(
+    company_id: str, source_id: str, request: WebCrawlSettingsIn,
+    user: User = Depends(current_user), membership=Depends(require_permission("market:manage")),
+    db: AsyncSession = Depends(get_db),
+):
+    source = await db.scalar(select(ResearchSource).where(
+        ResearchSource.company_id == company_id, ResearchSource.id == source_id,
+        ResearchSource.source_type == "website", ResearchSource.active.is_(True),
+    ).with_for_update())
+    if source is None:
+        raise ApiProblem(404, "not_found", "Không tìm thấy nguồn website.")
+    if request.render_mode == "javascript":
+        raise ApiProblem(409, "renderer_unavailable", "Trình duyệt JavaScript chưa được bật vì môi trường hiện tại chưa xác minh được cô lập mạng ra ngoài.")
+    hosts: list[str] = []
+    for host in request.resource_hosts:
+        candidate = host.strip().rstrip(".").encode("idna").decode("ascii").lower()
+        if (not candidate or "/" in candidate or ":" in candidate or "@" in candidate
+                or candidate.startswith(".") or len(candidate) > 253):
+            raise ApiProblem(422, "invalid_resource_host", "Host tài nguyên cần là hostname riêng lẻ, không gồm scheme hoặc path.")
+        hosts.append(candidate)
+    source.crawl_mode = request.crawl_mode
+    source.crawl_page_limit = request.crawl_page_limit
+    source.render_mode = request.render_mode
+    source.resource_hosts_json = sorted(set(hosts))
+    source.schedule_enabled = request.schedule_enabled
+    source.next_due_at = (utcnow() if request.schedule_enabled else None)
+    source.updated_at = utcnow()
+    db.add(AuditEvent(company_id=company_id, actor_user_id=user.id, action="market.source.crawl_settings",
+                      entity_type="research_source", entity_id=source.id,
+                      metadata_json={"crawl_mode": source.crawl_mode, "page_limit": source.crawl_page_limit,
+                                     "render_mode": source.render_mode, "schedule_enabled": source.schedule_enabled}))
+    await db.commit()
+    return _source_out(source)
+
+
+@router.get("/sources/{source_id}/crawl-runs", response_model=list[WebCrawlRunOut])
+async def list_web_crawl_runs(
+    company_id: str, source_id: str,
+    user: User = Depends(current_user), db: AsyncSession = Depends(get_db),
+):
+    await membership_for(company_id, user, db)
+    source = await db.scalar(select(ResearchSource.id).where(
+        ResearchSource.company_id == company_id, ResearchSource.id == source_id,
+    ))
+    if source is None:
+        raise ApiProblem(404, "not_found", "Không tìm thấy nguồn website.")
+    runs = (await db.scalars(select(WebCrawlRun).where(
+        WebCrawlRun.company_id == company_id, WebCrawlRun.source_id == source_id,
+    ).order_by(WebCrawlRun.created_at.desc()).limit(50))).all()
+    return [WebCrawlRunOut(id=row.id, source_id=row.source_id, status=row.status,
+                           page_limit=row.page_limit, counters=row.counters_json or {},
+                           started_at=row.started_at, completed_at=row.completed_at,
+                           created_at=row.created_at) for row in runs]
+
+
+@router.get("/groups/{group_id}/web-items", response_model=WebItemsPage)
+async def list_group_web_items(
+    company_id: str, group_id: str, kind: str | None = None, source_id: str | None = None,
+    category: str | None = None, query: str | None = None, currency: str | None = None,
+    minimum_price: Decimal | None = None, maximum_price: Decimal | None = None,
+    limit: int = 25, cursor: str | None = None,
+    user: User = Depends(current_user), db: AsyncSession = Depends(get_db),
+):
+    await membership_for(company_id, user, db)
+    await _tenant_group(db, company_id, group_id)
+    if not 1 <= limit <= 100:
+        raise ApiProblem(422, "invalid_limit", "Giới hạn cần nằm trong khoảng 1 đến 100.")
+    if kind and kind not in {"product", "article", "business_info"}:
+        raise ApiProblem(422, "invalid_kind", "Loại mục website không hợp lệ.")
+    if (minimum_price is not None or maximum_price is not None) and not currency:
+        raise ApiProblem(422, "currency_required", "Lọc giá cần chỉ định tiền tệ; hệ thống không tự quy đổi.")
+    statement = select(WebEntity, WebEntitySnapshot).outerjoin(
+        WebEntitySnapshot,
+        (WebEntitySnapshot.company_id == WebEntity.company_id)
+        & (WebEntitySnapshot.id == WebEntity.latest_snapshot_id),
+    ).where(WebEntity.company_id == company_id, WebEntity.group_id == group_id)
+    if kind:
+        statement = statement.where(WebEntity.kind == kind)
+    if source_id:
+        statement = statement.where(WebEntity.source_id == source_id)
+    if query:
+        statement = statement.where(WebEntity.title.ilike(f"%{query[:100]}%"))
+    if category:
+        statement = statement.where(WebEntitySnapshot.data_json["category"].as_string() == category[:300])
+    if currency:
+        statement = statement.where(select(WebOfferSnapshot.id).where(
+            WebOfferSnapshot.company_id == company_id,
+            WebOfferSnapshot.entity_snapshot_id == WebEntitySnapshot.id,
+            WebOfferSnapshot.currency == currency.upper()[:8],
+            WebOfferSnapshot.price.is_not(None),
+            WebOfferSnapshot.price >= minimum_price if minimum_price is not None else True,
+            WebOfferSnapshot.price <= maximum_price if maximum_price is not None else True,
+        ).exists())
+    decoded = _decode_web_cursor(cursor)
+    if decoded:
+        created_at, entity_id = decoded
+        statement = statement.where(
+            (WebEntity.created_at < created_at)
+            | ((WebEntity.created_at == created_at) & (WebEntity.id < entity_id))
+        )
+    rows = (await db.execute(statement.order_by(WebEntity.created_at.desc(), WebEntity.id.desc()).limit(limit + 1))).all()
+    has_more = len(rows) > limit
+    rows = rows[:limit]
+    next_cursor = _encode_web_cursor(rows[-1][0].created_at, rows[-1][0].id) if has_more and rows else None
+    return WebItemsPage(items=[await _web_item_out(db, entity, snapshot) for entity, snapshot in rows],
+                         next_cursor=next_cursor)
+
+
+@router.get("/web-items/{item_id}", response_model=WebItemOut)
+async def get_web_item(
+    company_id: str, item_id: str, user: User = Depends(current_user), db: AsyncSession = Depends(get_db),
+):
+    await membership_for(company_id, user, db)
+    entity = await db.scalar(select(WebEntity).where(
+        WebEntity.company_id == company_id, WebEntity.id == item_id,
+    ))
+    if entity is None:
+        raise ApiProblem(404, "not_found", "Không tìm thấy mục website.")
+    snapshot = await db.scalar(select(WebEntitySnapshot).where(
+        WebEntitySnapshot.company_id == company_id,
+        WebEntitySnapshot.id == entity.latest_snapshot_id,
+    )) if entity.latest_snapshot_id else None
+    return await _web_item_out(db, entity, snapshot)
+
+
+@router.get("/web-items/{item_id}/snapshots", response_model=list[WebItemOut])
+async def list_web_item_snapshots(
+    company_id: str, item_id: str, limit: int = 25,
+    user: User = Depends(current_user), db: AsyncSession = Depends(get_db),
+):
+    await membership_for(company_id, user, db)
+    if not 1 <= limit <= 100:
+        raise ApiProblem(422, "invalid_limit", "Giới hạn cần nằm trong khoảng 1 đến 100.")
+    entity = await db.scalar(select(WebEntity).where(
+        WebEntity.company_id == company_id, WebEntity.id == item_id,
+    ))
+    if entity is None:
+        raise ApiProblem(404, "not_found", "Không tìm thấy mục website.")
+    snapshots = (await db.scalars(select(WebEntitySnapshot).where(
+        WebEntitySnapshot.company_id == company_id, WebEntitySnapshot.entity_id == entity.id,
+    ).order_by(WebEntitySnapshot.observed_at.desc()).limit(limit))).all()
+    return [await _web_item_out(db, entity, snapshot) for snapshot in snapshots]
 
 
 @router.post("/groups", response_model=GroupOut, status_code=201, dependencies=[Depends(require_csrf)])
@@ -382,6 +583,8 @@ async def create_source(
         connection_id=connection.id if connection else None,
         source_type=request.source_type, name=request.name, url=normalized, normalized_url=normalized,
         competitor_name=request.competitor_name, status=status, active=True,
+        crawl_mode="site_catalog" if request.source_type == "website" else "legacy",
+        crawl_page_limit=1000, render_mode="http_only", resource_hosts_json=[], schedule_enabled=True,
         next_due_at=now if status == "active" else None, created_by=user.id,
     )
     db.add(row)

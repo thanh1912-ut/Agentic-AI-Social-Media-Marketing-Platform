@@ -47,6 +47,43 @@ export interface ResearchSource {
   last_crawled_at: string | null;
   error: { code?: string; message?: string; retryable?: boolean } | null;
   connection_id: string | null;
+  crawl_mode?: 'legacy' | 'site_catalog';
+  crawl_page_limit?: number;
+  render_mode?: 'http_only' | 'javascript';
+  resource_hosts?: string[];
+  schedule_enabled?: boolean;
+}
+
+export interface WebOffer {
+  id: string;
+  offer_key: string;
+  price_kind: 'exact' | 'from' | 'range' | 'contact' | 'free' | 'unknown' | string;
+  price: string | null;
+  original_price: string | null;
+  low_price: string | null;
+  high_price: string | null;
+  currency: string | null;
+  availability: string | null;
+  billing_unit: string | null;
+  seller: string | null;
+  offer_url: string;
+  provenance: Record<string, unknown>;
+}
+
+export interface WebItem {
+  id: string;
+  source_id: string;
+  kind: 'product' | 'article' | 'business_info' | string;
+  title: string;
+  url: string;
+  observed_at: string | null;
+  data: Record<string, unknown> | null;
+  offers: WebOffer[];
+}
+
+export interface WebItemsPage {
+  items: WebItem[];
+  next_cursor: string | null;
 }
 
 export interface MarketReport {
@@ -62,6 +99,7 @@ export interface MarketReport {
       title: string;
       explanation: string;
       evidence_ids: string[];
+      web_snapshot_ids?: string[];
       confidence: number;
     }>;
     suggestions?: Array<{
@@ -70,6 +108,7 @@ export interface MarketReport {
       hook: string;
       format: string;
       evidence_ids: string[];
+      web_snapshot_ids?: string[];
     }>;
     evidence_refs?: Array<{
       id: string;
@@ -96,6 +135,7 @@ export interface MarketReport {
       message?: string;
     }>;
     ai_status?: string;
+    web_snapshot_ids?: string[];
     metrics_note?: string;
   };
   model_name: string | null;
@@ -141,6 +181,8 @@ export const marketResearchKeys = {
     ['workspaces', workspaceId, 'market-research', 'sources', groupId ?? 'all'] as const,
   reports: (workspaceId: string, groupId: string) =>
     ['workspaces', workspaceId, 'market-research', groupId, 'reports'] as const,
+  webItems: (workspaceId: string, groupId: string, kind: string) =>
+    ['workspaces', workspaceId, 'market-research', groupId, 'web-items', kind] as const,
 };
 
 export const marketResearchApi = {
@@ -167,6 +209,16 @@ export const marketResearchApi = {
     apiRequest<ResearchSource>(path(workspaceId) + '/sources', { method: 'POST', body }),
   deleteSource: (workspaceId: string, sourceId: string) =>
     apiRequest<void>(path(workspaceId) + '/sources/' + encodeURIComponent(sourceId), { method: 'DELETE' }),
+  updateCrawlSettings: (workspaceId: string, sourceId: string, body: {
+    crawl_mode: 'legacy' | 'site_catalog';
+    crawl_page_limit: number;
+    render_mode: 'http_only' | 'javascript';
+    resource_hosts: string[];
+    schedule_enabled: boolean;
+  }) => apiRequest<ResearchSource>(
+    path(workspaceId) + '/sources/' + encodeURIComponent(sourceId) + '/crawl-settings',
+    { method: 'PATCH', body },
+  ),
   importObservations: (workspaceId: string, sourceId: string, rows: ImportObservation[]) =>
     apiRequest<{ imported: number; observed_at: string }>(
       path(workspaceId) + '/sources/' + encodeURIComponent(sourceId) + '/import',
@@ -178,6 +230,10 @@ export const marketResearchApi = {
     }),
   reports: (workspaceId: string, groupId: string) =>
     apiRequest<MarketReport[]>(path(workspaceId) + '/groups/' + encodeURIComponent(groupId) + '/reports'),
+  webItems: (workspaceId: string, groupId: string, kind: string) =>
+    apiRequest<WebItemsPage>(path(workspaceId) + '/groups/' + encodeURIComponent(groupId) + '/web-items', {
+      query: { kind, limit: 100 },
+    }),
   createDraft: (workspaceId: string, reportId: string, suggestionIndex: number) =>
     apiRequest<{ campaign_id: string; message: string }>(
       path(workspaceId) + '/reports/' + encodeURIComponent(reportId) + '/draft',

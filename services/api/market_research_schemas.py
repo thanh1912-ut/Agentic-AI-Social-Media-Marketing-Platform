@@ -83,6 +83,62 @@ class ResearchSourceOut(StrictModel):
     last_crawled_at: datetime | None
     error: dict[str, Any] | None
     connection_id: str | None
+    crawl_mode: Literal["legacy", "site_catalog"] = "legacy"
+    crawl_page_limit: int = 1000
+    render_mode: Literal["http_only", "javascript"] = "http_only"
+    resource_hosts: list[str] = Field(default_factory=list)
+    schedule_enabled: bool = True
+
+
+class WebCrawlSettingsIn(StrictModel):
+    crawl_mode: Literal["legacy", "site_catalog"] = "site_catalog"
+    crawl_page_limit: int = Field(default=1000, ge=1, le=1000)
+    render_mode: Literal["http_only", "javascript"] = "http_only"
+    resource_hosts: list[str] = Field(default_factory=list, max_length=20)
+    schedule_enabled: bool = True
+
+
+class WebCrawlRunOut(StrictModel):
+    id: str
+    source_id: str
+    status: str
+    page_limit: int
+    counters: dict[str, Any]
+    started_at: datetime | None
+    completed_at: datetime | None
+    created_at: datetime
+
+
+class WebOfferOut(StrictModel):
+    id: str
+    offer_key: str
+    price_kind: str
+    price: str | None
+    original_price: str | None = None
+    low_price: str | None
+    high_price: str | None
+    currency: str | None
+    availability: str | None
+    billing_unit: str | None
+    seller: str | None
+    offer_url: str
+    provenance: dict[str, Any]
+
+
+class WebItemOut(StrictModel):
+    id: str
+    source_id: str
+    kind: str
+    title: str
+    url: str
+    observed_at: datetime | None
+    data: dict[str, Any] | None
+    offers: list[WebOfferOut] = Field(default_factory=list)
+
+
+class WebItemsPage(StrictModel):
+    items: list[WebItemOut]
+    next_cursor: str | None
 
 
 class ManualObservationIn(StrictModel):

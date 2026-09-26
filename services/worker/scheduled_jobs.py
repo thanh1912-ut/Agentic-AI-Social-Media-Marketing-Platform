@@ -31,6 +31,7 @@ async def _enqueue_due_research(db, now: datetime) -> int:
             ResearchSource.company_id == group.company_id,
             ResearchSource.group_id == group.id,
             ResearchSource.active.is_(True),
+            ResearchSource.schedule_enabled.is_(True),
             or_(
                 ResearchSource.status.in_(["active", "error"]),
                 and_(ResearchSource.source_type == "owned_facebook_page", ResearchSource.status == "needs_access"),

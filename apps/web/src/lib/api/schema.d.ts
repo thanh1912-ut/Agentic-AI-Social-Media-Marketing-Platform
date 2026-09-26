@@ -4,6 +4,74 @@
  */
 
 export interface paths {
+    readonly "/api/v1/auth/register": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get?: never;
+        readonly put?: never;
+        /** Register */
+        readonly post: operations["register_api_v1_auth_register_post"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/v1/auth/login": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get?: never;
+        readonly put?: never;
+        /** Login */
+        readonly post: operations["login_api_v1_auth_login_post"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/v1/auth/refresh": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get?: never;
+        readonly put?: never;
+        /** Refresh */
+        readonly post: operations["refresh_api_v1_auth_refresh_post"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/v1/auth/logout": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get?: never;
+        readonly put?: never;
+        /** Logout */
+        readonly post: operations["logout_api_v1_auth_logout_post"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
     readonly "/api/v1/auth/forgot-password": {
         readonly parameters: {
             readonly query?: never;
@@ -15,6 +83,23 @@ export interface paths {
         readonly put?: never;
         /** Forgot Password */
         readonly post: operations["forgot_password_api_v1_auth_forgot_password_post"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/v1/auth/reset-password": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get?: never;
+        readonly put?: never;
+        /** Reset Password */
+        readonly post: operations["reset_password_api_v1_auth_reset_password_post"];
         readonly delete?: never;
         readonly options?: never;
         readonly head?: never;
@@ -55,159 +140,6 @@ export interface paths {
         readonly patch?: never;
         readonly trace?: never;
     };
-    readonly "/api/v1/auth/login": {
-        readonly parameters: {
-            readonly query?: never;
-            readonly header?: never;
-            readonly path?: never;
-            readonly cookie?: never;
-        };
-        readonly get?: never;
-        readonly put?: never;
-        /** Login */
-        readonly post: operations["login_api_v1_auth_login_post"];
-        readonly delete?: never;
-        readonly options?: never;
-        readonly head?: never;
-        readonly patch?: never;
-        readonly trace?: never;
-    };
-    readonly "/api/v1/auth/logout": {
-        readonly parameters: {
-            readonly query?: never;
-            readonly header?: never;
-            readonly path?: never;
-            readonly cookie?: never;
-        };
-        readonly get?: never;
-        readonly put?: never;
-        /** Logout */
-        readonly post: operations["logout_api_v1_auth_logout_post"];
-        readonly delete?: never;
-        readonly options?: never;
-        readonly head?: never;
-        readonly patch?: never;
-        readonly trace?: never;
-    };
-    readonly "/api/v1/auth/refresh": {
-        readonly parameters: {
-            readonly query?: never;
-            readonly header?: never;
-            readonly path?: never;
-            readonly cookie?: never;
-        };
-        readonly get?: never;
-        readonly put?: never;
-        /** Refresh */
-        readonly post: operations["refresh_api_v1_auth_refresh_post"];
-        readonly delete?: never;
-        readonly options?: never;
-        readonly head?: never;
-        readonly patch?: never;
-        readonly trace?: never;
-    };
-    readonly "/api/v1/auth/register": {
-        readonly parameters: {
-            readonly query?: never;
-            readonly header?: never;
-            readonly path?: never;
-            readonly cookie?: never;
-        };
-        readonly get?: never;
-        readonly put?: never;
-        /** Register */
-        readonly post: operations["register_api_v1_auth_register_post"];
-        readonly delete?: never;
-        readonly options?: never;
-        readonly head?: never;
-        readonly patch?: never;
-        readonly trace?: never;
-    };
-    readonly "/api/v1/auth/reset-password": {
-        readonly parameters: {
-            readonly query?: never;
-            readonly header?: never;
-            readonly path?: never;
-            readonly cookie?: never;
-        };
-        readonly get?: never;
-        readonly put?: never;
-        /** Reset Password */
-        readonly post: operations["reset_password_api_v1_auth_reset_password_post"];
-        readonly delete?: never;
-        readonly options?: never;
-        readonly head?: never;
-        readonly patch?: never;
-        readonly trace?: never;
-    };
-    readonly "/api/v1/jobs/{job_id}": {
-        readonly parameters: {
-            readonly query?: never;
-            readonly header?: never;
-            readonly path?: never;
-            readonly cookie?: never;
-        };
-        /** Get Job */
-        readonly get: operations["get_job_api_v1_jobs__job_id__get"];
-        readonly put?: never;
-        readonly post?: never;
-        readonly delete?: never;
-        readonly options?: never;
-        readonly head?: never;
-        readonly patch?: never;
-        readonly trace?: never;
-    };
-    readonly "/api/v1/jobs/{job_id}/cancel": {
-        readonly parameters: {
-            readonly query?: never;
-            readonly header?: never;
-            readonly path?: never;
-            readonly cookie?: never;
-        };
-        readonly get?: never;
-        readonly put?: never;
-        /** Cancel Job */
-        readonly post: operations["cancel_job_api_v1_jobs__job_id__cancel_post"];
-        readonly delete?: never;
-        readonly options?: never;
-        readonly head?: never;
-        readonly patch?: never;
-        readonly trace?: never;
-    };
-    readonly "/api/v1/jobs/{job_id}/events": {
-        readonly parameters: {
-            readonly query?: never;
-            readonly header?: never;
-            readonly path?: never;
-            readonly cookie?: never;
-        };
-        /** Get Job Events */
-        readonly get: operations["get_job_events_api_v1_jobs__job_id__events_get"];
-        readonly put?: never;
-        readonly post?: never;
-        readonly delete?: never;
-        readonly options?: never;
-        readonly head?: never;
-        readonly patch?: never;
-        readonly trace?: never;
-    };
-    readonly "/api/v1/jobs/{job_id}/retry": {
-        readonly parameters: {
-            readonly query?: never;
-            readonly header?: never;
-            readonly path?: never;
-            readonly cookie?: never;
-        };
-        readonly get?: never;
-        readonly put?: never;
-        /** Retry Job */
-        readonly post: operations["retry_job_api_v1_jobs__job_id__retry_post"];
-        readonly delete?: never;
-        readonly options?: never;
-        readonly head?: never;
-        readonly patch?: never;
-        readonly trace?: never;
-    };
     readonly "/api/v1/me": {
         readonly parameters: {
             readonly query?: never;
@@ -218,23 +150,6 @@ export interface paths {
         /** Me */
         readonly get: operations["me_api_v1_me_get"];
         readonly put?: never;
-        readonly post?: never;
-        readonly delete?: never;
-        readonly options?: never;
-        readonly head?: never;
-        readonly patch?: never;
-        readonly trace?: never;
-    };
-    readonly "/api/v1/me/active-workspace": {
-        readonly parameters: {
-            readonly query?: never;
-            readonly header?: never;
-            readonly path?: never;
-            readonly cookie?: never;
-        };
-        readonly get?: never;
-        /** Select Workspace */
-        readonly put: operations["select_workspace_api_v1_me_active_workspace_put"];
         readonly post?: never;
         readonly delete?: never;
         readonly options?: never;
@@ -276,15 +191,67 @@ export interface paths {
         readonly patch?: never;
         readonly trace?: never;
     };
-    readonly "/api/v1/workspaces/{company_id}/analytics/dashboard": {
+    readonly "/api/v1/me/active-workspace": {
         readonly parameters: {
             readonly query?: never;
             readonly header?: never;
             readonly path?: never;
             readonly cookie?: never;
         };
-        /** Get Analytics Dashboard */
-        readonly get: operations["get_analytics_dashboard_api_v1_workspaces__company_id__analytics_dashboard_get"];
+        readonly get?: never;
+        /** Select Workspace */
+        readonly put: operations["select_workspace_api_v1_me_active_workspace_put"];
+        readonly post?: never;
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/v1/workspaces/{company_id}/members": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /** List Members */
+        readonly get: operations["list_members_api_v1_workspaces__company_id__members_get"];
+        readonly put?: never;
+        /** Invite Member */
+        readonly post: operations["invite_member_api_v1_workspaces__company_id__members_post"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/v1/workspaces/{company_id}/members/{member_id}/resend-invitation": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get?: never;
+        readonly put?: never;
+        /** Resend Invitation */
+        readonly post: operations["resend_invitation_api_v1_workspaces__company_id__members__member_id__resend_invitation_post"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/v1/workspaces/{company_id}/documents/limits": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /** Upload Limits */
+        readonly get: operations["upload_limits_api_v1_workspaces__company_id__documents_limits_get"];
         readonly put?: never;
         readonly post?: never;
         readonly delete?: never;
@@ -293,41 +260,43 @@ export interface paths {
         readonly patch?: never;
         readonly trace?: never;
     };
-    readonly "/api/v1/workspaces/{company_id}/analytics/recommendation": {
+    readonly "/api/v1/workspaces/{company_id}/documents": {
         readonly parameters: {
             readonly query?: never;
             readonly header?: never;
             readonly path?: never;
             readonly cookie?: never;
         };
-        /** Get Recommendation */
-        readonly get: operations["get_recommendation_api_v1_workspaces__company_id__analytics_recommendation_get"];
+        /** List Documents */
+        readonly get: operations["list_documents_api_v1_workspaces__company_id__documents_get"];
+        readonly put?: never;
+        /** Upload Documents */
+        readonly post: operations["upload_documents_api_v1_workspaces__company_id__documents_post"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/v1/workspaces/{company_id}/documents/{document_id}": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /** Get Document */
+        readonly get: operations["get_document_api_v1_workspaces__company_id__documents__document_id__get"];
         readonly put?: never;
         readonly post?: never;
-        readonly delete?: never;
+        /** Delete Document */
+        readonly delete: operations["delete_document_api_v1_workspaces__company_id__documents__document_id__delete"];
         readonly options?: never;
         readonly head?: never;
         readonly patch?: never;
         readonly trace?: never;
     };
-    readonly "/api/v1/workspaces/{company_id}/analytics/recommendation-drafts": {
-        readonly parameters: {
-            readonly query?: never;
-            readonly header?: never;
-            readonly path?: never;
-            readonly cookie?: never;
-        };
-        /** List Accepted Recommendation Drafts */
-        readonly get: operations["list_accepted_recommendation_drafts_api_v1_workspaces__company_id__analytics_recommendation_drafts_get"];
-        readonly put?: never;
-        readonly post?: never;
-        readonly delete?: never;
-        readonly options?: never;
-        readonly head?: never;
-        readonly patch?: never;
-        readonly trace?: never;
-    };
-    readonly "/api/v1/workspaces/{company_id}/analytics/recommendation-drafts/{draft_id}/decision": {
+    readonly "/api/v1/workspaces/{company_id}/documents/{document_id}/reprocess": {
         readonly parameters: {
             readonly query?: never;
             readonly header?: never;
@@ -336,33 +305,15 @@ export interface paths {
         };
         readonly get?: never;
         readonly put?: never;
-        /** Decide Recommendation Draft */
-        readonly post: operations["decide_recommendation_draft_api_v1_workspaces__company_id__analytics_recommendation_drafts__draft_id__decision_post"];
+        /** Reprocess Document */
+        readonly post: operations["reprocess_document_api_v1_workspaces__company_id__documents__document_id__reprocess_post"];
         readonly delete?: never;
         readonly options?: never;
         readonly head?: never;
         readonly patch?: never;
         readonly trace?: never;
     };
-    readonly "/api/v1/workspaces/{company_id}/analytics/recommendation-drafts/{draft_id}/outcomes": {
-        readonly parameters: {
-            readonly query?: never;
-            readonly header?: never;
-            readonly path?: never;
-            readonly cookie?: never;
-        };
-        /** List Recommendation Experiment Outcomes */
-        readonly get: operations["list_recommendation_experiment_outcomes_api_v1_workspaces__company_id__analytics_recommendation_drafts__draft_id__outcomes_get"];
-        readonly put?: never;
-        /** Record Recommendation Experiment Outcome */
-        readonly post: operations["record_recommendation_experiment_outcome_api_v1_workspaces__company_id__analytics_recommendation_drafts__draft_id__outcomes_post"];
-        readonly delete?: never;
-        readonly options?: never;
-        readonly head?: never;
-        readonly patch?: never;
-        readonly trace?: never;
-    };
-    readonly "/api/v1/workspaces/{company_id}/analytics/recommendations": {
+    readonly "/api/v1/workspaces/{company_id}/media": {
         readonly parameters: {
             readonly query?: never;
             readonly header?: never;
@@ -371,57 +322,23 @@ export interface paths {
         };
         readonly get?: never;
         readonly put?: never;
-        /** Save Recommendation */
-        readonly post: operations["save_recommendation_api_v1_workspaces__company_id__analytics_recommendations_post"];
+        /** Upload Media Asset */
+        readonly post: operations["upload_media_asset_api_v1_workspaces__company_id__media_post"];
         readonly delete?: never;
         readonly options?: never;
         readonly head?: never;
         readonly patch?: never;
         readonly trace?: never;
     };
-    readonly "/api/v1/workspaces/{company_id}/analytics/recommendations/{recommendation_id}/apply": {
+    readonly "/api/v1/workspaces/{company_id}/media/{asset_id}/content": {
         readonly parameters: {
             readonly query?: never;
             readonly header?: never;
             readonly path?: never;
             readonly cookie?: never;
         };
-        readonly get?: never;
-        readonly put?: never;
-        /** Apply Recommendation */
-        readonly post: operations["apply_recommendation_api_v1_workspaces__company_id__analytics_recommendations__recommendation_id__apply_post"];
-        readonly delete?: never;
-        readonly options?: never;
-        readonly head?: never;
-        readonly patch?: never;
-        readonly trace?: never;
-    };
-    readonly "/api/v1/workspaces/{company_id}/analytics/recommendations/{recommendation_id}/feedback": {
-        readonly parameters: {
-            readonly query?: never;
-            readonly header?: never;
-            readonly path?: never;
-            readonly cookie?: never;
-        };
-        readonly get?: never;
-        readonly put?: never;
-        /** Record Recommendation Feedback */
-        readonly post: operations["record_recommendation_feedback_api_v1_workspaces__company_id__analytics_recommendations__recommendation_id__feedback_post"];
-        readonly delete?: never;
-        readonly options?: never;
-        readonly head?: never;
-        readonly patch?: never;
-        readonly trace?: never;
-    };
-    readonly "/api/v1/workspaces/{company_id}/approvals": {
-        readonly parameters: {
-            readonly query?: never;
-            readonly header?: never;
-            readonly path?: never;
-            readonly cookie?: never;
-        };
-        /** Approval Queue */
-        readonly get: operations["approval_queue_api_v1_workspaces__company_id__approvals_get"];
+        /** Download Media Asset */
+        readonly get: operations["download_media_asset_api_v1_workspaces__company_id__media__asset_id__content_get"];
         readonly put?: never;
         readonly post?: never;
         readonly delete?: never;
@@ -535,6 +452,23 @@ export interface paths {
         readonly patch: operations["update_campaign_api_v1_workspaces__company_id__campaigns__campaign_id__patch"];
         readonly trace?: never;
     };
+    readonly "/api/v1/workspaces/{company_id}/posts": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /** List Posts */
+        readonly get: operations["list_posts_api_v1_workspaces__company_id__posts_get"];
+        readonly put?: never;
+        readonly post?: never;
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
     readonly "/api/v1/workspaces/{company_id}/campaigns/{campaign_id}/posts": {
         readonly parameters: {
             readonly query?: never;
@@ -552,33 +486,33 @@ export interface paths {
         readonly patch?: never;
         readonly trace?: never;
     };
-    readonly "/api/v1/workspaces/{company_id}/documents": {
+    readonly "/api/v1/workspaces/{company_id}/posts/{post_id}": {
         readonly parameters: {
             readonly query?: never;
             readonly header?: never;
             readonly path?: never;
             readonly cookie?: never;
         };
-        /** List Documents */
-        readonly get: operations["list_documents_api_v1_workspaces__company_id__documents_get"];
+        /** Get Post */
+        readonly get: operations["get_post_api_v1_workspaces__company_id__posts__post_id__get"];
         readonly put?: never;
-        /** Upload Documents */
-        readonly post: operations["upload_documents_api_v1_workspaces__company_id__documents_post"];
+        readonly post?: never;
         readonly delete?: never;
         readonly options?: never;
         readonly head?: never;
-        readonly patch?: never;
+        /** Update Post */
+        readonly patch: operations["update_post_api_v1_workspaces__company_id__posts__post_id__patch"];
         readonly trace?: never;
     };
-    readonly "/api/v1/workspaces/{company_id}/documents/limits": {
+    readonly "/api/v1/workspaces/{company_id}/posts/{post_id}/versions": {
         readonly parameters: {
             readonly query?: never;
             readonly header?: never;
             readonly path?: never;
             readonly cookie?: never;
         };
-        /** Upload Limits */
-        readonly get: operations["upload_limits_api_v1_workspaces__company_id__documents_limits_get"];
+        /** List Post Versions */
+        readonly get: operations["list_post_versions_api_v1_workspaces__company_id__posts__post_id__versions_get"];
         readonly put?: never;
         readonly post?: never;
         readonly delete?: never;
@@ -587,25 +521,7 @@ export interface paths {
         readonly patch?: never;
         readonly trace?: never;
     };
-    readonly "/api/v1/workspaces/{company_id}/documents/{document_id}": {
-        readonly parameters: {
-            readonly query?: never;
-            readonly header?: never;
-            readonly path?: never;
-            readonly cookie?: never;
-        };
-        /** Get Document */
-        readonly get: operations["get_document_api_v1_workspaces__company_id__documents__document_id__get"];
-        readonly put?: never;
-        readonly post?: never;
-        /** Delete Document */
-        readonly delete: operations["delete_document_api_v1_workspaces__company_id__documents__document_id__delete"];
-        readonly options?: never;
-        readonly head?: never;
-        readonly patch?: never;
-        readonly trace?: never;
-    };
-    readonly "/api/v1/workspaces/{company_id}/documents/{document_id}/reprocess": {
+    readonly "/api/v1/workspaces/{company_id}/posts/{post_id}/revise": {
         readonly parameters: {
             readonly query?: never;
             readonly header?: never;
@@ -614,8 +530,76 @@ export interface paths {
         };
         readonly get?: never;
         readonly put?: never;
-        /** Reprocess Document */
-        readonly post: operations["reprocess_document_api_v1_workspaces__company_id__documents__document_id__reprocess_post"];
+        /** Revise Post With Ai */
+        readonly post: operations["revise_post_with_ai_api_v1_workspaces__company_id__posts__post_id__revise_post"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/v1/workspaces/{company_id}/posts/{post_id}/submit-approval": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get?: never;
+        readonly put?: never;
+        /** Submit Post For Approval */
+        readonly post: operations["submit_post_for_approval_api_v1_workspaces__company_id__posts__post_id__submit_approval_post"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/v1/workspaces/{company_id}/posts/{post_id}/approval": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get?: never;
+        readonly put?: never;
+        /** Decide Post Approval */
+        readonly post: operations["decide_post_approval_api_v1_workspaces__company_id__posts__post_id__approval_post"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/v1/workspaces/{company_id}/posts/{post_id}/approvals": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /** Post Approval History */
+        readonly get: operations["post_approval_history_api_v1_workspaces__company_id__posts__post_id__approvals_get"];
+        readonly put?: never;
+        readonly post?: never;
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/v1/workspaces/{company_id}/approvals": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /** Approval Queue */
+        readonly get: operations["approval_queue_api_v1_workspaces__company_id__approvals_get"];
+        readonly put?: never;
+        readonly post?: never;
         readonly delete?: never;
         readonly options?: never;
         readonly head?: never;
@@ -673,25 +657,7 @@ export interface paths {
         readonly patch?: never;
         readonly trace?: never;
     };
-    readonly "/api/v1/workspaces/{company_id}/market-research/groups": {
-        readonly parameters: {
-            readonly query?: never;
-            readonly header?: never;
-            readonly path?: never;
-            readonly cookie?: never;
-        };
-        /** List Groups */
-        readonly get: operations["list_groups_api_v1_workspaces__company_id__market_research_groups_get"];
-        readonly put?: never;
-        /** Create Group */
-        readonly post: operations["create_group_api_v1_workspaces__company_id__market_research_groups_post"];
-        readonly delete?: never;
-        readonly options?: never;
-        readonly head?: never;
-        readonly patch?: never;
-        readonly trace?: never;
-    };
-    readonly "/api/v1/workspaces/{company_id}/market-research/groups/{group_id}": {
+    readonly "/api/v1/workspaces/{company_id}/posts/generate": {
         readonly parameters: {
             readonly query?: never;
             readonly header?: never;
@@ -700,15 +666,15 @@ export interface paths {
         };
         readonly get?: never;
         readonly put?: never;
-        readonly post?: never;
+        /** Generate Content */
+        readonly post: operations["generate_content_api_v1_workspaces__company_id__posts_generate_post"];
         readonly delete?: never;
         readonly options?: never;
         readonly head?: never;
-        /** Update Group */
-        readonly patch: operations["update_group_api_v1_workspaces__company_id__market_research_groups__group_id__patch"];
+        readonly patch?: never;
         readonly trace?: never;
     };
-    readonly "/api/v1/workspaces/{company_id}/market-research/groups/{group_id}/crawl": {
+    readonly "/api/v1/workspaces/{company_id}/metrics/import": {
         readonly parameters: {
             readonly query?: never;
             readonly header?: never;
@@ -717,41 +683,23 @@ export interface paths {
         };
         readonly get?: never;
         readonly put?: never;
-        /** Crawl Group Now */
-        readonly post: operations["crawl_group_now_api_v1_workspaces__company_id__market_research_groups__group_id__crawl_post"];
+        /** Import Metrics */
+        readonly post: operations["import_metrics_api_v1_workspaces__company_id__metrics_import_post"];
         readonly delete?: never;
         readonly options?: never;
         readonly head?: never;
         readonly patch?: never;
         readonly trace?: never;
     };
-    readonly "/api/v1/workspaces/{company_id}/market-research/groups/{group_id}/pages": {
+    readonly "/api/v1/workspaces/{company_id}/analytics/dashboard": {
         readonly parameters: {
             readonly query?: never;
             readonly header?: never;
             readonly path?: never;
             readonly cookie?: never;
         };
-        /** List Pages */
-        readonly get: operations["list_pages_api_v1_workspaces__company_id__market_research_groups__group_id__pages_get"];
-        readonly put?: never;
-        /** Connect Page */
-        readonly post: operations["connect_page_api_v1_workspaces__company_id__market_research_groups__group_id__pages_post"];
-        readonly delete?: never;
-        readonly options?: never;
-        readonly head?: never;
-        readonly patch?: never;
-        readonly trace?: never;
-    };
-    readonly "/api/v1/workspaces/{company_id}/market-research/groups/{group_id}/reports": {
-        readonly parameters: {
-            readonly query?: never;
-            readonly header?: never;
-            readonly path?: never;
-            readonly cookie?: never;
-        };
-        /** List Reports */
-        readonly get: operations["list_reports_api_v1_workspaces__company_id__market_research_groups__group_id__reports_get"];
+        /** Get Analytics Dashboard */
+        readonly get: operations["get_analytics_dashboard_api_v1_workspaces__company_id__analytics_dashboard_get"];
         readonly put?: never;
         readonly post?: never;
         readonly delete?: never;
@@ -760,15 +708,15 @@ export interface paths {
         readonly patch?: never;
         readonly trace?: never;
     };
-    readonly "/api/v1/workspaces/{company_id}/market-research/pages": {
+    readonly "/api/v1/workspaces/{company_id}/analytics/recommendation": {
         readonly parameters: {
             readonly query?: never;
             readonly header?: never;
             readonly path?: never;
             readonly cookie?: never;
         };
-        /** List All Pages */
-        readonly get: operations["list_all_pages_api_v1_workspaces__company_id__market_research_pages_get"];
+        /** Get Recommendation */
+        readonly get: operations["get_recommendation_api_v1_workspaces__company_id__analytics_recommendation_get"];
         readonly put?: never;
         readonly post?: never;
         readonly delete?: never;
@@ -777,7 +725,7 @@ export interface paths {
         readonly patch?: never;
         readonly trace?: never;
     };
-    readonly "/api/v1/workspaces/{company_id}/market-research/pages/{connection_id}": {
+    readonly "/api/v1/workspaces/{company_id}/analytics/recommendations": {
         readonly parameters: {
             readonly query?: never;
             readonly header?: never;
@@ -786,50 +734,15 @@ export interface paths {
         };
         readonly get?: never;
         readonly put?: never;
-        readonly post?: never;
-        /** Disconnect Page */
-        readonly delete: operations["disconnect_page_api_v1_workspaces__company_id__market_research_pages__connection_id__delete"];
-        readonly options?: never;
-        readonly head?: never;
-        readonly patch?: never;
-        readonly trace?: never;
-    };
-    readonly "/api/v1/workspaces/{company_id}/market-research/reports/{report_id}/draft": {
-        readonly parameters: {
-            readonly query?: never;
-            readonly header?: never;
-            readonly path?: never;
-            readonly cookie?: never;
-        };
-        readonly get?: never;
-        readonly put?: never;
-        /** Create Draft From Report */
-        readonly post: operations["create_draft_from_report_api_v1_workspaces__company_id__market_research_reports__report_id__draft_post"];
+        /** Save Recommendation */
+        readonly post: operations["save_recommendation_api_v1_workspaces__company_id__analytics_recommendations_post"];
         readonly delete?: never;
         readonly options?: never;
         readonly head?: never;
         readonly patch?: never;
         readonly trace?: never;
     };
-    readonly "/api/v1/workspaces/{company_id}/market-research/sources": {
-        readonly parameters: {
-            readonly query?: never;
-            readonly header?: never;
-            readonly path?: never;
-            readonly cookie?: never;
-        };
-        /** List Sources */
-        readonly get: operations["list_sources_api_v1_workspaces__company_id__market_research_sources_get"];
-        readonly put?: never;
-        /** Create Source */
-        readonly post: operations["create_source_api_v1_workspaces__company_id__market_research_sources_post"];
-        readonly delete?: never;
-        readonly options?: never;
-        readonly head?: never;
-        readonly patch?: never;
-        readonly trace?: never;
-    };
-    readonly "/api/v1/workspaces/{company_id}/market-research/sources/{source_id}": {
+    readonly "/api/v1/workspaces/{company_id}/analytics/recommendations/{recommendation_id}/feedback": {
         readonly parameters: {
             readonly query?: never;
             readonly header?: never;
@@ -838,15 +751,15 @@ export interface paths {
         };
         readonly get?: never;
         readonly put?: never;
-        readonly post?: never;
-        /** Delete Source */
-        readonly delete: operations["delete_source_api_v1_workspaces__company_id__market_research_sources__source_id__delete"];
+        /** Record Recommendation Feedback */
+        readonly post: operations["record_recommendation_feedback_api_v1_workspaces__company_id__analytics_recommendations__recommendation_id__feedback_post"];
+        readonly delete?: never;
         readonly options?: never;
         readonly head?: never;
         readonly patch?: never;
         readonly trace?: never;
     };
-    readonly "/api/v1/workspaces/{company_id}/market-research/sources/{source_id}/import": {
+    readonly "/api/v1/workspaces/{company_id}/analytics/recommendations/{recommendation_id}/apply": {
         readonly parameters: {
             readonly query?: never;
             readonly header?: never;
@@ -855,15 +768,15 @@ export interface paths {
         };
         readonly get?: never;
         readonly put?: never;
-        /** Import Source Observations */
-        readonly post: operations["import_source_observations_api_v1_workspaces__company_id__market_research_sources__source_id__import_post"];
+        /** Apply Recommendation */
+        readonly post: operations["apply_recommendation_api_v1_workspaces__company_id__analytics_recommendations__recommendation_id__apply_post"];
         readonly delete?: never;
         readonly options?: never;
         readonly head?: never;
         readonly patch?: never;
         readonly trace?: never;
     };
-    readonly "/api/v1/workspaces/{company_id}/media": {
+    readonly "/api/v1/workspaces/{company_id}/analytics/recommendation-drafts/{draft_id}/decision": {
         readonly parameters: {
             readonly query?: never;
             readonly header?: never;
@@ -872,23 +785,23 @@ export interface paths {
         };
         readonly get?: never;
         readonly put?: never;
-        /** Upload Media Asset */
-        readonly post: operations["upload_media_asset_api_v1_workspaces__company_id__media_post"];
+        /** Decide Recommendation Draft */
+        readonly post: operations["decide_recommendation_draft_api_v1_workspaces__company_id__analytics_recommendation_drafts__draft_id__decision_post"];
         readonly delete?: never;
         readonly options?: never;
         readonly head?: never;
         readonly patch?: never;
         readonly trace?: never;
     };
-    readonly "/api/v1/workspaces/{company_id}/media/{asset_id}/content": {
+    readonly "/api/v1/workspaces/{company_id}/analytics/recommendation-drafts": {
         readonly parameters: {
             readonly query?: never;
             readonly header?: never;
             readonly path?: never;
             readonly cookie?: never;
         };
-        /** Download Media Asset */
-        readonly get: operations["download_media_asset_api_v1_workspaces__company_id__media__asset_id__content_get"];
+        /** List Accepted Recommendation Drafts */
+        readonly get: operations["list_accepted_recommendation_drafts_api_v1_workspaces__company_id__analytics_recommendation_drafts_get"];
         readonly put?: never;
         readonly post?: never;
         readonly delete?: never;
@@ -897,25 +810,59 @@ export interface paths {
         readonly patch?: never;
         readonly trace?: never;
     };
-    readonly "/api/v1/workspaces/{company_id}/members": {
+    readonly "/api/v1/workspaces/{company_id}/analytics/recommendation-drafts/{draft_id}/outcomes": {
         readonly parameters: {
             readonly query?: never;
             readonly header?: never;
             readonly path?: never;
             readonly cookie?: never;
         };
-        /** List Members */
-        readonly get: operations["list_members_api_v1_workspaces__company_id__members_get"];
+        /** List Recommendation Experiment Outcomes */
+        readonly get: operations["list_recommendation_experiment_outcomes_api_v1_workspaces__company_id__analytics_recommendation_drafts__draft_id__outcomes_get"];
         readonly put?: never;
-        /** Invite Member */
-        readonly post: operations["invite_member_api_v1_workspaces__company_id__members_post"];
+        /** Record Recommendation Experiment Outcome */
+        readonly post: operations["record_recommendation_experiment_outcome_api_v1_workspaces__company_id__analytics_recommendation_drafts__draft_id__outcomes_post"];
         readonly delete?: never;
         readonly options?: never;
         readonly head?: never;
         readonly patch?: never;
         readonly trace?: never;
     };
-    readonly "/api/v1/workspaces/{company_id}/members/{member_id}/resend-invitation": {
+    readonly "/api/v1/jobs/{job_id}": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /** Get Job */
+        readonly get: operations["get_job_api_v1_jobs__job_id__get"];
+        readonly put?: never;
+        readonly post?: never;
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/v1/jobs/{job_id}/events": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /** Get Job Events */
+        readonly get: operations["get_job_events_api_v1_jobs__job_id__events_get"];
+        readonly put?: never;
+        readonly post?: never;
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/v1/jobs/{job_id}/cancel": {
         readonly parameters: {
             readonly query?: never;
             readonly header?: never;
@@ -924,8 +871,25 @@ export interface paths {
         };
         readonly get?: never;
         readonly put?: never;
-        /** Resend Invitation */
-        readonly post: operations["resend_invitation_api_v1_workspaces__company_id__members__member_id__resend_invitation_post"];
+        /** Cancel Job */
+        readonly post: operations["cancel_job_api_v1_jobs__job_id__cancel_post"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/v1/jobs/{job_id}/retry": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get?: never;
+        readonly put?: never;
+        /** Retry Job */
+        readonly post: operations["retry_job_api_v1_jobs__job_id__retry_post"];
         readonly delete?: never;
         readonly options?: never;
         readonly head?: never;
@@ -960,74 +924,6 @@ export interface paths {
         readonly put?: never;
         /** Verify Meta Connection */
         readonly post: operations["verify_meta_connection_api_v1_workspaces__company_id__meta_connection_verify_post"];
-        readonly delete?: never;
-        readonly options?: never;
-        readonly head?: never;
-        readonly patch?: never;
-        readonly trace?: never;
-    };
-    readonly "/api/v1/workspaces/{company_id}/meta/metrics/sync": {
-        readonly parameters: {
-            readonly query?: never;
-            readonly header?: never;
-            readonly path?: never;
-            readonly cookie?: never;
-        };
-        readonly get?: never;
-        readonly put?: never;
-        /** Sync Meta Metrics */
-        readonly post: operations["sync_meta_metrics_api_v1_workspaces__company_id__meta_metrics_sync_post"];
-        readonly delete?: never;
-        readonly options?: never;
-        readonly head?: never;
-        readonly patch?: never;
-        readonly trace?: never;
-    };
-    readonly "/api/v1/workspaces/{company_id}/meta/page-posts": {
-        readonly parameters: {
-            readonly query?: never;
-            readonly header?: never;
-            readonly path?: never;
-            readonly cookie?: never;
-        };
-        /** List Meta Page Posts */
-        readonly get: operations["list_meta_page_posts_api_v1_workspaces__company_id__meta_page_posts_get"];
-        readonly put?: never;
-        readonly post?: never;
-        readonly delete?: never;
-        readonly options?: never;
-        readonly head?: never;
-        readonly patch?: never;
-        readonly trace?: never;
-    };
-    readonly "/api/v1/workspaces/{company_id}/meta/page-posts/{post_id}/metrics": {
-        readonly parameters: {
-            readonly query?: never;
-            readonly header?: never;
-            readonly path?: never;
-            readonly cookie?: never;
-        };
-        /** List Page Post Metric History */
-        readonly get: operations["list_page_post_metric_history_api_v1_workspaces__company_id__meta_page_posts__post_id__metrics_get"];
-        readonly put?: never;
-        readonly post?: never;
-        readonly delete?: never;
-        readonly options?: never;
-        readonly head?: never;
-        readonly patch?: never;
-        readonly trace?: never;
-    };
-    readonly "/api/v1/workspaces/{company_id}/meta/pages/{connection_id}/metrics": {
-        readonly parameters: {
-            readonly query?: never;
-            readonly header?: never;
-            readonly path?: never;
-            readonly cookie?: never;
-        };
-        /** List Page Metric History */
-        readonly get: operations["list_page_metric_history_api_v1_workspaces__company_id__meta_pages__connection_id__metrics_get"];
-        readonly put?: never;
-        readonly post?: never;
         readonly delete?: never;
         readonly options?: never;
         readonly head?: never;
@@ -1069,32 +965,15 @@ export interface paths {
         readonly patch?: never;
         readonly trace?: never;
     };
-    readonly "/api/v1/workspaces/{company_id}/metrics/import": {
+    readonly "/api/v1/workspaces/{company_id}/meta/page-posts": {
         readonly parameters: {
             readonly query?: never;
             readonly header?: never;
             readonly path?: never;
             readonly cookie?: never;
         };
-        readonly get?: never;
-        readonly put?: never;
-        /** Import Metrics */
-        readonly post: operations["import_metrics_api_v1_workspaces__company_id__metrics_import_post"];
-        readonly delete?: never;
-        readonly options?: never;
-        readonly head?: never;
-        readonly patch?: never;
-        readonly trace?: never;
-    };
-    readonly "/api/v1/workspaces/{company_id}/posts": {
-        readonly parameters: {
-            readonly query?: never;
-            readonly header?: never;
-            readonly path?: never;
-            readonly cookie?: never;
-        };
-        /** List Posts */
-        readonly get: operations["list_posts_api_v1_workspaces__company_id__posts_get"];
+        /** List Meta Page Posts */
+        readonly get: operations["list_meta_page_posts_api_v1_workspaces__company_id__meta_page_posts_get"];
         readonly put?: never;
         readonly post?: never;
         readonly delete?: never;
@@ -1103,67 +982,15 @@ export interface paths {
         readonly patch?: never;
         readonly trace?: never;
     };
-    readonly "/api/v1/workspaces/{company_id}/posts/generate": {
+    readonly "/api/v1/workspaces/{company_id}/meta/pages/{connection_id}/metrics": {
         readonly parameters: {
             readonly query?: never;
             readonly header?: never;
             readonly path?: never;
             readonly cookie?: never;
         };
-        readonly get?: never;
-        readonly put?: never;
-        /** Generate Content */
-        readonly post: operations["generate_content_api_v1_workspaces__company_id__posts_generate_post"];
-        readonly delete?: never;
-        readonly options?: never;
-        readonly head?: never;
-        readonly patch?: never;
-        readonly trace?: never;
-    };
-    readonly "/api/v1/workspaces/{company_id}/posts/{post_id}": {
-        readonly parameters: {
-            readonly query?: never;
-            readonly header?: never;
-            readonly path?: never;
-            readonly cookie?: never;
-        };
-        /** Get Post */
-        readonly get: operations["get_post_api_v1_workspaces__company_id__posts__post_id__get"];
-        readonly put?: never;
-        readonly post?: never;
-        readonly delete?: never;
-        readonly options?: never;
-        readonly head?: never;
-        /** Update Post */
-        readonly patch: operations["update_post_api_v1_workspaces__company_id__posts__post_id__patch"];
-        readonly trace?: never;
-    };
-    readonly "/api/v1/workspaces/{company_id}/posts/{post_id}/approval": {
-        readonly parameters: {
-            readonly query?: never;
-            readonly header?: never;
-            readonly path?: never;
-            readonly cookie?: never;
-        };
-        readonly get?: never;
-        readonly put?: never;
-        /** Decide Post Approval */
-        readonly post: operations["decide_post_approval_api_v1_workspaces__company_id__posts__post_id__approval_post"];
-        readonly delete?: never;
-        readonly options?: never;
-        readonly head?: never;
-        readonly patch?: never;
-        readonly trace?: never;
-    };
-    readonly "/api/v1/workspaces/{company_id}/posts/{post_id}/approvals": {
-        readonly parameters: {
-            readonly query?: never;
-            readonly header?: never;
-            readonly path?: never;
-            readonly cookie?: never;
-        };
-        /** Post Approval History */
-        readonly get: operations["post_approval_history_api_v1_workspaces__company_id__posts__post_id__approvals_get"];
+        /** List Page Metric History */
+        readonly get: operations["list_page_metric_history_api_v1_workspaces__company_id__meta_pages__connection_id__metrics_get"];
         readonly put?: never;
         readonly post?: never;
         readonly delete?: never;
@@ -1172,51 +999,309 @@ export interface paths {
         readonly patch?: never;
         readonly trace?: never;
     };
-    readonly "/api/v1/workspaces/{company_id}/posts/{post_id}/revise": {
+    readonly "/api/v1/workspaces/{company_id}/meta/page-posts/{post_id}/metrics": {
         readonly parameters: {
             readonly query?: never;
             readonly header?: never;
             readonly path?: never;
             readonly cookie?: never;
         };
-        readonly get?: never;
-        readonly put?: never;
-        /** Revise Post With Ai */
-        readonly post: operations["revise_post_with_ai_api_v1_workspaces__company_id__posts__post_id__revise_post"];
-        readonly delete?: never;
-        readonly options?: never;
-        readonly head?: never;
-        readonly patch?: never;
-        readonly trace?: never;
-    };
-    readonly "/api/v1/workspaces/{company_id}/posts/{post_id}/submit-approval": {
-        readonly parameters: {
-            readonly query?: never;
-            readonly header?: never;
-            readonly path?: never;
-            readonly cookie?: never;
-        };
-        readonly get?: never;
-        readonly put?: never;
-        /** Submit Post For Approval */
-        readonly post: operations["submit_post_for_approval_api_v1_workspaces__company_id__posts__post_id__submit_approval_post"];
-        readonly delete?: never;
-        readonly options?: never;
-        readonly head?: never;
-        readonly patch?: never;
-        readonly trace?: never;
-    };
-    readonly "/api/v1/workspaces/{company_id}/posts/{post_id}/versions": {
-        readonly parameters: {
-            readonly query?: never;
-            readonly header?: never;
-            readonly path?: never;
-            readonly cookie?: never;
-        };
-        /** List Post Versions */
-        readonly get: operations["list_post_versions_api_v1_workspaces__company_id__posts__post_id__versions_get"];
+        /** List Page Post Metric History */
+        readonly get: operations["list_page_post_metric_history_api_v1_workspaces__company_id__meta_page_posts__post_id__metrics_get"];
         readonly put?: never;
         readonly post?: never;
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/v1/workspaces/{company_id}/meta/metrics/sync": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get?: never;
+        readonly put?: never;
+        /** Sync Meta Metrics */
+        readonly post: operations["sync_meta_metrics_api_v1_workspaces__company_id__meta_metrics_sync_post"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/v1/workspaces/{company_id}/market-research/groups": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /** List Groups */
+        readonly get: operations["list_groups_api_v1_workspaces__company_id__market_research_groups_get"];
+        readonly put?: never;
+        /** Create Group */
+        readonly post: operations["create_group_api_v1_workspaces__company_id__market_research_groups_post"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/v1/workspaces/{company_id}/market-research/sources/{source_id}/crawl-settings": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get?: never;
+        readonly put?: never;
+        readonly post?: never;
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        /** Update Web Crawl Settings */
+        readonly patch: operations["update_web_crawl_settings_api_v1_workspaces__company_id__market_research_sources__source_id__crawl_settings_patch"];
+        readonly trace?: never;
+    };
+    readonly "/api/v1/workspaces/{company_id}/market-research/sources/{source_id}/crawl-runs": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /** List Web Crawl Runs */
+        readonly get: operations["list_web_crawl_runs_api_v1_workspaces__company_id__market_research_sources__source_id__crawl_runs_get"];
+        readonly put?: never;
+        readonly post?: never;
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/v1/workspaces/{company_id}/market-research/groups/{group_id}/web-items": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /** List Group Web Items */
+        readonly get: operations["list_group_web_items_api_v1_workspaces__company_id__market_research_groups__group_id__web_items_get"];
+        readonly put?: never;
+        readonly post?: never;
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/v1/workspaces/{company_id}/market-research/web-items/{item_id}": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /** Get Web Item */
+        readonly get: operations["get_web_item_api_v1_workspaces__company_id__market_research_web_items__item_id__get"];
+        readonly put?: never;
+        readonly post?: never;
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/v1/workspaces/{company_id}/market-research/web-items/{item_id}/snapshots": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /** List Web Item Snapshots */
+        readonly get: operations["list_web_item_snapshots_api_v1_workspaces__company_id__market_research_web_items__item_id__snapshots_get"];
+        readonly put?: never;
+        readonly post?: never;
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/v1/workspaces/{company_id}/market-research/groups/{group_id}": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get?: never;
+        readonly put?: never;
+        readonly post?: never;
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        /** Update Group */
+        readonly patch: operations["update_group_api_v1_workspaces__company_id__market_research_groups__group_id__patch"];
+        readonly trace?: never;
+    };
+    readonly "/api/v1/workspaces/{company_id}/market-research/groups/{group_id}/pages": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /** List Pages */
+        readonly get: operations["list_pages_api_v1_workspaces__company_id__market_research_groups__group_id__pages_get"];
+        readonly put?: never;
+        /** Connect Page */
+        readonly post: operations["connect_page_api_v1_workspaces__company_id__market_research_groups__group_id__pages_post"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/v1/workspaces/{company_id}/market-research/pages": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /** List All Pages */
+        readonly get: operations["list_all_pages_api_v1_workspaces__company_id__market_research_pages_get"];
+        readonly put?: never;
+        readonly post?: never;
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/v1/workspaces/{company_id}/market-research/pages/{connection_id}": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get?: never;
+        readonly put?: never;
+        readonly post?: never;
+        /** Disconnect Page */
+        readonly delete: operations["disconnect_page_api_v1_workspaces__company_id__market_research_pages__connection_id__delete"];
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/v1/workspaces/{company_id}/market-research/sources": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /** List Sources */
+        readonly get: operations["list_sources_api_v1_workspaces__company_id__market_research_sources_get"];
+        readonly put?: never;
+        /** Create Source */
+        readonly post: operations["create_source_api_v1_workspaces__company_id__market_research_sources_post"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/v1/workspaces/{company_id}/market-research/sources/{source_id}": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get?: never;
+        readonly put?: never;
+        readonly post?: never;
+        /** Delete Source */
+        readonly delete: operations["delete_source_api_v1_workspaces__company_id__market_research_sources__source_id__delete"];
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/v1/workspaces/{company_id}/market-research/groups/{group_id}/crawl": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get?: never;
+        readonly put?: never;
+        /** Crawl Group Now */
+        readonly post: operations["crawl_group_now_api_v1_workspaces__company_id__market_research_groups__group_id__crawl_post"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/v1/workspaces/{company_id}/market-research/sources/{source_id}/import": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get?: never;
+        readonly put?: never;
+        /** Import Source Observations */
+        readonly post: operations["import_source_observations_api_v1_workspaces__company_id__market_research_sources__source_id__import_post"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/v1/workspaces/{company_id}/market-research/groups/{group_id}/reports": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /** List Reports */
+        readonly get: operations["list_reports_api_v1_workspaces__company_id__market_research_groups__group_id__reports_get"];
+        readonly put?: never;
+        readonly post?: never;
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/v1/workspaces/{company_id}/market-research/reports/{report_id}/draft": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get?: never;
+        readonly put?: never;
+        /** Create Draft From Report */
+        readonly post: operations["create_draft_from_report_api_v1_workspaces__company_id__market_research_reports__report_id__draft_post"];
         readonly delete?: never;
         readonly options?: never;
         readonly head?: never;
@@ -1268,10 +1353,10 @@ export interface components {
              * Format: email
              */
             readonly email: string;
-            /** Full Name */
-            readonly full_name?: string | null;
             /** Password */
             readonly password?: string | null;
+            /** Full Name */
+            readonly full_name?: string | null;
         };
         /** AcceptedRecommendationDraftListOut */
         readonly AcceptedRecommendationDraftListOut: {
@@ -1280,74 +1365,74 @@ export interface components {
         };
         /** AcceptedResponse */
         readonly AcceptedResponse: {
-            readonly job: components["schemas"]["JobOut"];
             /** Job Id */
             readonly job_id: string;
+            readonly job: components["schemas"]["JobOut"];
         };
         /** AnalyticsDashboardOut */
         readonly AnalyticsDashboardOut: {
-            /** Freshness At */
-            readonly freshness_at?: string | null;
+            readonly report: components["schemas"]["AnalyticsReport"];
             /** Groups */
             readonly groups: readonly components["schemas"]["MetricGroupOut"][];
-            readonly report: components["schemas"]["AnalyticsReport"];
             /** Source Id */
             readonly source_id: string;
             /** Source Label */
             readonly source_label: string;
+            /** Freshness At */
+            readonly freshness_at?: string | null;
         };
         /** AnalyticsEvidence */
         readonly AnalyticsEvidence: {
-            /** Description */
-            readonly description: string;
             /** Evidence Id */
             readonly evidence_id: string;
-            /** Metric Names */
-            readonly metric_names?: readonly string[];
+            /** Description */
+            readonly description: string;
             /** Post Ids */
             readonly post_ids?: readonly string[];
+            /** Metric Names */
+            readonly metric_names?: readonly string[];
         };
         /** AnalyticsRecommendationRecordOut */
         readonly AnalyticsRecommendationRecordOut: {
-            /**
-             * Created At
-             * Format: date-time
-             */
-            readonly created_at: string;
-            readonly feedback?: components["schemas"]["RecommendationFeedbackOut"] | null;
             /** Id */
             readonly id: string;
+            /** Source Id */
+            readonly source_id: string;
             /**
              * Lifecycle Status
              * @enum {string}
              */
             readonly lifecycle_status: "new" | "acknowledged" | "dismissed" | "applied";
             readonly recommendation: components["schemas"]["RecommendationOut"];
-            /** Source Id */
-            readonly source_id: string;
+            readonly feedback?: components["schemas"]["RecommendationFeedbackOut"] | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            readonly created_at: string;
         };
         /** AnalyticsReport */
         readonly AnalyticsReport: {
-            /** Evidence */
-            readonly evidence?: readonly components["schemas"]["AnalyticsEvidence"][];
-            /** Notes */
-            readonly notes?: readonly string[];
-            /** Observations */
-            readonly observations?: readonly components["schemas"]["MetricObservation"][];
+            /** Report Id */
+            readonly report_id: string;
             /** Page Id */
             readonly page_id: string;
-            /**
-             * Period End
-             * Format: date-time
-             */
-            readonly period_end: string;
             /**
              * Period Start
              * Format: date-time
              */
             readonly period_start: string;
-            /** Report Id */
-            readonly report_id: string;
+            /**
+             * Period End
+             * Format: date-time
+             */
+            readonly period_end: string;
+            /** Observations */
+            readonly observations?: readonly components["schemas"]["MetricObservation"][];
+            /** Evidence */
+            readonly evidence?: readonly components["schemas"]["AnalyticsEvidence"][];
+            /** Notes */
+            readonly notes?: readonly string[];
         };
         /** ApiErrorEnvelope */
         readonly ApiErrorEnvelope: {
@@ -1357,14 +1442,10 @@ export interface components {
         readonly ApiErrorOut: {
             /** Code */
             readonly code: string;
-            /** Details */
-            readonly details?: {
-                readonly [key: string]: unknown;
-            } | null;
-            /** Field Errors */
-            readonly field_errors?: readonly components["schemas"]["ApiFieldErrorOut"][];
             /** Message */
             readonly message: string;
+            /** Field Errors */
+            readonly field_errors?: readonly components["schemas"]["ApiFieldErrorOut"][];
             /** Request Id */
             readonly request_id: string;
             /**
@@ -1372,6 +1453,10 @@ export interface components {
              * @default false
              */
             readonly retryable: boolean;
+            /** Details */
+            readonly details?: {
+                readonly [key: string]: unknown;
+            } | null;
         };
         /** ApiFieldErrorOut */
         readonly ApiFieldErrorOut: {
@@ -1391,40 +1476,42 @@ export interface components {
         };
         /** ApplyRecommendationResponse */
         readonly ApplyRecommendationResponse: {
+            readonly recommendation: components["schemas"]["AnalyticsRecommendationRecordOut"];
             readonly created_draft: components["schemas"]["CampaignBriefRevisionDraftOut"];
             /** Notice */
             readonly notice: string;
-            readonly recommendation: components["schemas"]["AnalyticsRecommendationRecordOut"];
         };
         /** ApprovalRecordOut */
         readonly ApprovalRecordOut: {
-            /** Content Sha256 */
-            readonly content_sha256: string;
+            /** Id */
+            readonly id: string;
+            /** Post Id */
+            readonly post_id: string;
+            /** Version */
+            readonly version: number;
             /**
-             * Decided At
-             * Format: date-time
+             * Decision
+             * @enum {string}
              */
-            readonly decided_at: string;
+            readonly decision: "approved" | "rejected";
+            /** Reason */
+            readonly reason?: string | null;
             /** Decided By */
             readonly decided_by: string;
             /** Decided By Name */
             readonly decided_by_name: string;
             /**
-             * Decision
-             * @enum {string}
+             * Decided At
+             * Format: date-time
              */
-            readonly decision: "approved" | "rejected";
-            /** Id */
-            readonly id: string;
-            /** Post Id */
-            readonly post_id: string;
-            /** Reason */
-            readonly reason?: string | null;
-            /** Version */
-            readonly version: number;
+            readonly decided_at: string;
+            /** Content Sha256 */
+            readonly content_sha256: string;
         };
         /** ApprovalRequest */
         readonly ApprovalRequest: {
+            /** Version */
+            readonly version: number;
             /**
              * Decision
              * @enum {string}
@@ -1432,8 +1519,6 @@ export interface components {
             readonly decision: "approved" | "rejected";
             /** Reason */
             readonly reason?: string | null;
-            /** Version */
-            readonly version: number;
         };
         /** Body_upload_documents_api_v1_workspaces__company_id__documents_post */
         readonly Body_upload_documents_api_v1_workspaces__company_id__documents_post: {
@@ -1445,20 +1530,16 @@ export interface components {
         };
         /** Body_upload_media_asset_api_v1_workspaces__company_id__media_post */
         readonly Body_upload_media_asset_api_v1_workspaces__company_id__media_post: {
+            /** File */
+            readonly file: string;
             /**
              * Alt Text
              * @default
              */
             readonly alt_text: string;
-            /** File */
-            readonly file: string;
         };
         /** BrandProfileFieldOut */
         readonly BrandProfileFieldOut: {
-            /** Alternatives */
-            readonly alternatives?: readonly components["schemas"]["ProfileAlternativeOut"][];
-            /** Confidence */
-            readonly confidence?: number | null;
             /**
              * Key
              * @enum {string}
@@ -1466,52 +1547,63 @@ export interface components {
             readonly key: "business_name" | "industry" | "description" | "products" | "target_audience" | "brand_voice" | "tone_keywords" | "do_not_use" | "competitors" | "contact";
             /** Label */
             readonly label: string;
-            /** Provenance */
-            readonly provenance?: readonly components["schemas"]["ProfileProvenanceOut"][];
+            /** Value */
+            readonly value?: unknown;
             /**
              * State
              * @enum {string}
              */
             readonly state: "suggested" | "confirmed" | "edited" | "missing" | "conflict";
+            /** Confidence */
+            readonly confidence?: number | null;
+            /** Provenance */
+            readonly provenance?: readonly components["schemas"]["ProfileProvenanceOut"][];
+            /** Alternatives */
+            readonly alternatives?: readonly components["schemas"]["ProfileAlternativeOut"][];
             /** Updated At */
             readonly updated_at?: string | null;
             /** Updated By */
             readonly updated_by?: string | null;
-            /** Value */
-            readonly value?: unknown;
         };
         /** BrandProfileOut */
         readonly BrandProfileOut: {
-            readonly brand_voice: components["schemas"]["BrandProfileFieldOut"];
+            /** Id */
+            readonly id: string;
+            /** Workspace Id */
+            readonly workspace_id: string;
+            /** Version */
+            readonly version: number;
             readonly business_name: components["schemas"]["BrandProfileFieldOut"];
+            readonly industry: components["schemas"]["BrandProfileFieldOut"];
+            readonly description: components["schemas"]["BrandProfileFieldOut"];
+            readonly products: components["schemas"]["BrandProfileFieldOut"];
+            readonly target_audience: components["schemas"]["BrandProfileFieldOut"];
+            readonly brand_voice: components["schemas"]["BrandProfileFieldOut"];
+            readonly tone_keywords: components["schemas"]["BrandProfileFieldOut"];
+            readonly do_not_use: components["schemas"]["BrandProfileFieldOut"];
             readonly competitors: components["schemas"]["BrandProfileFieldOut"];
-            /** Completeness */
-            readonly completeness: number;
+            readonly contact: components["schemas"]["BrandProfileFieldOut"];
             /** Confirmed At */
             readonly confirmed_at?: string | null;
             /** Confirmed By */
             readonly confirmed_by?: string | null;
-            readonly contact: components["schemas"]["BrandProfileFieldOut"];
-            readonly description: components["schemas"]["BrandProfileFieldOut"];
-            readonly do_not_use: components["schemas"]["BrandProfileFieldOut"];
-            /** Id */
-            readonly id: string;
-            readonly industry: components["schemas"]["BrandProfileFieldOut"];
-            readonly products: components["schemas"]["BrandProfileFieldOut"];
-            readonly target_audience: components["schemas"]["BrandProfileFieldOut"];
-            readonly tone_keywords: components["schemas"]["BrandProfileFieldOut"];
+            /** Completeness */
+            readonly completeness: number;
             /**
              * Updated At
              * Format: date-time
              */
             readonly updated_at: string;
-            /** Version */
-            readonly version: number;
-            /** Workspace Id */
-            readonly workspace_id: string;
         };
         /** BrandProfileRevisionOut */
         readonly BrandProfileRevisionOut: {
+            /** Id */
+            readonly id: string;
+            /** Workspace Id */
+            readonly workspace_id: string;
+            /** Version */
+            readonly version: number;
+            readonly profile: components["schemas"]["BrandProfileOut"];
             /** Confirmed At */
             readonly confirmed_at?: string | null;
             /** Confirmed By */
@@ -1521,47 +1613,26 @@ export interface components {
              * Format: date-time
              */
             readonly created_at: string;
-            /** Id */
-            readonly id: string;
             /** Input Snapshot Id */
             readonly input_snapshot_id?: string | null;
-            readonly profile: components["schemas"]["BrandProfileOut"];
-            /** Version */
-            readonly version: number;
             /** Warnings */
             readonly warnings?: readonly string[];
-            /** Workspace Id */
-            readonly workspace_id: string;
         };
         /** CampaignBriefChangeOut */
         readonly CampaignBriefChangeOut: {
-            /** After */
-            readonly after: unknown;
-            /** Before */
-            readonly before: unknown;
             /** Field */
             readonly field: string;
             /** Label */
             readonly label: string;
+            /** Before */
+            readonly before: unknown;
+            /** After */
+            readonly after: unknown;
             /** Rationale */
             readonly rationale: string;
         };
         /** CampaignBriefIn */
         readonly CampaignBriefIn: {
-            /** Audience */
-            readonly audience: readonly string[];
-            /**
-             * End Date
-             * Format: date
-             */
-            readonly end_date: string;
-            /** Key Message */
-            readonly key_message: string;
-            readonly market_research_context?: components["schemas"]["CampaignMarketResearchContext"] | null;
-            /** Must Avoid */
-            readonly must_avoid?: readonly string[];
-            /** Must Include */
-            readonly must_include?: readonly string[];
             /**
              * Objective
              * @enum {string}
@@ -1569,29 +1640,38 @@ export interface components {
             readonly objective: "awareness" | "engagement" | "traffic" | "leads" | "sales" | "retention";
             /** Objective Note */
             readonly objective_note?: string | null;
+            /** Audience */
+            readonly audience: readonly string[];
             /** Product Ids */
             readonly product_ids?: readonly string[];
+            /** Key Message */
+            readonly key_message: string;
+            /** Must Include */
+            readonly must_include?: readonly string[];
+            /** Must Avoid */
+            readonly must_avoid?: readonly string[];
             /**
              * Start Date
              * Format: date
              */
             readonly start_date: string;
+            /**
+             * End Date
+             * Format: date
+             */
+            readonly end_date: string;
+            readonly market_research_context?: components["schemas"]["CampaignMarketResearchContext"] | null;
         };
         /** CampaignBriefRevisionDraftOut */
         readonly CampaignBriefRevisionDraftOut: {
-            /** Base Version */
-            readonly base_version: number;
-            /** Campaign Id */
-            readonly campaign_id: string;
-            /** Changes */
-            readonly changes: readonly components["schemas"]["CampaignBriefChangeOut"][];
-            /**
-             * Created At
-             * Format: date-time
-             */
-            readonly created_at: string;
             /** Id */
             readonly id: string;
+            /** Campaign Id */
+            readonly campaign_id: string;
+            /** Base Version */
+            readonly base_version: number;
+            /** Changes */
+            readonly changes: readonly components["schemas"]["CampaignBriefChangeOut"][];
             /** Source Recommendation Id */
             readonly source_recommendation_id: string;
             /**
@@ -1599,91 +1679,94 @@ export interface components {
              * @enum {string}
              */
             readonly status: "pending_review" | "accepted" | "discarded";
+            /**
+             * Created At
+             * Format: date-time
+             */
+            readonly created_at: string;
         };
         /** CampaignContentPlanIn */
         readonly CampaignContentPlanIn: {
-            /** Slots */
-            readonly slots?: readonly components["schemas"]["CampaignContentSlotIn"][];
             /**
              * Strategy Summary
              * @default
              */
             readonly strategy_summary: string;
+            /** Slots */
+            readonly slots?: readonly components["schemas"]["CampaignContentSlotIn"][];
         };
         /** CampaignContentPlanOut */
         readonly CampaignContentPlanOut: {
-            /** Slots */
-            readonly slots: readonly components["schemas"]["CampaignContentSlotOut"][];
             /** Strategy Summary */
             readonly strategy_summary: string;
+            /** Slots */
+            readonly slots: readonly components["schemas"]["CampaignContentSlotOut"][];
         };
         /** CampaignContentSlotIn */
         readonly CampaignContentSlotIn: {
-            /**
-             * Format
-             * @enum {string}
-             */
-            readonly format: "text" | "image" | "carousel" | "video" | "reel" | "story";
             /** Id */
             readonly id: string;
+            /**
+             * Scheduled Date
+             * Format: date
+             */
+            readonly scheduled_date: string;
             /**
              * Pillar
              * @enum {string}
              */
             readonly pillar: "education" | "entertainment" | "inspiration" | "promotion" | "community" | "behind_the_scenes" | "product" | "testimonial";
             /**
-             * Scheduled Date
-             * Format: date
+             * Format
+             * @enum {string}
              */
-            readonly scheduled_date: string;
+            readonly format: "text" | "image" | "carousel" | "video" | "reel" | "story";
             /** Topic */
             readonly topic: string;
         };
         /** CampaignContentSlotOut */
         readonly CampaignContentSlotOut: {
-            /**
-             * Format
-             * @enum {string}
-             */
-            readonly format: "text" | "image" | "carousel" | "video" | "reel" | "story";
-            /** Generated Post Id */
-            readonly generated_post_id?: string | null;
-            /** Generation Job Id */
-            readonly generation_job_id?: string | null;
             /** Id */
             readonly id: string;
+            /**
+             * Scheduled Date
+             * Format: date
+             */
+            readonly scheduled_date: string;
             /**
              * Pillar
              * @enum {string}
              */
             readonly pillar: "education" | "entertainment" | "inspiration" | "promotion" | "community" | "behind_the_scenes" | "product" | "testimonial";
             /**
-             * Scheduled Date
-             * Format: date
+             * Format
+             * @enum {string}
              */
-            readonly scheduled_date: string;
+            readonly format: "text" | "image" | "carousel" | "video" | "reel" | "story";
             /** Topic */
             readonly topic: string;
+            /** Generated Post Id */
+            readonly generated_post_id?: string | null;
+            /** Generation Job Id */
+            readonly generation_job_id?: string | null;
         };
         /** CampaignCreateRequest */
         readonly CampaignCreateRequest: {
-            readonly brief: components["schemas"]["CampaignBriefIn"];
-            /** Channels */
-            readonly channels?: readonly "facebook_page"[];
-            readonly content_plan?: components["schemas"]["CampaignContentPlanIn"];
-            /** Group Id */
-            readonly group_id?: string | null;
             /** Name */
             readonly name: string;
+            /** Group Id */
+            readonly group_id?: string | null;
+            readonly brief: components["schemas"]["CampaignBriefIn"];
+            readonly content_plan?: components["schemas"]["CampaignContentPlanIn"];
             /** Pillars */
             readonly pillars?: readonly ("education" | "entertainment" | "inspiration" | "promotion" | "community" | "behind_the_scenes" | "product" | "testimonial")[];
+            /** Channels */
+            readonly channels?: readonly "facebook_page"[];
         };
         /** CampaignMarketEvidenceReference */
         readonly CampaignMarketEvidenceReference: {
             /** Id */
             readonly id: string;
-            /** Published At */
-            readonly published_at?: string | null;
             /**
              * Title
              * @default
@@ -1691,16 +1774,18 @@ export interface components {
             readonly title: string;
             /** Url */
             readonly url: string;
+            /** Published At */
+            readonly published_at?: string | null;
         };
         /** CampaignMarketResearchContext */
         readonly CampaignMarketResearchContext: {
-            /** Evidence */
-            readonly evidence?: readonly components["schemas"]["CampaignMarketEvidenceReference"][];
-            /** Group Id */
-            readonly group_id: string;
             /** Report Id */
             readonly report_id: string;
+            /** Group Id */
+            readonly group_id: string;
             readonly suggestion: components["schemas"]["CampaignMarketResearchSuggestion"];
+            /** Evidence */
+            readonly evidence?: readonly components["schemas"]["CampaignMarketEvidenceReference"][];
             /**
              * Trust Level
              * @constant
@@ -1709,74 +1794,74 @@ export interface components {
         };
         /** CampaignMarketResearchSuggestion */
         readonly CampaignMarketResearchSuggestion: {
-            /** Angle */
-            readonly angle: string;
-            /** Evidence Ids */
-            readonly evidence_ids?: readonly string[];
-            /** Format */
-            readonly format: string;
-            /** Hook */
-            readonly hook: string;
             /** Title */
             readonly title: string;
+            /** Angle */
+            readonly angle: string;
+            /** Hook */
+            readonly hook: string;
+            /** Format */
+            readonly format: string;
+            /** Evidence Ids */
+            readonly evidence_ids?: readonly string[];
         };
         /** CampaignOut */
         readonly CampaignOut: {
-            /** Approved Count */
-            readonly approved_count: number;
-            /** Brief */
-            readonly brief: {
-                readonly [key: string]: unknown;
-            };
-            /** Channels */
-            readonly channels: readonly string[];
-            readonly content_plan: components["schemas"]["CampaignContentPlanOut"];
-            /**
-             * Created At
-             * Format: date-time
-             */
-            readonly created_at: string;
-            /** Created By */
-            readonly created_by: string;
-            /** Group Id */
-            readonly group_id?: string | null;
             /** Id */
             readonly id: string;
+            /** Workspace Id */
+            readonly workspace_id: string;
+            /** Group Id */
+            readonly group_id?: string | null;
             /** Name */
             readonly name: string;
-            /** Pillars */
-            readonly pillars: readonly ("education" | "entertainment" | "inspiration" | "promotion" | "community" | "behind_the_scenes" | "product" | "testimonial")[];
-            /** Post Count */
-            readonly post_count: number;
-            /** Published Count */
-            readonly published_count: number;
             /**
              * Status
              * @enum {string}
              */
             readonly status: "draft" | "active" | "completed" | "archived";
+            /** Brief */
+            readonly brief: {
+                readonly [key: string]: unknown;
+            };
+            readonly content_plan: components["schemas"]["CampaignContentPlanOut"];
+            /** Pillars */
+            readonly pillars: readonly ("education" | "entertainment" | "inspiration" | "promotion" | "community" | "behind_the_scenes" | "product" | "testimonial")[];
+            /** Channels */
+            readonly channels: readonly string[];
+            /** Version */
+            readonly version: number;
+            /** Post Count */
+            readonly post_count: number;
+            /** Approved Count */
+            readonly approved_count: number;
+            /** Published Count */
+            readonly published_count: number;
+            /** Created By */
+            readonly created_by: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            readonly created_at: string;
             /**
              * Updated At
              * Format: date-time
              */
             readonly updated_at: string;
-            /** Version */
-            readonly version: number;
-            /** Workspace Id */
-            readonly workspace_id: string;
         };
         /** CampaignUpdateRequest */
         readonly CampaignUpdateRequest: {
-            readonly brief: components["schemas"]["CampaignBriefIn"];
-            /** Channels */
-            readonly channels?: readonly "facebook_page"[];
-            readonly content_plan: components["schemas"]["CampaignContentPlanIn"];
-            /** Group Id */
-            readonly group_id?: string | null;
             /** Name */
             readonly name: string;
+            /** Group Id */
+            readonly group_id?: string | null;
+            readonly brief: components["schemas"]["CampaignBriefIn"];
+            readonly content_plan: components["schemas"]["CampaignContentPlanIn"];
             /** Pillars */
             readonly pillars?: readonly ("education" | "entertainment" | "inspiration" | "promotion" | "community" | "behind_the_scenes" | "product" | "testimonial")[];
+            /** Channels */
+            readonly channels?: readonly "facebook_page"[];
             /** Version */
             readonly version: number;
         };
@@ -1789,8 +1874,6 @@ export interface components {
         readonly CreateExportRequest: {
             /** Campaign Id */
             readonly campaign_id: string;
-            /** Columns */
-            readonly columns?: readonly string[] | null;
             /**
              * Format
              * @enum {string}
@@ -1798,36 +1881,56 @@ export interface components {
             readonly format: "csv" | "xlsx";
             /** Post Ids */
             readonly post_ids?: readonly string[] | null;
+            /** Columns */
+            readonly columns?: readonly string[] | null;
         };
         /** CreateManualPostRequest */
         readonly CreateManualPostRequest: {
-            /** Caption */
-            readonly caption: string;
+            /**
+             * Pillar
+             * @enum {string}
+             */
+            readonly pillar: "education" | "entertainment" | "inspiration" | "promotion" | "community" | "behind_the_scenes" | "product" | "testimonial";
             /**
              * Format
              * @default text
              * @enum {string}
              */
             readonly format: "text" | "image" | "carousel" | "video" | "reel" | "story";
+            /** Caption */
+            readonly caption: string;
             /** Hashtags */
             readonly hashtags?: readonly string[];
-            /**
-             * Pillar
-             * @enum {string}
-             */
-            readonly pillar: "education" | "entertainment" | "inspiration" | "promotion" | "community" | "behind_the_scenes" | "product" | "testimonial";
         };
         /** DocumentError */
         readonly DocumentError: {
             /** Code */
             readonly code: string;
-            /** Hint */
-            readonly hint?: string | null;
             /** Message */
             readonly message: string;
+            /** Hint */
+            readonly hint?: string | null;
         };
         /** DocumentOut */
         readonly DocumentOut: {
+            /** Id */
+            readonly id: string;
+            /** Workspace Id */
+            readonly workspace_id: string;
+            /** Filename */
+            readonly filename: string;
+            /** Kind */
+            readonly kind: string;
+            /** Mime Type */
+            readonly mime_type: string;
+            /** Size */
+            readonly size: number;
+            /** Status */
+            readonly status: string;
+            /** Progress */
+            readonly progress: number | null;
+            /** Job Id */
+            readonly job_id?: string | null;
             readonly error?: components["schemas"]["DocumentError"] | null;
             /** Extracted */
             readonly extracted?: {
@@ -1839,51 +1942,33 @@ export interface components {
              * @enum {string}
              */
             readonly extraction_status: "pending" | "extracted" | "metadata_only" | "failed";
-            /** Filename */
-            readonly filename: string;
-            /** Id */
-            readonly id: string;
-            /** Job Id */
-            readonly job_id?: string | null;
-            /** Kind */
-            readonly kind: string;
             /**
              * Knowledge Status
              * @default pending
              * @enum {string}
              */
             readonly knowledge_status: "pending" | "ready" | "not_available" | "failed";
-            /** Mime Type */
-            readonly mime_type: string;
-            /** Processed At */
-            readonly processed_at?: string | null;
-            /**
-             * Profile Status
-             * @default pending
-             * @enum {string}
-             */
-            readonly profile_status: "pending" | "ready" | "not_available" | "failed";
-            /** Progress */
-            readonly progress: number | null;
             /**
              * Retrieval Mode
              * @default not_available
              * @enum {string}
              */
             readonly retrieval_mode: "lexical" | "semantic_vector" | "not_available";
-            /** Size */
-            readonly size: number;
-            /** Status */
-            readonly status: string;
+            /**
+             * Profile Status
+             * @default pending
+             * @enum {string}
+             */
+            readonly profile_status: "pending" | "ready" | "not_available" | "failed";
+            /** Uploaded By */
+            readonly uploaded_by: string;
             /**
              * Uploaded At
              * Format: date-time
              */
             readonly uploaded_at: string;
-            /** Uploaded By */
-            readonly uploaded_by: string;
-            /** Workspace Id */
-            readonly workspace_id: string;
+            /** Processed At */
+            readonly processed_at?: string | null;
         };
         /** DraftFromReportIn */
         readonly DraftFromReportIn: {
@@ -1892,28 +1977,6 @@ export interface components {
         };
         /** ExperimentOutcomeCohortOut */
         readonly ExperimentOutcomeCohortOut: {
-            /** Coverage */
-            readonly coverage: number;
-            /** Evidence Id */
-            readonly evidence_id: string;
-            /**
-             * Measured From
-             * Format: date-time
-             */
-            readonly measured_from: string;
-            /**
-             * Measured To
-             * Format: date-time
-             */
-            readonly measured_to: string;
-            /** Post Ids */
-            readonly post_ids: readonly string[];
-            /** Sample Size */
-            readonly sample_size: number;
-            /** Snapshot Ids */
-            readonly snapshot_ids: readonly string[];
-            /** Value */
-            readonly value: number;
             /**
              * Window From
              * Format: date-time
@@ -1924,6 +1987,28 @@ export interface components {
              * Format: date-time
              */
             readonly window_to: string;
+            /**
+             * Measured From
+             * Format: date-time
+             */
+            readonly measured_from: string;
+            /**
+             * Measured To
+             * Format: date-time
+             */
+            readonly measured_to: string;
+            /** Value */
+            readonly value: number;
+            /** Sample Size */
+            readonly sample_size: number;
+            /** Coverage */
+            readonly coverage: number;
+            /** Evidence Id */
+            readonly evidence_id: string;
+            /** Post Ids */
+            readonly post_ids: readonly string[];
+            /** Snapshot Ids */
+            readonly snapshot_ids: readonly string[];
         };
         /** ExperimentOutcomeListOut */
         readonly ExperimentOutcomeListOut: {
@@ -1932,25 +2017,14 @@ export interface components {
         };
         /** ExperimentOutcomeOut */
         readonly ExperimentOutcomeOut: {
-            /** Absolute Change */
-            readonly absolute_change: number;
-            readonly baseline: components["schemas"]["ExperimentOutcomeCohortOut"];
-            /** Campaign Id */
-            readonly campaign_id: string;
-            /**
-             * Created At
-             * Format: date-time
-             */
-            readonly created_at: string;
-            /** Draft Id */
-            readonly draft_id: string;
-            readonly followup: components["schemas"]["ExperimentOutcomeCohortOut"];
             /** Id */
             readonly id: string;
-            /** Limitations */
-            readonly limitations: readonly string[];
-            /** Max Post Age Hours */
-            readonly max_post_age_hours: number;
+            /** Campaign Id */
+            readonly campaign_id: string;
+            /** Draft Id */
+            readonly draft_id: string;
+            /** Source Id */
+            readonly source_id: string;
             /**
              * Metric
              * @enum {string}
@@ -1958,38 +2032,49 @@ export interface components {
             readonly metric: "reach" | "views" | "engagement_rate_by_reach" | "click_rate_by_reach";
             /** Min Post Age Hours */
             readonly min_post_age_hours: number;
+            /** Max Post Age Hours */
+            readonly max_post_age_hours: number;
+            readonly baseline: components["schemas"]["ExperimentOutcomeCohortOut"];
+            readonly followup: components["schemas"]["ExperimentOutcomeCohortOut"];
+            /** Absolute Change */
+            readonly absolute_change: number;
             /** Relative Change */
             readonly relative_change: number | null;
-            /** Source Id */
-            readonly source_id: string;
-        };
-        /** ExportOut */
-        readonly ExportOut: {
-            /** Campaign Id */
-            readonly campaign_id: string;
+            /** Limitations */
+            readonly limitations: readonly string[];
             /**
              * Created At
              * Format: date-time
              */
             readonly created_at: string;
-            /** Download Url */
-            readonly download_url: string;
-            /** Filename */
-            readonly filename: string;
+        };
+        /** ExportOut */
+        readonly ExportOut: {
+            /** Id */
+            readonly id: string;
+            /** Campaign Id */
+            readonly campaign_id: string;
             /**
              * Format
              * @enum {string}
              */
             readonly format: "csv" | "xlsx";
-            /** Id */
-            readonly id: string;
-            /** Size */
-            readonly size: number;
             /**
              * Status
              * @constant
              */
             readonly status: "ready";
+            /** Download Url */
+            readonly download_url: string;
+            /** Filename */
+            readonly filename: string;
+            /** Size */
+            readonly size: number;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            readonly created_at: string;
         };
         /** ForgotPasswordRequest */
         readonly ForgotPasswordRequest: {
@@ -2012,18 +2097,18 @@ export interface components {
             readonly campaign_id: string;
             /** Count */
             readonly count: number;
-            /** End Date */
-            readonly end_date?: string | null;
-            /** Formats */
-            readonly formats?: readonly ("text" | "image" | "carousel" | "video" | "reel" | "story")[];
-            /** Instruction */
-            readonly instruction?: string | null;
-            /** Pillars */
-            readonly pillars?: readonly ("education" | "entertainment" | "inspiration" | "promotion" | "community" | "behind_the_scenes" | "product" | "testimonial")[];
             /** Slot Id */
             readonly slot_id?: string | null;
+            /** Pillars */
+            readonly pillars?: readonly ("education" | "entertainment" | "inspiration" | "promotion" | "community" | "behind_the_scenes" | "product" | "testimonial")[];
+            /** Formats */
+            readonly formats?: readonly ("text" | "image" | "carousel" | "video" | "reel" | "story")[];
             /** Start Date */
             readonly start_date?: string | null;
+            /** End Date */
+            readonly end_date?: string | null;
+            /** Instruction */
+            readonly instruction?: string | null;
         };
         /** GenerateContentResponse */
         readonly GenerateContentResponse: {
@@ -2037,65 +2122,65 @@ export interface components {
         };
         /** GroupCreate */
         readonly GroupCreate: {
+            /** Name */
+            readonly name: string;
             /** Industry */
             readonly industry: string;
-            /** Keywords */
-            readonly keywords?: readonly string[];
+            /** Region */
+            readonly region: string;
             /**
              * Locale
              * @default vi-VN
              */
             readonly locale: string;
-            /** Name */
-            readonly name: string;
-            /** Region */
-            readonly region: string;
+            /** Keywords */
+            readonly keywords?: readonly string[];
         };
         /** GroupOut */
         readonly GroupOut: {
-            /** Active */
-            readonly active: boolean;
             /** Id */
             readonly id: string;
-            /** Industry */
-            readonly industry: string;
-            /** Keywords */
-            readonly keywords: readonly string[];
-            /** Last Cycle At */
-            readonly last_cycle_at: string | null;
-            /** Locale */
-            readonly locale: string;
             /** Name */
             readonly name: string;
-            /** Next Due At */
-            readonly next_due_at: string | null;
-            /** Page Count */
-            readonly page_count: number;
+            /** Industry */
+            readonly industry: string;
             /** Region */
             readonly region: string;
+            /** Locale */
+            readonly locale: string;
+            /** Keywords */
+            readonly keywords: readonly string[];
+            /** Active */
+            readonly active: boolean;
+            /** Page Count */
+            readonly page_count: number;
             /** Source Count */
             readonly source_count: number;
+            /** Next Due At */
+            readonly next_due_at: string | null;
+            /** Last Cycle At */
+            readonly last_cycle_at: string | null;
         };
         /** GroupUpdate */
         readonly GroupUpdate: {
+            /** Name */
+            readonly name: string;
+            /** Industry */
+            readonly industry: string;
+            /** Region */
+            readonly region: string;
+            /**
+             * Locale
+             * @default vi-VN
+             */
+            readonly locale: string;
+            /** Keywords */
+            readonly keywords?: readonly string[];
             /**
              * Active
              * @default true
              */
             readonly active: boolean;
-            /** Industry */
-            readonly industry: string;
-            /** Keywords */
-            readonly keywords?: readonly string[];
-            /**
-             * Locale
-             * @default vi-VN
-             */
-            readonly locale: string;
-            /** Name */
-            readonly name: string;
-            /** Region */
-            readonly region: string;
         };
         /** HTTPValidationError */
         readonly HTTPValidationError: {
@@ -2109,18 +2194,18 @@ export interface components {
              * Format: email
              */
             readonly email: string;
-            /**
-             * Expires At
-             * Format: date-time
-             */
-            readonly expires_at: string;
+            /** Workspace Name */
+            readonly workspace_name: string;
             /**
              * Role
              * @enum {string}
              */
             readonly role: "editor" | "viewer";
-            /** Workspace Name */
-            readonly workspace_name: string;
+            /**
+             * Expires At
+             * Format: date-time
+             */
+            readonly expires_at: string;
         };
         /** InviteMemberRequest */
         readonly InviteMemberRequest: {
@@ -2137,23 +2222,23 @@ export interface components {
         };
         /** InviteMemberResponse */
         readonly InviteMemberResponse: {
-            /** Invite Url */
-            readonly invite_url?: string | null;
             readonly member: components["schemas"]["MemberOut"];
             /**
              * Outcome
              * @enum {string}
              */
             readonly outcome: "sent" | "email_failed" | "already_member" | "already_invited";
+            /** Invite Url */
+            readonly invite_url?: string | null;
         };
         /** JobErrorOut */
         readonly JobErrorOut: {
             /** Code */
             readonly code: string;
-            /** Hint */
-            readonly hint?: string | null;
             /** Message */
             readonly message: string;
+            /** Hint */
+            readonly hint?: string | null;
             /**
              * Retryable
              * @default false
@@ -2162,70 +2247,70 @@ export interface components {
         };
         /** JobEventOut */
         readonly JobEventOut: {
+            /** Id */
+            readonly id: string;
+            /** Job Id */
+            readonly job_id: string;
             /**
              * At
              * Format: date-time
              */
             readonly at: string;
-            /** Id */
-            readonly id: string;
-            /** Job Id */
-            readonly job_id: string;
+            /** Type */
+            readonly type: string;
             /** Message */
             readonly message: string;
             /** Progress */
             readonly progress?: number | null;
-            /** Type */
-            readonly type: string;
         };
         /** JobOut */
         readonly JobOut: {
-            /** Cancellable */
-            readonly cancellable: boolean;
+            /** Id */
+            readonly id: string;
+            /** Kind */
+            readonly kind: string;
+            /** Status */
+            readonly status: string;
+            /** Title */
+            readonly title: string;
+            /** Progress */
+            readonly progress: number | null;
+            /** Steps */
+            readonly steps: readonly components["schemas"]["JobStepOut"][];
+            /** Result */
+            readonly result?: {
+                readonly [key: string]: unknown;
+            } | null;
+            readonly error?: components["schemas"]["JobErrorOut"] | null;
             /**
              * Created At
              * Format: date-time
              */
             readonly created_at: string;
-            readonly error?: components["schemas"]["JobErrorOut"] | null;
-            /** Finished At */
-            readonly finished_at?: string | null;
-            /** Id */
-            readonly id: string;
-            /** Kind */
-            readonly kind: string;
-            /** Progress */
-            readonly progress: number | null;
-            /** Result */
-            readonly result?: {
-                readonly [key: string]: unknown;
-            } | null;
             /** Started At */
             readonly started_at?: string | null;
-            /** Status */
-            readonly status: string;
-            /** Steps */
-            readonly steps: readonly components["schemas"]["JobStepOut"][];
-            /** Title */
-            readonly title: string;
+            /** Finished At */
+            readonly finished_at?: string | null;
+            /** Cancellable */
+            readonly cancellable: boolean;
         };
         /** JobStepOut */
         readonly JobStepOut: {
-            readonly error?: components["schemas"]["JobErrorOut"] | null;
-            /** Finished At */
-            readonly finished_at?: string | null;
             /** Key */
             readonly key: string;
             /** Label */
             readonly label: string;
-            /** Message */
-            readonly message?: string | null;
-            /** Progress */
-            readonly progress?: number | null;
-            /** Started At */
-            readonly started_at?: string | null;
             /** Status */
             readonly status: string;
+            /** Progress */
+            readonly progress?: number | null;
+            /** Message */
+            readonly message?: string | null;
+            /** Started At */
+            readonly started_at?: string | null;
+            /** Finished At */
+            readonly finished_at?: string | null;
+            readonly error?: components["schemas"]["JobErrorOut"] | null;
         };
         /** LoginRequest */
         readonly LoginRequest: {
@@ -2239,18 +2324,18 @@ export interface components {
         };
         /** LoginResponse */
         readonly LoginResponse: {
-            /** Access Token */
-            readonly access_token: string;
+            readonly user: components["schemas"]["UserOut"];
+            /** Workspaces */
+            readonly workspaces: readonly components["schemas"]["WorkspaceOut"][];
             /** Active Workspace Id */
             readonly active_workspace_id: string | null;
+            /** Access Token */
+            readonly access_token: string;
             /**
              * Expires At
              * Format: date-time
              */
             readonly expires_at: string;
-            readonly user: components["schemas"]["UserOut"];
-            /** Workspaces */
-            readonly workspaces: readonly components["schemas"]["WorkspaceOut"][];
         };
         /** ManualImportIn */
         readonly ManualImportIn: {
@@ -2259,59 +2344,52 @@ export interface components {
         };
         /** ManualObservationIn */
         readonly ManualObservationIn: {
-            /** Comments */
-            readonly comments?: readonly string[];
-            /** Metrics */
-            readonly metrics?: {
-                readonly [key: string]: number | null;
-            };
-            /** Observed At */
-            readonly observed_at?: string | null;
-            /** Published At */
-            readonly published_at?: string | null;
-            /** Text */
-            readonly text: string;
+            /** Url */
+            readonly url: string;
             /**
              * Title
              * @default
              */
             readonly title: string;
-            /** Url */
-            readonly url: string;
+            /** Text */
+            readonly text: string;
+            /** Observed At */
+            readonly observed_at?: string | null;
+            /** Published At */
+            readonly published_at?: string | null;
+            /** Metrics */
+            readonly metrics?: {
+                readonly [key: string]: number | null;
+            };
+            /** Comments */
+            readonly comments?: readonly string[];
         };
         /** MediaAssetOut */
         readonly MediaAssetOut: {
-            /** Alt Text */
-            readonly alt_text: string;
-            /** Content Path */
-            readonly content_path: string;
-            /** Content Sha256 */
-            readonly content_sha256: string;
-            /** Filename */
-            readonly filename: string;
-            /** Height */
-            readonly height: number;
             /** Id */
             readonly id: string;
+            /** Filename */
+            readonly filename: string;
             /** Mime Type */
             readonly mime_type: string;
             /** Size Bytes */
             readonly size_bytes: number;
+            /** Content Sha256 */
+            readonly content_sha256: string;
             /** Width */
             readonly width: number;
+            /** Height */
+            readonly height: number;
+            /** Alt Text */
+            readonly alt_text: string;
+            /** Content Path */
+            readonly content_path: string;
         };
         /** MemberOut */
         readonly MemberOut: {
             /** Id */
             readonly id: string;
-            /** Invitation Expires At */
-            readonly invitation_expires_at?: string | null;
-            /** Invited By */
-            readonly invited_by?: string | null;
-            /** Invited Email */
-            readonly invited_email?: string | null;
-            /** Joined At */
-            readonly joined_at?: string | null;
+            readonly user?: components["schemas"]["UserOut"] | null;
             /**
              * Role
              * @enum {string}
@@ -2322,95 +2400,114 @@ export interface components {
              * @enum {string}
              */
             readonly status: "active" | "invited" | "suspended";
-            readonly user?: components["schemas"]["UserOut"] | null;
+            /** Invited Email */
+            readonly invited_email?: string | null;
+            /** Invited By */
+            readonly invited_by?: string | null;
+            /** Invitation Expires At */
+            readonly invitation_expires_at?: string | null;
+            /** Joined At */
+            readonly joined_at?: string | null;
         };
         /** MetaConnectionOut */
         readonly MetaConnectionOut: {
+            /**
+             * Status
+             * @enum {string}
+             */
+            readonly status: "unconfigured" | "configured" | "verified" | "error";
+            /** Page Id */
+            readonly page_id: string | null;
+            /** Page Name */
+            readonly page_name: string | null;
             /** Can Publish */
             readonly can_publish: boolean;
             /** Can Sync Metrics */
             readonly can_sync_metrics: boolean;
             /** Message */
             readonly message: string;
-            /** Page Id */
-            readonly page_id: string | null;
-            /** Page Name */
-            readonly page_name: string | null;
-            /**
-             * Status
-             * @enum {string}
-             */
-            readonly status: "unconfigured" | "configured" | "verified" | "error";
         };
         /** MetaErrorOut */
         readonly MetaErrorOut: {
             /** Code */
             readonly code: string;
-            /** Hint */
-            readonly hint?: string | null;
             /** Message */
             readonly message: string;
+            /** Hint */
+            readonly hint?: string | null;
         };
         /** MetaMetricHistoryOut */
         readonly MetaMetricHistoryOut: {
-            /** Entity Id */
-            readonly entity_id: string;
             /**
              * Entity Type
              * @enum {string}
              */
             readonly entity_type: "page" | "post";
-            /** Has More */
-            readonly has_more: boolean;
-            /** Next Offset */
-            readonly next_offset: number | null;
+            /** Entity Id */
+            readonly entity_id: string;
             /** Page Id */
             readonly page_id?: string | null;
             /** Snapshots */
             readonly snapshots: readonly components["schemas"]["MetaMetricSnapshotOut"][];
             /** Total */
             readonly total: number;
+            /** Has More */
+            readonly has_more: boolean;
+            /** Next Offset */
+            readonly next_offset: number | null;
         };
         /** MetaMetricSnapshotOut */
         readonly MetaMetricSnapshotOut: {
-            /** Comments */
-            readonly comments?: number | null;
-            /** Followers */
-            readonly followers?: number | null;
             /** Id */
             readonly id: string;
-            /** Metric Definition */
-            readonly metric_definition: string;
-            /** Missing Metrics */
-            readonly missing_metrics: readonly string[];
             /**
              * Observed At
              * Format: date-time
              */
             readonly observed_at: string;
-            /** Reactions */
-            readonly reactions?: number | null;
-            /** Shares */
-            readonly shares?: number | null;
             /** Source */
             readonly source: string;
-            /** Views */
-            readonly views?: number | null;
-            /** Window End */
-            readonly window_end?: string | null;
+            /** Metric Definition */
+            readonly metric_definition: string;
             /** Window Start */
             readonly window_start?: string | null;
+            /** Window End */
+            readonly window_end?: string | null;
+            /** Followers */
+            readonly followers?: number | null;
+            /** Views */
+            readonly views?: number | null;
+            /** Reactions */
+            readonly reactions?: number | null;
+            /** Comments */
+            readonly comments?: number | null;
+            /** Shares */
+            readonly shares?: number | null;
+            /** Missing Metrics */
+            readonly missing_metrics: readonly string[];
         };
         /** MetaPagePostOut */
         readonly MetaPagePostOut: {
-            /** Comments */
-            readonly comments: number | null;
-            /** Engagements */
-            readonly engagements: number | null;
-            /** External Post Id */
-            readonly external_post_id: string;
             /** Id */
             readonly id: string;
+            /** External Post Id */
+            readonly external_post_id: string;
+            /** Page Id */
+            readonly page_id: string;
+            /** Message */
+            readonly message: string | null;
+            /** Permalink */
+            readonly permalink: string | null;
+            /** Published At */
+            readonly published_at: string | null;
+            /** Reactions */
+            readonly reactions: number | null;
+            /** Comments */
+            readonly comments: number | null;
+            /** Shares */
+            readonly shares: number | null;
+            /** Engagements */
+            readonly engagements: number | null;
             /**
              * Last Synced At
              * Format: date-time
@@ -2418,61 +2515,49 @@ export interface components {
             readonly last_synced_at: string;
             /** Linked Post Id */
             readonly linked_post_id: string | null;
-            /** Message */
-            readonly message: string | null;
-            /** Page Id */
-            readonly page_id: string;
-            /** Permalink */
-            readonly permalink: string | null;
-            /** Published At */
-            readonly published_at: string | null;
-            /** Reactions */
-            readonly reactions: number | null;
-            /** Shares */
-            readonly shares: number | null;
         };
         /** MetaPagePostsOut */
         readonly MetaPagePostsOut: {
-            /** Has More */
-            readonly has_more: boolean;
             /** Items */
             readonly items: readonly components["schemas"]["MetaPagePostOut"][];
-            /** Last Sync At */
-            readonly last_sync_at: string | null;
+            /** Total */
+            readonly total: number;
+            /** Has More */
+            readonly has_more: boolean;
             /** Next Offset */
             readonly next_offset: number | null;
             /** Sync Has More */
             readonly sync_has_more: boolean;
-            /** Total */
-            readonly total: number;
+            /** Last Sync At */
+            readonly last_sync_at: string | null;
         };
         /** MetaPublicationOut */
         readonly MetaPublicationOut: {
-            /** Connection Id */
-            readonly connection_id?: string | null;
-            /**
-             * Created At
-             * Format: date-time
-             */
-            readonly created_at: string;
-            readonly error: components["schemas"]["MetaErrorOut"] | null;
-            /** External Post Id */
-            readonly external_post_id: string | null;
             /** Id */
             readonly id: string;
-            /** Page Id */
-            readonly page_id: string;
-            /** Permalink */
-            readonly permalink: string | null;
             /** Post Id */
             readonly post_id: string;
             /** Post Version */
             readonly post_version: number;
+            /** Page Id */
+            readonly page_id: string;
+            /** Connection Id */
+            readonly connection_id?: string | null;
             /**
              * Status
              * @enum {string}
              */
             readonly status: "queued" | "sending" | "published" | "failed" | "needs_reconnect" | "outcome_unknown" | "not_published";
+            /** External Post Id */
+            readonly external_post_id: string | null;
+            /** Permalink */
+            readonly permalink: string | null;
+            readonly error: components["schemas"]["MetaErrorOut"] | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            readonly created_at: string;
             /**
              * Updated At
              * Format: date-time
@@ -2481,49 +2566,51 @@ export interface components {
         };
         /** MetaPublishIn */
         readonly MetaPublishIn: {
-            /** Connection Id */
-            readonly connection_id?: string | null;
             /** Post Id */
             readonly post_id: string;
             /** Version */
             readonly version: number;
+            /** Connection Id */
+            readonly connection_id?: string | null;
         };
         /** MetaReconcileIn */
         readonly MetaReconcileIn: {
-            /** External Post Id */
-            readonly external_post_id?: string | null;
-            /** Note */
-            readonly note?: string | null;
             /**
              * Outcome
              * @enum {string}
              */
             readonly outcome: "published" | "not_published";
+            /** External Post Id */
+            readonly external_post_id?: string | null;
             /** Permalink */
             readonly permalink?: string | null;
+            /** Note */
+            readonly note?: string | null;
         };
         /** MetricGroupOut */
         readonly MetricGroupOut: {
-            /** Average Reach */
-            readonly average_reach?: number | null;
-            /** Average Views */
-            readonly average_views?: number | null;
-            /** Click Rate By Reach */
-            readonly click_rate_by_reach?: number | null;
             /**
              * Dimension
              * @enum {string}
              */
             readonly dimension: "pillar" | "format";
-            /** Engagement Rate By Reach */
-            readonly engagement_rate_by_reach?: number | null;
             /** Name */
             readonly name: string;
             /** Post Count */
             readonly post_count: number;
+            /** Average Reach */
+            readonly average_reach?: number | null;
+            /** Average Views */
+            readonly average_views?: number | null;
+            /** Engagement Rate By Reach */
+            readonly engagement_rate_by_reach?: number | null;
+            /** Click Rate By Reach */
+            readonly click_rate_by_reach?: number | null;
         };
         /** MetricImportRequest */
         readonly MetricImportRequest: {
+            /** Source Id */
+            readonly source_id: string;
             /**
              * Measured At
              * Format: date-time
@@ -2531,11 +2618,11 @@ export interface components {
             readonly measured_at: string;
             /** Points */
             readonly points: readonly components["schemas"]["MetricPointIn"][];
-            /** Source Id */
-            readonly source_id: string;
         };
         /** MetricImportResponse */
         readonly MetricImportResponse: {
+            /** Source Id */
+            readonly source_id: string;
             /** Imported Count */
             readonly imported_count: number;
             /**
@@ -2545,15 +2632,21 @@ export interface components {
             readonly measured_at: string;
             /** Snapshot Fingerprint */
             readonly snapshot_fingerprint: string;
-            /** Source Id */
-            readonly source_id: string;
         };
         /** MetricObservation */
         readonly MetricObservation: {
-            /** Coverage */
-            readonly coverage: number;
+            /** Metric */
+            readonly metric: string;
+            /** Value */
+            readonly value?: number | null;
+            /** Numerator */
+            readonly numerator?: number | null;
             /** Denominator */
             readonly denominator?: number | null;
+            /** Sample Size */
+            readonly sample_size: number;
+            /** Coverage */
+            readonly coverage: number;
             /**
              * Measured From
              * Format: date-time
@@ -2564,19 +2657,25 @@ export interface components {
              * Format: date-time
              */
             readonly measured_to: string;
-            /** Metric */
-            readonly metric: string;
-            /** Numerator */
-            readonly numerator?: number | null;
-            /** Sample Size */
-            readonly sample_size: number;
             /** Unavailable Reason */
             readonly unavailable_reason?: string | null;
-            /** Value */
-            readonly value?: number | null;
         };
         /** MetricPointIn */
         readonly MetricPointIn: {
+            /** Post Id */
+            readonly post_id: string;
+            /** Post Age Hours */
+            readonly post_age_hours: number;
+            /** Reach */
+            readonly reach?: number | null;
+            /** Views */
+            readonly views?: number | null;
+            /** Engagements */
+            readonly engagements?: number | null;
+            /** Clicks */
+            readonly clicks?: number | null;
+            /** Spend */
+            readonly spend?: number | null;
             /** Attributed Revenue */
             readonly attributed_revenue?: number | null;
             /**
@@ -2584,38 +2683,20 @@ export interface components {
              * @default false
              */
             readonly attribution_valid: boolean;
-            /** Clicks */
-            readonly clicks?: number | null;
-            /** Engagements */
-            readonly engagements?: number | null;
-            /** Post Age Hours */
-            readonly post_age_hours: number;
-            /** Post Id */
-            readonly post_id: string;
-            /** Reach */
-            readonly reach?: number | null;
-            /** Spend */
-            readonly spend?: number | null;
-            /** Views */
-            readonly views?: number | null;
         };
         /** PageConnectIn */
         readonly PageConnectIn: {
-            /** Page Access Token */
-            readonly page_access_token: string;
             /** Page Id */
             readonly page_id: string;
+            /** Page Access Token */
+            readonly page_access_token: string;
         };
         /** PageConnectionOut */
         readonly PageConnectionOut: {
-            /** Active */
-            readonly active: boolean;
-            /** Group Id */
-            readonly group_id: string;
             /** Id */
             readonly id: string;
-            /** Last Error Code */
-            readonly last_error_code: string | null;
+            /** Group Id */
+            readonly group_id: string;
             /** Page Id */
             readonly page_id: string;
             /** Page Name */
@@ -2627,137 +2708,141 @@ export interface components {
             readonly status: "configured" | "verified" | "error" | "needs_reconnect";
             /** Verified At */
             readonly verified_at: string | null;
+            /** Last Error Code */
+            readonly last_error_code: string | null;
+            /** Active */
+            readonly active: boolean;
         };
         /** PaginatedCampaigns */
         readonly PaginatedCampaigns: {
             /** Items */
             readonly items: readonly components["schemas"]["CampaignOut"][];
+            /** Total */
+            readonly total: number;
             /** Page */
             readonly page: number;
             /** Page Size */
             readonly page_size: number;
-            /** Total */
-            readonly total: number;
         };
         /** PaginatedPosts */
         readonly PaginatedPosts: {
             /** Items */
             readonly items: readonly components["schemas"]["PostOut"][];
+            /** Total */
+            readonly total: number;
             /** Page */
             readonly page: number;
             /** Page Size */
             readonly page_size: number;
-            /** Total */
-            readonly total: number;
         };
         /** PostMediaAttachmentIn */
         readonly PostMediaAttachmentIn: {
+            /** Asset Id */
+            readonly asset_id: string;
             /**
              * Alt Text
              * @default
              */
             readonly alt_text: string;
-            /** Asset Id */
-            readonly asset_id: string;
         };
         /** PostOut */
         readonly PostOut: {
-            /** Campaign Id */
-            readonly campaign_id: string;
-            /** Channel */
-            readonly channel: string;
-            /**
-             * Created At
-             * Format: date-time
-             */
-            readonly created_at: string;
-            /** Current */
-            readonly current: {
-                readonly [key: string]: unknown;
-            };
-            /** Format */
-            readonly format: string;
             /** Id */
             readonly id: string;
+            /** Campaign Id */
+            readonly campaign_id: string;
+            /** Workspace Id */
+            readonly workspace_id: string;
+            /** Channel */
+            readonly channel: string;
             /** Pillar */
             readonly pillar: string;
-            /** Publish Mode */
-            readonly publish_mode?: ("now" | "scheduled" | "manual") | null;
-            /** Rejection Reason */
-            readonly rejection_reason?: string | null;
-            /** Requires Reapproval */
-            readonly requires_reapproval: boolean;
-            /** Scheduled At */
-            readonly scheduled_at?: string | null;
+            /** Format */
+            readonly format: string;
             /**
              * Status
              * @enum {string}
              */
             readonly status: "draft" | "needs_review" | "approved" | "rejected" | "scheduled" | "published" | "failed";
-            /**
-             * Updated At
-             * Format: date-time
-             */
-            readonly updated_at: string;
             /** Version */
             readonly version: number;
-            /** Workspace Id */
-            readonly workspace_id: string;
-        };
-        /** PostVersionListOut */
-        readonly PostVersionListOut: {
-            /** Current Version */
-            readonly current_version: number;
-            /** Pending Approval Version */
-            readonly pending_approval_version?: number | null;
-            /** Post Id */
-            readonly post_id: string;
-            /** Versions */
-            readonly versions: readonly components["schemas"]["PostVersionOut"][];
-        };
-        /** PostVersionOut */
-        readonly PostVersionOut: {
-            /** Approved At */
-            readonly approved_at?: string | null;
-            /** Approved By */
-            readonly approved_by?: string | null;
-            /** Caption */
-            readonly caption: string;
+            /** Current */
+            readonly current: {
+                readonly [key: string]: unknown;
+            };
+            /** Scheduled At */
+            readonly scheduled_at?: string | null;
+            /** Publish Mode */
+            readonly publish_mode?: ("now" | "scheduled" | "manual") | null;
+            /** Requires Reapproval */
+            readonly requires_reapproval: boolean;
+            /** Rejection Reason */
+            readonly rejection_reason?: string | null;
             /**
              * Created At
              * Format: date-time
              */
             readonly created_at: string;
-            /** Created By */
-            readonly created_by: string;
-            /** Created By Name */
-            readonly created_by_name: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            readonly updated_at: string;
+        };
+        /** PostVersionListOut */
+        readonly PostVersionListOut: {
+            /** Post Id */
+            readonly post_id: string;
+            /** Versions */
+            readonly versions: readonly components["schemas"]["PostVersionOut"][];
+            /** Current Version */
+            readonly current_version: number;
+            /** Pending Approval Version */
+            readonly pending_approval_version?: number | null;
+        };
+        /** PostVersionOut */
+        readonly PostVersionOut: {
+            /** Version */
+            readonly version: number;
+            /** Caption */
+            readonly caption: string;
             /** Hashtags */
             readonly hashtags: readonly string[];
             /** Media */
             readonly media: readonly {
                 readonly [key: string]: unknown;
             }[];
+            /**
+             * Source
+             * @enum {string}
+             */
+            readonly source: "human" | "ai_generated" | "ai_revised" | "imported";
+            /** Created By */
+            readonly created_by: string;
+            /** Created By Name */
+            readonly created_by_name: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            readonly created_at: string;
             /** Note */
             readonly note?: string | null;
             /** Review */
             readonly review?: {
                 readonly [key: string]: unknown;
             } | null;
-            /**
-             * Source
-             * @enum {string}
-             */
-            readonly source: "human" | "ai_generated" | "ai_revised" | "imported";
-            /** Version */
-            readonly version: number;
+            /** Approved At */
+            readonly approved_at?: string | null;
+            /** Approved By */
+            readonly approved_by?: string | null;
         };
         /** ProfileAlternativeOut */
         readonly ProfileAlternativeOut: {
-            /** Provenance */
-            readonly provenance?: readonly components["schemas"]["ProfileProvenanceOut"][];
             /** Value */
             readonly value: unknown;
+            /** Provenance */
+            readonly provenance?: readonly components["schemas"]["ProfileProvenanceOut"][];
         };
         /** ProfileFieldUpdate */
         readonly ProfileFieldUpdate: {
@@ -2771,22 +2856,22 @@ export interface components {
         };
         /** ProfileProvenanceOut */
         readonly ProfileProvenanceOut: {
-            /** Char End */
-            readonly char_end?: number | null;
-            /** Char Start */
-            readonly char_start?: number | null;
             /** Document Id */
             readonly document_id: string;
             /** Document Name */
             readonly document_name: string;
             /** Page */
             readonly page?: number | null;
-            /** Quote */
-            readonly quote: string;
-            /** Row */
-            readonly row?: number | null;
             /** Sheet */
             readonly sheet?: string | null;
+            /** Row */
+            readonly row?: number | null;
+            /** Quote */
+            readonly quote: string;
+            /** Char Start */
+            readonly char_start?: number | null;
+            /** Char End */
+            readonly char_end?: number | null;
         };
         /** RecommendationDraftDecisionRequest */
         readonly RecommendationDraftDecisionRequest: {
@@ -2799,63 +2884,70 @@ export interface components {
         /** RecommendationFeedbackOut */
         readonly RecommendationFeedbackOut: {
             /**
+             * Value
+             * @enum {string}
+             */
+            readonly value: "useful" | "not_useful" | "already_done";
+            /** Note */
+            readonly note?: string | null;
+            /**
              * At
              * Format: date-time
              */
             readonly at: string;
             /** By */
             readonly by: string;
-            /** Note */
-            readonly note?: string | null;
-            /**
-             * Value
-             * @enum {string}
-             */
-            readonly value: "useful" | "not_useful" | "already_done";
         };
         /** RecommendationFeedbackRequest */
         readonly RecommendationFeedbackRequest: {
-            /** Note */
-            readonly note?: string | null;
             /**
              * Value
              * @enum {string}
              */
             readonly value: "useful" | "not_useful" | "already_done";
+            /** Note */
+            readonly note?: string | null;
         };
         /** RecommendationOut */
         readonly RecommendationOut: {
-            /** Action */
-            readonly action?: string | null;
-            /** Confidence */
-            readonly confidence: number;
-            /**
-             * Created At
-             * Format: date-time
-             */
-            readonly created_at: string;
-            /** Evidence Ids */
-            readonly evidence_ids?: readonly string[];
-            /** Hypothesis */
-            readonly hypothesis?: string | null;
-            /** Limitations */
-            readonly limitations: readonly string[];
-            /** Metric */
-            readonly metric: string;
-            /** Observation */
-            readonly observation: string;
-            /** Sample Size */
-            readonly sample_size: number;
             /**
              * Status
              * @enum {string}
              */
             readonly status: "abstain" | "proposed";
+            /** Observation */
+            readonly observation: string;
+            /** Hypothesis */
+            readonly hypothesis?: string | null;
+            /** Action */
+            readonly action?: string | null;
+            /** Metric */
+            readonly metric: string;
             /** Threshold */
             readonly threshold?: string | null;
+            /** Confidence */
+            readonly confidence: number;
+            /** Sample Size */
+            readonly sample_size: number;
+            /** Evidence Ids */
+            readonly evidence_ids?: readonly string[];
+            /** Limitations */
+            readonly limitations: readonly string[];
+            /**
+             * Created At
+             * Format: date-time
+             */
+            readonly created_at: string;
         };
         /** RecordExperimentOutcomeRequest */
         readonly RecordExperimentOutcomeRequest: {
+            /** Source Id */
+            readonly source_id: string;
+            /**
+             * Metric
+             * @enum {string}
+             */
+            readonly metric: "reach" | "views" | "engagement_rate_by_reach" | "click_rate_by_reach";
             /**
              * Baseline Window From
              * Format: date-time
@@ -2876,129 +2968,146 @@ export interface components {
              * Format: date-time
              */
             readonly followup_window_to: string;
-            /** Max Post Age Hours */
-            readonly max_post_age_hours: number;
-            /**
-             * Metric
-             * @enum {string}
-             */
-            readonly metric: "reach" | "views" | "engagement_rate_by_reach" | "click_rate_by_reach";
             /** Min Post Age Hours */
             readonly min_post_age_hours: number;
-            /** Source Id */
-            readonly source_id: string;
+            /** Max Post Age Hours */
+            readonly max_post_age_hours: number;
         };
         /** RegisterRequest */
         readonly RegisterRequest: {
-            /** Company Name */
-            readonly company_name: string;
             /**
              * Email
              * Format: email
              */
             readonly email: string;
-            /** Full Name */
-            readonly full_name: string;
-            /** Industry */
-            readonly industry?: string | null;
             /** Password */
             readonly password: string;
+            /** Full Name */
+            readonly full_name: string;
+            /** Company Name */
+            readonly company_name: string;
+            /** Industry */
+            readonly industry?: string | null;
         };
         /** ResearchReportOut */
         readonly ResearchReportOut: {
-            /** Coverage */
-            readonly coverage: {
-                readonly [key: string]: unknown;
-            };
-            /**
-             * Created At
-             * Format: date-time
-             */
-            readonly created_at: string;
-            /** Evidence Ids */
-            readonly evidence_ids: readonly string[];
-            /** Evidence Refs */
-            readonly evidence_refs?: readonly {
-                readonly [key: string]: unknown;
-            }[];
-            /** Group Id */
-            readonly group_id: string;
             /** Id */
             readonly id: string;
-            /** Model Name */
-            readonly model_name: string | null;
-            /** Report */
-            readonly report: {
-                readonly [key: string]: unknown;
-            };
-            /** Source Audience */
-            readonly source_audience?: readonly {
-                readonly [key: string]: unknown;
-            }[];
-            /**
-             * Window End
-             * Format: date-time
-             */
-            readonly window_end: string;
+            /** Group Id */
+            readonly group_id: string;
             /**
              * Window Start
              * Format: date-time
              */
             readonly window_start: string;
+            /**
+             * Window End
+             * Format: date-time
+             */
+            readonly window_end: string;
+            /** Report */
+            readonly report: {
+                readonly [key: string]: unknown;
+            };
+            /** Evidence Ids */
+            readonly evidence_ids: readonly string[];
+            /** Coverage */
+            readonly coverage: {
+                readonly [key: string]: unknown;
+            };
+            /** Model Name */
+            readonly model_name: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            readonly created_at: string;
+            /** Evidence Refs */
+            readonly evidence_refs?: readonly {
+                readonly [key: string]: unknown;
+            }[];
+            /** Source Audience */
+            readonly source_audience?: readonly {
+                readonly [key: string]: unknown;
+            }[];
         };
         /** ResearchSourceCreate */
         readonly ResearchSourceCreate: {
-            /** Competitor Name */
-            readonly competitor_name?: string | null;
-            /** Connection Id */
-            readonly connection_id?: string | null;
             /** Group Id */
             readonly group_id: string;
-            /** Name */
-            readonly name: string;
             /**
              * Source Type
              * @enum {string}
              */
             readonly source_type: "website" | "owned_facebook_page" | "competitor_facebook_page" | "facebook_group";
+            /** Name */
+            readonly name: string;
             /** Url */
             readonly url: string;
+            /** Competitor Name */
+            readonly competitor_name?: string | null;
+            /** Connection Id */
+            readonly connection_id?: string | null;
         };
         /** ResearchSourceOut */
         readonly ResearchSourceOut: {
-            /** Active */
-            readonly active: boolean;
+            /** Id */
+            readonly id: string;
+            /** Group Id */
+            readonly group_id: string;
+            /** Source Type */
+            readonly source_type: string;
+            /** Name */
+            readonly name: string;
+            /** Url */
+            readonly url: string;
             /** Competitor Name */
             readonly competitor_name: string | null;
-            /** Connection Id */
-            readonly connection_id: string | null;
+            /** Status */
+            readonly status: string;
+            /** Active */
+            readonly active: boolean;
+            /** Next Due At */
+            readonly next_due_at: string | null;
+            /** Last Crawled At */
+            readonly last_crawled_at: string | null;
             /** Error */
             readonly error: {
                 readonly [key: string]: unknown;
             } | null;
-            /** Group Id */
-            readonly group_id: string;
-            /** Id */
-            readonly id: string;
-            /** Last Crawled At */
-            readonly last_crawled_at: string | null;
-            /** Name */
-            readonly name: string;
-            /** Next Due At */
-            readonly next_due_at: string | null;
-            /** Source Type */
-            readonly source_type: string;
-            /** Status */
-            readonly status: string;
-            /** Url */
-            readonly url: string;
+            /** Connection Id */
+            readonly connection_id: string | null;
+            /**
+             * Crawl Mode
+             * @default legacy
+             * @enum {string}
+             */
+            readonly crawl_mode: "legacy" | "site_catalog";
+            /**
+             * Crawl Page Limit
+             * @default 1000
+             */
+            readonly crawl_page_limit: number;
+            /**
+             * Render Mode
+             * @default http_only
+             * @enum {string}
+             */
+            readonly render_mode: "http_only" | "javascript";
+            /** Resource Hosts */
+            readonly resource_hosts?: readonly string[];
+            /**
+             * Schedule Enabled
+             * @default true
+             */
+            readonly schedule_enabled: boolean;
         };
         /** ResetPasswordRequest */
         readonly ResetPasswordRequest: {
-            /** New Password */
-            readonly new_password: string;
             /** Token */
             readonly token: string;
+            /** New Password */
+            readonly new_password: string;
         };
         /** ResetPasswordResponse */
         readonly ResetPasswordResponse: {
@@ -3007,6 +3116,8 @@ export interface components {
         };
         /** ReviseWithAiRequest */
         readonly ReviseWithAiRequest: {
+            /** Version */
+            readonly version: number;
             /** Instruction */
             readonly instruction: string;
             /**
@@ -3015,8 +3126,6 @@ export interface components {
              * @enum {string}
              */
             readonly scope: "caption" | "hashtags" | "media" | "all";
-            /** Version */
-            readonly version: number;
         };
         /** SaveRecommendationRequest */
         readonly SaveRecommendationRequest: {
@@ -3030,6 +3139,9 @@ export interface components {
         };
         /** SessionResponse */
         readonly SessionResponse: {
+            readonly user: components["schemas"]["UserOut"];
+            /** Workspaces */
+            readonly workspaces: readonly components["schemas"]["WorkspaceOut"][];
             /** Active Workspace Id */
             readonly active_workspace_id: string | null;
             /**
@@ -3037,9 +3149,6 @@ export interface components {
              * Format: date-time
              */
             readonly expires_at: string;
-            readonly user: components["schemas"]["UserOut"];
-            /** Workspaces */
-            readonly workspaces: readonly components["schemas"]["WorkspaceOut"][];
         };
         /** SubmitApprovalRequest */
         readonly SubmitApprovalRequest: {
@@ -3048,18 +3157,20 @@ export interface components {
         };
         /** UpdateBrandProfileRequest */
         readonly UpdateBrandProfileRequest: {
+            /** Version */
+            readonly version: number;
+            /** Fields */
+            readonly fields?: readonly components["schemas"]["ProfileFieldUpdate"][];
             /**
              * Confirm
              * @default false
              */
             readonly confirm: boolean;
-            /** Fields */
-            readonly fields?: readonly components["schemas"]["ProfileFieldUpdate"][];
-            /** Version */
-            readonly version: number;
         };
         /** UpdatePostRequest */
         readonly UpdatePostRequest: {
+            /** Version */
+            readonly version: number;
             /** Caption */
             readonly caption?: string | null;
             /** Hashtags */
@@ -3068,27 +3179,22 @@ export interface components {
             readonly media?: readonly components["schemas"]["PostMediaAttachmentIn"][] | null;
             /** Note */
             readonly note?: string | null;
-            /** Version */
-            readonly version: number;
         };
         /** UploadLimits */
         readonly UploadLimits: {
-            /** Accepted Kinds */
-            readonly accepted_kinds: readonly string[];
-            /** Accepted Mime Types */
-            readonly accepted_mime_types: readonly string[];
             /** Max File Size Bytes */
             readonly max_file_size_bytes: number;
             /** Max Files Per Request */
             readonly max_files_per_request: number;
+            /** Accepted Kinds */
+            readonly accepted_kinds: readonly string[];
+            /** Accepted Mime Types */
+            readonly accepted_mime_types: readonly string[];
         };
         /** UserOut */
         readonly UserOut: {
-            /**
-             * Created At
-             * Format: date-time
-             */
-            readonly created_at: string;
+            /** Id */
+            readonly id: string;
             /**
              * Email
              * Format: email
@@ -3096,44 +3202,157 @@ export interface components {
             readonly email: string;
             /** Full Name */
             readonly full_name: string;
-            /** Id */
-            readonly id: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            readonly created_at: string;
         };
         /** ValidationError */
         readonly ValidationError: {
-            /** Context */
-            readonly ctx?: Record<string, never>;
-            /** Input */
-            readonly input?: unknown;
             /** Location */
             readonly loc: readonly (string | number)[];
             /** Message */
             readonly msg: string;
             /** Error Type */
             readonly type: string;
+            /** Input */
+            readonly input?: unknown;
+            /** Context */
+            readonly ctx?: Record<string, never>;
         };
-        /** WorkspaceOut */
-        readonly WorkspaceOut: {
+        /** WebCrawlRunOut */
+        readonly WebCrawlRunOut: {
+            /** Id */
+            readonly id: string;
+            /** Source Id */
+            readonly source_id: string;
+            /** Status */
+            readonly status: string;
+            /** Page Limit */
+            readonly page_limit: number;
+            /** Counters */
+            readonly counters: {
+                readonly [key: string]: unknown;
+            };
+            /** Started At */
+            readonly started_at: string | null;
+            /** Completed At */
+            readonly completed_at: string | null;
             /**
              * Created At
              * Format: date-time
              */
             readonly created_at: string;
+        };
+        /** WebCrawlSettingsIn */
+        readonly WebCrawlSettingsIn: {
+            /**
+             * Crawl Mode
+             * @default site_catalog
+             * @enum {string}
+             */
+            readonly crawl_mode: "legacy" | "site_catalog";
+            /**
+             * Crawl Page Limit
+             * @default 1000
+             */
+            readonly crawl_page_limit: number;
+            /**
+             * Render Mode
+             * @default http_only
+             * @enum {string}
+             */
+            readonly render_mode: "http_only" | "javascript";
+            /** Resource Hosts */
+            readonly resource_hosts?: readonly string[];
+            /**
+             * Schedule Enabled
+             * @default true
+             */
+            readonly schedule_enabled: boolean;
+        };
+        /** WebItemOut */
+        readonly WebItemOut: {
             /** Id */
             readonly id: string;
-            /** Industry */
-            readonly industry?: string | null;
+            /** Source Id */
+            readonly source_id: string;
+            /** Kind */
+            readonly kind: string;
+            /** Title */
+            readonly title: string;
+            /** Url */
+            readonly url: string;
+            /** Observed At */
+            readonly observed_at: string | null;
+            /** Data */
+            readonly data: {
+                readonly [key: string]: unknown;
+            } | null;
+            /** Offers */
+            readonly offers?: readonly components["schemas"]["WebOfferOut"][];
+        };
+        /** WebItemsPage */
+        readonly WebItemsPage: {
+            /** Items */
+            readonly items: readonly components["schemas"]["WebItemOut"][];
+            /** Next Cursor */
+            readonly next_cursor: string | null;
+        };
+        /** WebOfferOut */
+        readonly WebOfferOut: {
+            /** Id */
+            readonly id: string;
+            /** Offer Key */
+            readonly offer_key: string;
+            /** Price Kind */
+            readonly price_kind: string;
+            /** Price */
+            readonly price: string | null;
+            /** Original Price */
+            readonly original_price?: string | null;
+            /** Low Price */
+            readonly low_price: string | null;
+            /** High Price */
+            readonly high_price: string | null;
+            /** Currency */
+            readonly currency: string | null;
+            /** Availability */
+            readonly availability: string | null;
+            /** Billing Unit */
+            readonly billing_unit: string | null;
+            /** Seller */
+            readonly seller: string | null;
+            /** Offer Url */
+            readonly offer_url: string;
+            /** Provenance */
+            readonly provenance: {
+                readonly [key: string]: unknown;
+            };
+        };
+        /** WorkspaceOut */
+        readonly WorkspaceOut: {
+            /** Id */
+            readonly id: string;
             /** Name */
             readonly name: string;
-            /** Permissions */
-            readonly permissions: readonly string[];
+            /** Slug */
+            readonly slug: string;
+            /** Industry */
+            readonly industry?: string | null;
             /**
              * Role
              * @enum {string}
              */
             readonly role: "owner" | "editor" | "viewer";
-            /** Slug */
-            readonly slug: string;
+            /** Permissions */
+            readonly permissions: readonly string[];
+            /**
+             * Created At
+             * Format: date-time
+             */
+            readonly created_at: string;
         };
     };
     responses: never;
@@ -3251,9 +3470,118 @@ export type SchemaUpdatePostRequest = components['schemas']['UpdatePostRequest']
 export type SchemaUploadLimits = components['schemas']['UploadLimits'];
 export type SchemaUserOut = components['schemas']['UserOut'];
 export type SchemaValidationError = components['schemas']['ValidationError'];
+export type SchemaWebCrawlRunOut = components['schemas']['WebCrawlRunOut'];
+export type SchemaWebCrawlSettingsIn = components['schemas']['WebCrawlSettingsIn'];
+export type SchemaWebItemOut = components['schemas']['WebItemOut'];
+export type SchemaWebItemsPage = components['schemas']['WebItemsPage'];
+export type SchemaWebOfferOut = components['schemas']['WebOfferOut'];
 export type SchemaWorkspaceOut = components['schemas']['WorkspaceOut'];
 export type $defs = Record<string, never>;
 export interface operations {
+    readonly register_api_v1_auth_register_post: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": components["schemas"]["RegisterRequest"];
+            };
+        };
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 201: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["LoginResponse"];
+                };
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    readonly login_api_v1_auth_login_post: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": components["schemas"]["LoginRequest"];
+            };
+        };
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["LoginResponse"];
+                };
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    readonly refresh_api_v1_auth_refresh_post: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["LoginResponse"];
+                };
+            };
+        };
+    };
+    readonly logout_api_v1_auth_logout_post: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 204: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
     readonly forgot_password_api_v1_auth_forgot_password_post: {
         readonly parameters: {
             readonly query?: never;
@@ -3274,6 +3602,39 @@ export interface operations {
                 };
                 content: {
                     readonly "application/json": components["schemas"]["ForgotPasswordResponse"];
+                };
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    readonly reset_password_api_v1_auth_reset_password_post: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": components["schemas"]["ResetPasswordRequest"];
+            };
+        };
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ResetPasswordResponse"];
                 };
             };
             /** @description Validation Error */
@@ -3353,277 +3714,6 @@ export interface operations {
             };
         };
     };
-    readonly login_api_v1_auth_login_post: {
-        readonly parameters: {
-            readonly query?: never;
-            readonly header?: never;
-            readonly path?: never;
-            readonly cookie?: never;
-        };
-        readonly requestBody: {
-            readonly content: {
-                readonly "application/json": components["schemas"]["LoginRequest"];
-            };
-        };
-        readonly responses: {
-            /** @description Successful Response */
-            readonly 200: {
-                headers: {
-                    readonly [name: string]: unknown;
-                };
-                content: {
-                    readonly "application/json": components["schemas"]["LoginResponse"];
-                };
-            };
-            /** @description Validation Error */
-            readonly 422: {
-                headers: {
-                    readonly [name: string]: unknown;
-                };
-                content: {
-                    readonly "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    readonly logout_api_v1_auth_logout_post: {
-        readonly parameters: {
-            readonly query?: never;
-            readonly header?: never;
-            readonly path?: never;
-            readonly cookie?: never;
-        };
-        readonly requestBody?: never;
-        readonly responses: {
-            /** @description Successful Response */
-            readonly 204: {
-                headers: {
-                    readonly [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
-    readonly refresh_api_v1_auth_refresh_post: {
-        readonly parameters: {
-            readonly query?: never;
-            readonly header?: never;
-            readonly path?: never;
-            readonly cookie?: never;
-        };
-        readonly requestBody?: never;
-        readonly responses: {
-            /** @description Successful Response */
-            readonly 200: {
-                headers: {
-                    readonly [name: string]: unknown;
-                };
-                content: {
-                    readonly "application/json": components["schemas"]["LoginResponse"];
-                };
-            };
-        };
-    };
-    readonly register_api_v1_auth_register_post: {
-        readonly parameters: {
-            readonly query?: never;
-            readonly header?: never;
-            readonly path?: never;
-            readonly cookie?: never;
-        };
-        readonly requestBody: {
-            readonly content: {
-                readonly "application/json": components["schemas"]["RegisterRequest"];
-            };
-        };
-        readonly responses: {
-            /** @description Successful Response */
-            readonly 201: {
-                headers: {
-                    readonly [name: string]: unknown;
-                };
-                content: {
-                    readonly "application/json": components["schemas"]["LoginResponse"];
-                };
-            };
-            /** @description Validation Error */
-            readonly 422: {
-                headers: {
-                    readonly [name: string]: unknown;
-                };
-                content: {
-                    readonly "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    readonly reset_password_api_v1_auth_reset_password_post: {
-        readonly parameters: {
-            readonly query?: never;
-            readonly header?: never;
-            readonly path?: never;
-            readonly cookie?: never;
-        };
-        readonly requestBody: {
-            readonly content: {
-                readonly "application/json": components["schemas"]["ResetPasswordRequest"];
-            };
-        };
-        readonly responses: {
-            /** @description Successful Response */
-            readonly 200: {
-                headers: {
-                    readonly [name: string]: unknown;
-                };
-                content: {
-                    readonly "application/json": components["schemas"]["ResetPasswordResponse"];
-                };
-            };
-            /** @description Validation Error */
-            readonly 422: {
-                headers: {
-                    readonly [name: string]: unknown;
-                };
-                content: {
-                    readonly "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    readonly get_job_api_v1_jobs__job_id__get: {
-        readonly parameters: {
-            readonly query?: never;
-            readonly header?: {
-                readonly authorization?: string | null;
-            };
-            readonly path: {
-                readonly job_id: string;
-            };
-            readonly cookie?: never;
-        };
-        readonly requestBody?: never;
-        readonly responses: {
-            /** @description Successful Response */
-            readonly 200: {
-                headers: {
-                    readonly [name: string]: unknown;
-                };
-                content: {
-                    readonly "application/json": components["schemas"]["JobOut"];
-                };
-            };
-            /** @description Validation Error */
-            readonly 422: {
-                headers: {
-                    readonly [name: string]: unknown;
-                };
-                content: {
-                    readonly "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    readonly cancel_job_api_v1_jobs__job_id__cancel_post: {
-        readonly parameters: {
-            readonly query?: never;
-            readonly header?: {
-                readonly authorization?: string | null;
-            };
-            readonly path: {
-                readonly job_id: string;
-            };
-            readonly cookie?: never;
-        };
-        readonly requestBody?: never;
-        readonly responses: {
-            /** @description Successful Response */
-            readonly 200: {
-                headers: {
-                    readonly [name: string]: unknown;
-                };
-                content: {
-                    readonly "application/json": components["schemas"]["JobOut"];
-                };
-            };
-            /** @description Validation Error */
-            readonly 422: {
-                headers: {
-                    readonly [name: string]: unknown;
-                };
-                content: {
-                    readonly "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    readonly get_job_events_api_v1_jobs__job_id__events_get: {
-        readonly parameters: {
-            readonly query?: {
-                readonly after_seq?: number;
-            };
-            readonly header?: {
-                readonly authorization?: string | null;
-            };
-            readonly path: {
-                readonly job_id: string;
-            };
-            readonly cookie?: never;
-        };
-        readonly requestBody?: never;
-        readonly responses: {
-            /** @description Successful Response */
-            readonly 200: {
-                headers: {
-                    readonly [name: string]: unknown;
-                };
-                content: {
-                    readonly "application/json": readonly components["schemas"]["JobEventOut"][];
-                };
-            };
-            /** @description Validation Error */
-            readonly 422: {
-                headers: {
-                    readonly [name: string]: unknown;
-                };
-                content: {
-                    readonly "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    readonly retry_job_api_v1_jobs__job_id__retry_post: {
-        readonly parameters: {
-            readonly query?: never;
-            readonly header?: {
-                readonly authorization?: string | null;
-            };
-            readonly path: {
-                readonly job_id: string;
-            };
-            readonly cookie?: never;
-        };
-        readonly requestBody?: never;
-        readonly responses: {
-            /** @description Successful Response */
-            readonly 202: {
-                headers: {
-                    readonly [name: string]: unknown;
-                };
-                content: {
-                    readonly "application/json": components["schemas"]["AcceptedResponse"];
-                };
-            };
-            /** @description Validation Error */
-            readonly 422: {
-                headers: {
-                    readonly [name: string]: unknown;
-                };
-                content: {
-                    readonly "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
     readonly me_api_v1_me_get: {
         readonly parameters: {
             readonly query?: never;
@@ -3634,41 +3724,6 @@ export interface operations {
             readonly cookie?: never;
         };
         readonly requestBody?: never;
-        readonly responses: {
-            /** @description Successful Response */
-            readonly 200: {
-                headers: {
-                    readonly [name: string]: unknown;
-                };
-                content: {
-                    readonly "application/json": components["schemas"]["SessionResponse"];
-                };
-            };
-            /** @description Validation Error */
-            readonly 422: {
-                headers: {
-                    readonly [name: string]: unknown;
-                };
-                content: {
-                    readonly "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    readonly select_workspace_api_v1_me_active_workspace_put: {
-        readonly parameters: {
-            readonly query?: never;
-            readonly header?: {
-                readonly authorization?: string | null;
-            };
-            readonly path?: never;
-            readonly cookie?: never;
-        };
-        readonly requestBody: {
-            readonly content: {
-                readonly "application/json": components["schemas"]["SelectWorkspaceRequest"];
-            };
-        };
         readonly responses: {
             /** @description Successful Response */
             readonly 200: {
@@ -3754,24 +3809,20 @@ export interface operations {
             };
         };
     };
-    readonly get_analytics_dashboard_api_v1_workspaces__company_id__analytics_dashboard_get: {
+    readonly select_workspace_api_v1_me_active_workspace_put: {
         readonly parameters: {
-            readonly query: {
-                readonly source_id: string;
-                readonly min_post_age_hours?: number;
-                readonly max_post_age_hours?: number;
-                readonly measured_from?: string | null;
-                readonly measured_to?: string | null;
-            };
+            readonly query?: never;
             readonly header?: {
                 readonly authorization?: string | null;
             };
-            readonly path: {
-                readonly company_id: string;
-            };
+            readonly path?: never;
             readonly cookie?: never;
         };
-        readonly requestBody?: never;
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": components["schemas"]["SelectWorkspaceRequest"];
+            };
+        };
         readonly responses: {
             /** @description Successful Response */
             readonly 200: {
@@ -3779,7 +3830,7 @@ export interface operations {
                     readonly [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": components["schemas"]["AnalyticsDashboardOut"];
+                    readonly "application/json": components["schemas"]["SessionResponse"];
                 };
             };
             /** @description Validation Error */
@@ -3793,80 +3844,7 @@ export interface operations {
             };
         };
     };
-    readonly get_recommendation_api_v1_workspaces__company_id__analytics_recommendation_get: {
-        readonly parameters: {
-            readonly query: {
-                readonly source_id: string;
-                readonly min_post_age_hours?: number;
-                readonly max_post_age_hours?: number;
-            };
-            readonly header?: {
-                readonly authorization?: string | null;
-            };
-            readonly path: {
-                readonly company_id: string;
-            };
-            readonly cookie?: never;
-        };
-        readonly requestBody?: never;
-        readonly responses: {
-            /** @description Successful Response */
-            readonly 200: {
-                headers: {
-                    readonly [name: string]: unknown;
-                };
-                content: {
-                    readonly "application/json": components["schemas"]["RecommendationOut"];
-                };
-            };
-            /** @description Validation Error */
-            readonly 422: {
-                headers: {
-                    readonly [name: string]: unknown;
-                };
-                content: {
-                    readonly "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    readonly list_accepted_recommendation_drafts_api_v1_workspaces__company_id__analytics_recommendation_drafts_get: {
-        readonly parameters: {
-            readonly query: {
-                readonly campaign_id: string;
-                readonly source_id: string;
-            };
-            readonly header?: {
-                readonly authorization?: string | null;
-            };
-            readonly path: {
-                readonly company_id: string;
-            };
-            readonly cookie?: never;
-        };
-        readonly requestBody?: never;
-        readonly responses: {
-            /** @description Successful Response */
-            readonly 200: {
-                headers: {
-                    readonly [name: string]: unknown;
-                };
-                content: {
-                    readonly "application/json": components["schemas"]["AcceptedRecommendationDraftListOut"];
-                };
-            };
-            /** @description Validation Error */
-            readonly 422: {
-                headers: {
-                    readonly [name: string]: unknown;
-                };
-                content: {
-                    readonly "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    readonly decide_recommendation_draft_api_v1_workspaces__company_id__analytics_recommendation_drafts__draft_id__decision_post: {
+    readonly list_members_api_v1_workspaces__company_id__members_get: {
         readonly parameters: {
             readonly query?: never;
             readonly header?: {
@@ -3874,85 +3852,45 @@ export interface operations {
             };
             readonly path: {
                 readonly company_id: string;
-                readonly draft_id: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": readonly components["schemas"]["MemberOut"][];
+                };
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    readonly invite_member_api_v1_workspaces__company_id__members_post: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: {
+                readonly authorization?: string | null;
+            };
+            readonly path: {
+                readonly company_id: string;
             };
             readonly cookie?: never;
         };
         readonly requestBody: {
             readonly content: {
-                readonly "application/json": components["schemas"]["RecommendationDraftDecisionRequest"];
-            };
-        };
-        readonly responses: {
-            /** @description Successful Response */
-            readonly 200: {
-                headers: {
-                    readonly [name: string]: unknown;
-                };
-                content: {
-                    readonly "application/json": components["schemas"]["CampaignBriefRevisionDraftOut"];
-                };
-            };
-            /** @description Validation Error */
-            readonly 422: {
-                headers: {
-                    readonly [name: string]: unknown;
-                };
-                content: {
-                    readonly "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    readonly list_recommendation_experiment_outcomes_api_v1_workspaces__company_id__analytics_recommendation_drafts__draft_id__outcomes_get: {
-        readonly parameters: {
-            readonly query?: never;
-            readonly header?: {
-                readonly authorization?: string | null;
-            };
-            readonly path: {
-                readonly company_id: string;
-                readonly draft_id: string;
-            };
-            readonly cookie?: never;
-        };
-        readonly requestBody?: never;
-        readonly responses: {
-            /** @description Successful Response */
-            readonly 200: {
-                headers: {
-                    readonly [name: string]: unknown;
-                };
-                content: {
-                    readonly "application/json": components["schemas"]["ExperimentOutcomeListOut"];
-                };
-            };
-            /** @description Validation Error */
-            readonly 422: {
-                headers: {
-                    readonly [name: string]: unknown;
-                };
-                content: {
-                    readonly "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    readonly record_recommendation_experiment_outcome_api_v1_workspaces__company_id__analytics_recommendation_drafts__draft_id__outcomes_post: {
-        readonly parameters: {
-            readonly query?: never;
-            readonly header?: {
-                readonly authorization?: string | null;
-            };
-            readonly path: {
-                readonly company_id: string;
-                readonly draft_id: string;
-            };
-            readonly cookie?: never;
-        };
-        readonly requestBody: {
-            readonly content: {
-                readonly "application/json": components["schemas"]["RecordExperimentOutcomeRequest"];
+                readonly "application/json": components["schemas"]["InviteMemberRequest"];
             };
         };
         readonly responses: {
@@ -3962,7 +3900,7 @@ export interface operations {
                     readonly [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": components["schemas"]["ExperimentOutcomeOut"];
+                    readonly "application/json": components["schemas"]["InviteMemberResponse"];
                 };
             };
             /** @description Validation Error */
@@ -3976,7 +3914,7 @@ export interface operations {
             };
         };
     };
-    readonly save_recommendation_api_v1_workspaces__company_id__analytics_recommendations_post: {
+    readonly resend_invitation_api_v1_workspaces__company_id__members__member_id__resend_invitation_post: {
         readonly parameters: {
             readonly query?: never;
             readonly header?: {
@@ -3984,52 +3922,11 @@ export interface operations {
             };
             readonly path: {
                 readonly company_id: string;
+                readonly member_id: string;
             };
             readonly cookie?: never;
         };
-        readonly requestBody: {
-            readonly content: {
-                readonly "application/json": components["schemas"]["SaveRecommendationRequest"];
-            };
-        };
-        readonly responses: {
-            /** @description Successful Response */
-            readonly 201: {
-                headers: {
-                    readonly [name: string]: unknown;
-                };
-                content: {
-                    readonly "application/json": components["schemas"]["AnalyticsRecommendationRecordOut"];
-                };
-            };
-            /** @description Validation Error */
-            readonly 422: {
-                headers: {
-                    readonly [name: string]: unknown;
-                };
-                content: {
-                    readonly "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    readonly apply_recommendation_api_v1_workspaces__company_id__analytics_recommendations__recommendation_id__apply_post: {
-        readonly parameters: {
-            readonly query?: never;
-            readonly header?: {
-                readonly authorization?: string | null;
-            };
-            readonly path: {
-                readonly company_id: string;
-                readonly recommendation_id: string;
-            };
-            readonly cookie?: never;
-        };
-        readonly requestBody: {
-            readonly content: {
-                readonly "application/json": components["schemas"]["ApplyRecommendationRequest"];
-            };
-        };
+        readonly requestBody?: never;
         readonly responses: {
             /** @description Successful Response */
             readonly 200: {
@@ -4037,7 +3934,7 @@ export interface operations {
                     readonly [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": components["schemas"]["ApplyRecommendationResponse"];
+                    readonly "application/json": components["schemas"]["InviteMemberResponse"];
                 };
             };
             /** @description Validation Error */
@@ -4051,50 +3948,9 @@ export interface operations {
             };
         };
     };
-    readonly record_recommendation_feedback_api_v1_workspaces__company_id__analytics_recommendations__recommendation_id__feedback_post: {
+    readonly upload_limits_api_v1_workspaces__company_id__documents_limits_get: {
         readonly parameters: {
             readonly query?: never;
-            readonly header?: {
-                readonly authorization?: string | null;
-            };
-            readonly path: {
-                readonly company_id: string;
-                readonly recommendation_id: string;
-            };
-            readonly cookie?: never;
-        };
-        readonly requestBody: {
-            readonly content: {
-                readonly "application/json": components["schemas"]["RecommendationFeedbackRequest"];
-            };
-        };
-        readonly responses: {
-            /** @description Successful Response */
-            readonly 200: {
-                headers: {
-                    readonly [name: string]: unknown;
-                };
-                content: {
-                    readonly "application/json": components["schemas"]["AnalyticsRecommendationRecordOut"];
-                };
-            };
-            /** @description Validation Error */
-            readonly 422: {
-                headers: {
-                    readonly [name: string]: unknown;
-                };
-                content: {
-                    readonly "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    readonly approval_queue_api_v1_workspaces__company_id__approvals_get: {
-        readonly parameters: {
-            readonly query?: {
-                readonly page?: number;
-                readonly page_size?: number;
-            };
             readonly header?: {
                 readonly authorization?: string | null;
             };
@@ -4111,8 +3967,311 @@ export interface operations {
                     readonly [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": components["schemas"]["PaginatedPosts"];
+                    readonly "application/json": components["schemas"]["UploadLimits"];
                 };
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    readonly list_documents_api_v1_workspaces__company_id__documents_get: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: {
+                readonly authorization?: string | null;
+            };
+            readonly path: {
+                readonly company_id: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": readonly components["schemas"]["DocumentOut"][];
+                };
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    readonly upload_documents_api_v1_workspaces__company_id__documents_post: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: {
+                readonly "Idempotency-Key"?: string | null;
+                readonly authorization?: string | null;
+            };
+            readonly path: {
+                readonly company_id: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "multipart/form-data": components["schemas"]["Body_upload_documents_api_v1_workspaces__company_id__documents_post"];
+            };
+        };
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 202: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["AcceptedResponse"];
+                };
+            };
+            /** @description API error envelope */
+            readonly 400: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ApiErrorEnvelope"];
+                };
+            };
+            /** @description API error envelope */
+            readonly 401: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ApiErrorEnvelope"];
+                };
+            };
+            /** @description API error envelope */
+            readonly 403: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ApiErrorEnvelope"];
+                };
+            };
+            /** @description API error envelope */
+            readonly 409: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ApiErrorEnvelope"];
+                };
+            };
+            /** @description API error envelope */
+            readonly 413: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ApiErrorEnvelope"];
+                };
+            };
+            /** @description API error envelope */
+            readonly 415: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ApiErrorEnvelope"];
+                };
+            };
+            /** @description API error envelope */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ApiErrorEnvelope"];
+                };
+            };
+            /** @description API error envelope */
+            readonly 500: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ApiErrorEnvelope"];
+                };
+            };
+        };
+    };
+    readonly get_document_api_v1_workspaces__company_id__documents__document_id__get: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: {
+                readonly authorization?: string | null;
+            };
+            readonly path: {
+                readonly company_id: string;
+                readonly document_id: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["DocumentOut"];
+                };
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    readonly delete_document_api_v1_workspaces__company_id__documents__document_id__delete: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: {
+                readonly authorization?: string | null;
+            };
+            readonly path: {
+                readonly company_id: string;
+                readonly document_id: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 204: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    readonly reprocess_document_api_v1_workspaces__company_id__documents__document_id__reprocess_post: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: {
+                readonly authorization?: string | null;
+            };
+            readonly path: {
+                readonly company_id: string;
+                readonly document_id: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 202: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["AcceptedResponse"];
+                };
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    readonly upload_media_asset_api_v1_workspaces__company_id__media_post: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: {
+                readonly authorization?: string | null;
+            };
+            readonly path: {
+                readonly company_id: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "multipart/form-data": components["schemas"]["Body_upload_media_asset_api_v1_workspaces__company_id__media_post"];
+            };
+        };
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 201: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["MediaAssetOut"];
+                };
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    readonly download_media_asset_api_v1_workspaces__company_id__media__asset_id__content_get: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: {
+                readonly authorization?: string | null;
+            };
+            readonly path: {
+                readonly company_id: string;
+                readonly asset_id: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             readonly 422: {
@@ -4643,6 +4802,43 @@ export interface operations {
             };
         };
     };
+    readonly list_posts_api_v1_workspaces__company_id__posts_get: {
+        readonly parameters: {
+            readonly query?: {
+                readonly campaign_id?: string | null;
+                readonly page?: number;
+                readonly page_size?: number;
+            };
+            readonly header?: {
+                readonly authorization?: string | null;
+            };
+            readonly path: {
+                readonly company_id: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["PaginatedPosts"];
+                };
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     readonly create_manual_post_api_v1_workspaces__company_id__campaigns__campaign_id__posts_post: {
         readonly parameters: {
             readonly query?: never;
@@ -4681,7 +4877,7 @@ export interface operations {
             };
         };
     };
-    readonly list_documents_api_v1_workspaces__company_id__documents_get: {
+    readonly get_post_api_v1_workspaces__company_id__posts__post_id__get: {
         readonly parameters: {
             readonly query?: never;
             readonly header?: {
@@ -4689,6 +4885,7 @@ export interface operations {
             };
             readonly path: {
                 readonly company_id: string;
+                readonly post_id: string;
             };
             readonly cookie?: never;
         };
@@ -4700,7 +4897,7 @@ export interface operations {
                     readonly [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": readonly components["schemas"]["DocumentOut"][];
+                    readonly "application/json": components["schemas"]["PostOut"];
                 };
             };
             /** @description Validation Error */
@@ -4714,7 +4911,79 @@ export interface operations {
             };
         };
     };
-    readonly upload_documents_api_v1_workspaces__company_id__documents_post: {
+    readonly update_post_api_v1_workspaces__company_id__posts__post_id__patch: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: {
+                readonly authorization?: string | null;
+            };
+            readonly path: {
+                readonly company_id: string;
+                readonly post_id: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": components["schemas"]["UpdatePostRequest"];
+            };
+        };
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["PostOut"];
+                };
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    readonly list_post_versions_api_v1_workspaces__company_id__posts__post_id__versions_get: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: {
+                readonly authorization?: string | null;
+            };
+            readonly path: {
+                readonly company_id: string;
+                readonly post_id: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["PostVersionListOut"];
+                };
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    readonly revise_post_with_ai_api_v1_workspaces__company_id__posts__post_id__revise_post: {
         readonly parameters: {
             readonly query?: never;
             readonly header?: {
@@ -4723,12 +4992,13 @@ export interface operations {
             };
             readonly path: {
                 readonly company_id: string;
+                readonly post_id: string;
             };
             readonly cookie?: never;
         };
         readonly requestBody: {
             readonly content: {
-                readonly "multipart/form-data": components["schemas"]["Body_upload_documents_api_v1_workspaces__company_id__documents_post"];
+                readonly "application/json": components["schemas"]["ReviseWithAiRequest"];
             };
         };
         readonly responses: {
@@ -4741,83 +5011,133 @@ export interface operations {
                     readonly "application/json": components["schemas"]["AcceptedResponse"];
                 };
             };
-            /** @description API error envelope */
-            readonly 400: {
-                headers: {
-                    readonly [name: string]: unknown;
-                };
-                content: {
-                    readonly "application/json": components["schemas"]["ApiErrorEnvelope"];
-                };
-            };
-            /** @description API error envelope */
-            readonly 401: {
-                headers: {
-                    readonly [name: string]: unknown;
-                };
-                content: {
-                    readonly "application/json": components["schemas"]["ApiErrorEnvelope"];
-                };
-            };
-            /** @description API error envelope */
-            readonly 403: {
-                headers: {
-                    readonly [name: string]: unknown;
-                };
-                content: {
-                    readonly "application/json": components["schemas"]["ApiErrorEnvelope"];
-                };
-            };
-            /** @description API error envelope */
-            readonly 409: {
-                headers: {
-                    readonly [name: string]: unknown;
-                };
-                content: {
-                    readonly "application/json": components["schemas"]["ApiErrorEnvelope"];
-                };
-            };
-            /** @description API error envelope */
-            readonly 413: {
-                headers: {
-                    readonly [name: string]: unknown;
-                };
-                content: {
-                    readonly "application/json": components["schemas"]["ApiErrorEnvelope"];
-                };
-            };
-            /** @description API error envelope */
-            readonly 415: {
-                headers: {
-                    readonly [name: string]: unknown;
-                };
-                content: {
-                    readonly "application/json": components["schemas"]["ApiErrorEnvelope"];
-                };
-            };
-            /** @description API error envelope */
+            /** @description Validation Error */
             readonly 422: {
                 headers: {
                     readonly [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": components["schemas"]["ApiErrorEnvelope"];
-                };
-            };
-            /** @description API error envelope */
-            readonly 500: {
-                headers: {
-                    readonly [name: string]: unknown;
-                };
-                content: {
-                    readonly "application/json": components["schemas"]["ApiErrorEnvelope"];
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
     };
-    readonly upload_limits_api_v1_workspaces__company_id__documents_limits_get: {
+    readonly submit_post_for_approval_api_v1_workspaces__company_id__posts__post_id__submit_approval_post: {
         readonly parameters: {
             readonly query?: never;
+            readonly header?: {
+                readonly authorization?: string | null;
+            };
+            readonly path: {
+                readonly company_id: string;
+                readonly post_id: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": components["schemas"]["SubmitApprovalRequest"];
+            };
+        };
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["PostOut"];
+                };
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    readonly decide_post_approval_api_v1_workspaces__company_id__posts__post_id__approval_post: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: {
+                readonly authorization?: string | null;
+            };
+            readonly path: {
+                readonly company_id: string;
+                readonly post_id: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": components["schemas"]["ApprovalRequest"];
+            };
+        };
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["PostOut"];
+                };
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    readonly post_approval_history_api_v1_workspaces__company_id__posts__post_id__approvals_get: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: {
+                readonly authorization?: string | null;
+            };
+            readonly path: {
+                readonly company_id: string;
+                readonly post_id: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": readonly components["schemas"]["ApprovalRecordOut"][];
+                };
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    readonly approval_queue_api_v1_workspaces__company_id__approvals_get: {
+        readonly parameters: {
+            readonly query?: {
+                readonly page?: number;
+                readonly page_size?: number;
+            };
             readonly header?: {
                 readonly authorization?: string | null;
             };
@@ -4834,107 +5154,7 @@ export interface operations {
                     readonly [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": components["schemas"]["UploadLimits"];
-                };
-            };
-            /** @description Validation Error */
-            readonly 422: {
-                headers: {
-                    readonly [name: string]: unknown;
-                };
-                content: {
-                    readonly "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    readonly get_document_api_v1_workspaces__company_id__documents__document_id__get: {
-        readonly parameters: {
-            readonly query?: never;
-            readonly header?: {
-                readonly authorization?: string | null;
-            };
-            readonly path: {
-                readonly company_id: string;
-                readonly document_id: string;
-            };
-            readonly cookie?: never;
-        };
-        readonly requestBody?: never;
-        readonly responses: {
-            /** @description Successful Response */
-            readonly 200: {
-                headers: {
-                    readonly [name: string]: unknown;
-                };
-                content: {
-                    readonly "application/json": components["schemas"]["DocumentOut"];
-                };
-            };
-            /** @description Validation Error */
-            readonly 422: {
-                headers: {
-                    readonly [name: string]: unknown;
-                };
-                content: {
-                    readonly "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    readonly delete_document_api_v1_workspaces__company_id__documents__document_id__delete: {
-        readonly parameters: {
-            readonly query?: never;
-            readonly header?: {
-                readonly authorization?: string | null;
-            };
-            readonly path: {
-                readonly company_id: string;
-                readonly document_id: string;
-            };
-            readonly cookie?: never;
-        };
-        readonly requestBody?: never;
-        readonly responses: {
-            /** @description Successful Response */
-            readonly 204: {
-                headers: {
-                    readonly [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Validation Error */
-            readonly 422: {
-                headers: {
-                    readonly [name: string]: unknown;
-                };
-                content: {
-                    readonly "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    readonly reprocess_document_api_v1_workspaces__company_id__documents__document_id__reprocess_post: {
-        readonly parameters: {
-            readonly query?: never;
-            readonly header?: {
-                readonly authorization?: string | null;
-            };
-            readonly path: {
-                readonly company_id: string;
-                readonly document_id: string;
-            };
-            readonly cookie?: never;
-        };
-        readonly requestBody?: never;
-        readonly responses: {
-            /** @description Successful Response */
-            readonly 202: {
-                headers: {
-                    readonly [name: string]: unknown;
-                };
-                content: {
-                    readonly "application/json": components["schemas"]["AcceptedResponse"];
+                    readonly "application/json": components["schemas"]["PaginatedPosts"];
                 };
             };
             /** @description Validation Error */
@@ -5054,9 +5274,90 @@ export interface operations {
             };
         };
     };
-    readonly list_groups_api_v1_workspaces__company_id__market_research_groups_get: {
+    readonly generate_content_api_v1_workspaces__company_id__posts_generate_post: {
         readonly parameters: {
             readonly query?: never;
+            readonly header?: {
+                readonly "Idempotency-Key"?: string | null;
+                readonly authorization?: string | null;
+            };
+            readonly path: {
+                readonly company_id: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": components["schemas"]["GenerateContentRequest"];
+            };
+        };
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 202: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["GenerateContentResponse"];
+                };
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    readonly import_metrics_api_v1_workspaces__company_id__metrics_import_post: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: {
+                readonly authorization?: string | null;
+            };
+            readonly path: {
+                readonly company_id: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": components["schemas"]["MetricImportRequest"];
+            };
+        };
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 201: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["MetricImportResponse"];
+                };
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    readonly get_analytics_dashboard_api_v1_workspaces__company_id__analytics_dashboard_get: {
+        readonly parameters: {
+            readonly query: {
+                readonly source_id: string;
+                readonly min_post_age_hours?: number;
+                readonly max_post_age_hours?: number;
+                readonly measured_from?: string | null;
+                readonly measured_to?: string | null;
+            };
             readonly header?: {
                 readonly authorization?: string | null;
             };
@@ -5073,7 +5374,7 @@ export interface operations {
                     readonly [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": readonly components["schemas"]["GroupOut"][];
+                    readonly "application/json": components["schemas"]["AnalyticsDashboardOut"];
                 };
             };
             /** @description Validation Error */
@@ -5087,7 +5388,44 @@ export interface operations {
             };
         };
     };
-    readonly create_group_api_v1_workspaces__company_id__market_research_groups_post: {
+    readonly get_recommendation_api_v1_workspaces__company_id__analytics_recommendation_get: {
+        readonly parameters: {
+            readonly query: {
+                readonly source_id: string;
+                readonly min_post_age_hours?: number;
+                readonly max_post_age_hours?: number;
+            };
+            readonly header?: {
+                readonly authorization?: string | null;
+            };
+            readonly path: {
+                readonly company_id: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["RecommendationOut"];
+                };
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    readonly save_recommendation_api_v1_workspaces__company_id__analytics_recommendations_post: {
         readonly parameters: {
             readonly query?: never;
             readonly header?: {
@@ -5100,7 +5438,7 @@ export interface operations {
         };
         readonly requestBody: {
             readonly content: {
-                readonly "application/json": components["schemas"]["GroupCreate"];
+                readonly "application/json": components["schemas"]["SaveRecommendationRequest"];
             };
         };
         readonly responses: {
@@ -5110,7 +5448,7 @@ export interface operations {
                     readonly [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": components["schemas"]["GroupOut"];
+                    readonly "application/json": components["schemas"]["AnalyticsRecommendationRecordOut"];
                 };
             };
             /** @description Validation Error */
@@ -5124,7 +5462,7 @@ export interface operations {
             };
         };
     };
-    readonly update_group_api_v1_workspaces__company_id__market_research_groups__group_id__patch: {
+    readonly record_recommendation_feedback_api_v1_workspaces__company_id__analytics_recommendations__recommendation_id__feedback_post: {
         readonly parameters: {
             readonly query?: never;
             readonly header?: {
@@ -5132,13 +5470,13 @@ export interface operations {
             };
             readonly path: {
                 readonly company_id: string;
-                readonly group_id: string;
+                readonly recommendation_id: string;
             };
             readonly cookie?: never;
         };
         readonly requestBody: {
             readonly content: {
-                readonly "application/json": components["schemas"]["GroupUpdate"];
+                readonly "application/json": components["schemas"]["RecommendationFeedbackRequest"];
             };
         };
         readonly responses: {
@@ -5148,7 +5486,7 @@ export interface operations {
                     readonly [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": components["schemas"]["GroupOut"];
+                    readonly "application/json": components["schemas"]["AnalyticsRecommendationRecordOut"];
                 };
             };
             /** @description Validation Error */
@@ -5162,7 +5500,7 @@ export interface operations {
             };
         };
     };
-    readonly crawl_group_now_api_v1_workspaces__company_id__market_research_groups__group_id__crawl_post: {
+    readonly apply_recommendation_api_v1_workspaces__company_id__analytics_recommendations__recommendation_id__apply_post: {
         readonly parameters: {
             readonly query?: never;
             readonly header?: {
@@ -5170,7 +5508,291 @@ export interface operations {
             };
             readonly path: {
                 readonly company_id: string;
-                readonly group_id: string;
+                readonly recommendation_id: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": components["schemas"]["ApplyRecommendationRequest"];
+            };
+        };
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ApplyRecommendationResponse"];
+                };
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    readonly decide_recommendation_draft_api_v1_workspaces__company_id__analytics_recommendation_drafts__draft_id__decision_post: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: {
+                readonly authorization?: string | null;
+            };
+            readonly path: {
+                readonly company_id: string;
+                readonly draft_id: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": components["schemas"]["RecommendationDraftDecisionRequest"];
+            };
+        };
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["CampaignBriefRevisionDraftOut"];
+                };
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    readonly list_accepted_recommendation_drafts_api_v1_workspaces__company_id__analytics_recommendation_drafts_get: {
+        readonly parameters: {
+            readonly query: {
+                readonly campaign_id: string;
+                readonly source_id: string;
+            };
+            readonly header?: {
+                readonly authorization?: string | null;
+            };
+            readonly path: {
+                readonly company_id: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["AcceptedRecommendationDraftListOut"];
+                };
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    readonly list_recommendation_experiment_outcomes_api_v1_workspaces__company_id__analytics_recommendation_drafts__draft_id__outcomes_get: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: {
+                readonly authorization?: string | null;
+            };
+            readonly path: {
+                readonly company_id: string;
+                readonly draft_id: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ExperimentOutcomeListOut"];
+                };
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    readonly record_recommendation_experiment_outcome_api_v1_workspaces__company_id__analytics_recommendation_drafts__draft_id__outcomes_post: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: {
+                readonly authorization?: string | null;
+            };
+            readonly path: {
+                readonly company_id: string;
+                readonly draft_id: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": components["schemas"]["RecordExperimentOutcomeRequest"];
+            };
+        };
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 201: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ExperimentOutcomeOut"];
+                };
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    readonly get_job_api_v1_jobs__job_id__get: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: {
+                readonly authorization?: string | null;
+            };
+            readonly path: {
+                readonly job_id: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["JobOut"];
+                };
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    readonly get_job_events_api_v1_jobs__job_id__events_get: {
+        readonly parameters: {
+            readonly query?: {
+                readonly after_seq?: number;
+            };
+            readonly header?: {
+                readonly authorization?: string | null;
+            };
+            readonly path: {
+                readonly job_id: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": readonly components["schemas"]["JobEventOut"][];
+                };
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    readonly cancel_job_api_v1_jobs__job_id__cancel_post: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: {
+                readonly authorization?: string | null;
+            };
+            readonly path: {
+                readonly job_id: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["JobOut"];
+                };
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    readonly retry_job_api_v1_jobs__job_id__retry_post: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: {
+                readonly authorization?: string | null;
+            };
+            readonly path: {
+                readonly job_id: string;
             };
             readonly cookie?: never;
         };
@@ -5183,530 +5805,6 @@ export interface operations {
                 };
                 content: {
                     readonly "application/json": components["schemas"]["AcceptedResponse"];
-                };
-            };
-            /** @description Validation Error */
-            readonly 422: {
-                headers: {
-                    readonly [name: string]: unknown;
-                };
-                content: {
-                    readonly "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    readonly list_pages_api_v1_workspaces__company_id__market_research_groups__group_id__pages_get: {
-        readonly parameters: {
-            readonly query?: never;
-            readonly header?: {
-                readonly authorization?: string | null;
-            };
-            readonly path: {
-                readonly company_id: string;
-                readonly group_id: string;
-            };
-            readonly cookie?: never;
-        };
-        readonly requestBody?: never;
-        readonly responses: {
-            /** @description Successful Response */
-            readonly 200: {
-                headers: {
-                    readonly [name: string]: unknown;
-                };
-                content: {
-                    readonly "application/json": readonly components["schemas"]["PageConnectionOut"][];
-                };
-            };
-            /** @description Validation Error */
-            readonly 422: {
-                headers: {
-                    readonly [name: string]: unknown;
-                };
-                content: {
-                    readonly "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    readonly connect_page_api_v1_workspaces__company_id__market_research_groups__group_id__pages_post: {
-        readonly parameters: {
-            readonly query?: never;
-            readonly header?: {
-                readonly authorization?: string | null;
-            };
-            readonly path: {
-                readonly company_id: string;
-                readonly group_id: string;
-            };
-            readonly cookie?: never;
-        };
-        readonly requestBody: {
-            readonly content: {
-                readonly "application/json": components["schemas"]["PageConnectIn"];
-            };
-        };
-        readonly responses: {
-            /** @description Successful Response */
-            readonly 201: {
-                headers: {
-                    readonly [name: string]: unknown;
-                };
-                content: {
-                    readonly "application/json": components["schemas"]["PageConnectionOut"];
-                };
-            };
-            /** @description Validation Error */
-            readonly 422: {
-                headers: {
-                    readonly [name: string]: unknown;
-                };
-                content: {
-                    readonly "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    readonly list_reports_api_v1_workspaces__company_id__market_research_groups__group_id__reports_get: {
-        readonly parameters: {
-            readonly query?: never;
-            readonly header?: {
-                readonly authorization?: string | null;
-            };
-            readonly path: {
-                readonly company_id: string;
-                readonly group_id: string;
-            };
-            readonly cookie?: never;
-        };
-        readonly requestBody?: never;
-        readonly responses: {
-            /** @description Successful Response */
-            readonly 200: {
-                headers: {
-                    readonly [name: string]: unknown;
-                };
-                content: {
-                    readonly "application/json": readonly components["schemas"]["ResearchReportOut"][];
-                };
-            };
-            /** @description Validation Error */
-            readonly 422: {
-                headers: {
-                    readonly [name: string]: unknown;
-                };
-                content: {
-                    readonly "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    readonly list_all_pages_api_v1_workspaces__company_id__market_research_pages_get: {
-        readonly parameters: {
-            readonly query?: never;
-            readonly header?: {
-                readonly authorization?: string | null;
-            };
-            readonly path: {
-                readonly company_id: string;
-            };
-            readonly cookie?: never;
-        };
-        readonly requestBody?: never;
-        readonly responses: {
-            /** @description Successful Response */
-            readonly 200: {
-                headers: {
-                    readonly [name: string]: unknown;
-                };
-                content: {
-                    readonly "application/json": readonly components["schemas"]["PageConnectionOut"][];
-                };
-            };
-            /** @description Validation Error */
-            readonly 422: {
-                headers: {
-                    readonly [name: string]: unknown;
-                };
-                content: {
-                    readonly "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    readonly disconnect_page_api_v1_workspaces__company_id__market_research_pages__connection_id__delete: {
-        readonly parameters: {
-            readonly query?: never;
-            readonly header?: {
-                readonly authorization?: string | null;
-            };
-            readonly path: {
-                readonly company_id: string;
-                readonly connection_id: string;
-            };
-            readonly cookie?: never;
-        };
-        readonly requestBody?: never;
-        readonly responses: {
-            /** @description Successful Response */
-            readonly 204: {
-                headers: {
-                    readonly [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Validation Error */
-            readonly 422: {
-                headers: {
-                    readonly [name: string]: unknown;
-                };
-                content: {
-                    readonly "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    readonly create_draft_from_report_api_v1_workspaces__company_id__market_research_reports__report_id__draft_post: {
-        readonly parameters: {
-            readonly query?: never;
-            readonly header?: {
-                readonly authorization?: string | null;
-            };
-            readonly path: {
-                readonly company_id: string;
-                readonly report_id: string;
-            };
-            readonly cookie?: never;
-        };
-        readonly requestBody: {
-            readonly content: {
-                readonly "application/json": components["schemas"]["DraftFromReportIn"];
-            };
-        };
-        readonly responses: {
-            /** @description Successful Response */
-            readonly 201: {
-                headers: {
-                    readonly [name: string]: unknown;
-                };
-                content: {
-                    readonly "application/json": unknown;
-                };
-            };
-            /** @description Validation Error */
-            readonly 422: {
-                headers: {
-                    readonly [name: string]: unknown;
-                };
-                content: {
-                    readonly "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    readonly list_sources_api_v1_workspaces__company_id__market_research_sources_get: {
-        readonly parameters: {
-            readonly query?: {
-                readonly group_id?: string | null;
-            };
-            readonly header?: {
-                readonly authorization?: string | null;
-            };
-            readonly path: {
-                readonly company_id: string;
-            };
-            readonly cookie?: never;
-        };
-        readonly requestBody?: never;
-        readonly responses: {
-            /** @description Successful Response */
-            readonly 200: {
-                headers: {
-                    readonly [name: string]: unknown;
-                };
-                content: {
-                    readonly "application/json": readonly components["schemas"]["ResearchSourceOut"][];
-                };
-            };
-            /** @description Validation Error */
-            readonly 422: {
-                headers: {
-                    readonly [name: string]: unknown;
-                };
-                content: {
-                    readonly "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    readonly create_source_api_v1_workspaces__company_id__market_research_sources_post: {
-        readonly parameters: {
-            readonly query?: never;
-            readonly header?: {
-                readonly authorization?: string | null;
-            };
-            readonly path: {
-                readonly company_id: string;
-            };
-            readonly cookie?: never;
-        };
-        readonly requestBody: {
-            readonly content: {
-                readonly "application/json": components["schemas"]["ResearchSourceCreate"];
-            };
-        };
-        readonly responses: {
-            /** @description Successful Response */
-            readonly 201: {
-                headers: {
-                    readonly [name: string]: unknown;
-                };
-                content: {
-                    readonly "application/json": components["schemas"]["ResearchSourceOut"];
-                };
-            };
-            /** @description Validation Error */
-            readonly 422: {
-                headers: {
-                    readonly [name: string]: unknown;
-                };
-                content: {
-                    readonly "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    readonly delete_source_api_v1_workspaces__company_id__market_research_sources__source_id__delete: {
-        readonly parameters: {
-            readonly query?: never;
-            readonly header?: {
-                readonly authorization?: string | null;
-            };
-            readonly path: {
-                readonly company_id: string;
-                readonly source_id: string;
-            };
-            readonly cookie?: never;
-        };
-        readonly requestBody?: never;
-        readonly responses: {
-            /** @description Successful Response */
-            readonly 204: {
-                headers: {
-                    readonly [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Validation Error */
-            readonly 422: {
-                headers: {
-                    readonly [name: string]: unknown;
-                };
-                content: {
-                    readonly "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    readonly import_source_observations_api_v1_workspaces__company_id__market_research_sources__source_id__import_post: {
-        readonly parameters: {
-            readonly query?: never;
-            readonly header?: {
-                readonly authorization?: string | null;
-            };
-            readonly path: {
-                readonly company_id: string;
-                readonly source_id: string;
-            };
-            readonly cookie?: never;
-        };
-        readonly requestBody: {
-            readonly content: {
-                readonly "application/json": components["schemas"]["ManualImportIn"];
-            };
-        };
-        readonly responses: {
-            /** @description Successful Response */
-            readonly 201: {
-                headers: {
-                    readonly [name: string]: unknown;
-                };
-                content: {
-                    readonly "application/json": unknown;
-                };
-            };
-            /** @description Validation Error */
-            readonly 422: {
-                headers: {
-                    readonly [name: string]: unknown;
-                };
-                content: {
-                    readonly "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    readonly upload_media_asset_api_v1_workspaces__company_id__media_post: {
-        readonly parameters: {
-            readonly query?: never;
-            readonly header?: {
-                readonly authorization?: string | null;
-            };
-            readonly path: {
-                readonly company_id: string;
-            };
-            readonly cookie?: never;
-        };
-        readonly requestBody: {
-            readonly content: {
-                readonly "multipart/form-data": components["schemas"]["Body_upload_media_asset_api_v1_workspaces__company_id__media_post"];
-            };
-        };
-        readonly responses: {
-            /** @description Successful Response */
-            readonly 201: {
-                headers: {
-                    readonly [name: string]: unknown;
-                };
-                content: {
-                    readonly "application/json": components["schemas"]["MediaAssetOut"];
-                };
-            };
-            /** @description Validation Error */
-            readonly 422: {
-                headers: {
-                    readonly [name: string]: unknown;
-                };
-                content: {
-                    readonly "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    readonly download_media_asset_api_v1_workspaces__company_id__media__asset_id__content_get: {
-        readonly parameters: {
-            readonly query?: never;
-            readonly header?: {
-                readonly authorization?: string | null;
-            };
-            readonly path: {
-                readonly company_id: string;
-                readonly asset_id: string;
-            };
-            readonly cookie?: never;
-        };
-        readonly requestBody?: never;
-        readonly responses: {
-            /** @description Successful Response */
-            readonly 200: {
-                headers: {
-                    readonly [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Validation Error */
-            readonly 422: {
-                headers: {
-                    readonly [name: string]: unknown;
-                };
-                content: {
-                    readonly "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    readonly list_members_api_v1_workspaces__company_id__members_get: {
-        readonly parameters: {
-            readonly query?: never;
-            readonly header?: {
-                readonly authorization?: string | null;
-            };
-            readonly path: {
-                readonly company_id: string;
-            };
-            readonly cookie?: never;
-        };
-        readonly requestBody?: never;
-        readonly responses: {
-            /** @description Successful Response */
-            readonly 200: {
-                headers: {
-                    readonly [name: string]: unknown;
-                };
-                content: {
-                    readonly "application/json": readonly components["schemas"]["MemberOut"][];
-                };
-            };
-            /** @description Validation Error */
-            readonly 422: {
-                headers: {
-                    readonly [name: string]: unknown;
-                };
-                content: {
-                    readonly "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    readonly invite_member_api_v1_workspaces__company_id__members_post: {
-        readonly parameters: {
-            readonly query?: never;
-            readonly header?: {
-                readonly authorization?: string | null;
-            };
-            readonly path: {
-                readonly company_id: string;
-            };
-            readonly cookie?: never;
-        };
-        readonly requestBody: {
-            readonly content: {
-                readonly "application/json": components["schemas"]["InviteMemberRequest"];
-            };
-        };
-        readonly responses: {
-            /** @description Successful Response */
-            readonly 201: {
-                headers: {
-                    readonly [name: string]: unknown;
-                };
-                content: {
-                    readonly "application/json": components["schemas"]["InviteMemberResponse"];
-                };
-            };
-            /** @description Validation Error */
-            readonly 422: {
-                headers: {
-                    readonly [name: string]: unknown;
-                };
-                content: {
-                    readonly "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    readonly resend_invitation_api_v1_workspaces__company_id__members__member_id__resend_invitation_post: {
-        readonly parameters: {
-            readonly query?: never;
-            readonly header?: {
-                readonly authorization?: string | null;
-            };
-            readonly path: {
-                readonly company_id: string;
-                readonly member_id: string;
-            };
-            readonly cookie?: never;
-        };
-        readonly requestBody?: never;
-        readonly responses: {
-            /** @description Successful Response */
-            readonly 200: {
-                headers: {
-                    readonly [name: string]: unknown;
-                };
-                content: {
-                    readonly "application/json": components["schemas"]["InviteMemberResponse"];
                 };
             };
             /** @description Validation Error */
@@ -5773,156 +5871,6 @@ export interface operations {
                 };
                 content: {
                     readonly "application/json": components["schemas"]["MetaConnectionOut"];
-                };
-            };
-            /** @description Validation Error */
-            readonly 422: {
-                headers: {
-                    readonly [name: string]: unknown;
-                };
-                content: {
-                    readonly "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    readonly sync_meta_metrics_api_v1_workspaces__company_id__meta_metrics_sync_post: {
-        readonly parameters: {
-            readonly query?: {
-                readonly connection_id?: string | null;
-            };
-            readonly header?: {
-                readonly authorization?: string | null;
-            };
-            readonly path: {
-                readonly company_id: string;
-            };
-            readonly cookie?: never;
-        };
-        readonly requestBody?: never;
-        readonly responses: {
-            /** @description Successful Response */
-            readonly 202: {
-                headers: {
-                    readonly [name: string]: unknown;
-                };
-                content: {
-                    readonly "application/json": components["schemas"]["AcceptedResponse"];
-                };
-            };
-            /** @description Validation Error */
-            readonly 422: {
-                headers: {
-                    readonly [name: string]: unknown;
-                };
-                content: {
-                    readonly "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    readonly list_meta_page_posts_api_v1_workspaces__company_id__meta_page_posts_get: {
-        readonly parameters: {
-            readonly query?: {
-                readonly limit?: number;
-                readonly offset?: number;
-                readonly connection_id?: string | null;
-            };
-            readonly header?: {
-                readonly authorization?: string | null;
-            };
-            readonly path: {
-                readonly company_id: string;
-            };
-            readonly cookie?: never;
-        };
-        readonly requestBody?: never;
-        readonly responses: {
-            /** @description Successful Response */
-            readonly 200: {
-                headers: {
-                    readonly [name: string]: unknown;
-                };
-                content: {
-                    readonly "application/json": components["schemas"]["MetaPagePostsOut"];
-                };
-            };
-            /** @description Validation Error */
-            readonly 422: {
-                headers: {
-                    readonly [name: string]: unknown;
-                };
-                content: {
-                    readonly "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    readonly list_page_post_metric_history_api_v1_workspaces__company_id__meta_page_posts__post_id__metrics_get: {
-        readonly parameters: {
-            readonly query?: {
-                readonly observed_from?: string | null;
-                readonly observed_to?: string | null;
-                readonly limit?: number;
-                readonly offset?: number;
-            };
-            readonly header?: {
-                readonly authorization?: string | null;
-            };
-            readonly path: {
-                readonly company_id: string;
-                readonly post_id: string;
-            };
-            readonly cookie?: never;
-        };
-        readonly requestBody?: never;
-        readonly responses: {
-            /** @description Successful Response */
-            readonly 200: {
-                headers: {
-                    readonly [name: string]: unknown;
-                };
-                content: {
-                    readonly "application/json": components["schemas"]["MetaMetricHistoryOut"];
-                };
-            };
-            /** @description Validation Error */
-            readonly 422: {
-                headers: {
-                    readonly [name: string]: unknown;
-                };
-                content: {
-                    readonly "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    readonly list_page_metric_history_api_v1_workspaces__company_id__meta_pages__connection_id__metrics_get: {
-        readonly parameters: {
-            readonly query?: {
-                readonly observed_from?: string | null;
-                readonly observed_to?: string | null;
-                readonly limit?: number;
-                readonly offset?: number;
-            };
-            readonly header?: {
-                readonly authorization?: string | null;
-            };
-            readonly path: {
-                readonly company_id: string;
-                readonly connection_id: string;
-            };
-            readonly cookie?: never;
-        };
-        readonly requestBody?: never;
-        readonly responses: {
-            /** @description Successful Response */
-            readonly 200: {
-                headers: {
-                    readonly [name: string]: unknown;
-                };
-                content: {
-                    readonly "application/json": components["schemas"]["MetaMetricHistoryOut"];
                 };
             };
             /** @description Validation Error */
@@ -6044,49 +5992,12 @@ export interface operations {
             };
         };
     };
-    readonly import_metrics_api_v1_workspaces__company_id__metrics_import_post: {
-        readonly parameters: {
-            readonly query?: never;
-            readonly header?: {
-                readonly authorization?: string | null;
-            };
-            readonly path: {
-                readonly company_id: string;
-            };
-            readonly cookie?: never;
-        };
-        readonly requestBody: {
-            readonly content: {
-                readonly "application/json": components["schemas"]["MetricImportRequest"];
-            };
-        };
-        readonly responses: {
-            /** @description Successful Response */
-            readonly 201: {
-                headers: {
-                    readonly [name: string]: unknown;
-                };
-                content: {
-                    readonly "application/json": components["schemas"]["MetricImportResponse"];
-                };
-            };
-            /** @description Validation Error */
-            readonly 422: {
-                headers: {
-                    readonly [name: string]: unknown;
-                };
-                content: {
-                    readonly "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    readonly list_posts_api_v1_workspaces__company_id__posts_get: {
+    readonly list_meta_page_posts_api_v1_workspaces__company_id__meta_page_posts_get: {
         readonly parameters: {
             readonly query?: {
-                readonly campaign_id?: string | null;
-                readonly page?: number;
-                readonly page_size?: number;
+                readonly limit?: number;
+                readonly offset?: number;
+                readonly connection_id?: string | null;
             };
             readonly header?: {
                 readonly authorization?: string | null;
@@ -6104,7 +6015,7 @@ export interface operations {
                     readonly [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": components["schemas"]["PaginatedPosts"];
+                    readonly "application/json": components["schemas"]["MetaPagePostsOut"];
                 };
             };
             /** @description Validation Error */
@@ -6118,31 +6029,32 @@ export interface operations {
             };
         };
     };
-    readonly generate_content_api_v1_workspaces__company_id__posts_generate_post: {
+    readonly list_page_metric_history_api_v1_workspaces__company_id__meta_pages__connection_id__metrics_get: {
         readonly parameters: {
-            readonly query?: never;
+            readonly query?: {
+                readonly observed_from?: string | null;
+                readonly observed_to?: string | null;
+                readonly limit?: number;
+                readonly offset?: number;
+            };
             readonly header?: {
-                readonly "Idempotency-Key"?: string | null;
                 readonly authorization?: string | null;
             };
             readonly path: {
                 readonly company_id: string;
+                readonly connection_id: string;
             };
             readonly cookie?: never;
         };
-        readonly requestBody: {
-            readonly content: {
-                readonly "application/json": components["schemas"]["GenerateContentRequest"];
-            };
-        };
+        readonly requestBody?: never;
         readonly responses: {
             /** @description Successful Response */
-            readonly 202: {
+            readonly 200: {
                 headers: {
                     readonly [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": components["schemas"]["GenerateContentResponse"];
+                    readonly "application/json": components["schemas"]["MetaMetricHistoryOut"];
                 };
             };
             /** @description Validation Error */
@@ -6156,9 +6068,14 @@ export interface operations {
             };
         };
     };
-    readonly get_post_api_v1_workspaces__company_id__posts__post_id__get: {
+    readonly list_page_post_metric_history_api_v1_workspaces__company_id__meta_page_posts__post_id__metrics_get: {
         readonly parameters: {
-            readonly query?: never;
+            readonly query?: {
+                readonly observed_from?: string | null;
+                readonly observed_to?: string | null;
+                readonly limit?: number;
+                readonly offset?: number;
+            };
             readonly header?: {
                 readonly authorization?: string | null;
             };
@@ -6176,7 +6093,7 @@ export interface operations {
                     readonly [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": components["schemas"]["PostOut"];
+                    readonly "application/json": components["schemas"]["MetaMetricHistoryOut"];
                 };
             };
             /** @description Validation Error */
@@ -6190,134 +6107,20 @@ export interface operations {
             };
         };
     };
-    readonly update_post_api_v1_workspaces__company_id__posts__post_id__patch: {
+    readonly sync_meta_metrics_api_v1_workspaces__company_id__meta_metrics_sync_post: {
         readonly parameters: {
-            readonly query?: never;
+            readonly query?: {
+                readonly connection_id?: string | null;
+            };
             readonly header?: {
                 readonly authorization?: string | null;
             };
             readonly path: {
                 readonly company_id: string;
-                readonly post_id: string;
-            };
-            readonly cookie?: never;
-        };
-        readonly requestBody: {
-            readonly content: {
-                readonly "application/json": components["schemas"]["UpdatePostRequest"];
-            };
-        };
-        readonly responses: {
-            /** @description Successful Response */
-            readonly 200: {
-                headers: {
-                    readonly [name: string]: unknown;
-                };
-                content: {
-                    readonly "application/json": components["schemas"]["PostOut"];
-                };
-            };
-            /** @description Validation Error */
-            readonly 422: {
-                headers: {
-                    readonly [name: string]: unknown;
-                };
-                content: {
-                    readonly "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    readonly decide_post_approval_api_v1_workspaces__company_id__posts__post_id__approval_post: {
-        readonly parameters: {
-            readonly query?: never;
-            readonly header?: {
-                readonly authorization?: string | null;
-            };
-            readonly path: {
-                readonly company_id: string;
-                readonly post_id: string;
-            };
-            readonly cookie?: never;
-        };
-        readonly requestBody: {
-            readonly content: {
-                readonly "application/json": components["schemas"]["ApprovalRequest"];
-            };
-        };
-        readonly responses: {
-            /** @description Successful Response */
-            readonly 200: {
-                headers: {
-                    readonly [name: string]: unknown;
-                };
-                content: {
-                    readonly "application/json": components["schemas"]["PostOut"];
-                };
-            };
-            /** @description Validation Error */
-            readonly 422: {
-                headers: {
-                    readonly [name: string]: unknown;
-                };
-                content: {
-                    readonly "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    readonly post_approval_history_api_v1_workspaces__company_id__posts__post_id__approvals_get: {
-        readonly parameters: {
-            readonly query?: never;
-            readonly header?: {
-                readonly authorization?: string | null;
-            };
-            readonly path: {
-                readonly company_id: string;
-                readonly post_id: string;
             };
             readonly cookie?: never;
         };
         readonly requestBody?: never;
-        readonly responses: {
-            /** @description Successful Response */
-            readonly 200: {
-                headers: {
-                    readonly [name: string]: unknown;
-                };
-                content: {
-                    readonly "application/json": readonly components["schemas"]["ApprovalRecordOut"][];
-                };
-            };
-            /** @description Validation Error */
-            readonly 422: {
-                headers: {
-                    readonly [name: string]: unknown;
-                };
-                content: {
-                    readonly "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    readonly revise_post_with_ai_api_v1_workspaces__company_id__posts__post_id__revise_post: {
-        readonly parameters: {
-            readonly query?: never;
-            readonly header?: {
-                readonly "Idempotency-Key"?: string | null;
-                readonly authorization?: string | null;
-            };
-            readonly path: {
-                readonly company_id: string;
-                readonly post_id: string;
-            };
-            readonly cookie?: never;
-        };
-        readonly requestBody: {
-            readonly content: {
-                readonly "application/json": components["schemas"]["ReviseWithAiRequest"];
-            };
-        };
         readonly responses: {
             /** @description Successful Response */
             readonly 202: {
@@ -6339,7 +6142,7 @@ export interface operations {
             };
         };
     };
-    readonly submit_post_for_approval_api_v1_workspaces__company_id__posts__post_id__submit_approval_post: {
+    readonly list_groups_api_v1_workspaces__company_id__market_research_groups_get: {
         readonly parameters: {
             readonly query?: never;
             readonly header?: {
@@ -6347,15 +6150,10 @@ export interface operations {
             };
             readonly path: {
                 readonly company_id: string;
-                readonly post_id: string;
             };
             readonly cookie?: never;
         };
-        readonly requestBody: {
-            readonly content: {
-                readonly "application/json": components["schemas"]["SubmitApprovalRequest"];
-            };
-        };
+        readonly requestBody?: never;
         readonly responses: {
             /** @description Successful Response */
             readonly 200: {
@@ -6363,7 +6161,7 @@ export interface operations {
                     readonly [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": components["schemas"]["PostOut"];
+                    readonly "application/json": readonly components["schemas"]["GroupOut"][];
                 };
             };
             /** @description Validation Error */
@@ -6377,7 +6175,7 @@ export interface operations {
             };
         };
     };
-    readonly list_post_versions_api_v1_workspaces__company_id__posts__post_id__versions_get: {
+    readonly create_group_api_v1_workspaces__company_id__market_research_groups_post: {
         readonly parameters: {
             readonly query?: never;
             readonly header?: {
@@ -6385,7 +6183,82 @@ export interface operations {
             };
             readonly path: {
                 readonly company_id: string;
-                readonly post_id: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": components["schemas"]["GroupCreate"];
+            };
+        };
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 201: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["GroupOut"];
+                };
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    readonly update_web_crawl_settings_api_v1_workspaces__company_id__market_research_sources__source_id__crawl_settings_patch: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: {
+                readonly authorization?: string | null;
+            };
+            readonly path: {
+                readonly company_id: string;
+                readonly source_id: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": components["schemas"]["WebCrawlSettingsIn"];
+            };
+        };
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ResearchSourceOut"];
+                };
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    readonly list_web_crawl_runs_api_v1_workspaces__company_id__market_research_sources__source_id__crawl_runs_get: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: {
+                readonly authorization?: string | null;
+            };
+            readonly path: {
+                readonly company_id: string;
+                readonly source_id: string;
             };
             readonly cookie?: never;
         };
@@ -6397,7 +6270,544 @@ export interface operations {
                     readonly [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": components["schemas"]["PostVersionListOut"];
+                    readonly "application/json": readonly components["schemas"]["WebCrawlRunOut"][];
+                };
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    readonly list_group_web_items_api_v1_workspaces__company_id__market_research_groups__group_id__web_items_get: {
+        readonly parameters: {
+            readonly query?: {
+                readonly kind?: string | null;
+                readonly source_id?: string | null;
+                readonly category?: string | null;
+                readonly query?: string | null;
+                readonly currency?: string | null;
+                readonly minimum_price?: number | string | null;
+                readonly maximum_price?: number | string | null;
+                readonly limit?: number;
+                readonly cursor?: string | null;
+            };
+            readonly header?: {
+                readonly authorization?: string | null;
+            };
+            readonly path: {
+                readonly company_id: string;
+                readonly group_id: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["WebItemsPage"];
+                };
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    readonly get_web_item_api_v1_workspaces__company_id__market_research_web_items__item_id__get: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: {
+                readonly authorization?: string | null;
+            };
+            readonly path: {
+                readonly company_id: string;
+                readonly item_id: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["WebItemOut"];
+                };
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    readonly list_web_item_snapshots_api_v1_workspaces__company_id__market_research_web_items__item_id__snapshots_get: {
+        readonly parameters: {
+            readonly query?: {
+                readonly limit?: number;
+            };
+            readonly header?: {
+                readonly authorization?: string | null;
+            };
+            readonly path: {
+                readonly company_id: string;
+                readonly item_id: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": readonly components["schemas"]["WebItemOut"][];
+                };
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    readonly update_group_api_v1_workspaces__company_id__market_research_groups__group_id__patch: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: {
+                readonly authorization?: string | null;
+            };
+            readonly path: {
+                readonly company_id: string;
+                readonly group_id: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": components["schemas"]["GroupUpdate"];
+            };
+        };
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["GroupOut"];
+                };
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    readonly list_pages_api_v1_workspaces__company_id__market_research_groups__group_id__pages_get: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: {
+                readonly authorization?: string | null;
+            };
+            readonly path: {
+                readonly company_id: string;
+                readonly group_id: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": readonly components["schemas"]["PageConnectionOut"][];
+                };
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    readonly connect_page_api_v1_workspaces__company_id__market_research_groups__group_id__pages_post: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: {
+                readonly authorization?: string | null;
+            };
+            readonly path: {
+                readonly company_id: string;
+                readonly group_id: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": components["schemas"]["PageConnectIn"];
+            };
+        };
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 201: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["PageConnectionOut"];
+                };
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    readonly list_all_pages_api_v1_workspaces__company_id__market_research_pages_get: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: {
+                readonly authorization?: string | null;
+            };
+            readonly path: {
+                readonly company_id: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": readonly components["schemas"]["PageConnectionOut"][];
+                };
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    readonly disconnect_page_api_v1_workspaces__company_id__market_research_pages__connection_id__delete: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: {
+                readonly authorization?: string | null;
+            };
+            readonly path: {
+                readonly company_id: string;
+                readonly connection_id: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 204: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    readonly list_sources_api_v1_workspaces__company_id__market_research_sources_get: {
+        readonly parameters: {
+            readonly query?: {
+                readonly group_id?: string | null;
+            };
+            readonly header?: {
+                readonly authorization?: string | null;
+            };
+            readonly path: {
+                readonly company_id: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": readonly components["schemas"]["ResearchSourceOut"][];
+                };
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    readonly create_source_api_v1_workspaces__company_id__market_research_sources_post: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: {
+                readonly authorization?: string | null;
+            };
+            readonly path: {
+                readonly company_id: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": components["schemas"]["ResearchSourceCreate"];
+            };
+        };
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 201: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ResearchSourceOut"];
+                };
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    readonly delete_source_api_v1_workspaces__company_id__market_research_sources__source_id__delete: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: {
+                readonly authorization?: string | null;
+            };
+            readonly path: {
+                readonly company_id: string;
+                readonly source_id: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 204: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    readonly crawl_group_now_api_v1_workspaces__company_id__market_research_groups__group_id__crawl_post: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: {
+                readonly authorization?: string | null;
+            };
+            readonly path: {
+                readonly company_id: string;
+                readonly group_id: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 202: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["AcceptedResponse"];
+                };
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    readonly import_source_observations_api_v1_workspaces__company_id__market_research_sources__source_id__import_post: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: {
+                readonly authorization?: string | null;
+            };
+            readonly path: {
+                readonly company_id: string;
+                readonly source_id: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": components["schemas"]["ManualImportIn"];
+            };
+        };
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 201: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    readonly list_reports_api_v1_workspaces__company_id__market_research_groups__group_id__reports_get: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: {
+                readonly authorization?: string | null;
+            };
+            readonly path: {
+                readonly company_id: string;
+                readonly group_id: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": readonly components["schemas"]["ResearchReportOut"][];
+                };
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    readonly create_draft_from_report_api_v1_workspaces__company_id__market_research_reports__report_id__draft_post: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: {
+                readonly authorization?: string | null;
+            };
+            readonly path: {
+                readonly company_id: string;
+                readonly report_id: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": components["schemas"]["DraftFromReportIn"];
+            };
+        };
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 201: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": unknown;
                 };
             };
             /** @description Validation Error */

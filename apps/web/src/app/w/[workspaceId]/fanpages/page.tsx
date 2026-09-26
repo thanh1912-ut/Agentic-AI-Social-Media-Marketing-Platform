@@ -93,6 +93,7 @@ export default function FanpagesMarketResearchPage() {
   const [lastCrawlJob, setLastCrawlJob] = useState<{ jobId: string; groupId: string } | null>(null);
   const [draftCampaign, setDraftCampaign] = useState<string | null>(null);
   const [draftError, setDraftError] = useState<string | null>(null);
+  const [webKind, setWebKind] = useState('product');
 
   const groupsQuery = useQuery({
     queryKey: marketResearchKeys.groups(workspaceId),
@@ -122,6 +123,11 @@ export default function FanpagesMarketResearchPage() {
     enabled: workspaceId !== '' && activeGroupId !== '',
     refetchInterval: (query) => query.state.fetchStatus === 'fetching' ? false : 15_000,
   });
+  const webItemsQuery = useQuery({
+    queryKey: marketResearchKeys.webItems(workspaceId, activeGroupId, webKind),
+    queryFn: () => marketResearchApi.webItems(workspaceId, activeGroupId, webKind),
+    enabled: workspaceId !== '' && activeGroupId !== '',
+  });
   const pages = pagesQuery.data ?? [];
   const sources = sourcesQuery.data ?? [];
   const reports = reportsQuery.data ?? [];
@@ -132,6 +138,9 @@ export default function FanpagesMarketResearchPage() {
       queryClient.invalidateQueries({ queryKey: marketResearchKeys.pages(workspaceId, groupId) }),
       queryClient.invalidateQueries({ queryKey: marketResearchKeys.sources(workspaceId, groupId) }),
       queryClient.invalidateQueries({ queryKey: marketResearchKeys.reports(workspaceId, groupId) }),
+      queryClient.invalidateQueries({ queryKey: marketResearchKeys.webItems(workspaceId, groupId, 'product') }),
+      queryClient.invalidateQueries({ queryKey: marketResearchKeys.webItems(workspaceId, groupId, 'article') }),
+      queryClient.invalidateQueries({ queryKey: marketResearchKeys.webItems(workspaceId, groupId, 'business_info') }),
     ]);
   };
 
@@ -165,6 +174,13 @@ export default function FanpagesMarketResearchPage() {
   const deleteSource = useMutation({
     mutationFn: (sourceId: string) => marketResearchApi.deleteSource(workspaceId, sourceId),
     onSuccess: () => refreshGroupData(),
+  });
+  const updateCrawlSettings = useMutation({
+    mutationFn: ({ sourceId, settings }: { sourceId: string; settings: {
+      crawl_mode: 'legacy' | 'site_catalog'; crawl_page_limit: number; render_mode: 'http_only' | 'javascript';
+      resource_hosts: string[]; schedule_enabled: boolean;
+    } }) => marketResearchApi.updateCrawlSettings(workspaceId, sourceId, settings),
+    onSuccess: async () => refreshGroupData(),
   });
   const disconnectPage = useMutation({
     mutationFn: (connectionId: string) => marketResearchApi.disconnectPage(workspaceId, connectionId),
@@ -411,6 +427,8 @@ export default function FanpagesMarketResearchPage() {
                       {source.error?.message ? <p className="mt-1 text-xs text-rose-800">{source.error.message}</p> : null}
                     </div>
                     <div className="flex gap-2">
+                      {source.source_type === 'website' && canManageMarket && (source.crawl_mode ?? 'legacy') === 'legacy' ? <Button size="sm" variant="secondary" loading={updateCrawlSettings.isPending} onClick={() => updateCrawlSettings.mutate({ sourceId: source.id, settings: { crawl_mode: 'site_catalog', crawl_page_limit: 1000, render_mode: 'http_only', resource_hosts: [], schedule_enabled: true } })}>Bật sản phẩm & bài viết</Button> : null}
+                      {source.source_type === 'website' && canManageMarket && source.crawl_mode === 'site_catalog' ? <Button size="sm" variant="secondary" loading={updateCrawlSettings.isPending} onClick={() => updateCrawlSettings.mutate({ sourceId: source.id, settings: { crawl_mode: 'site_catalog', crawl_page_limit: source.crawl_page_limit ?? 1000, render_mode: 'http_only', resource_hosts: source.resource_hosts ?? [], schedule_enabled: !(source.schedule_enabled ?? true) } })}>{source.schedule_enabled === false ? 'Bật lịch' : 'Tắt lịch'}</Button> : null}
                       {source.source_type !== 'website' && canManageMarket ? <Button size="sm" variant="secondary" onClick={() => { setManualSourceId(source.id); setManualResult(null); }}>Nhập dữ liệu</Button> : null}
                       {canManageMarket ? <Button size="sm" variant="ghost" loading={deleteSource.isPending} onClick={() => deleteSource.mutate(source.id)}>Xoá link</Button> : null}
                     </div>
@@ -418,6 +436,7 @@ export default function FanpagesMarketResearchPage() {
                 );
               })}
               {sources.length === 0 ? <EmptyState title="Chưa lưu link nào" description="Thêm website, Fanpage của bạn hoặc link đối thủ/nhóm Facebook để bắt đầu." /> : null}
+              {updateCrawlSettings.error ? <p role="alert" className="text-sm text-rose-800">{readableError(updateCrawlSettings.error, 'Không cập nhật được cấu hình website.')}</p> : null}
             </div>
             {manualSourceId ? (
               <form className="mt-5 grid gap-3 rounded-lg border border-sky-200 bg-sky-50 p-4 sm:grid-cols-2" onSubmit={(event) => { event.preventDefault(); importManual.mutate(); }}>
@@ -438,6 +457,38 @@ export default function FanpagesMarketResearchPage() {
             ) : null}
           </Card>
 
+          <Card title="Dữ liệu website đã trích xuất" description="Giá, gói bán và số liệu chỉ hiện khi website công khai dữ liệu có bằng chứng. Giá không rõ được để trống; số tự công bố không được coi là số liệu đã kiểm toán.">
+            <div className="mb-4 flex flex-wrap gap-2" role="tablist" aria-label="Loại dữ liệu website">
+              {([['product', 'Sản phẩm & giá'], ['article', 'Bài viết'], ['business_info', 'Thông tin website']] as const).map(([value, label]) => (
+                <Button key={value} size="sm" variant={webKind === value ? 'primary' : 'secondary'} onClick={() => setWebKind(value)}>{label}</Button>
+              ))}
+            </div>
+            {webItemsQuery.isLoading ? <LoadingBlock label="Đang tải dữ liệu website…" /> : null}
+            {webItemsQuery.error ? <ErrorPanel message={readableError(webItemsQuery.error, 'Không tải được dữ liệu website.')} retryable onRetry={() => void webItemsQuery.refetch()} /> : null}
+            {webItemsQuery.data?.items.length ? (
+              <div className="overflow-x-auto">
+                <table className="w-full min-w-[720px] border-collapse text-left text-sm">
+                  <thead><tr className="border-b border-slate-200 text-xs text-slate-500"><th className="py-2 pr-4">Tên</th><th className="py-2 pr-4">Giá / nội dung</th><th className="py-2 pr-4">Số liệu công khai</th><th className="py-2">Quan sát</th></tr></thead>
+                  <tbody>{webItemsQuery.data.items.map((item) => {
+                    const data = item.data ?? {};
+                    const sold = typeof data.sold_count_raw === 'string' ? data.sold_count_raw : (typeof data.sold_count === 'number' ? String(data.sold_count) : null);
+                    const summary = typeof data.description === 'string' ? data.description : (typeof data.content === 'string' ? data.content : '');
+                    return <tr key={item.id} className="border-b border-slate-100 align-top last:border-0">
+                      <td className="py-3 pr-4"><a className="font-medium text-sky-800 underline" href={item.url} target="_blank" rel="noopener noreferrer">{item.title || item.url}</a><p className="mt-1 text-xs text-slate-500">{item.kind === 'product' ? 'Sản phẩm / gói dịch vụ' : item.kind === 'article' ? 'Bài viết' : 'Thông tin doanh nghiệp'}</p></td>
+                      <td className="max-w-md py-3 pr-4 text-slate-700">
+                        {item.offers.length ? <ul className="space-y-1">{item.offers.map((offer) => <li key={offer.id}>{offer.price_kind === 'contact' ? 'Liên hệ báo giá' : offer.price ? `${offer.price} ${offer.currency ?? ''}`.trim() : offer.low_price || offer.high_price ? `${offer.low_price ?? '…'}–${offer.high_price ?? '…'} ${offer.currency ?? ''}`.trim() : 'Chưa công bố giá'}{offer.original_price ? ` · Giá gốc ${offer.original_price} ${offer.currency ?? ''}` : ''}{offer.billing_unit ? ` · ${offer.billing_unit}` : ''}{offer.availability ? ` · ${offer.availability.split('/').pop()}` : ''}</li>)}</ul> : <p className="line-clamp-3 text-xs">{summary || 'Không có nội dung tóm tắt.'}</p>}
+                      </td>
+                      <td className="py-3 pr-4 text-slate-700">{sold ? `Đã bán: ${sold}` : 'Chưa công bố số đã bán'}{typeof data.review_count_raw === 'string' ? <p className="mt-1 text-xs text-slate-500">Đánh giá: {data.review_count_raw}</p> : null}</td>
+                      <td className="whitespace-nowrap py-3 text-xs text-slate-500">{item.observed_at ? formatDateTime(item.observed_at) : '—'}</td>
+                    </tr>;
+                  })}</tbody>
+                </table>
+                <p className="mt-3 text-xs text-slate-500">Đang hiển thị tối đa 100 mục theo lần quét mới nhất. Để xem bằng chứng, mở liên kết nguồn ở cột Tên.</p>
+              </div>
+            ) : null}
+            {!webItemsQuery.isLoading && !webItemsQuery.error && !webItemsQuery.data?.items.length ? <EmptyState title="Chưa có dữ liệu website" description="Thêm website vào nhóm, chuyển nguồn sang chế độ sản phẩm & nội dung rồi bấm Crawl ngay. Nguồn cũ giữ chế độ legacy cho đến khi được chuyển rõ ràng." /> : null}
+          </Card>
+
           <Card title="Báo cáo xu hướng và gợi ý" description="DeepSeek phân tích nội dung, tương tác, views, follower count và thay đổi giữa các lần crawl khi nguồn trả dữ liệu. Giá trị thiếu được để trống; kết luận có nguồn đối chiếu.">
             {reportsQuery.isLoading ? <LoadingBlock label="Đang tải báo cáo…" /> : null}
             {reportsQuery.error ? <ErrorPanel message={readableError(reportsQuery.error, 'Không tải được báo cáo.')} retryable onRetry={() => void reportsQuery.refetch()} /> : null}
@@ -449,7 +500,7 @@ export default function FanpagesMarketResearchPage() {
                 </div>
                 <p className="mt-3 whitespace-pre-line text-sm text-slate-700">{report.report.summary}</p>
                 {(report.report.trends ?? []).length > 0 ? (
-                  <div className="mt-4"><h4 className="text-sm font-semibold text-slate-900">Xu hướng ghi nhận</h4><ul className="mt-2 space-y-2">{report.report.trends?.map((trend, index) => <li key={trend.title + index} className="rounded-lg bg-slate-50 p-3"><p className="text-sm font-medium text-slate-900">{trend.title} <span className="text-xs font-normal text-slate-500">· độ tin cậy {Math.round(trend.confidence * 100)}%</span></p><p className="mt-1 text-sm text-slate-700">{trend.explanation}</p><p className="mt-1 text-xs text-slate-500">{trend.evidence_ids.length} nguồn đối chiếu</p></li>)}</ul></div>
+                  <div className="mt-4"><h4 className="text-sm font-semibold text-slate-900">Xu hướng ghi nhận</h4><ul className="mt-2 space-y-2">{report.report.trends?.map((trend, index) => <li key={trend.title + index} className="rounded-lg bg-slate-50 p-3"><p className="text-sm font-medium text-slate-900">{trend.title} <span className="text-xs font-normal text-slate-500">· độ tin cậy {Math.round(trend.confidence * 100)}%</span></p><p className="mt-1 text-sm text-slate-700">{trend.explanation}</p><p className="mt-1 text-xs text-slate-500">{trend.evidence_ids.length} nguồn văn bản · {trend.web_snapshot_ids?.length ?? 0} snapshot sản phẩm/bài viết</p></li>)}</ul></div>
                 ) : null}
                 {(report.report.suggestions ?? []).length > 0 ? (
                   <div className="mt-4"><h4 className="text-sm font-semibold text-slate-900">Gợi ý nội dung</h4><div className="mt-2 grid gap-3 lg:grid-cols-2">{report.report.suggestions?.map((suggestion, index) => <div key={suggestion.title + index} className="rounded-lg border border-slate-200 p-3"><p className="font-medium text-slate-900">{suggestion.title}</p><p className="mt-1 text-sm text-slate-700">{suggestion.angle}</p><p className="mt-2 text-sm text-slate-600">Mở bài: “{suggestion.hook}” · {suggestion.format}</p><p className="mt-1 text-xs text-slate-500">{suggestion.evidence_ids.length} nguồn liên quan</p><div className="mt-3"><Button size="sm" variant="secondary" loading={createDraft.isPending && createDraft.variables?.reportId === report.id && createDraft.variables?.suggestionIndex === index} onClick={() => createDraft.mutate({ reportId: report.id, suggestionIndex: index })}>Tạo chiến dịch nháp</Button></div></div>)}</div></div>

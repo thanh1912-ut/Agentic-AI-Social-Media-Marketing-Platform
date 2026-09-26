@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime, timezone
+from decimal import Decimal
 from typing import Any
 
 from sqlalchemy import (
@@ -245,6 +246,7 @@ class Job(Base, IdMixin, TimestampMixin):
         Index("ix_job_company_status", "company_id", "status"),
         Index("ix_job_due_lease", "status", "lease_until"),
         UniqueConstraint("company_id", "idempotency_key", name="uq_job_company_idempotency"),
+        UniqueConstraint("company_id", "id", name="uq_job_tenant_id"),
     )
 
     company_id: Mapped[str] = mapped_column(ForeignKey("companies.id", ondelete="CASCADE"), nullable=False)
@@ -579,6 +581,7 @@ class ResearchSource(Base, IdMixin, TimestampMixin):
     __table_args__ = (
         UniqueConstraint("company_id", "group_id", "normalized_url", name="uq_research_source_url"),
         UniqueConstraint("company_id", "id", name="uq_research_source_tenant_id"),
+        UniqueConstraint("company_id", "group_id", "id", name="uq_research_source_tenant_group_id"),
         ForeignKeyConstraint(["company_id", "group_id"], ["meta_page_groups.company_id", "meta_page_groups.id"],
                              name="fk_research_source_group_tenant", ondelete="CASCADE"),
         ForeignKeyConstraint(["company_id", "connection_id"],
@@ -595,6 +598,11 @@ class ResearchSource(Base, IdMixin, TimestampMixin):
     url: Mapped[str] = mapped_column(String(2048), nullable=False)
     normalized_url: Mapped[str] = mapped_column(String(2048), nullable=False)
     competitor_name: Mapped[str | None] = mapped_column(String(200))
+    crawl_mode: Mapped[str] = mapped_column(String(24), default="legacy", nullable=False)
+    crawl_page_limit: Mapped[int] = mapped_column(Integer, default=1000, nullable=False)
+    render_mode: Mapped[str] = mapped_column(String(24), default="http_only", nullable=False)
+    resource_hosts_json: Mapped[list[str]] = mapped_column(JSON, default=list, nullable=False)
+    schedule_enabled: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     status: Mapped[str] = mapped_column(String(32), default="active", nullable=False)
     active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     next_due_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), index=True)
@@ -760,6 +768,26 @@ class MarketReportEvidence(Base, IdMixin):
     observation_id: Mapped[str] = mapped_column(String(36), nullable=False)
     evidence_id: Mapped[str] = mapped_column(String(36), nullable=False)
     evidence_version_id: Mapped[str] = mapped_column(String(36), nullable=False)
+
+
+class MarketReportWebSnapshot(Base, IdMixin):
+    """Pins normalized website entity snapshots cited by one report."""
+
+    __tablename__ = "market_report_web_snapshots"
+    __table_args__ = (
+        UniqueConstraint("company_id", "report_id", "snapshot_id", name="uq_market_report_web_snapshot"),
+        ForeignKeyConstraint(["company_id", "report_id"],
+                             ["market_reports.company_id", "market_reports.id"],
+                             name="fk_market_report_web_snapshot_report_tenant", ondelete="CASCADE"),
+        ForeignKeyConstraint(["company_id", "snapshot_id"],
+                             ["web_entity_snapshots.company_id", "web_entity_snapshots.id"],
+                             name="fk_market_report_web_snapshot_entity_tenant"),
+        Index("ix_market_report_web_snapshot_report", "company_id", "report_id"),
+    )
+
+    company_id: Mapped[str] = mapped_column(String(36), nullable=False)
+    report_id: Mapped[str] = mapped_column(String(36), nullable=False)
+    snapshot_id: Mapped[str] = mapped_column(String(36), nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
 
 
@@ -907,3 +935,147 @@ class RecommendationExperimentOutcome(Base, IdMixin):
     limitations_json: Mapped[list[str]] = mapped_column(JSON, default=list, nullable=False)
     recorded_by: Mapped[str] = mapped_column(ForeignKey("users.id"), nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
+
+
+class WebCrawlRun(Base, IdMixin, TimestampMixin):
+    """A durable website scan checkpoint tied to one research cycle."""
+
+    __tablename__ = "web_crawl_runs"
+    __table_args__ = (
+        UniqueConstraint("company_id", "source_id", "cycle_id", name="uq_web_crawl_run_cycle_source"),
+        UniqueConstraint("company_id", "id", name="uq_web_crawl_run_tenant_id"),
+        ForeignKeyConstraint(["company_id", "source_id"], ["research_sources.company_id", "research_sources.id"],
+                             name="fk_web_crawl_run_source_tenant", ondelete="CASCADE"),
+        ForeignKeyConstraint(["company_id", "group_id", "source_id"],
+                             ["research_sources.company_id", "research_sources.group_id", "research_sources.id"],
+                             name="fk_web_crawl_run_source_group_tenant", ondelete="CASCADE"),
+        ForeignKeyConstraint(["company_id", "group_id"], ["meta_page_groups.company_id", "meta_page_groups.id"],
+                             name="fk_web_crawl_run_group_tenant", ondelete="CASCADE"),
+        ForeignKeyConstraint(["company_id", "cycle_id"], ["research_cycles.company_id", "research_cycles.id"],
+                             name="fk_web_crawl_run_cycle_tenant", ondelete="CASCADE"),
+        Index("ix_web_crawl_run_status_updated", "status", "updated_at"),
+    )
+
+    company_id: Mapped[str] = mapped_column(String(36), nullable=False)
+    group_id: Mapped[str] = mapped_column(String(36), nullable=False)
+    source_id: Mapped[str] = mapped_column(String(36), nullable=False)
+    cycle_id: Mapped[str] = mapped_column(String(36), nullable=False)
+    job_id: Mapped[str] = mapped_column(ForeignKey("jobs.id", ondelete="CASCADE"), nullable=False)
+    status: Mapped[str] = mapped_column(String(32), default="queued", nullable=False)
+    page_limit: Mapped[int] = mapped_column(Integer, default=1000, nullable=False)
+    counters_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict, nullable=False)
+    config_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict, nullable=False)
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class WebCrawlPage(Base, IdMixin, TimestampMixin):
+    """URL frontier/checkpoint row; status transitions are persisted in PostgreSQL."""
+
+    __tablename__ = "web_crawl_pages"
+    __table_args__ = (
+        UniqueConstraint("company_id", "run_id", "url", name="uq_web_crawl_page_url"),
+        ForeignKeyConstraint(["company_id", "run_id"], ["web_crawl_runs.company_id", "web_crawl_runs.id"],
+                             name="fk_web_crawl_page_run_tenant", ondelete="CASCADE"),
+        Index("ix_web_crawl_page_frontier", "company_id", "run_id", "status", "depth"),
+    )
+
+    company_id: Mapped[str] = mapped_column(String(36), nullable=False)
+    run_id: Mapped[str] = mapped_column(String(36), nullable=False)
+    url: Mapped[str] = mapped_column(String(2048), nullable=False)
+    depth: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    status: Mapped[str] = mapped_column(String(32), default="queued", nullable=False)
+    attempts: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    lease_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    http_status: Mapped[int | None] = mapped_column(Integer)
+    etag: Mapped[str | None] = mapped_column(String(500))
+    last_modified: Mapped[str | None] = mapped_column(String(500))
+    error_json: Mapped[dict[str, Any] | None] = mapped_column(JSON)
+    evidence_id: Mapped[str | None] = mapped_column(String(36))
+    observation_id: Mapped[str | None] = mapped_column(String(36))
+    evidence_version_id: Mapped[str | None] = mapped_column(String(36))
+
+
+class WebEntity(Base, IdMixin, TimestampMixin):
+    """Source-scoped stable identity for a public product, article, or business fact."""
+
+    __tablename__ = "web_entities"
+    __table_args__ = (
+        UniqueConstraint("company_id", "source_id", "kind", "identity_key", name="uq_web_entity_identity"),
+        UniqueConstraint("company_id", "id", name="uq_web_entity_tenant_id"),
+        ForeignKeyConstraint(["company_id", "source_id"], ["research_sources.company_id", "research_sources.id"],
+                             name="fk_web_entity_source_tenant", ondelete="CASCADE"),
+        ForeignKeyConstraint(["company_id", "group_id", "source_id"],
+                             ["research_sources.company_id", "research_sources.group_id", "research_sources.id"],
+                             name="fk_web_entity_source_group_tenant", ondelete="CASCADE"),
+        Index("ix_web_entity_group_kind", "company_id", "group_id", "kind", "title"),
+    )
+
+    company_id: Mapped[str] = mapped_column(String(36), nullable=False)
+    group_id: Mapped[str] = mapped_column(String(36), nullable=False)
+    source_id: Mapped[str] = mapped_column(String(36), nullable=False)
+    kind: Mapped[str] = mapped_column(String(32), nullable=False)
+    identity_key: Mapped[str] = mapped_column(String(2048), nullable=False)
+    title: Mapped[str] = mapped_column(String(1000), default="", nullable=False)
+    canonical_url: Mapped[str] = mapped_column(String(2048), nullable=False)
+    latest_snapshot_id: Mapped[str | None] = mapped_column(String(36))
+
+
+class WebEntitySnapshot(Base, IdMixin):
+    """Immutable normalized entity observation pinned to source evidence."""
+
+    __tablename__ = "web_entity_snapshots"
+    __table_args__ = (
+        UniqueConstraint("company_id", "run_id", "entity_id", "content_hash", name="uq_web_entity_snapshot_run_hash"),
+        UniqueConstraint("company_id", "id", name="uq_web_entity_snapshot_tenant_id"),
+        ForeignKeyConstraint(["company_id", "entity_id"], ["web_entities.company_id", "web_entities.id"],
+                             name="fk_web_entity_snapshot_entity_tenant", ondelete="CASCADE"),
+        ForeignKeyConstraint(["company_id", "run_id"], ["web_crawl_runs.company_id", "web_crawl_runs.id"],
+                             name="fk_web_entity_snapshot_run_tenant", ondelete="CASCADE"),
+        ForeignKeyConstraint(["company_id", "evidence_id", "evidence_version_id"],
+                             ["market_evidence_versions.company_id", "market_evidence_versions.evidence_id", "market_evidence_versions.id"],
+                             name="fk_web_entity_snapshot_evidence_version"),
+        ForeignKeyConstraint(["company_id", "evidence_id", "observation_id", "evidence_version_id"],
+                             ["market_observations.company_id", "market_observations.evidence_id", "market_observations.id", "market_observations.evidence_version_id"],
+                             name="fk_web_entity_snapshot_observation_version"),
+        Index("ix_web_entity_snapshot_history", "company_id", "entity_id", "observed_at"),
+    )
+
+    company_id: Mapped[str] = mapped_column(String(36), nullable=False)
+    entity_id: Mapped[str] = mapped_column(String(36), nullable=False)
+    run_id: Mapped[str] = mapped_column(String(36), nullable=False)
+    evidence_id: Mapped[str] = mapped_column(String(36), nullable=False)
+    observation_id: Mapped[str] = mapped_column(String(36), nullable=False)
+    evidence_version_id: Mapped[str] = mapped_column(String(36), nullable=False)
+    observed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    content_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    parser_version: Mapped[str] = mapped_column(String(80), nullable=False)
+    data_json: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
+
+
+class WebOfferSnapshot(Base, IdMixin):
+    """One offer/variant price attached to one immutable product snapshot."""
+
+    __tablename__ = "web_offer_snapshots"
+    __table_args__ = (
+        UniqueConstraint("company_id", "entity_snapshot_id", "offer_key", name="uq_web_offer_snapshot_identity"),
+        ForeignKeyConstraint(["company_id", "entity_snapshot_id"],
+                             ["web_entity_snapshots.company_id", "web_entity_snapshots.id"],
+                             name="fk_web_offer_snapshot_entity_tenant", ondelete="CASCADE"),
+        Index("ix_web_offer_price", "company_id", "currency", "price"),
+    )
+
+    company_id: Mapped[str] = mapped_column(String(36), nullable=False)
+    entity_snapshot_id: Mapped[str] = mapped_column(String(36), nullable=False)
+    offer_key: Mapped[str] = mapped_column(String(500), nullable=False)
+    price_kind: Mapped[str] = mapped_column(String(24), nullable=False)
+    price: Mapped[Decimal | None] = mapped_column(Numeric(24, 6))
+    original_price: Mapped[Decimal | None] = mapped_column(Numeric(24, 6))
+    low_price: Mapped[Decimal | None] = mapped_column(Numeric(24, 6))
+    high_price: Mapped[Decimal | None] = mapped_column(Numeric(24, 6))
+    currency: Mapped[str | None] = mapped_column(String(8))
+    availability: Mapped[str | None] = mapped_column(String(120))
+    billing_unit: Mapped[str | None] = mapped_column(String(80))
+    seller: Mapped[str | None] = mapped_column(String(300))
+    offer_url: Mapped[str] = mapped_column(String(2048), nullable=False)
+    provenance_json: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
