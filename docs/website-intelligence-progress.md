@@ -28,6 +28,7 @@ The structured-catalog foundation is implemented and the extractor has been chec
 - Branch: `codex/website-catalog-intelligence`.
 - Base commit: `31935df990027d40fd83b7c55e2f92fee1abd8a0`.
 - Feature commit: `a8b7afb` (`feat: add structured website catalog intelligence`).
+- SHA observed after the first push, before this report-only follow-up: `200dca18693f16d7003d722e28606b7e742ddd39`.
 - Shared checkout `/Users/lethanh/agent` was not modified.
 - Schema head before this feature: `0013_metric_history_and_tenant_integrity`.
 - The group crawl API already dispatched durable research jobs; this change adds catalog extraction/persistence and reads on that path.
@@ -46,7 +47,7 @@ The structured-catalog foundation is implemented and the extractor has been chec
 | 2026-09-26 22:20 | DONE | Final focused Python suite (20), Ruff focused checks, Python compilation, frontend lint/typecheck/tests (47), Next.js production build, `git diff --check`, and SQLite Alembic upgrade passed. |
 | 2026-09-26 | BLOCKED | PostgreSQL/Redis integration, real browser smoke test, full persistent multi-batch workflow, and isolated JavaScript renderer are not verified/implemented; this environment has no isolated PostgreSQL/Redis service or browser egress boundary. |
 | 2026-09-26 22:21 | DONE | Reviewed the staged paths and secret scan; committed only the 17 feature paths as `a8b7afb`. |
-| 2026-09-26 | IN_PROGRESS | Push `codex/website-catalog-intelligence` and confirm that GitHub points to the final commit. |
+| 2026-09-26 22:22 | DONE | Pushed the feature branch and verified `git ls-remote` returned `200dca18693f16d7003d722e28606b7e742ddd39`, matching local HEAD at verification time. |
 
 ## Remaining acceptance work
 
