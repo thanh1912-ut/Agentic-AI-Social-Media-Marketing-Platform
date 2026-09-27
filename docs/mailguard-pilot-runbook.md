@@ -25,6 +25,7 @@ STORAGE_ROOT=/private/tmp/mailguard-pilot-storage
 AUTO_CREATE_SCHEMA=0
 INLINE_JOBS=0
 JWT_SECRET=<local-secret-generated-outside-git>
+META_TOKEN_ENCRYPTION_KEY=<persistent-fernet-key-generated-outside-git>
 ALLOWED_HOSTS=127.0.0.1,localhost
 CORS_ALLOWED_ORIGINS=http://127.0.0.1:3101
 WEB_BASE_URL=http://127.0.0.1:3101
@@ -33,6 +34,36 @@ NEXT_PUBLIC_API_BASE_URL=http://127.0.0.1:8101
 ```
 
 Đặt `DEEPSEEK_API_KEY` và model hợp lệ chỉ trong backend secret store nếu muốn gọi DeepSeek. Không đặt chúng trong `NEXT_PUBLIC_*`, không in trong log. Để trống thì campaign planning trả trạng thái thiếu cấu hình nhưng không làm mất dữ liệu. Page token và khóa mã hóa Meta cũng chỉ ở backend; kiểm thử này không có Meta credentials và không tự đăng bài.
+
+### Cấu hình riêng đã chuẩn bị trên máy pilot
+
+Từ 2026-09-27, cấu hình của API/worker/Beat được giữ tại
+`/Users/lethanh/.local/share/agentic-marketing/mailguard-pilot/runtime.json`,
+ngoài Git và chỉ chủ tài khoản đọc/ghi (0600). File này chứa khóa mã hóa token,
+cấu hình database và khóa phiên đăng nhập; không đưa nội dung vào log hoặc Git.
+Giữ nguyên khóa mã hóa qua các lần restart và sao lưu riêng khi cần giữ token
+đã kết nối. Không tạo khóa mới tùy ý sau khi đã lưu token thật.
+
+Launcher local dưới đây nạp cùng cấu hình cho cả ba tiến trình và kiểm tra
+mã hóa/giải mã trước khi chạy. Chạy mỗi lệnh `api`, `worker`, `beat` trong
+một terminal riêng, sau khi dừng đúng tiến trình pilot cũ:
+
+```sh
+/private/tmp/mailguard-pilot-venv/bin/python /Users/lethanh/.local/share/agentic-marketing/mailguard-pilot/run_pilot.py check
+/private/tmp/mailguard-pilot-venv/bin/python /Users/lethanh/.local/share/agentic-marketing/mailguard-pilot/run_pilot.py api
+/private/tmp/mailguard-pilot-venv/bin/python /Users/lethanh/.local/share/agentic-marketing/mailguard-pilot/run_pilot.py worker
+/private/tmp/mailguard-pilot-venv/bin/python /Users/lethanh/.local/share/agentic-marketing/mailguard-pilot/run_pilot.py beat
+```
+
+Launcher cũng đọc các giá trị provider không rỗng trong
+`.env.providers.local` của worktree. File này được Git bỏ qua. Lưu DeepSeek
+key vào file chưa làm thay đổi process đang chạy; cần restart bằng launcher.
+Các file runtime và launcher là cấu hình riêng trên máy này, không có trong
+repository khi clone sang máy khác; máy mới dùng biến môi trường ở trên.
+
+Nếu nhận lỗi `token_encryption_unavailable`, kiểm tra cấu hình backend trước;
+đó chưa phải kết quả kiểm tra Page Access Token với Meta. Sau khi backend có
+khóa hợp lệ, người dùng nhập lại token và bấm **Xác minh và lưu Fanpage**.
 
 ## Khởi động
 

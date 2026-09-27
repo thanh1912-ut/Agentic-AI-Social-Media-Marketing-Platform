@@ -49,6 +49,20 @@ Ngày cập nhật: 2026-09-27 (Asia/Ho_Chi_Minh)
 - Campaign UI hiện đúng guard: planning/campaign tạo mới bị khóa tới khi hồ sơ thương hiệu được hoàn tất/xác nhận. Chưa xác nhận thay người dùng và chưa gửi nội dung tới DeepSeek.
 - DeepSeek live, Meta Page read/publish, browser upload/AI/publish end-to-end và website MailGuard event live chưa chạy.
 
+### 2026-09-27 17:59 — Sửa cấu hình mã hóa Fanpage trên pilot
+
+- Tái hiện theo nhánh lỗi `token_encryption_unavailable`: API thực sự thiếu
+  `META_TOKEN_ENCRYPTION_KEY`; lỗi xảy ra trước lời gọi kiểm tra token với Meta.
+- Workspace người dùng chưa có Page connection đã lưu. Sáu connection khác
+  trong database được nhận diện bằng fingerprint token fixture của integration
+  tests; không có token thật cần thay khóa hoặc di chuyển.
+- Tạo khóa Fernet riêng, lưu cấu hình ngoài Git với quyền 0600; giữ nguyên
+  database, queue và khóa phiên đăng nhập của API đang chạy.
+- Khởi động lại đúng API/worker/Beat pilot qua launcher dùng chung cấu hình.
+  Encryption round-trip PASS; `/readyz` PASS; worker nhận recovery task từ Beat.
+- Không gửi token tới Meta hoặc đăng bài trong lần sửa cấu hình này. Người dùng
+  cần nhập lại Page token và bấm xác minh; quyền/token Meta vẫn chưa nghiệm thu.
+
 ## Checklist bàn giao
 
 - [x] Khảo sát checkout, base SHA, tài liệu nguồn và migration.
