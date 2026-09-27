@@ -6,7 +6,8 @@ Verification date: 2026-09-27 (Asia/Ho_Chi_Minh)
 
 - Feature branch: `codex/mailguard-pilot`.
 - Base SHA: `79e23ce759f4cd32d64d6f61e3961cf9c106ae51` (`origin/codex/project-database-hardening`).
-- Candidate SHA: `5434dc5` (`feat: complete MailGuard pilot workflows`); remote verification pending.
+- Tested implementation commit: `5434dc5` (`feat: complete MailGuard pilot workflows`).
+- Branch HEAD pushed and verified on GitHub: `9b8784c15a88f5166b0b67fb88be32b54fdf3064`.
 - PostgreSQL: 18.3, disposable database with `pgvector` extension.
 - Redis: 8.6.3, separate queue and cache instances.
 - Python: 3.14.5 virtualenv (project minimum is Python 3.11); frontend built with lockfile dependencies.
@@ -37,7 +38,7 @@ Verification date: 2026-09-27 (Asia/Ho_Chi_Minh)
 | Python syntax and lint | PARTIAL | AST parse passed for 56 Python files. `ruff` was not installed; lint NOT_RUN. |
 | Browser mobile/a11y review | NOT_RUN | Not represented by unit tests or production build. |
 | Backup/restore of this exact pilot database and storage | NOT_RUN | Existing repository backup evidence applies to earlier schema/revisions; a new candidate-specific restore drill remains outstanding. |
-| Feature branch push and remote SHA | TODO | Will be updated after final review and push. |
+| Feature branch push and remote SHA | PASS | `git ls-remote --heads origin codex/mailguard-pilot` returned `9b8784c15a88f5166b0b67fb88be32b54fdf3064`. |
 
 ## Commands run
 
@@ -59,6 +60,5 @@ Observed results: Python unit/API **19 passed**; PostgreSQL integration **5 pass
 1. User must upload an authorized MailGuard source document, review and confirm the Brand Profile; the planner stays correctly disabled until then.
 2. With DeepSeek server secret/model available, run a small live plan/generation cycle and record actual model, usage and latency. Do not invent provider evidence.
 3. Keep Meta public posting NOT_RUN unless the Owner explicitly chooses and confirms a specific post to send.
-4. Re-run secret/diff review, commit the scoped changes and verify the remote feature-branch SHA.
 
 Tracking success remains specifically MailGuard `signup_completed` and `first_analysis_completed`; marketing-platform account login or registration is not counted as a MailGuard conversion.
