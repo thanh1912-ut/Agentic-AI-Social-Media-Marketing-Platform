@@ -4,9 +4,10 @@ Ngày cập nhật: 2026-09-27 (Asia/Ho_Chi_Minh)
 
 ## Trạng thái tổng thể
 
-**IN_PROGRESS — code pilot, kiểm thử tự động và browser real-mode login/readback đã hoàn tất; provider live, workflow end-to-end sau xác nhận Brand Profile, commit/push còn cần chốt.**
+**IN_PROGRESS — code pilot và kiểm thử đã commit; push feature branch đã được yêu cầu, cần xác minh remote SHA. Provider live và browser workflow sau xác nhận Brand Profile vẫn chưa nghiệm thu.**
 
 - Nhánh: `codex/mailguard-pilot`
+- Commit triển khai: `5434dc5` (`feat: complete MailGuard pilot workflows`).
 - Base: `origin/codex/project-database-hardening` tại `79e23ce759f4cd32d64d6f61e3961cf9c106ae51`
 - Worktree: `/Users/lethanh/.codex/worktrees/mailguard-pilot/agent`, tách biệt checkout dùng chung và preview.
 - Tài liệu đầu vào: `/Users/lethanh/Downloads/MGAI - AI Agent.docx`.
@@ -59,12 +60,13 @@ Ngày cập nhật: 2026-09-27 (Asia/Ho_Chi_Minh)
 - [x] Chạy API/frontend/worker/Beat trên port riêng; browser login, workspace reload và analytics tracking state đã xác minh.
 - [ ] Người dùng tải nguồn MailGuard, rà/xác nhận Brand Profile để bật planning/generation.
 - [ ] DeepSeek live, Meta live và website conversion live (cần secret/quyền/website thật).
-- [ ] Final secret/diff scan; commit và push `codex/mailguard-pilot`; xác minh SHA remote.
+- [x] Final diff/secret scan; commit `5434dc5` trên `codex/mailguard-pilot`.
+- [ ] Push `codex/mailguard-pilot`; xác minh SHA remote.
 - [x] Mở frontend real mode và xác minh login/workspace; giữ tab pilot mở cho người dùng.
 
 ## Tiếp theo
 
 1. Người dùng tải nguồn MailGuard, rà/xác nhận Brand Profile để mở planning.
 2. Khi có DeepSeek secret/model hợp lệ, chạy một lượt thử giới hạn; không seed MailGuard conversion giả.
-3. Hoàn tất runbook/verification, review staged diff/secret scan, commit/push feature branch.
+3. Push commit triển khai và cập nhật tài liệu với SHA remote đã xác minh.
 4. Giữ service pilot test đang chạy để người dùng xem; không dừng dịch vụ preview.

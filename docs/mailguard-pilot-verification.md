@@ -6,7 +6,7 @@ Verification date: 2026-09-27 (Asia/Ho_Chi_Minh)
 
 - Feature branch: `codex/mailguard-pilot`.
 - Base SHA: `79e23ce759f4cd32d64d6f61e3961cf9c106ae51` (`origin/codex/project-database-hardening`).
-- Candidate SHA: pending commit.
+- Candidate SHA: `5434dc5` (`feat: complete MailGuard pilot workflows`); remote verification pending.
 - PostgreSQL: 18.3, disposable database with `pgvector` extension.
 - Redis: 8.6.3, separate queue and cache instances.
 - Python: 3.14.5 virtualenv (project minimum is Python 3.11); frontend built with lockfile dependencies.
@@ -45,7 +45,7 @@ Verification date: 2026-09-27 (Asia/Ho_Chi_Minh)
 pytest -p no:cacheprovider -q tests/test_campaign_workflows.py tests/test_mailguard_pilot.py
 pytest -p no:cacheprovider -q tests/test_postgres_database_integration.py
 pytest -p no:cacheprovider -q tests/test_postgres_application_modules.py
-npm run gen:api -- --from /private/tmp/mailguard-pilot-openapi.json
+node scripts/gen-api.mjs --from=/private/tmp/mailguard-pilot-openapi.json
 npm run lint
 npm run typecheck -- --incremental false
 npm run test
