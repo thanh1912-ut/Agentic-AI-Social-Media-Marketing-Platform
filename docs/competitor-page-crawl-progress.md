@@ -18,7 +18,7 @@ Base: `5a72991` (`origin/codex/mailguard-pilot` tại thời điểm bắt đầ
 | UI end-to-end | DONE | Trình duyệt real mode `http://127.0.0.1:13101`; tạo workspace/nhóm/Page test, Crawl ngay, worker hoàn tất `platform_permission_required`, reload vẫn thấy run. |
 | Crawl Page Facebook thật | BLOCKED_EXTERNAL | Không có xác nhận bằng văn bản từ Meta. Không tải nội dung Page thật và không đánh dấu live crawl pass. |
 | DeepSeek phân tích | NOT_RUN | Không có evidence mới; worker chủ ý không gọi model. |
-| Push nhánh | TODO | Chạy sau review cuối. Nếu DNS/GitHub không sẵn sàng, giữ commit local và ghi rõ lỗi mạng. |
+| Push nhánh | DONE | `codex/competitor-page-autocrawl` đã được push; SHA ban đầu `ba606e0`, sau đó cập nhật tài liệu bàn giao. |
 
 ## Kết quả UI smoke
 

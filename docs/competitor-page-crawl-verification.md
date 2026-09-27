@@ -20,7 +20,7 @@ Branch base: `5a72991`; thay đổi kiểm thử trên nhánh `codex/competitor-
 | DeepSeek live analysis | NOT_RUN | Không có evidence mới và không cần gọi model để ghi nhận trạng thái block. |
 | Playwright renderer | NOT_RUN | V1 chỉ dùng HTTP; không có egress-isolated renderer. |
 | Meta Graph API competitor access | NOT_RUN | Không có cơ sở coi Page token của workspace là quyền đọc đối thủ; không gọi API này. |
-| Push remote | TODO | Hoàn tất sau kiểm tra diff; nếu GitHub DNS còn lỗi, ghi nhận blocker mạng và giữ commit local. |
+| Push remote | PASS | Nhánh `codex/competitor-page-autocrawl` được tạo và push lên origin sau review staged diff. |
 
 ## Diễn giải
 
