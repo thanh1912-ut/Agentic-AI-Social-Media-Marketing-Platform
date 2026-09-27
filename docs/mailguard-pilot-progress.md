@@ -8,7 +8,7 @@ Ngày cập nhật: 2026-09-27 (Asia/Ho_Chi_Minh)
 
 - Nhánh: `codex/mailguard-pilot`
 - Commit triển khai: `5434dc5` (`feat: complete MailGuard pilot workflows`).
-- Commit HEAD đã push: `9b8784c15a88f5166b0b67fb88be32b54fdf3064`.
+- Commit triển khai và các commit cập nhật báo cáo đều đã được push lên nhánh này.
 - Base: `origin/codex/project-database-hardening` tại `79e23ce759f4cd32d64d6f61e3961cf9c106ae51`
 - Worktree: `/Users/lethanh/.codex/worktrees/mailguard-pilot/agent`, tách biệt checkout dùng chung và preview.
 - Tài liệu đầu vào: `/Users/lethanh/Downloads/MGAI - AI Agent.docx`.
@@ -62,7 +62,7 @@ Ngày cập nhật: 2026-09-27 (Asia/Ho_Chi_Minh)
 - [ ] Người dùng tải nguồn MailGuard, rà/xác nhận Brand Profile để bật planning/generation.
 - [ ] DeepSeek live, Meta live và website conversion live (cần secret/quyền/website thật).
 - [x] Final diff/secret scan; commit `5434dc5` trên `codex/mailguard-pilot`.
-- [x] Push `codex/mailguard-pilot`; GitHub trả SHA `9b8784c15a88f5166b0b67fb88be32b54fdf3064`.
+- [x] Push `codex/mailguard-pilot`; GitHub remote ref đã được xác minh sau các cập nhật báo cáo.
 - [x] Mở frontend real mode và xác minh login/workspace; giữ tab pilot mở cho người dùng.
 
 ## Tiếp theo

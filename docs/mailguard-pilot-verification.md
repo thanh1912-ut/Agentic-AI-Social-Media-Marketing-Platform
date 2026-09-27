@@ -7,7 +7,7 @@ Verification date: 2026-09-27 (Asia/Ho_Chi_Minh)
 - Feature branch: `codex/mailguard-pilot`.
 - Base SHA: `79e23ce759f4cd32d64d6f61e3961cf9c106ae51` (`origin/codex/project-database-hardening`).
 - Tested implementation commit: `5434dc5` (`feat: complete MailGuard pilot workflows`).
-- Branch HEAD pushed and verified on GitHub: `9b8784c15a88f5166b0b67fb88be32b54fdf3064`.
+- Implementation and report commits are pushed to GitHub feature branch `codex/mailguard-pilot`.
 - PostgreSQL: 18.3, disposable database with `pgvector` extension.
 - Redis: 8.6.3, separate queue and cache instances.
 - Python: 3.14.5 virtualenv (project minimum is Python 3.11); frontend built with lockfile dependencies.
@@ -38,7 +38,7 @@ Verification date: 2026-09-27 (Asia/Ho_Chi_Minh)
 | Python syntax and lint | PARTIAL | AST parse passed for 56 Python files. `ruff` was not installed; lint NOT_RUN. |
 | Browser mobile/a11y review | NOT_RUN | Not represented by unit tests or production build. |
 | Backup/restore of this exact pilot database and storage | NOT_RUN | Existing repository backup evidence applies to earlier schema/revisions; a new candidate-specific restore drill remains outstanding. |
-| Feature branch push and remote SHA | PASS | `git ls-remote --heads origin codex/mailguard-pilot` returned `9b8784c15a88f5166b0b67fb88be32b54fdf3064`. |
+| Feature branch push and remote SHA | PASS | Push completed and `git ls-remote --heads origin codex/mailguard-pilot` confirmed the branch ref after each report update. |
 
 ## Commands run
 
