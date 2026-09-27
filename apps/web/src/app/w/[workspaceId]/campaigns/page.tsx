@@ -22,7 +22,7 @@ import {
   LoadingBlock,
   StatusBadge,
 } from '@/components/ui';
-import { useCampaigns, useCreateCampaign } from '@/lib/hooks';
+import { useCampaignPlanJob, useCampaigns, useCreateCampaign, usePlanCampaign } from '@/lib/hooks';
 import { useMocks } from '@/lib/api/config';
 import { formatDate, formatNumber } from '@/lib/format';
 import { hasPermission } from '@/lib/permissions';
@@ -80,6 +80,10 @@ export default function CampaignsPage() {
   const workspace = workspaces.find((item) => item.id === workspaceId);
   const campaigns = useCampaigns(workspace ? workspaceId : '');
   const createCampaign = useCreateCampaign(workspaceId);
+  const planCampaign = usePlanCampaign(workspaceId);
+  const [planJobId, setPlanJobId] = useState<string | null>(null);
+  const proposalJob = useCampaignPlanJob(workspaceId, planJobId);
+  const proposal = proposalJob.data?.proposal;
   const router = useRouter();
   const mocksEnabled = useMocks();
   const canCreate = hasPermission(workspace, PERMISSIONS.CAMPAIGN_CREATE);
@@ -89,6 +93,49 @@ export default function CampaignsPage() {
   const [objective, setObjective] = useState<CampaignBrief['objective']>('engagement');
   const [startDate, setStartDate] = useState(() => dateOffset(0));
   const [endDate, setEndDate] = useState(() => dateOffset(30));
+  const [planningPrompt, setPlanningPrompt] = useState('');
+  const [selectedConceptId, setSelectedConceptId] = useState('');
+
+  function requestPlan(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const prompt = planningPrompt.trim();
+    if (!prompt) return;
+    planCampaign.mutate({ prompt }, { onSuccess: (accepted) => {
+      setPlanJobId(accepted.job_id);
+      setSelectedConceptId('');
+    } });
+  }
+
+  function acceptProposal() {
+    if (!proposal) return;
+    const concept = proposal.concepts.find((item) => item.id === selectedConceptId) ?? proposal.concepts[0];
+    if (!concept) return;
+    createCampaign.mutate({
+      name: proposal.campaign_name,
+      brief: {
+        objective: proposal.objective,
+        audience: [...proposal.audience],
+        product_ids: [],
+        key_message: proposal.key_message,
+        must_include: [...(proposal.must_include ?? [])],
+        must_avoid: [...(proposal.must_avoid ?? [])],
+        start_date: proposal.start_date,
+        end_date: proposal.end_date,
+      },
+      content_plan: {
+        strategy_summary: `${proposal.topic}. ${concept.angle}`,
+        slots: [{
+          id: concept.id,
+          scheduled_date: proposal.start_date,
+          pillar: proposal.pillars[0] ?? 'education',
+          format: concept.format,
+          topic: `${concept.title}: ${proposal.topic}`,
+        }],
+      },
+      pillars: [...proposal.pillars],
+      channels: ['facebook_page'],
+    }, { onSuccess: (campaign) => router.push(`/w/${workspaceId}/campaigns/${campaign.id}`) });
+  }
 
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -124,6 +171,29 @@ export default function CampaignsPage() {
       </header>
 
       {mocksEnabled ? <DemoNotice /> : null}
+
+      {canCreate ? (
+        <Card title="Đề xuất brief và 3 concept từ yêu cầu" description="DeepSeek tạo bản đề xuất dựa trên Brand Profile đã xác nhận. Không tạo campaign hoặc đăng bài cho tới khi bạn chọn concept và xác nhận.">
+          <form className="space-y-3" onSubmit={requestPlan}>
+            <label htmlFor="campaign-planning-prompt" className="block text-sm font-medium text-slate-700">Bạn muốn truyền thông điều gì?</label>
+            <textarea id="campaign-planning-prompt" value={planningPrompt} onChange={(event) => setPlanningPrompt(event.target.value)} maxLength={4000} minLength={8} required rows={3} placeholder="Ví dụ: Lên nội dung giáo dục phụ huynh nhận biết tin nhắn giả mạo trường học, không dùng số liệu nếu chưa có nguồn." className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" />
+            <Button type="submit" loading={planCampaign.isPending || proposalJob.data?.status === 'queued' || proposalJob.data?.status === 'running'} disabled={!planningPrompt.trim() || proposalJob.data?.status === 'queued' || proposalJob.data?.status === 'running'}>Đề xuất bằng AI</Button>
+          </form>
+          {planCampaign.error ? <p role="alert" className="mt-3 text-sm text-rose-700">{planCampaign.error instanceof Error ? planCampaign.error.message : 'Không gửi được yêu cầu lập kế hoạch.'}</p> : null}
+          {planJobId ? <div role="status" aria-live="polite" className="mt-4 rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm">
+            <p className="font-medium">Tác vụ {proposalJob.data?.status ?? 'đang tải'} · <Link className="underline" href={`/w/${workspaceId}/jobs/${planJobId}`}>mở tiến trình</Link></p>
+            {proposalJob.data?.error ? <p className="mt-1 text-rose-700">{String(proposalJob.data.error.message ?? 'Không thể lập kế hoạch.')}</p> : null}
+            {proposalJob.data?.status === 'succeeded' && !proposal ? <p className="mt-1 text-rose-700">Tác vụ kết thúc nhưng không có đề xuất đọc được. Mở chi tiết tác vụ để xem lỗi.</p> : null}
+          </div> : null}
+          {proposal ? <div className="mt-4 space-y-4 border-t border-slate-200 pt-4">
+            <div><h2 className="font-semibold text-slate-900">{proposal.campaign_name}</h2><p className="mt-1 text-sm text-slate-600">{proposal.topic} · {proposal.objective} · {proposal.start_date}–{proposal.end_date}</p><p className="mt-2 text-sm text-slate-800">{proposal.key_message}</p><p className="mt-1 text-xs text-slate-600">Khán giả: {proposal.audience.join(' · ')} · Giọng: {proposal.tone}</p></div>
+            {(proposal.assumptions ?? []).length ? <p className="rounded-lg bg-amber-50 p-3 text-sm text-amber-900">Giả định cần kiểm tra: {(proposal.assumptions ?? []).join(' · ')}</p> : null}
+            <fieldset className="grid gap-3 md:grid-cols-3"><legend className="mb-2 text-sm font-semibold text-slate-800">Chọn concept</legend>{proposal.concepts.map((concept) => <label key={concept.id} className={`cursor-pointer rounded-lg border p-3 ${selectedConceptId === concept.id ? 'border-sky-600 bg-sky-50' : 'border-slate-200'}`}><input className="mr-2" type="radio" name="campaign-concept" checked={selectedConceptId === concept.id} onChange={() => setSelectedConceptId(concept.id)} /><span className="font-medium">{concept.title}</span><p className="mt-2 text-sm">{concept.angle}</p><p className="mt-2 text-xs text-slate-600">Hook: {concept.hook}</p><p className="mt-1 text-xs text-slate-600">CTA: {concept.cta}</p><p className="mt-1 text-xs text-slate-600">#{(concept.hashtags ?? []).join(' #')}</p></label>)}</fieldset>
+            <p className="text-xs text-slate-500">Đề xuất chưa được xác minh sự thật. Hãy kiểm tra mọi claim trước khi tạo bài hoặc duyệt.</p>
+            <Button onClick={acceptProposal} loading={createCampaign.isPending} disabled={!selectedConceptId}>Xác nhận concept và tạo campaign</Button>
+          </div> : null}
+        </Card>
+      ) : null}
 
       {canCreate ? (
         <Card title="Tạo campaign" description="Tạo brief trước. Việc sinh nội dung chỉ khả dụng sau khi hoàn tất các bước xác nhận dữ liệu AI.">

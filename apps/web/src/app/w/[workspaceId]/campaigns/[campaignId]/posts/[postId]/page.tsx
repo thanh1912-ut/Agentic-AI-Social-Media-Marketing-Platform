@@ -34,6 +34,8 @@ import {
   useDecideApproval,
   usePost,
   usePostVersions,
+  usePostReviews,
+  useRunPostReview,
   useJob,
   useRevisePostWithAi,
   useSubmitApproval,
@@ -117,6 +119,8 @@ export default function PostEditorPage() {
   const workspace = workspaces.find((item) => item.id === workspaceId);
   const post = usePost(workspace ? workspaceId : '', postId);
   const versions = usePostVersions(workspace ? workspaceId : '', postId);
+  const reviews = usePostReviews(workspace ? workspaceId : '', postId);
+  const runReview = useRunPostReview(workspaceId, postId);
   const update = useUpdatePost(workspaceId, postId);
   const uploadMedia = useUploadMediaAsset(workspaceId);
   const reviseWithAi = useRevisePostWithAi(workspaceId, postId);
@@ -165,6 +169,7 @@ export default function PostEditorPage() {
   }
 
   const current = post.data;
+  const currentReview = reviews.data?.find((item) => item.post_version === current.version) ?? null;
   const postStatus = POST_STATUS_LABELS[current.status];
   const canEdit = hasPermission(workspace, PERMISSIONS.POST_EDIT);
   const canGenerate = hasPermission(workspace, PERMISSIONS.POST_GENERATE);
@@ -328,10 +333,21 @@ export default function PostEditorPage() {
       </div>
 
       <Card title="Duyệt nội dung" description="AI review chỉ là feedback. Quyết định cuối cùng vẫn cần người có quyền duyệt.">
+        <div className="mb-4 flex flex-wrap items-center gap-3">
+          <Button variant="secondary" onClick={() => runReview.mutate(current.version)} loading={runReview.isPending} disabled={!canEdit || postLocked} disabledReason={postLocked ? 'Bài đã lên lịch hoặc đã đăng.' : 'Bạn không có quyền sửa bài.'}>Chạy kiểm tra bản {current.version}</Button>
+          {currentReview ? <StatusBadge label={currentReview.status === 'ready' ? 'Không có mục chặn' : 'Cần sửa trước khi duyệt'} tone={currentReview.status === 'ready' ? 'success' : 'danger'} /> : <span className="text-sm text-amber-800">Chưa có kiểm tra cho phiên bản hiện tại.</span>}
+          {reviews.isError ? <span role="alert" className="text-sm text-rose-700">Không tải được lịch sử kiểm tra.</span> : null}
+        </div>
+        {currentReview ? <div className="mb-4 space-y-3 rounded-lg border border-slate-200 p-3">
+          <p className="text-sm text-slate-700">{currentReview.summary}</p>
+          <p className="text-xs text-slate-500">Rule {currentReview.rule_version} · bản {currentReview.post_version} · semantic review: {currentReview.semantic_status === 'not_run' ? 'chưa chạy' : currentReview.semantic_status}</p>
+          <div className="grid gap-2 sm:grid-cols-2">{currentReview.checks.map((check) => <div key={check.key} className={`rounded-lg border px-3 py-2 text-sm ${check.status === 'blocking' ? 'border-rose-200 bg-rose-50 text-rose-900' : check.status === 'warn' ? 'border-amber-200 bg-amber-50 text-amber-900' : 'border-emerald-200 bg-emerald-50 text-emerald-900'}`}><p className="font-medium">{check.label}</p><p className="mt-1 text-xs">{check.message}</p>{(check.evidence ?? []).length ? <ul className="mt-2 list-disc pl-5 text-xs">{(check.evidence ?? []).map((item, index) => <li key={`${check.key}-${index}`}>{item}</li>)}</ul> : null}</div>)}</div>
+        </div> : null}
+        {runReview.error ? <p role="alert" className="mb-3 text-sm text-rose-700">{runReview.error instanceof ApiError ? runReview.error.message : 'Không chạy được kiểm tra.'}</p> : null}
         {current.current.review ? <div className="space-y-3"><p className="text-sm text-slate-700">{current.current.review.summary}</p><div className="grid gap-2 sm:grid-cols-3">{current.current.review.checks.map((check) => <div key={check.key} className={`rounded-lg border px-3 py-2 text-sm ${check.status === 'fail' ? 'border-rose-200 bg-rose-50 text-rose-900' : check.status === 'warn' ? 'border-amber-200 bg-amber-50 text-amber-900' : 'border-emerald-200 bg-emerald-50 text-emerald-900'}`}><p className="font-medium">{check.label}</p><p className="mt-1 text-xs">{check.message}</p></div>)}</div></div> : <p className="text-sm text-slate-600">Chưa có feedback AI cho phiên bản này.</p>}
         <div className="mt-4 flex flex-wrap items-end gap-3 border-t border-slate-100 pt-4">
           {canSubmit ? <Button onClick={() => submitApproval.mutate(current.version)} loading={submitApproval.isPending}>Gửi duyệt bản {current.version}</Button> : null}
-          {current.status === 'needs_review' && canApprove ? <><Button onClick={() => decide('approved')} loading={decideApproval.isPending}>Duyệt bản {current.version}</Button><div><label htmlFor="reject-reason" className="block text-xs font-medium text-slate-600">Lý do nếu từ chối</label><input id="reject-reason" value={rejectionReason} onChange={(event) => setRejectionReason(event.target.value)} className="mt-1 w-64 rounded-lg border border-slate-300 px-3 py-2 text-sm" /></div><Button variant="danger" onClick={() => decide('rejected')} loading={decideApproval.isPending}>Từ chối</Button></> : null}
+          {current.status === 'needs_review' && canApprove ? <><Button onClick={() => decide('approved')} loading={decideApproval.isPending} disabled={currentReview?.status !== 'ready'} disabledReason={currentReview?.status === 'blocked' ? 'Sửa mục bị chặn rồi chạy lại kiểm tra.' : 'Chạy kiểm tra cho đúng phiên bản hiện tại trước khi duyệt.'}>Duyệt bản {current.version}</Button><div><label htmlFor="reject-reason" className="block text-xs font-medium text-slate-600">Lý do nếu từ chối</label><input id="reject-reason" value={rejectionReason} onChange={(event) => setRejectionReason(event.target.value)} className="mt-1 w-64 rounded-lg border border-slate-300 px-3 py-2 text-sm" /></div><Button variant="danger" onClick={() => decide('rejected')} loading={decideApproval.isPending}>Từ chối</Button></> : null}
           {!canSubmit && current.status !== 'needs_review' && !canApprove ? <PermissionNotice message={permissionDeniedReason(workspace, PERMISSIONS.POST_APPROVE)} requiredPermission={PERMISSIONS.POST_APPROVE} /> : null}
         </div>
         {submitApproval.error ? <p role="alert" className="mt-3 text-sm text-rose-700">Không gửi duyệt được. Hãy tải bản mới nhất nếu phiên bản đã thay đổi.</p> : null}

@@ -416,6 +416,34 @@ class PostApproval(Base, IdMixin):
     decided_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
 
 
+class PostContentReview(Base, IdMixin):
+    """Immutable safety/content checks tied to the exact post version and hash."""
+
+    __tablename__ = "post_content_reviews"
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["company_id", "post_id", "post_version"],
+            ["post_versions.company_id", "post_versions.post_id", "post_versions.version"],
+            name="fk_post_content_review_version_tenant",
+            ondelete="CASCADE",
+        ),
+        CheckConstraint("status IN ('ready', 'blocked')", name="ck_post_content_review_status"),
+        Index("ix_post_content_review_version", "company_id", "post_id", "post_version", "checked_at"),
+    )
+
+    company_id: Mapped[str] = mapped_column(ForeignKey("companies.id", ondelete="CASCADE"), nullable=False)
+    post_id: Mapped[str] = mapped_column(ForeignKey("campaign_posts.id", ondelete="CASCADE"), nullable=False)
+    post_version: Mapped[int] = mapped_column(Integer, nullable=False)
+    content_sha256: Mapped[str] = mapped_column(String(64), nullable=False)
+    rule_version: Mapped[str] = mapped_column(String(40), nullable=False)
+    status: Mapped[str] = mapped_column(String(20), nullable=False)
+    checks_json: Mapped[list[dict[str, Any]]] = mapped_column(JSON, nullable=False)
+    summary: Mapped[str] = mapped_column(Text, nullable=False)
+    semantic_status: Mapped[str] = mapped_column(String(24), default="not_run", nullable=False)
+    checked_by: Mapped[str] = mapped_column(ForeignKey("users.id"), nullable=False)
+    checked_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
+
+
 class ContentGenerationRun(Base, IdMixin):
     __tablename__ = "content_generation_runs"
     __table_args__ = (UniqueConstraint("job_id", name="uq_content_generation_job"),)
@@ -577,6 +605,114 @@ class MetaPageConnection(Base, IdMixin, TimestampMixin):
     verified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     last_error_code: Mapped[str | None] = mapped_column(String(80))
     active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    metrics_schedule_enabled: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    metrics_sync_interval_hours: Mapped[int] = mapped_column(Integer, default=6, nullable=False)
+    next_metrics_sync_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class ScheduledMetaPublication(Base, IdMixin, TimestampMixin):
+    """Durable local schedule; it becomes a MetaPublication only when due."""
+
+    __tablename__ = "scheduled_meta_publications"
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["company_id", "post_id", "post_version"],
+            ["post_versions.company_id", "post_versions.post_id", "post_versions.version"],
+            name="fk_scheduled_meta_post_version_tenant",
+            ondelete="CASCADE",
+        ),
+        ForeignKeyConstraint(
+            ["company_id", "connection_id", "page_id"],
+            ["meta_page_connections.company_id", "meta_page_connections.id", "meta_page_connections.page_id"],
+            name="fk_scheduled_meta_connection_tenant_page",
+            ondelete="RESTRICT",
+        ),
+        UniqueConstraint("company_id", "active_key", name="uq_scheduled_meta_active"),
+        UniqueConstraint("job_id", name="uq_scheduled_meta_job"),
+        CheckConstraint("status IN ('scheduled', 'queued', 'cancelled', 'missed', 'published', 'failed', 'outcome_unknown')", name="ck_scheduled_meta_status"),
+        Index("ix_scheduled_meta_due", "status", "scheduled_at"),
+    )
+
+    company_id: Mapped[str] = mapped_column(ForeignKey("companies.id", ondelete="CASCADE"), nullable=False)
+    post_id: Mapped[str] = mapped_column(ForeignKey("campaign_posts.id", ondelete="CASCADE"), nullable=False)
+    post_version: Mapped[int] = mapped_column(Integer, nullable=False)
+    page_id: Mapped[str] = mapped_column(String(100), nullable=False)
+    connection_id: Mapped[str | None] = mapped_column(String(36))
+    approved_content_sha256: Mapped[str] = mapped_column(String(64), nullable=False)
+    scheduled_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    status: Mapped[str] = mapped_column(String(20), default="scheduled", nullable=False)
+    active_key: Mapped[str | None] = mapped_column(String(255))
+    job_id: Mapped[str] = mapped_column(ForeignKey("jobs.id", ondelete="CASCADE"), nullable=False)
+    publication_id: Mapped[str | None] = mapped_column(ForeignKey("meta_publications.id", ondelete="SET NULL"))
+    requested_by: Mapped[str] = mapped_column(ForeignKey("users.id"), nullable=False)
+    cancelled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class MailGuardIntegration(Base, IdMixin, TimestampMixin):
+    """Server-to-server MailGuard integration; only a hash of its secret is stored."""
+
+    __tablename__ = "mailguard_integrations"
+    __table_args__ = (
+        UniqueConstraint("company_id", name="uq_mailguard_integration_company"),
+        UniqueConstraint("key_hash", name="uq_mailguard_integration_key_hash"),
+        UniqueConstraint("company_id", "id", name="uq_mailguard_integration_tenant_id"),
+    )
+
+    company_id: Mapped[str] = mapped_column(ForeignKey("companies.id", ondelete="CASCADE"), nullable=False)
+    key_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    key_prefix: Mapped[str] = mapped_column(String(24), nullable=False)
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_by: Mapped[str] = mapped_column(ForeignKey("users.id"), nullable=False)
+
+
+class MailGuardTrackingReference(Base, IdMixin):
+    """Opaque platform-issued attribution identifier for campaign/post links."""
+
+    __tablename__ = "mailguard_tracking_references"
+    __table_args__ = (
+        UniqueConstraint("company_id", "tracking_id", name="uq_mailguard_tracking_tenant_id"),
+        CheckConstraint("(post_id IS NULL) = (post_version IS NULL)", name="ck_mailguard_tracking_post_pair"),
+        ForeignKeyConstraint(["company_id", "campaign_id"], ["campaigns.company_id", "campaigns.id"],
+                             name="fk_mailguard_tracking_campaign_tenant", ondelete="CASCADE"),
+        ForeignKeyConstraint(["company_id", "post_id", "post_version"],
+                             ["post_versions.company_id", "post_versions.post_id", "post_versions.version"],
+                             name="fk_mailguard_tracking_post_version_tenant", ondelete="CASCADE"),
+    )
+
+    company_id: Mapped[str] = mapped_column(ForeignKey("companies.id", ondelete="CASCADE"), nullable=False)
+    tracking_id: Mapped[str] = mapped_column(String(48), nullable=False)
+    campaign_id: Mapped[str | None] = mapped_column(String(36))
+    post_id: Mapped[str | None] = mapped_column(String(36))
+    post_version: Mapped[int | None] = mapped_column(Integer)
+    created_by: Mapped[str] = mapped_column(ForeignKey("users.id"), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
+
+
+class MailGuardConversionEvent(Base, IdMixin):
+    """Minimal, deduplicated conversion signals; external IDs are keyed hashes."""
+
+    __tablename__ = "mailguard_conversion_events"
+    __table_args__ = (
+        ForeignKeyConstraint(["company_id", "integration_id"],
+                             ["mailguard_integrations.company_id", "mailguard_integrations.id"],
+                             name="fk_mailguard_event_integration_tenant", ondelete="CASCADE"),
+        ForeignKeyConstraint(["company_id", "tracking_id"],
+                             ["mailguard_tracking_references.company_id", "mailguard_tracking_references.tracking_id"],
+                             name="fk_mailguard_event_tracking_tenant"),
+        UniqueConstraint("integration_id", "event_id", name="uq_mailguard_event_id"),
+        UniqueConstraint("integration_id", "event_type", "actor_hash", name="uq_mailguard_event_actor_type"),
+        CheckConstraint("event_type IN ('signup_completed', 'first_analysis_completed')", name="ck_mailguard_event_type"),
+        Index("ix_mailguard_event_company_type_time", "company_id", "event_type", "occurred_at"),
+    )
+
+    company_id: Mapped[str] = mapped_column(ForeignKey("companies.id", ondelete="CASCADE"), nullable=False)
+    integration_id: Mapped[str] = mapped_column(String(36), nullable=False)
+    event_id: Mapped[str] = mapped_column(String(160), nullable=False)
+    event_type: Mapped[str] = mapped_column(String(40), nullable=False)
+    occurred_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    actor_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    tracking_id: Mapped[str | None] = mapped_column(String(48))
+    received_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
 
 
 class ResearchSource(Base, IdMixin, TimestampMixin):

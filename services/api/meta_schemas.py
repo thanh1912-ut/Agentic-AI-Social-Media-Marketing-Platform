@@ -25,6 +25,13 @@ class MetaPublishIn(StrictModel):
     post_id: str = Field(min_length=1, max_length=36)
     version: int = Field(ge=1)
     connection_id: str | None = Field(default=None, min_length=1, max_length=36)
+    scheduled_at: datetime | None = None
+
+    @model_validator(mode="after")
+    def scheduled_at_is_timezone_aware(self) -> "MetaPublishIn":
+        if self.scheduled_at is not None and (self.scheduled_at.tzinfo is None or self.scheduled_at.utcoffset() is None):
+            raise ValueError("scheduled_at must include a timezone")
+        return self
 
 
 class MetaErrorOut(StrictModel):

@@ -6,7 +6,7 @@ import asyncio
 import csv
 import io
 import json
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from dataclasses import replace
 
 import pytest
@@ -24,6 +24,8 @@ from database.models import (
     CampaignPost,
     Document,
     Job,
+    MailGuardConversionEvent,
+    MailGuardIntegration,
     MarketEvidence,
     MarketObservation,
     MediaAsset,
@@ -196,6 +198,13 @@ def _register(client: TestClient, email: str) -> dict:
     return response.json()
 
 
+def _review_post(client: TestClient, post_url: str, version: int, headers: dict[str, str]) -> dict:
+    response = client.post(f"{post_url}/reviews", headers=headers, json={"version": version})
+    assert response.status_code == 200, response.text
+    assert response.json()["post_version"] == version
+    return response.json()
+
+
 def test_campaign_api_has_tenant_scoping_and_versioned_approval(workflow_api) -> None:
     client, _session_factory = workflow_api
     owner = _register(client, "owner-campaign@example.com")
@@ -291,6 +300,12 @@ def test_campaign_api_has_tenant_scoping_and_versioned_approval(workflow_api) ->
     submitted = client.post(f"{post_url}/submit-approval", headers=headers, json={"version": 2})
     assert submitted.status_code == 200, submitted.text
     assert submitted.json()["status"] == "needs_review"
+    approval_without_review = client.post(f"{post_url}/approval", headers=headers, json={"version": 2, "decision": "approved"})
+    assert approval_without_review.status_code == 409
+    assert approval_without_review.json()["error"]["code"] == "content_review_required"
+    reviewed = _review_post(client, post_url, 2, headers)
+    assert reviewed["status"] == "ready"
+    assert reviewed["semantic_status"] == "not_run"
     approved = client.post(f"{post_url}/approval", headers=headers, json={"version": 2, "decision": "approved"})
     assert approved.status_code == 200, approved.text
     assert approved.json()["current"]["approved_by"] == owner["user"]["id"]
@@ -303,6 +318,150 @@ def test_campaign_api_has_tenant_scoping_and_versioned_approval(workflow_api) ->
     assert versions["current_version"] == 3
     assert versions["versions"][0]["caption"] == "Bài chỉnh sau khi duyệt"
     assert versions["versions"][-1]["caption"] == "Món ngon cho cả nhà"
+
+
+def test_campaign_plan_job_result_is_tenant_scoped_and_typed(workflow_api) -> None:
+    client, session_factory = workflow_api
+    owner = _register(client, "campaign-plan-result@example.com")
+    workspace_id = owner["active_workspace_id"]
+    job_id = new_id()
+    now = datetime.now(timezone.utc)
+    proposal = {
+        "campaign_name": "Cẩn thận với tin nhắn giả",
+        "objective": "awareness",
+        "topic": "Tin nhắn giả mạo trường học",
+        "tone": "Gần gũi, không gây hoang mang",
+        "audience": ["Phụ huynh"],
+        "key_message": "Kiểm tra nguồn trước khi bấm liên kết.",
+        "must_include": ["Không cung cấp OTP"],
+        "must_avoid": ["Cam kết an toàn tuyệt đối"],
+        "start_date": "2026-09-27",
+        "end_date": "2026-10-27",
+        "pillars": ["education"],
+        "concepts": [
+            {"id": "one", "title": "Dừng một nhịp", "angle": "Kiểm tra người gửi", "hook": "Tin nhắn lạ?", "format": "text", "cta": "Kiểm tra nguồn", "hashtags": ["#antoan"]},
+            {"id": "two", "title": "Ba dấu hiệu", "angle": "Nhận biết dấu hiệu", "hook": "Có điểm bất thường?", "format": "image", "cta": "Lưu lại", "hashtags": []},
+            {"id": "three", "title": "Hỏi lại trường", "angle": "Xác minh qua kênh khác", "hook": "Đừng vội bấm", "format": "text", "cta": "Chia sẻ", "hashtags": []},
+        ],
+        "assumptions": [],
+    }
+
+    async def seed() -> None:
+        async with session_factory() as db:
+            db.add(Job(
+                id=job_id, company_id=workspace_id, created_by=owner["user"]["id"],
+                kind="campaign_plan", title="AI đề xuất brief và 3 concept", status="succeeded",
+                progress=100, result={"proposal": proposal}, attempts=1,
+                created_at=now, updated_at=now, finished_at=now,
+            ))
+            await db.commit()
+
+    asyncio.run(seed())
+    result = client.get(f"/api/v1/workspaces/{workspace_id}/campaigns/plan/{job_id}")
+    assert result.status_code == 200, result.text
+    assert result.json()["proposal"]["concepts"][2]["id"] == "three"
+    assert result.json()["status"] == "succeeded"
+    assert client.get(f"/api/v1/workspaces/{new_id()}/campaigns/plan/{job_id}").status_code == 404
+
+
+def test_mailguard_conversion_receiver_is_tenant_bound_and_deduplicates(workflow_api) -> None:
+    client, session_factory = workflow_api
+    owner = _register(client, "mailguard-owner@example.com")
+    workspace_id = owner["active_workspace_id"]
+    headers = {"X-CSRF-Token": client.cookies.get("agentic_csrf")}
+    campaign = client.post(f"/api/v1/workspaces/{workspace_id}/campaigns", headers=headers, json={
+        "name": "MailGuard first campaign",
+        "brief": {"objective": "awareness", "audience": ["Sinh viên"], "product_ids": [],
+                  "key_message": "Kiểm tra dấu hiệu đáng ngờ trước khi bấm.",
+                  "must_include": [], "must_avoid": [], "start_date": "2026-09-01", "end_date": "2026-09-30"},
+        "content_plan": {"strategy_summary": "Giải thích ngắn, có căn cứ.", "slots": []},
+        "pillars": ["education"], "channels": ["facebook_page"],
+    })
+    assert campaign.status_code == 201, campaign.text
+    campaign_id = campaign.json()["id"]
+    tracking = client.post(
+        f"/api/v1/workspaces/{workspace_id}/campaigns/{campaign_id}/tracking-ids",
+        headers=headers,
+        json={"campaign_id": campaign_id},
+    )
+    assert tracking.status_code == 201, tracking.text
+    tracking_id = tracking.json()["tracking_id"]
+
+    created = client.post(f"/api/v1/workspaces/{workspace_id}/integrations/mailguard", headers=headers)
+    assert created.status_code == 200, created.text
+    integration_key = created.json()["integration_key"]
+    assert integration_key.startswith("mgint_")
+    assert "integration_key" not in client.get(f"/api/v1/workspaces/{workspace_id}/integrations/mailguard").json()
+    auth_headers = {"Authorization": f"Bearer {integration_key}"}
+    now = datetime.now(timezone.utc)
+    signup_at = now.replace(microsecond=0) - timedelta(days=40)
+    analysis_at = signup_at + timedelta(days=5)
+    signup_payload = {
+        "event_id": "signup-event-1", "event_type": "signup_completed",
+        "occurred_at": signup_at.isoformat(), "external_user_id": "opaque-user-007",
+        "tracking_id": tracking_id,
+    }
+    signup = client.post("/api/v1/integrations/mailguard/events", headers=auth_headers, json=signup_payload)
+    assert signup.status_code == 200, signup.text
+    assert signup.json()["accepted"] is True
+    event_replay = client.post("/api/v1/integrations/mailguard/events", headers=auth_headers, json=signup_payload)
+    assert event_replay.status_code == 200, event_replay.text
+    assert event_replay.json()["duplicate"] is True
+    actor_replay = client.post("/api/v1/integrations/mailguard/events", headers=auth_headers, json={
+        **signup_payload, "event_id": "signup-event-2",
+    })
+    assert actor_replay.json()["duplicate"] is True
+    analysis = client.post("/api/v1/integrations/mailguard/events", headers=auth_headers, json={
+        "event_id": "analysis-event-1", "event_type": "first_analysis_completed",
+        "occurred_at": analysis_at.isoformat(), "external_user_id": "opaque-user-007",
+        "tracking_id": tracking_id,
+    })
+    assert analysis.status_code == 200, analysis.text
+    email_rejected = client.post("/api/v1/integrations/mailguard/events", headers=auth_headers, json={
+        "event_id": "email-event", "event_type": "signup_completed",
+        "occurred_at": now.isoformat(), "external_user_id": "user@example.com",
+    })
+    assert email_rejected.status_code == 422
+
+    analytics = client.get(
+        f"/api/v1/workspaces/{workspace_id}/analytics/conversions",
+        params={"window_start": (now - timedelta(days=60)).isoformat(),
+                "window_end": now.isoformat()},
+    )
+    assert analytics.status_code == 200, analytics.text
+    assert analytics.json()["state"] == "available"
+    assert analytics.json()["signup_count"] == 1
+    assert analytics.json()["first_analysis_count"] == 1
+    assert analytics.json()["signup_cohort_count"] == 1
+    assert analytics.json()["activated_within_window_count"] == 1
+    assert analytics.json()["activation_rate"] == 1.0
+    assert analytics.json()["attribution"][0]["campaign_id"] == campaign_id
+
+    async def inspect_stored_data():
+        async with session_factory() as db:
+            integration = await db.scalar(select(MailGuardIntegration).where(MailGuardIntegration.company_id == workspace_id))
+            events = (await db.scalars(select(MailGuardConversionEvent).where(MailGuardConversionEvent.company_id == workspace_id))).all()
+            return integration, events
+
+    integration, events = asyncio.run(inspect_stored_data())
+    assert integration is not None and integration.key_hash != integration_key
+    assert len(events) == 2
+    assert all(event.actor_hash != "opaque-user-007" for event in events)
+
+    revoked = client.post(f"/api/v1/workspaces/{workspace_id}/integrations/mailguard/revoke", headers=headers)
+    assert revoked.status_code == 200
+    rejected_after_revoke = client.post("/api/v1/integrations/mailguard/events", headers=auth_headers, json=signup_payload)
+    assert rejected_after_revoke.status_code == 401
+    reissued = client.post(f"/api/v1/workspaces/{workspace_id}/integrations/mailguard", headers=headers)
+    assert reissued.status_code == 200, reissued.text
+    reissued_payload = {**signup_payload, "event_id": "signup-event-after-key-rotation"}
+    reissued_replay = client.post(
+        "/api/v1/integrations/mailguard/events",
+        headers={"Authorization": f"Bearer {reissued.json()['integration_key']}"},
+        json=reissued_payload,
+    )
+    assert reissued_replay.status_code == 200, reissued_replay.text
+    assert reissued_replay.json()["duplicate"] is True
 
 
 def test_content_generation_requires_current_confirmed_brand_profile(workflow_api, monkeypatch) -> None:
@@ -663,6 +822,7 @@ def test_content_generation_job_persists_cited_draft_and_is_idempotent(workflow_
     post_url = f"/api/v1/workspaces/{workspace_id}/posts/{posts[0].id}"
     submitted = client.post(f"{post_url}/submit-approval", headers=headers, json={"version": 1})
     assert submitted.status_code == 200, submitted.text
+    _review_post(client, post_url, 1, headers)
     approved = client.post(f"{post_url}/approval", headers=headers, json={"version": 1, "decision": "approved"})
     assert approved.status_code == 200, approved.text
 
@@ -923,6 +1083,7 @@ def test_media_upload_is_validated_tenant_scoped_versioned_and_approval_hashed(w
         f"{post_url}/submit-approval", headers=headers, json={"version": 2},
     )
     assert submitted.status_code == 200, submitted.text
+    _review_post(client, post_url, 2, headers)
     approved = client.post(
         f"{post_url}/approval", headers=headers, json={"version": 2, "decision": "approved"},
     )

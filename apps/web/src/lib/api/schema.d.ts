@@ -434,6 +434,43 @@ export interface paths {
         readonly patch?: never;
         readonly trace?: never;
     };
+    readonly "/api/v1/workspaces/{company_id}/campaigns/plan": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get?: never;
+        readonly put?: never;
+        /**
+         * Plan Campaign From Prompt
+         * @description Queue a proposal; the worker never creates a campaign or publishes it.
+         */
+        readonly post: operations["plan_campaign_from_prompt_api_v1_workspaces__company_id__campaigns_plan_post"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/v1/workspaces/{company_id}/campaigns/plan/{job_id}": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /** Get Campaign Plan Job */
+        readonly get: operations["get_campaign_plan_job_api_v1_workspaces__company_id__campaigns_plan__job_id__get"];
+        readonly put?: never;
+        readonly post?: never;
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
     readonly "/api/v1/workspaces/{company_id}/campaigns/{campaign_id}": {
         readonly parameters: {
             readonly query?: never;
@@ -668,6 +705,110 @@ export interface paths {
         readonly put?: never;
         /** Generate Content */
         readonly post: operations["generate_content_api_v1_workspaces__company_id__posts_generate_post"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/v1/workspaces/{company_id}/posts/{post_id}/reviews": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /** List Post Reviews */
+        readonly get: operations["list_post_reviews_api_v1_workspaces__company_id__posts__post_id__reviews_get"];
+        readonly put?: never;
+        /** Create Post Review */
+        readonly post: operations["create_post_review_api_v1_workspaces__company_id__posts__post_id__reviews_post"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/v1/workspaces/{company_id}/integrations/mailguard": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /** Get Mailguard Integration */
+        readonly get: operations["get_mailguard_integration_api_v1_workspaces__company_id__integrations_mailguard_get"];
+        readonly put?: never;
+        /** Create Mailguard Integration */
+        readonly post: operations["create_mailguard_integration_api_v1_workspaces__company_id__integrations_mailguard_post"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/v1/workspaces/{company_id}/integrations/mailguard/revoke": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get?: never;
+        readonly put?: never;
+        /** Revoke Mailguard Integration */
+        readonly post: operations["revoke_mailguard_integration_api_v1_workspaces__company_id__integrations_mailguard_revoke_post"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/v1/workspaces/{company_id}/campaigns/{campaign_id}/tracking-ids": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get?: never;
+        readonly put?: never;
+        /** Create Mailguard Tracking Reference */
+        readonly post: operations["create_mailguard_tracking_reference_api_v1_workspaces__company_id__campaigns__campaign_id__tracking_ids_post"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/v1/integrations/mailguard/events": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get?: never;
+        readonly put?: never;
+        /** Receive Mailguard Event */
+        readonly post: operations["receive_mailguard_event_api_v1_integrations_mailguard_events_post"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/v1/workspaces/{company_id}/analytics/conversions": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /** Get Mailguard Conversion Analytics */
+        readonly get: operations["get_mailguard_conversion_analytics_api_v1_workspaces__company_id__analytics_conversions_get"];
+        readonly put?: never;
+        readonly post?: never;
         readonly delete?: never;
         readonly options?: never;
         readonly head?: never;
@@ -946,6 +1087,58 @@ export interface paths {
         readonly options?: never;
         readonly head?: never;
         readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/v1/workspaces/{company_id}/meta/scheduled-publications": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /** List Scheduled Meta Publications */
+        readonly get: operations["list_scheduled_meta_publications_api_v1_workspaces__company_id__meta_scheduled_publications_get"];
+        readonly put?: never;
+        readonly post?: never;
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/v1/workspaces/{company_id}/meta/scheduled-publications/{schedule_id}/cancel": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get?: never;
+        readonly put?: never;
+        /** Cancel Scheduled Meta Publication */
+        readonly post: operations["cancel_scheduled_meta_publication_api_v1_workspaces__company_id__meta_scheduled_publications__schedule_id__cancel_post"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/v1/workspaces/{company_id}/meta/pages/{connection_id}/metrics-schedule": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /** Get Meta Metrics Schedule */
+        readonly get: operations["get_meta_metrics_schedule_api_v1_workspaces__company_id__meta_pages__connection_id__metrics_schedule_get"];
+        readonly put?: never;
+        readonly post?: never;
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        /** Set Meta Metrics Schedule */
+        readonly patch: operations["set_meta_metrics_schedule_api_v1_workspaces__company_id__meta_pages__connection_id__metrics_schedule_patch"];
         readonly trace?: never;
     };
     readonly "/api/v1/workspaces/{company_id}/meta/publications/{publication_id}/reconcile": {
@@ -1850,6 +2043,86 @@ export interface components {
              */
             readonly updated_at: string;
         };
+        /** CampaignPlanConcept */
+        readonly CampaignPlanConcept: {
+            /** Id */
+            readonly id: string;
+            /** Title */
+            readonly title: string;
+            /** Angle */
+            readonly angle: string;
+            /** Hook */
+            readonly hook: string;
+            /**
+             * Format
+             * @enum {string}
+             */
+            readonly format: "text" | "image";
+            /** Cta */
+            readonly cta: string;
+            /** Hashtags */
+            readonly hashtags?: readonly string[];
+        };
+        /** CampaignPlanJobResult */
+        readonly CampaignPlanJobResult: {
+            /** Job Id */
+            readonly job_id: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            readonly status: "queued" | "running" | "succeeded" | "failed" | "cancelled";
+            readonly proposal?: components["schemas"]["CampaignPlanProposal"] | null;
+            /** Error */
+            readonly error?: {
+                readonly [key: string]: unknown;
+            } | null;
+        };
+        /** CampaignPlanProposal */
+        readonly CampaignPlanProposal: {
+            /** Campaign Name */
+            readonly campaign_name: string;
+            /**
+             * Objective
+             * @enum {string}
+             */
+            readonly objective: "awareness" | "engagement" | "traffic" | "leads" | "sales" | "retention";
+            /** Topic */
+            readonly topic: string;
+            /** Tone */
+            readonly tone: string;
+            /** Audience */
+            readonly audience: readonly string[];
+            /** Key Message */
+            readonly key_message: string;
+            /** Must Include */
+            readonly must_include?: readonly string[];
+            /** Must Avoid */
+            readonly must_avoid?: readonly string[];
+            /**
+             * Start Date
+             * Format: date
+             */
+            readonly start_date: string;
+            /**
+             * End Date
+             * Format: date
+             */
+            readonly end_date: string;
+            /** Pillars */
+            readonly pillars: readonly ("education" | "entertainment" | "inspiration" | "promotion" | "community" | "behind_the_scenes" | "product" | "testimonial")[];
+            /** Concepts */
+            readonly concepts: readonly components["schemas"]["CampaignPlanConcept"][];
+            /** Assumptions */
+            readonly assumptions?: readonly string[];
+        };
+        /** CampaignPlanRequest */
+        readonly CampaignPlanRequest: {
+            /** Prompt */
+            readonly prompt: string;
+            /** Group Id */
+            readonly group_id?: string | null;
+        };
         /** CampaignUpdateRequest */
         readonly CampaignUpdateRequest: {
             /** Name */
@@ -1865,8 +2138,75 @@ export interface components {
             /** Version */
             readonly version: number;
         };
+        /** CancelScheduledPublicationOut */
+        readonly CancelScheduledPublicationOut: {
+            /** Id */
+            readonly id: string;
+            /**
+             * Status
+             * @constant
+             */
+            readonly status: "cancelled";
+            /** Post Id */
+            readonly post_id: string;
+            /** Post Version */
+            readonly post_version: number;
+        };
         /** ConfirmBrandProfileRequest */
         readonly ConfirmBrandProfileRequest: {
+            /** Version */
+            readonly version: number;
+        };
+        /** ContentReviewCheck */
+        readonly ContentReviewCheck: {
+            /** Key */
+            readonly key: string;
+            /** Label */
+            readonly label: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            readonly status: "pass" | "warn" | "blocking";
+            /** Message */
+            readonly message: string;
+            /** Evidence */
+            readonly evidence?: readonly string[];
+        };
+        /** ContentReviewOut */
+        readonly ContentReviewOut: {
+            /** Id */
+            readonly id: string;
+            /** Post Id */
+            readonly post_id: string;
+            /** Post Version */
+            readonly post_version: number;
+            /** Content Sha256 */
+            readonly content_sha256: string;
+            /** Rule Version */
+            readonly rule_version: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            readonly status: "ready" | "blocked";
+            /** Summary */
+            readonly summary: string;
+            /** Checks */
+            readonly checks: readonly components["schemas"]["ContentReviewCheck"][];
+            /**
+             * Semantic Status
+             * @enum {string}
+             */
+            readonly semantic_status: "not_run" | "completed" | "failed";
+            /**
+             * Checked At
+             * Format: date-time
+             */
+            readonly checked_at: string;
+        };
+        /** ContentReviewRequest */
+        readonly ContentReviewRequest: {
             /** Version */
             readonly version: number;
         };
@@ -2337,6 +2677,131 @@ export interface components {
              */
             readonly expires_at: string;
         };
+        /** MailGuardConversionAnalyticsOut */
+        readonly MailGuardConversionAnalyticsOut: {
+            /**
+             * State
+             * @enum {string}
+             */
+            readonly state: "not_connected" | "no_data" | "available";
+            /** Signup Count */
+            readonly signup_count: number | null;
+            /** First Analysis Count */
+            readonly first_analysis_count: number | null;
+            /** Signup Cohort Count */
+            readonly signup_cohort_count: number | null;
+            /** Activated Within Window Count */
+            readonly activated_within_window_count: number | null;
+            /** Activation Rate */
+            readonly activation_rate: number | null;
+            /** Activation Window Days */
+            readonly activation_window_days: number;
+            /**
+             * Window Start
+             * Format: date-time
+             */
+            readonly window_start: string;
+            /**
+             * Window End
+             * Format: date-time
+             */
+            readonly window_end: string;
+            /** Attribution */
+            readonly attribution?: readonly {
+                readonly [key: string]: unknown;
+            }[];
+            /** Limitations */
+            readonly limitations?: readonly string[];
+        };
+        /** MailGuardEventIn */
+        readonly MailGuardEventIn: {
+            /** Event Id */
+            readonly event_id: string;
+            /**
+             * Event Type
+             * @enum {string}
+             */
+            readonly event_type: "signup_completed" | "first_analysis_completed";
+            /**
+             * Occurred At
+             * Format: date-time
+             */
+            readonly occurred_at: string;
+            /** External User Id */
+            readonly external_user_id: string;
+            /** Tracking Id */
+            readonly tracking_id?: string | null;
+        };
+        /** MailGuardEventReceipt */
+        readonly MailGuardEventReceipt: {
+            /** Accepted */
+            readonly accepted: boolean;
+            /** Duplicate */
+            readonly duplicate: boolean;
+            /** Message */
+            readonly message: string;
+        };
+        /** MailGuardIntegrationCreated */
+        readonly MailGuardIntegrationCreated: {
+            /** Id */
+            readonly id: string;
+            /** Key Prefix */
+            readonly key_prefix: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            readonly status: "active" | "revoked";
+            /**
+             * Created At
+             * Format: date-time
+             */
+            readonly created_at: string;
+            /** Integration Key */
+            readonly integration_key: string;
+        };
+        /** MailGuardIntegrationOut */
+        readonly MailGuardIntegrationOut: {
+            /** Id */
+            readonly id: string;
+            /** Key Prefix */
+            readonly key_prefix: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            readonly status: "active" | "revoked";
+            /**
+             * Created At
+             * Format: date-time
+             */
+            readonly created_at: string;
+        };
+        /** MailGuardTrackingReferenceIn */
+        readonly MailGuardTrackingReferenceIn: {
+            /** Campaign Id */
+            readonly campaign_id: string;
+            /** Post Id */
+            readonly post_id?: string | null;
+            /** Post Version */
+            readonly post_version?: number | null;
+        };
+        /** MailGuardTrackingReferenceOut */
+        readonly MailGuardTrackingReferenceOut: {
+            /** Tracking Id */
+            readonly tracking_id: string;
+            /** Campaign Id */
+            readonly campaign_id: string;
+            /** Post Id */
+            readonly post_id: string | null;
+            /** Post Version */
+            readonly post_version: number | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            readonly created_at: string;
+        };
         /** ManualImportIn */
         readonly ManualImportIn: {
             /** Rows */
@@ -2486,6 +2951,24 @@ export interface components {
             /** Missing Metrics */
             readonly missing_metrics: readonly string[];
         };
+        /** MetaMetricsScheduleIn */
+        readonly MetaMetricsScheduleIn: {
+            /** Enabled */
+            readonly enabled: boolean;
+        };
+        /** MetaMetricsScheduleOut */
+        readonly MetaMetricsScheduleOut: {
+            /** Connection Id */
+            readonly connection_id: string;
+            /** Page Id */
+            readonly page_id: string;
+            /** Enabled */
+            readonly enabled: boolean;
+            /** Interval Hours */
+            readonly interval_hours: number;
+            /** Next Sync At */
+            readonly next_sync_at: string | null;
+        };
         /** MetaPagePostOut */
         readonly MetaPagePostOut: {
             /** Id */
@@ -2572,6 +3055,8 @@ export interface components {
             readonly version: number;
             /** Connection Id */
             readonly connection_id?: string | null;
+            /** Scheduled At */
+            readonly scheduled_at?: string | null;
         };
         /** MetaReconcileIn */
         readonly MetaReconcileIn: {
@@ -3132,6 +3617,34 @@ export interface components {
             /** Source Id */
             readonly source_id: string;
         };
+        /** ScheduledMetaPublicationOut */
+        readonly ScheduledMetaPublicationOut: {
+            /** Id */
+            readonly id: string;
+            /** Job Id */
+            readonly job_id: string;
+            /** Post Id */
+            readonly post_id: string;
+            /** Post Version */
+            readonly post_version: number;
+            /** Page Id */
+            readonly page_id: string;
+            /**
+             * Scheduled At
+             * Format: date-time
+             */
+            readonly scheduled_at: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            readonly status: "scheduled" | "queued" | "cancelled" | "missed" | "published" | "failed" | "outcome_unknown";
+            /**
+             * Created At
+             * Format: date-time
+             */
+            readonly created_at: string;
+        };
         /** SelectWorkspaceRequest */
         readonly SelectWorkspaceRequest: {
             /** Workspace Id */
@@ -3392,8 +3905,16 @@ export type SchemaCampaignMarketEvidenceReference = components['schemas']['Campa
 export type SchemaCampaignMarketResearchContext = components['schemas']['CampaignMarketResearchContext'];
 export type SchemaCampaignMarketResearchSuggestion = components['schemas']['CampaignMarketResearchSuggestion'];
 export type SchemaCampaignOut = components['schemas']['CampaignOut'];
+export type SchemaCampaignPlanConcept = components['schemas']['CampaignPlanConcept'];
+export type SchemaCampaignPlanJobResult = components['schemas']['CampaignPlanJobResult'];
+export type SchemaCampaignPlanProposal = components['schemas']['CampaignPlanProposal'];
+export type SchemaCampaignPlanRequest = components['schemas']['CampaignPlanRequest'];
 export type SchemaCampaignUpdateRequest = components['schemas']['CampaignUpdateRequest'];
+export type SchemaCancelScheduledPublicationOut = components['schemas']['CancelScheduledPublicationOut'];
 export type SchemaConfirmBrandProfileRequest = components['schemas']['ConfirmBrandProfileRequest'];
+export type SchemaContentReviewCheck = components['schemas']['ContentReviewCheck'];
+export type SchemaContentReviewOut = components['schemas']['ContentReviewOut'];
+export type SchemaContentReviewRequest = components['schemas']['ContentReviewRequest'];
 export type SchemaCreateExportRequest = components['schemas']['CreateExportRequest'];
 export type SchemaCreateManualPostRequest = components['schemas']['CreateManualPostRequest'];
 export type SchemaDocumentError = components['schemas']['DocumentError'];
@@ -3420,6 +3941,13 @@ export type SchemaJobOut = components['schemas']['JobOut'];
 export type SchemaJobStepOut = components['schemas']['JobStepOut'];
 export type SchemaLoginRequest = components['schemas']['LoginRequest'];
 export type SchemaLoginResponse = components['schemas']['LoginResponse'];
+export type SchemaMailGuardConversionAnalyticsOut = components['schemas']['MailGuardConversionAnalyticsOut'];
+export type SchemaMailGuardEventIn = components['schemas']['MailGuardEventIn'];
+export type SchemaMailGuardEventReceipt = components['schemas']['MailGuardEventReceipt'];
+export type SchemaMailGuardIntegrationCreated = components['schemas']['MailGuardIntegrationCreated'];
+export type SchemaMailGuardIntegrationOut = components['schemas']['MailGuardIntegrationOut'];
+export type SchemaMailGuardTrackingReferenceIn = components['schemas']['MailGuardTrackingReferenceIn'];
+export type SchemaMailGuardTrackingReferenceOut = components['schemas']['MailGuardTrackingReferenceOut'];
 export type SchemaManualImportIn = components['schemas']['ManualImportIn'];
 export type SchemaManualObservationIn = components['schemas']['ManualObservationIn'];
 export type SchemaMediaAssetOut = components['schemas']['MediaAssetOut'];
@@ -3428,6 +3956,8 @@ export type SchemaMetaConnectionOut = components['schemas']['MetaConnectionOut']
 export type SchemaMetaErrorOut = components['schemas']['MetaErrorOut'];
 export type SchemaMetaMetricHistoryOut = components['schemas']['MetaMetricHistoryOut'];
 export type SchemaMetaMetricSnapshotOut = components['schemas']['MetaMetricSnapshotOut'];
+export type SchemaMetaMetricsScheduleIn = components['schemas']['MetaMetricsScheduleIn'];
+export type SchemaMetaMetricsScheduleOut = components['schemas']['MetaMetricsScheduleOut'];
 export type SchemaMetaPagePostOut = components['schemas']['MetaPagePostOut'];
 export type SchemaMetaPagePostsOut = components['schemas']['MetaPagePostsOut'];
 export type SchemaMetaPublicationOut = components['schemas']['MetaPublicationOut'];
@@ -3462,6 +3992,7 @@ export type SchemaResetPasswordRequest = components['schemas']['ResetPasswordReq
 export type SchemaResetPasswordResponse = components['schemas']['ResetPasswordResponse'];
 export type SchemaReviseWithAiRequest = components['schemas']['ReviseWithAiRequest'];
 export type SchemaSaveRecommendationRequest = components['schemas']['SaveRecommendationRequest'];
+export type SchemaScheduledMetaPublicationOut = components['schemas']['ScheduledMetaPublicationOut'];
 export type SchemaSelectWorkspaceRequest = components['schemas']['SelectWorkspaceRequest'];
 export type SchemaSessionResponse = components['schemas']['SessionResponse'];
 export type SchemaSubmitApprovalRequest = components['schemas']['SubmitApprovalRequest'];
@@ -4730,6 +5261,78 @@ export interface operations {
             };
         };
     };
+    readonly plan_campaign_from_prompt_api_v1_workspaces__company_id__campaigns_plan_post: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: {
+                readonly "Idempotency-Key"?: string | null;
+                readonly authorization?: string | null;
+            };
+            readonly path: {
+                readonly company_id: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": components["schemas"]["CampaignPlanRequest"];
+            };
+        };
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 202: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["AcceptedResponse"];
+                };
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    readonly get_campaign_plan_job_api_v1_workspaces__company_id__campaigns_plan__job_id__get: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: {
+                readonly authorization?: string | null;
+            };
+            readonly path: {
+                readonly company_id: string;
+                readonly job_id: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["CampaignPlanJobResult"];
+                };
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     readonly get_campaign_api_v1_workspaces__company_id__campaigns__campaign_id__get: {
         readonly parameters: {
             readonly query?: never;
@@ -5299,6 +5902,287 @@ export interface operations {
                 };
                 content: {
                     readonly "application/json": components["schemas"]["GenerateContentResponse"];
+                };
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    readonly list_post_reviews_api_v1_workspaces__company_id__posts__post_id__reviews_get: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: {
+                readonly authorization?: string | null;
+            };
+            readonly path: {
+                readonly company_id: string;
+                readonly post_id: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": readonly components["schemas"]["ContentReviewOut"][];
+                };
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    readonly create_post_review_api_v1_workspaces__company_id__posts__post_id__reviews_post: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: {
+                readonly authorization?: string | null;
+            };
+            readonly path: {
+                readonly company_id: string;
+                readonly post_id: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": components["schemas"]["ContentReviewRequest"];
+            };
+        };
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ContentReviewOut"];
+                };
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    readonly get_mailguard_integration_api_v1_workspaces__company_id__integrations_mailguard_get: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: {
+                readonly authorization?: string | null;
+            };
+            readonly path: {
+                readonly company_id: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["MailGuardIntegrationOut"] | null;
+                };
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    readonly create_mailguard_integration_api_v1_workspaces__company_id__integrations_mailguard_post: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: {
+                readonly authorization?: string | null;
+            };
+            readonly path: {
+                readonly company_id: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["MailGuardIntegrationCreated"];
+                };
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    readonly revoke_mailguard_integration_api_v1_workspaces__company_id__integrations_mailguard_revoke_post: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: {
+                readonly authorization?: string | null;
+            };
+            readonly path: {
+                readonly company_id: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["MailGuardIntegrationOut"];
+                };
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    readonly create_mailguard_tracking_reference_api_v1_workspaces__company_id__campaigns__campaign_id__tracking_ids_post: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: {
+                readonly authorization?: string | null;
+            };
+            readonly path: {
+                readonly company_id: string;
+                readonly campaign_id: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": components["schemas"]["MailGuardTrackingReferenceIn"];
+            };
+        };
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 201: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["MailGuardTrackingReferenceOut"];
+                };
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    readonly receive_mailguard_event_api_v1_integrations_mailguard_events_post: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: {
+                readonly Authorization?: string | null;
+            };
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": components["schemas"]["MailGuardEventIn"];
+            };
+        };
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["MailGuardEventReceipt"];
+                };
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    readonly get_mailguard_conversion_analytics_api_v1_workspaces__company_id__analytics_conversions_get: {
+        readonly parameters: {
+            readonly query?: {
+                readonly window_start?: string | null;
+                readonly window_end?: string | null;
+                readonly activation_window_days?: number;
+            };
+            readonly header?: {
+                readonly authorization?: string | null;
+            };
+            readonly path: {
+                readonly company_id: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["MailGuardConversionAnalyticsOut"];
                 };
             };
             /** @description Validation Error */
@@ -5941,6 +6825,145 @@ export interface operations {
                 };
                 content: {
                     readonly "application/json": components["schemas"]["AcceptedResponse"];
+                };
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    readonly list_scheduled_meta_publications_api_v1_workspaces__company_id__meta_scheduled_publications_get: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: {
+                readonly authorization?: string | null;
+            };
+            readonly path: {
+                readonly company_id: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": readonly components["schemas"]["ScheduledMetaPublicationOut"][];
+                };
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    readonly cancel_scheduled_meta_publication_api_v1_workspaces__company_id__meta_scheduled_publications__schedule_id__cancel_post: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: {
+                readonly authorization?: string | null;
+            };
+            readonly path: {
+                readonly company_id: string;
+                readonly schedule_id: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["CancelScheduledPublicationOut"];
+                };
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    readonly get_meta_metrics_schedule_api_v1_workspaces__company_id__meta_pages__connection_id__metrics_schedule_get: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: {
+                readonly authorization?: string | null;
+            };
+            readonly path: {
+                readonly company_id: string;
+                readonly connection_id: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["MetaMetricsScheduleOut"];
+                };
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    readonly set_meta_metrics_schedule_api_v1_workspaces__company_id__meta_pages__connection_id__metrics_schedule_patch: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: {
+                readonly authorization?: string | null;
+            };
+            readonly path: {
+                readonly company_id: string;
+                readonly connection_id: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": components["schemas"]["MetaMetricsScheduleIn"];
+            };
+        };
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["MetaMetricsScheduleOut"];
                 };
             };
             /** @description Validation Error */

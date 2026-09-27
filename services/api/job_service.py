@@ -63,7 +63,7 @@ async def serialize_job(db: AsyncSession, job: Job) -> JobOut:
         created_at=job.created_at,
         started_at=job.started_at,
         finished_at=job.finished_at,
-        cancellable=job.status in {"queued", "running"} and job.kind not in {"meta_publish", "meta_metrics_sync"},
+        cancellable=job.status in {"queued", "running"} and job.kind not in {"meta_publish", "meta_publish_scheduled", "meta_metrics_sync"},
     )
 
 
@@ -107,6 +107,21 @@ async def dispatch_content_generation_job(job_id: str) -> bool:
         return True
     except Exception:
         # The durable job remains queued and is recovered by the scheduler.
+        return False
+
+
+async def dispatch_campaign_plan_job(job_id: str) -> bool:
+    if settings.inline_jobs:
+        from services.worker.pilot_tasks import campaign_plan_task_async
+
+        await campaign_plan_task_async(job_id)
+        return True
+    try:
+        from services.worker.celery_app import celery_app
+
+        celery_app.send_task("services.worker.pilot_tasks.campaign_plan_task", args=[job_id], queue="agent")
+        return True
+    except Exception:
         return False
 
 
@@ -168,6 +183,7 @@ async def dispatch_queued_jobs(db: AsyncSession) -> int:
     count = 0
     dispatch: list[tuple[str, str, list[str]]] = []
     content_dispatch: list[str] = []
+    plan_dispatch: list[str] = []
     meta_dispatch: list[tuple[str, str]] = []
     research_dispatch: list[str] = []
     for job in jobs:
@@ -187,6 +203,16 @@ async def dispatch_queued_jobs(db: AsyncSession) -> int:
                 continue
             job.lease_until = now + timedelta(minutes=settings.job_lease_minutes)
             content_dispatch.append(job.id)
+        elif job.kind == "campaign_plan" and job.result and job.result.get("prompt"):
+            if job.attempts >= settings.max_job_attempts:
+                job.status = "failed"
+                job.progress = 100
+                job.finished_at = now
+                job.lease_until = None
+                job.error = {"code": "retry_limit_exceeded", "message": "Yêu cầu lập kế hoạch đã hết số lần thử.", "retryable": False}
+                continue
+            job.lease_until = now + timedelta(minutes=settings.job_lease_minutes)
+            plan_dispatch.append(job.id)
         elif job.kind == "document_ingest" and job.result and job.result.get("document_id"):
             if job.attempts >= settings.max_job_attempts:
                 job.status = "failed"
@@ -235,6 +261,10 @@ async def dispatch_queued_jobs(db: AsyncSession) -> int:
         count += int(sent)
     for job_id in content_dispatch:
         sent = await dispatch_content_generation_job(job_id)
+        await _record_dispatch(db, job_id, sent)
+        count += int(sent)
+    for job_id in plan_dispatch:
+        sent = await dispatch_campaign_plan_job(job_id)
         await _record_dispatch(db, job_id, sent)
         count += int(sent)
     for job_id, kind in meta_dispatch:

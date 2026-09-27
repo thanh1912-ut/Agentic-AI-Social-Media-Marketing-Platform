@@ -3,7 +3,7 @@
  * `client.ts` hay `endpoints.ts` — chỉ import từ đây.
  */
 
-export { api, authApi, brandApi, campaignApi, documentApi, jobApi, mediaApi, workspaceApi } from './endpoints';
+export { api, authApi, brandApi, campaignApi, documentApi, jobApi, mailGuardApi, mediaApi, workspaceApi } from './endpoints';
 export { facebookPostUrl, metaApi, metaQueryKeys } from './meta';
 export { marketResearchApi, marketResearchKeys } from './market-research';
 export type { MarketGroup, PageConnection, ResearchSource, ResearchSourceType, MarketReport } from './market-research';

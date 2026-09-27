@@ -50,6 +50,12 @@ import type {
   ApiAcceptInvitationRequest,
   ApiAcceptedResponse,
   ApiCampaignUpdateRequest,
+  ApiCampaignPlanRequest,
+  ApiCampaignPlanJobResult,
+  ApiContentReviewOut,
+  ApiContentReviewRequest,
+  ApiMailGuardConversionAnalytics,
+  ApiMailGuardIntegrationOut,
   ApiBrandProfile,
   ApiConfirmBrandProfileRequest,
   ApiDocument,
@@ -296,6 +302,17 @@ export const campaignApi = {
   get: (workspaceId: string, campaignId: string) =>
     apiRequest<Campaign>(v1(`/workspaces/${workspaceId}/campaigns/${campaignId}`)),
 
+  /** AI trả đề xuất trong job bền vững; worker không tạo campaign tự động. */
+  plan: (workspaceId: string, body: ApiCampaignPlanRequest) =>
+    apiRequest<ApiAcceptedResponse>(v1(`/workspaces/${workspaceId}/campaigns/plan`), {
+      method: 'POST',
+      body,
+      headers: { 'Idempotency-Key': newIdempotencyKey('campaign-plan') },
+    }),
+
+  planJob: (workspaceId: string, jobId: string) =>
+    apiRequest<ApiCampaignPlanJobResult>(v1(`/workspaces/${workspaceId}/campaigns/plan/${jobId}`)),
+
   create: (workspaceId: string, body: Partial<Campaign>) =>
     apiRequest<Campaign>(v1(`/workspaces/${workspaceId}/campaigns`), {
       method: 'POST',
@@ -344,6 +361,15 @@ export const postApi = {
   get: (workspaceId: string, postId: string) =>
     apiRequest<Post>(v1(`/workspaces/${workspaceId}/posts/${postId}`)),
 
+  review: (workspaceId: string, postId: string, version: number) =>
+    apiRequest<ApiContentReviewOut>(v1(`/workspaces/${workspaceId}/posts/${postId}/reviews`), {
+      method: 'POST',
+      body: { version } satisfies ApiContentReviewRequest,
+    }),
+
+  reviews: (workspaceId: string, postId: string) =>
+    apiRequest<readonly ApiContentReviewOut[]>(v1(`/workspaces/${workspaceId}/posts/${postId}/reviews`)),
+
   /** Lịch sử phiên bản để so sánh. */
   versions: (workspaceId: string, postId: string) =>
     apiRequest<PostVersionList>(
@@ -375,6 +401,20 @@ export const postApi = {
     apiRequest<void>(v1(`/workspaces/${workspaceId}/posts/${postId}`), {
       method: 'DELETE',
     }),
+};
+
+export const mailGuardApi = {
+  integration: (workspaceId: string) =>
+    apiRequest<ApiMailGuardIntegrationOut | null>(v1(`/workspaces/${workspaceId}/integrations/mailguard`)),
+
+  conversionAnalytics: (workspaceId: string) =>
+    apiRequest<ApiMailGuardConversionAnalytics>(v1(`/workspaces/${workspaceId}/analytics/conversions`)),
+
+  createIntegration: (workspaceId: string) =>
+    apiRequest<ApiMailGuardIntegrationOut & { integration_key: string }>(v1(`/workspaces/${workspaceId}/integrations/mailguard`), { method: 'POST' }),
+
+  revokeIntegration: (workspaceId: string) =>
+    apiRequest<ApiMailGuardIntegrationOut>(v1(`/workspaces/${workspaceId}/integrations/mailguard/revoke`), { method: 'POST' }),
 };
 
 export const approvalApi = {
@@ -671,6 +711,7 @@ export const api = {
   media: mediaApi,
   approval: approvalApi,
   export: exportApi,
+  mailGuard: mailGuardApi,
   publishing: publishingApi,
   analytics: analyticsApi,
   recommendation: recommendationApi,

@@ -6,10 +6,12 @@ import { useParams } from 'next/navigation';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import { useSession } from '@/components/session-gate';
+import { PERMISSIONS } from '@agentic/contracts';
 import { Button, EmptyState, ErrorPanel, LoadingBlock, StatusBadge, UnavailableNotice } from '@/components/ui';
-import { ApiError, facebookPostUrl, marketResearchApi, marketResearchKeys, metaApi, metaQueryKeys } from '@/lib/api';
+import { ApiError, facebookPostUrl, mailGuardApi, marketResearchApi, marketResearchKeys, metaApi, metaQueryKeys } from '@/lib/api';
 import type { ApiMetricImportRequest, ApiRecordExperimentOutcomeRequest } from '@/lib/api/types';
-import { formatDateTime } from '@/lib/format';
+import { formatDateTime, formatNumber } from '@/lib/format';
+import { hasPermission } from '@/lib/permissions';
 import {
   useApplyManualRecommendation,
   useCampaigns,
@@ -24,6 +26,7 @@ import {
   useAcceptedRecommendationDrafts,
   useRecommendationExperimentOutcomes,
   useRecordRecommendationExperimentOutcome,
+  useMailGuardConversionAnalytics,
 } from '@/lib/hooks';
 
 type MetricPoint = ApiMetricImportRequest['points'][number];
@@ -64,6 +67,29 @@ export default function AnalyticsPage() {
   const queryClient = useQueryClient();
   const posts = usePosts(workspace ? workspaceId : '');
   const campaigns = useCampaigns(workspace ? workspaceId : '');
+  const mailGuardConversions = useMailGuardConversionAnalytics(workspace ? workspaceId : '');
+  const mailGuardIntegration = useQuery({
+    queryKey: ['workspaces', workspaceId, 'integrations', 'mailguard'],
+    queryFn: () => mailGuardApi.integration(workspaceId),
+    enabled: Boolean(workspace),
+  });
+  const [integrationKeyOnce, setIntegrationKeyOnce] = useState<string | null>(null);
+  const integrationManage = useMutation({
+    mutationFn: () => mailGuardApi.createIntegration(workspaceId),
+    onSuccess: (result) => {
+      setIntegrationKeyOnce(result.integration_key);
+      void queryClient.invalidateQueries({ queryKey: ['workspaces', workspaceId, 'integrations', 'mailguard'] });
+      void queryClient.invalidateQueries({ queryKey: ['workspaces', workspaceId, 'analytics', 'mailguard-conversions'] });
+    },
+  });
+  const revokeIntegration = useMutation({
+    mutationFn: () => mailGuardApi.revokeIntegration(workspaceId),
+    onSuccess: () => {
+      setIntegrationKeyOnce(null);
+      void queryClient.invalidateQueries({ queryKey: ['workspaces', workspaceId, 'integrations', 'mailguard'] });
+      void queryClient.invalidateQueries({ queryKey: ['workspaces', workspaceId, 'analytics', 'mailguard-conversions'] });
+    },
+  });
   const [pagePostOffset, setPagePostOffset] = useState(0);
   const [selectedConnectionId, setSelectedConnectionId] = useState('');
   const [lastSyncJobId, setLastSyncJobId] = useState<string | null>(null);
@@ -71,6 +97,15 @@ export default function AnalyticsPage() {
     queryKey: metaQueryKeys.connection(workspace ? workspaceId : ''),
     queryFn: () => metaApi.connection(workspaceId),
     enabled: Boolean(workspace),
+  });
+  const metaMetricsSchedule = useQuery({
+    queryKey: metaQueryKeys.metricsSchedule(workspace ? workspaceId : '', selectedConnectionId),
+    queryFn: () => metaApi.getMetricsSchedule(workspaceId, selectedConnectionId),
+    enabled: Boolean(workspace && selectedConnectionId),
+  });
+  const updateMetaMetricsSchedule = useMutation({
+    mutationFn: (enabled: boolean) => metaApi.metricsSchedule(workspaceId, selectedConnectionId, { enabled }),
+    onSuccess: () => void queryClient.invalidateQueries({ queryKey: metaQueryKeys.metricsSchedule(workspaceId, selectedConnectionId) }),
   });
   const pageConnections = useQuery({
     queryKey: marketResearchKeys.pages(workspace ? workspaceId : '', 'all'),
@@ -302,6 +337,20 @@ export default function AnalyticsPage() {
         </p>
       </header>
 
+      <section className="space-y-4 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm" aria-labelledby="mailguard-conversions-heading">
+        <div className="flex flex-wrap items-start justify-between gap-3"><div><h2 id="mailguard-conversions-heading" className="text-lg font-semibold text-slate-900">Chuyển đổi MailGuard</h2><p className="mt-1 text-sm text-slate-600">Đầu nối sẵn sàng cho website tương lai. Website chưa có nên conversion live hiện chưa được nghiệm thu.</p></div><StatusBadge label="INTEGRATION_READY · live NOT_RUN" tone="warning" /></div>
+        {mailGuardConversions.isPending || mailGuardIntegration.isPending ? <LoadingBlock label="Đang tải trạng thái tracking…" /> : null}
+        {mailGuardConversions.isError || mailGuardIntegration.isError ? <ErrorPanel title="Không tải được trạng thái chuyển đổi" message="Kiểm tra kết nối API rồi tải lại." retryable onRetry={() => { void mailGuardConversions.refetch(); void mailGuardIntegration.refetch(); }} /> : null}
+        {mailGuardIntegration.data ? <div className="space-y-2 text-sm"><p>Server-to-server integration: <strong>{mailGuardIntegration.data.status}</strong> · key prefix {mailGuardIntegration.data.key_prefix}</p><p className="text-slate-600">Được phép gửi hai event: signup_completed và first_analysis_completed. Không gửi email, mật khẩu hoặc nội dung khách đưa vào phân tích.</p></div> : null}
+        {mailGuardConversions.data ? <div className="grid gap-3 sm:grid-cols-3"><div className="rounded-lg bg-slate-50 p-3"><p className="text-xs text-slate-600">Đăng ký</p><p className="mt-1 text-lg font-semibold">{mailGuardConversions.data.signup_count == null ? '—' : formatNumber(mailGuardConversions.data.signup_count)}</p></div><div className="rounded-lg bg-slate-50 p-3"><p className="text-xs text-slate-600">Hoàn thành phân tích đầu tiên</p><p className="mt-1 text-lg font-semibold">{mailGuardConversions.data.first_analysis_count == null ? '—' : formatNumber(mailGuardConversions.data.first_analysis_count)}</p></div><div className="rounded-lg bg-slate-50 p-3"><p className="text-xs text-slate-600">Tỷ lệ activation của cohort đủ 30 ngày</p><p className="mt-1 text-lg font-semibold">{mailGuardConversions.data.activation_rate == null ? '—' : formatMetric(mailGuardConversions.data.activation_rate, true)}</p><p className="text-xs text-slate-500">{mailGuardConversions.data.signup_cohort_count ?? '—'} signup đủ cửa sổ</p></div></div> : null}
+        {(mailGuardConversions.data?.limitations ?? []).map((item, index) => <p key={index} className="text-xs text-slate-500">{item}</p>)}
+        {hasPermission(workspace, PERMISSIONS.WORKSPACE_MANAGE) && (!mailGuardIntegration.data || mailGuardIntegration.data.status === 'revoked') ? <Button onClick={() => integrationManage.mutate()} loading={integrationManage.isPending}>Tạo khóa tích hợp server-to-server</Button> : null}
+        {integrationManage.isError ? <p role="alert" className="text-sm text-rose-700">{integrationManage.error instanceof ApiError ? integrationManage.error.message : 'Không tạo được integration.'}</p> : null}
+        {integrationKeyOnce ? <div className="space-y-2 rounded-lg border border-amber-300 bg-amber-50 p-3"><p className="font-medium text-amber-950">Sao chép khóa này vào secret store backend MailGuard. Khóa chỉ hiển thị lần này; không đặt trong JavaScript hoặc frontend.</p><input aria-label="Khóa integration hiển thị một lần" readOnly value={integrationKeyOnce} className="w-full rounded border border-amber-400 bg-white px-3 py-2 font-mono text-xs" /><Button variant="secondary" onClick={() => setIntegrationKeyOnce(null)}>Ẩn khóa</Button></div> : null}
+        {hasPermission(workspace, PERMISSIONS.WORKSPACE_MANAGE) && mailGuardIntegration.data?.status === 'active' ? <Button variant="danger" onClick={() => revokeIntegration.mutate()} loading={revokeIntegration.isPending}>Thu hồi integration</Button> : null}
+        {revokeIntegration.isError ? <p role="alert" className="text-sm text-rose-700">Không thu hồi được integration. Thử lại sau.</p> : null}
+      </section>
+
       <section className="space-y-4 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm" aria-labelledby="meta-page-posts-heading">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
@@ -334,6 +383,11 @@ export default function AnalyticsPage() {
         {metaPageId ? (
           <>
             <p className="text-sm text-slate-700">{metaPageName || 'Fanpage'} · Page ID {metaPageId}</p>
+            {connectionId ? <div className="flex flex-wrap items-center gap-3 rounded-lg bg-slate-50 p-3 text-sm">
+              <p>{metaMetricsSchedule.data?.enabled ? `Đồng bộ tự động mỗi ${metaMetricsSchedule.data.interval_hours} giờ` : 'Đồng bộ tự động đang tắt'}</p>
+              {workspace.role === 'owner' ? <Button variant="secondary" size="sm" onClick={() => updateMetaMetricsSchedule.mutate(!metaMetricsSchedule.data?.enabled)} loading={updateMetaMetricsSchedule.isPending} disabled={metaMetricsSchedule.isPending || metaMetricsSchedule.isError}>{metaMetricsSchedule.data?.enabled ? 'Tắt lịch tự động' : 'Bật lịch mỗi 6 giờ'}</Button> : null}
+            </div> : null}
+            {metaMetricsSchedule.isError && connectionId ? <p className="text-xs text-slate-600">Không đọc được trạng thái lịch đồng bộ; thao tác thủ công vẫn khả dụng.</p> : null}
             <div className="flex flex-wrap items-center gap-3">
               <Button
                 onClick={() => syncMetaMetrics.mutate()}

@@ -11,7 +11,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from database.models import (
     AuditEvent, CampaignPost, Job, JobStep, MediaAsset, MetaPageConnection, MetaPagePost,
     MetaPageMetricSnapshot, MetaPostMetricSnapshot, MetaPublication, MetaSyncState,
-    PostApproval, PostMetricSnapshot, PostVersion, new_id, utcnow,
+    PostApproval, PostContentReview, PostMetricSnapshot, PostVersion,
+    ScheduledMetaPublication, new_id, utcnow,
 )
 from database.job_fencing import claim_job_fence, isolated_job_fence
 from services.api.config import settings
@@ -102,6 +103,16 @@ async def _publish_preflight(db: AsyncSession, row: MetaPublication) -> tuple[st
         or approval.content_sha256 != row.approved_content_sha256
     ):
         raise ValueError("approval_changed")
+    review = await db.scalar(select(PostContentReview).where(
+        PostContentReview.company_id == row.company_id,
+        PostContentReview.post_id == row.post_id,
+        PostContentReview.post_version == row.post_version,
+        PostContentReview.content_sha256 == row.approved_content_sha256,
+        PostContentReview.rule_version == "mailguard-review-v1",
+        PostContentReview.status == "ready",
+    ).order_by(PostContentReview.checked_at.desc(), PostContentReview.id.desc()).limit(1))
+    if review is None:
+        raise ValueError("content_review_changed")
     caption = version.content_json.get("caption")
     if not isinstance(caption, str) or not caption.strip():
         raise ValueError("caption_missing")
@@ -158,6 +169,13 @@ async def _finish_publish(job_id: str, status: str, *, external_post_id: str | N
             if post and post.current_version == row.post_version and post.status == "scheduled":
                 post.status = "approved"
                 post.updated_at = utcnow()
+        scheduled = await db.scalar(select(ScheduledMetaPublication).where(
+            ScheduledMetaPublication.job_id == job_id,
+        ).with_for_update())
+        if scheduled is not None and scheduled.status == "queued":
+            scheduled.status = "published" if status == "published" else "outcome_unknown" if status == "outcome_unknown" else "failed"
+            scheduled.publication_id = row.id
+            scheduled.updated_at = utcnow()
         # outcome_unknown keeps the active key and post locked until an owner reconciles.
         await _finish_job(db, job, succeeded=status == "published",
                           error=_safe_error(error_code, error_message) if error_code and error_message else None)

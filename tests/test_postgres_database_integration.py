@@ -32,7 +32,7 @@ def test_postgres_migrations_constraints_vector_and_job_fencing() -> None:
                 revision = await connection.exec_driver_sql(
                     "SELECT version_num FROM alembic_version ORDER BY version_num LIMIT 1"
                 )
-                assert revision.scalar_one() == "0017_web_entity_snapshot_immutability"
+                assert revision.scalar_one() == "0018_mailguard_pilot_workflows"
                 extension = await connection.exec_driver_sql(
                     "SELECT extversion FROM pg_extension WHERE extname='vector'"
                 )
@@ -61,6 +61,19 @@ def test_postgres_migrations_constraints_vector_and_job_fencing() -> None:
                     assert {item["name"] for item in inspector.get_check_constraints("web_crawl_pages")} >= {
                         "ck_web_crawl_page_evidence_refs_all_or_none"
                     }
+                    assert set(inspector.get_table_names()).issuperset({
+                        "post_content_reviews", "scheduled_meta_publications",
+                        "mailguard_integrations", "mailguard_tracking_references",
+                        "mailguard_conversion_events",
+                    })
+                    review_fks = inspector.get_foreign_keys("post_content_reviews")
+                    assert any(fk["name"] == "fk_post_content_review_version_tenant" for fk in review_fks)
+                    schedule_fks = inspector.get_foreign_keys("scheduled_meta_publications")
+                    assert any(fk["name"] == "fk_scheduled_meta_connection_tenant_page" for fk in schedule_fks)
+                    event_fks = inspector.get_foreign_keys("mailguard_conversion_events")
+                    assert {fk["name"] for fk in event_fks}.issuperset({
+                        "fk_mailguard_event_integration_tenant", "fk_mailguard_event_tracking_tenant",
+                    })
 
                 await connection.run_sync(assert_schema)
                 snapshot_guard = await connection.exec_driver_sql(

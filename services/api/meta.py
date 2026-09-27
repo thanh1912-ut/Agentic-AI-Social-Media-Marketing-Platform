@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy import func, select
@@ -12,7 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from database.models import (
     AuditEvent, Campaign, CampaignPost, Job, JobStep, MediaAsset, Membership, MetaPageConnection,
     MetaPageMetricSnapshot, MetaPagePost, MetaPostMetricSnapshot, MetaPublication,
-    MetaSyncState, PostApproval, PostVersion, User, utcnow,
+    MetaSyncState, PostApproval, PostVersion, ScheduledMetaPublication, User, utcnow, new_id,
 )
 from .config import settings
 from .content_integrity import content_sha256
@@ -28,6 +28,11 @@ from .meta_schemas import (
     MetaPublishIn, MetaReconcileIn,
 )
 from .schemas import AcceptedResponse
+from .content_reviews import latest_review_for_hash
+from .pilot_schemas import (
+    CancelScheduledPublicationOut, MetaMetricsScheduleIn, MetaMetricsScheduleOut,
+    ScheduledMetaPublicationOut,
+)
 
 
 router = APIRouter(prefix="/workspaces/{company_id}/meta", tags=["meta"])
@@ -198,6 +203,114 @@ async def list_meta_publications(
     return [_publication_out(row) for row in rows]
 
 
+@router.get("/scheduled-publications", response_model=list[ScheduledMetaPublicationOut])
+async def list_scheduled_meta_publications(
+    company_id: str,
+    user: User = Depends(current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    await membership_for(company_id, user, db)
+    rows = (await db.scalars(select(ScheduledMetaPublication).where(
+        ScheduledMetaPublication.company_id == company_id,
+    ).order_by(ScheduledMetaPublication.scheduled_at.desc()).limit(200))).all()
+    return [ScheduledMetaPublicationOut(
+        id=row.id, job_id=row.job_id, post_id=row.post_id, post_version=row.post_version,
+        page_id=row.page_id, scheduled_at=row.scheduled_at, status=row.status, created_at=row.created_at,
+    ) for row in rows]
+
+
+@router.post("/scheduled-publications/{schedule_id}/cancel", response_model=CancelScheduledPublicationOut,
+             dependencies=[Depends(require_csrf)])
+async def cancel_scheduled_meta_publication(
+    company_id: str,
+    schedule_id: str,
+    user: User = Depends(current_user),
+    membership: Membership = Depends(require_permission("publish:create")),
+    db: AsyncSession = Depends(get_db),
+):
+    row = await db.scalar(select(ScheduledMetaPublication).where(
+        ScheduledMetaPublication.company_id == company_id,
+        ScheduledMetaPublication.id == schedule_id,
+    ).with_for_update())
+    if row is None:
+        raise ApiProblem(404, "not_found", "Không tìm thấy lịch đăng.")
+    if row.status == "cancelled":
+        return CancelScheduledPublicationOut(id=row.id, status="cancelled", post_id=row.post_id, post_version=row.post_version)
+    if row.status != "scheduled":
+        raise ApiProblem(409, "schedule_already_started", "Lịch đã bắt đầu xử lý và không còn hủy được.")
+    job = await db.scalar(select(Job).where(Job.id == row.job_id, Job.company_id == company_id).with_for_update())
+    if job is None or job.status != "queued":
+        raise ApiProblem(409, "schedule_already_started", "Lịch đã bắt đầu xử lý và không còn hủy được.")
+    now = utcnow()
+    row.status = "cancelled"
+    row.active_key = None
+    row.cancelled_at = now
+    row.updated_at = now
+    job.status = "cancelled"
+    job.progress = 100
+    job.finished_at = now
+    job.lease_until = None
+    job.error = None
+    post = await db.scalar(select(CampaignPost).where(
+        CampaignPost.company_id == company_id, CampaignPost.id == row.post_id,
+    ).with_for_update())
+    if post is not None and post.current_version == row.post_version and post.status == "scheduled":
+        post.status = "approved"
+        post.publish_mode = None
+        post.scheduled_at = None
+        post.updated_at = now
+    db.add(AuditEvent(company_id=company_id, actor_user_id=user.id, action="meta.publish.schedule.cancel",
+                      entity_type="post", entity_id=row.post_id,
+                      metadata_json={"schedule_id": row.id, "version": row.post_version}))
+    await db.commit()
+    return CancelScheduledPublicationOut(id=row.id, status="cancelled", post_id=row.post_id, post_version=row.post_version)
+
+
+@router.get("/pages/{connection_id}/metrics-schedule", response_model=MetaMetricsScheduleOut)
+async def get_meta_metrics_schedule(
+    company_id: str,
+    connection_id: str,
+    user: User = Depends(current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    await membership_for(company_id, user, db)
+    connection = await _verified_connection(db, company_id, connection_id)
+    return MetaMetricsScheduleOut(
+        connection_id=connection.id, page_id=connection.page_id,
+        enabled=connection.metrics_schedule_enabled,
+        interval_hours=connection.metrics_sync_interval_hours,
+        next_sync_at=connection.next_metrics_sync_at,
+    )
+
+
+@router.patch("/pages/{connection_id}/metrics-schedule", response_model=MetaMetricsScheduleOut,
+              dependencies=[Depends(require_csrf)])
+async def set_meta_metrics_schedule(
+    company_id: str,
+    connection_id: str,
+    request: MetaMetricsScheduleIn,
+    user: User = Depends(current_user),
+    membership: Membership = Depends(require_permission("connection:manage")),
+    db: AsyncSession = Depends(get_db),
+):
+    connection = await _verified_connection(db, company_id, connection_id)
+    now = utcnow()
+    connection.metrics_schedule_enabled = request.enabled
+    connection.metrics_sync_interval_hours = 6
+    connection.next_metrics_sync_at = now + timedelta(hours=6) if request.enabled else None
+    connection.updated_at = now
+    db.add(AuditEvent(company_id=company_id, actor_user_id=user.id, action="meta.metrics.schedule.update",
+                      entity_type="meta_page", entity_id=connection.id,
+                      metadata_json={"enabled": request.enabled, "interval_hours": 6}))
+    await db.commit()
+    return MetaMetricsScheduleOut(
+        connection_id=connection.id, page_id=connection.page_id,
+        enabled=connection.metrics_schedule_enabled,
+        interval_hours=connection.metrics_sync_interval_hours,
+        next_sync_at=connection.next_metrics_sync_at,
+    )
+
+
 @router.post("/publications", response_model=AcceptedResponse, status_code=202,
              dependencies=[Depends(require_csrf)])
 async def publish_meta_post(
@@ -220,6 +333,15 @@ async def publish_meta_post(
         existing_job = await db.get(Job, existing.job_id)
         if existing_job is not None:
             return await accepted_response(db, existing_job)
+    active_schedule = await db.scalar(select(ScheduledMetaPublication).where(
+        ScheduledMetaPublication.company_id == company_id,
+        ScheduledMetaPublication.active_key == active_key,
+        ScheduledMetaPublication.status.in_(["scheduled", "queued"]),
+    ))
+    if active_schedule is not None:
+        scheduled_job = await db.get(Job, active_schedule.job_id)
+        if scheduled_job is not None:
+            return await accepted_response(db, scheduled_job)
     if post.channel != "facebook_page" or post.format not in {"text", "image"}:
         raise ApiProblem(422, "meta_format_unsupported", "Fanpage hiện hỗ trợ bài chữ hoặc một ảnh đã tải lên.")
     if post.status != "approved" or post.current_version != request.version or post.requires_reapproval:
@@ -234,6 +356,9 @@ async def publish_meta_post(
     ).order_by(PostApproval.decided_at.desc(), PostApproval.id.desc()))
     if version is None or approval is None or approval.decision != "approved" or approval.content_sha256 != content_sha256(version.content_json):
         raise ApiProblem(409, "approval_changed", "Nội dung không còn khớp phiên bản đã duyệt.")
+    review = await latest_review_for_hash(db, company_id, post.id, request.version, approval.content_sha256)
+    if review is None or review.status != "ready":
+        raise ApiProblem(409, "content_review_required", "Cần có kiểm tra nội dung hợp lệ cho đúng phiên bản trước khi đăng.")
     media = version.content_json.get("media") or []
     if not isinstance(media, list) or (post.format == "text" and media) or (post.format == "image" and (
         len(media) != 1 or not isinstance(media[0], dict) or media[0].get("source") != "uploaded"
@@ -249,6 +374,53 @@ async def publish_meta_post(
     caption = version.content_json.get("caption")
     if not isinstance(caption, str) or not caption.strip():
         raise ApiProblem(422, "meta_caption_missing", "Bài viết cần nội dung trước khi đăng.")
+    if request.scheduled_at is not None:
+        scheduled_at = request.scheduled_at.astimezone(utcnow().tzinfo)
+        if scheduled_at <= utcnow():
+            raise ApiProblem(422, "scheduled_time_in_past", "Giờ đăng phải nằm trong tương lai.")
+        existing_schedule = await db.scalar(select(ScheduledMetaPublication).where(
+            ScheduledMetaPublication.company_id == company_id,
+            ScheduledMetaPublication.active_key == active_key,
+        ))
+        if existing_schedule:
+            existing_job = await db.get(Job, existing_schedule.job_id)
+            if existing_job:
+                return await accepted_response(db, existing_job)
+        job = Job(company_id=company_id, created_by=user.id, kind="meta_publish_scheduled",
+                  title="Bài viết đã lên lịch đăng Fanpage", status="queued", progress=0,
+                  result={"post_id": post.id, "version": request.version, "scheduled_at": scheduled_at.isoformat()}, attempts=0)
+        db.add(job)
+        await db.flush()
+        schedule = ScheduledMetaPublication(
+            id=new_id(), company_id=company_id, post_id=post.id, post_version=request.version,
+            page_id=page_id, connection_id=connection.id if connection else None,
+            approved_content_sha256=approval.content_sha256, scheduled_at=scheduled_at,
+            status="scheduled", active_key=active_key, job_id=job.id, requested_by=user.id,
+            created_at=utcnow(), updated_at=utcnow(),
+        )
+        db.add(schedule)
+        await db.flush()
+        job.result = {"schedule_id": schedule.id, "post_id": post.id, "version": request.version,
+                      "scheduled_at": scheduled_at.isoformat(), "page_id": page_id}
+        db.add(JobStep(job_id=job.id, step_key="schedule", label="Chờ giờ đăng Fanpage", status="pending"))
+        post.status = "scheduled"
+        post.publish_mode = "scheduled"
+        post.scheduled_at = scheduled_at
+        post.updated_at = utcnow()
+        post.target_connection_id = connection.id if connection else None
+        db.add(AuditEvent(company_id=company_id, actor_user_id=user.id, action="meta.publish.schedule",
+                          entity_type="post", entity_id=post.id,
+                          metadata_json={"version": request.version, "schedule_id": schedule.id,
+                                         "page_id": page_id, "scheduled_at": scheduled_at.isoformat(),
+                                         "content_sha256": approval.content_sha256}))
+        try:
+            await db.commit()
+        except IntegrityError:
+            await db.rollback()
+            raise ApiProblem(409, "meta_duplicate_schedule", "Bài này đã được lên lịch hoặc đang được đăng.") from None
+        # Intentionally do not dispatch a task before its scheduled time.
+        await db.refresh(job)
+        return await accepted_response(db, job)
     job = Job(company_id=company_id, created_by=user.id, kind="meta_publish",
               title="Đăng bài lên Fanpage", status="queued", progress=0,
               result={"post_id": post.id, "version": request.version}, attempts=0)
@@ -328,7 +500,18 @@ async def reconcile_meta_publication(
     ).with_for_update())
     if post is not None and post.current_version == row.post_version and post.status == "scheduled":
         post.status = "published" if request.outcome == "published" else "approved"
+        if request.outcome == "not_published":
+            post.publish_mode = None
+            post.scheduled_at = None
         post.updated_at = utcnow()
+    scheduled = await db.scalar(select(ScheduledMetaPublication).where(
+        ScheduledMetaPublication.publication_id == row.id,
+    ).with_for_update())
+    if scheduled is not None:
+        scheduled.status = "published" if request.outcome == "published" else "failed"
+        if request.outcome == "not_published":
+            scheduled.active_key = None
+        scheduled.updated_at = utcnow()
     db.add(AuditEvent(company_id=company_id, actor_user_id=user.id,
                       action=f"meta.publish.reconcile.{request.outcome}", entity_type="meta_publication",
                       entity_id=row.id, metadata_json={"external_post_id": row.external_post_id,

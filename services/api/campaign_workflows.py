@@ -58,12 +58,14 @@ from .campaign_schemas import (
 from .db import get_db
 from .dependencies import current_user, membership_for, require_csrf, require_permission
 from .content_integrity import content_sha256
+from .content_reviews import latest_review_for_hash
 from .errors import ApiProblem
-from .job_service import accepted_response, append_job_event, dispatch_content_generation_job
+from .job_service import accepted_response, append_job_event, dispatch_campaign_plan_job, dispatch_content_generation_job
 from .permissions import has_permission
 from .rate_limits import rate_limit
 from .schemas import AcceptedResponse
 from .storage import S3ObjectStorage, storage
+from .pilot_schemas import CampaignPlanJobResult, CampaignPlanProposal, CampaignPlanRequest
 
 
 router = APIRouter(tags=["campaigns-content-approvals"])
@@ -290,6 +292,112 @@ async def create_campaign(
     db.add(AuditEvent(company_id=company_id, actor_user_id=user.id, action="campaign.create", entity_type="campaign", entity_id=row.id, metadata_json={"version": 1}))
     await db.commit()
     return await _campaign_out(db, row)
+
+
+@router.post(
+    "/workspaces/{company_id}/campaigns/plan",
+    response_model=AcceptedResponse,
+    status_code=202,
+    dependencies=[Depends(require_csrf), Depends(rate_limit("campaign_planning", max_requests=10, window_seconds=3600))],
+)
+async def plan_campaign_from_prompt(
+    company_id: str,
+    request: CampaignPlanRequest,
+    idempotency_key: str | None = Header(default=None, alias="Idempotency-Key", min_length=8, max_length=200),
+    user: User = Depends(current_user),
+    membership: Membership = Depends(require_permission("campaign:create")),
+    db: AsyncSession = Depends(get_db),
+):
+    """Queue a proposal; the worker never creates a campaign or publishes it."""
+    if not idempotency_key:
+        raise ApiProblem(400, "idempotency_key_required", "Thiếu Idempotency-Key cho yêu cầu AI lập kế hoạch.")
+    brand = await db.scalar(select(Brand).where(Brand.company_id == company_id))
+    if brand is None:
+        raise ApiProblem(404, "not_found", "Workspace chưa có Brand Profile.")
+    revision = await db.scalar(select(BrandProfileRevision).where(
+        BrandProfileRevision.company_id == company_id,
+        BrandProfileRevision.brand_id == brand.id,
+        BrandProfileRevision.revision == brand.version,
+    ))
+    if revision is None or revision.confirmed_at is None or not isinstance(brand.profile, dict) or not brand.profile.get("confirmed_at"):
+        raise ApiProblem(409, "brand_profile_not_confirmed", "Hãy xác nhận Brand Profile trước khi lập kế hoạch campaign.")
+    if request.group_id and not await db.scalar(select(MetaPageGroup.id).where(
+        MetaPageGroup.id == request.group_id, MetaPageGroup.company_id == company_id,
+    )):
+        raise ApiProblem(422, "group_not_found", "Nhóm Fanpage không thuộc workspace này.")
+    fingerprint = hashlib.sha256(json.dumps({
+        "prompt": request.prompt,
+        "group_id": request.group_id,
+        "brand_version": brand.version,
+        "requested_by": user.id,
+    }, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode("utf-8")).hexdigest()
+    existing = await db.scalar(select(Job).where(Job.company_id == company_id, Job.idempotency_key == idempotency_key))
+    if existing:
+        if existing.kind != "campaign_plan" or (existing.result or {}).get("request_fingerprint") != fingerprint:
+            raise ApiProblem(409, "idempotency_conflict", "Idempotency-Key này đã được dùng cho yêu cầu khác.")
+        return await accepted_response(db, existing)
+    now = utcnow()
+    job = Job(
+        id=new_id(), company_id=company_id, created_by=user.id, kind="campaign_plan",
+        title="AI đề xuất brief và 3 concept", status="queued", progress=0,
+        result={
+            "prompt": request.prompt,
+            "group_id": request.group_id,
+            "brand_id": brand.id,
+            "brand_version": brand.version,
+            "request_fingerprint": fingerprint,
+        },
+        idempotency_key=idempotency_key, created_at=now, updated_at=now,
+    )
+    db.add(job)
+    for key, label in (
+        ("prepare_context", "Xác minh hồ sơ thương hiệu đã xác nhận"),
+        ("plan_campaign", "Đề xuất brief và ba concept bằng DeepSeek"),
+    ):
+        db.add(JobStep(id=new_id(), job_id=job.id, step_key=key, label=label, status="pending", created_at=now, updated_at=now))
+    db.add(AuditEvent(
+        company_id=company_id, actor_user_id=user.id, action="campaign.plan.request",
+        entity_type="job", entity_id=job.id,
+        metadata_json={"brand_version": brand.version, "group_id": request.group_id, "provider": "deepseek"},
+    ))
+    await append_job_event(db, job, "queued", "Đã nhận yêu cầu. Campaign chỉ được tạo sau khi bạn xác nhận đề xuất.", 0)
+    try:
+        await db.commit()
+    except IntegrityError:
+        await db.rollback()
+        existing = await db.scalar(select(Job).where(Job.company_id == company_id, Job.idempotency_key == idempotency_key))
+        if existing is None or existing.kind != "campaign_plan" or (existing.result or {}).get("request_fingerprint") != fingerprint:
+            raise ApiProblem(409, "idempotency_conflict", "Idempotency-Key này đã được dùng cho yêu cầu khác.") from None
+        await dispatch_campaign_plan_job(existing.id)
+        return await accepted_response(db, existing)
+    # The job row is durable even when Redis is unavailable; scheduler recovery redispatches it.
+    await dispatch_campaign_plan_job(job.id)
+    await db.refresh(job)
+    return await accepted_response(db, job)
+
+
+@router.get(
+    "/workspaces/{company_id}/campaigns/plan/{job_id}",
+    response_model=CampaignPlanJobResult,
+)
+async def get_campaign_plan_job(
+    company_id: str,
+    job_id: str,
+    user: User = Depends(current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    await membership_for(company_id, user, db)
+    job = await db.scalar(select(Job).where(
+        Job.id == job_id, Job.company_id == company_id, Job.kind == "campaign_plan",
+    ))
+    if job is None:
+        raise ApiProblem(404, "not_found", "Không tìm thấy tác vụ đề xuất campaign.")
+    payload = job.result if isinstance(job.result, dict) else {}
+    proposal = CampaignPlanProposal.model_validate(payload["proposal"]) if payload.get("proposal") else None
+    return CampaignPlanJobResult(
+        job_id=job.id, status=job.status, proposal=proposal,
+        error=job.error if isinstance(job.error, dict) else None,
+    )
 
 
 @router.get("/workspaces/{company_id}/campaigns/{campaign_id}", response_model=CampaignOut)
@@ -762,6 +870,12 @@ async def decide_post_approval(
     if version is None:
         raise ApiProblem(500, "content_version_missing", "Không tìm thấy phiên bản nội dung cần duyệt.")
     approved_content_sha256 = content_sha256(version.content_json)
+    if request.decision == "approved":
+        review = await latest_review_for_hash(db, company_id, post.id, request.version, approved_content_sha256)
+        if review is None:
+            raise ApiProblem(409, "content_review_required", "Chạy kiểm tra nội dung cho đúng phiên bản trước khi duyệt.")
+        if review.status != "ready":
+            raise ApiProblem(409, "content_review_blocked", "Còn mục chặn trong kiểm tra nội dung; hãy sửa bài rồi kiểm tra lại.")
     now = utcnow()
     db.add(PostApproval(
         company_id=company_id,

@@ -33,6 +33,8 @@ export const queryKeys = {
     ['workspaces', workspaceId, 'posts', postId] as const,
   postVersions: (workspaceId: string, postId: string) =>
     ['workspaces', workspaceId, 'posts', postId, 'versions'] as const,
+  postReviews: (workspaceId: string, postId: string) =>
+    ['workspaces', workspaceId, 'posts', postId, 'reviews'] as const,
   approvals: (workspaceId: string) =>
     ['workspaces', workspaceId, 'approvals'] as const,
 
@@ -47,6 +49,8 @@ export const queryKeys = {
 
   analytics: (workspaceId: string, filters: string) =>
     ['workspaces', workspaceId, 'analytics', filters] as const,
+  mailGuardConversions: (workspaceId: string) =>
+    ['workspaces', workspaceId, 'analytics', 'mailguard-conversions'] as const,
 
   recommendations: (workspaceId: string, campaignId?: string) =>
     ['workspaces', workspaceId, 'recommendations', campaignId ?? 'all'] as const,

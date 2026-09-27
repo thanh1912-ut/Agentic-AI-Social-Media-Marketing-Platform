@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import os
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -249,12 +249,91 @@ def test_postgres_api_persists_existing_product_modules(monkeypatch: pytest.Monk
             json={"version": 1},
         )
         assert submitted.status_code == 200, submitted.text
+        review = client.post(
+            f"/api/v1/workspaces/{workspace_id}/posts/{post_id}/reviews",
+            headers=headers,
+            json={"version": 1},
+        )
+        assert review.status_code == 200, review.text
         approved = client.post(
             f"/api/v1/workspaces/{workspace_id}/posts/{post_id}/approval",
             headers=headers,
             json={"version": 1, "decision": "approved"},
         )
         assert approved.status_code == 200, approved.text
+
+        tracking_response = client.post(
+            f"/api/v1/workspaces/{workspace_id}/campaigns/{campaign_id}/tracking-ids",
+            headers=headers,
+            json={"campaign_id": campaign_id, "post_id": post_id, "post_version": 1},
+        )
+        assert tracking_response.status_code == 201, tracking_response.text
+        integration_response = client.post(
+            f"/api/v1/workspaces/{workspace_id}/integrations/mailguard", headers=headers,
+        )
+        assert integration_response.status_code == 200, integration_response.text
+        integration_key = integration_response.json()["integration_key"]
+        event_auth = {"Authorization": f"Bearer {integration_key}"}
+        signup_at = datetime.now(timezone.utc).replace(microsecond=0) - timedelta(days=40)
+        signup_event = client.post("/api/v1/integrations/mailguard/events", headers=event_auth, json={
+            "event_id": f"signup-{uuid.uuid4().hex}", "event_type": "signup_completed",
+            "occurred_at": signup_at.isoformat(), "external_user_id": "opaque-pg-user-001",
+            "tracking_id": tracking_response.json()["tracking_id"],
+        })
+        assert signup_event.status_code == 200, signup_event.text
+        activation_event = client.post("/api/v1/integrations/mailguard/events", headers=event_auth, json={
+            "event_id": f"analysis-{uuid.uuid4().hex}", "event_type": "first_analysis_completed",
+            "occurred_at": (signup_at + timedelta(days=5)).isoformat(),
+            "external_user_id": "opaque-pg-user-001",
+            "tracking_id": tracking_response.json()["tracking_id"],
+        })
+        assert activation_event.status_code == 200, activation_event.text
+        conversion = client.get(
+            f"/api/v1/workspaces/{workspace_id}/analytics/conversions",
+            params={"window_start": (signup_at - timedelta(days=1)).isoformat(),
+                    "window_end": datetime.now(timezone.utc).isoformat()},
+        )
+        assert conversion.status_code == 200, conversion.text
+        assert conversion.json()["signup_count"] == 1
+        assert conversion.json()["first_analysis_count"] == 1
+        assert conversion.json()["activated_within_window_count"] == 1
+        assert conversion.json()["activation_rate"] == 1.0
+
+        scheduled_at = (datetime.now(timezone.utc) + timedelta(hours=2)).isoformat()
+        schedule_response = client.post(
+            f"/api/v1/workspaces/{workspace_id}/meta/publications",
+            headers=headers,
+            json={"post_id": post_id, "version": 1, "connection_id": connection_id,
+                  "scheduled_at": scheduled_at},
+        )
+        assert schedule_response.status_code == 202, schedule_response.text
+        schedules_response = client.get(f"/api/v1/workspaces/{workspace_id}/meta/scheduled-publications")
+        assert schedules_response.status_code == 200, schedules_response.text
+        scheduled = next(row for row in schedules_response.json() if row["post_id"] == post_id)
+        assert scheduled["status"] == "scheduled"
+        cancelled = client.post(
+            f"/api/v1/workspaces/{workspace_id}/meta/scheduled-publications/{scheduled['id']}/cancel",
+            headers=headers,
+        )
+        assert cancelled.status_code == 200, cancelled.text
+        assert cancelled.json()["status"] == "cancelled"
+
+        schedule_setting = client.get(
+            f"/api/v1/workspaces/{workspace_id}/meta/pages/{connection_id}/metrics-schedule"
+        )
+        assert schedule_setting.status_code == 200, schedule_setting.text
+        assert schedule_setting.json()["enabled"] is False
+        enabled_schedule = client.patch(
+            f"/api/v1/workspaces/{workspace_id}/meta/pages/{connection_id}/metrics-schedule",
+            headers=headers, json={"enabled": True},
+        )
+        assert enabled_schedule.status_code == 200, enabled_schedule.text
+        assert enabled_schedule.json()["interval_hours"] == 6
+        disabled_schedule = client.patch(
+            f"/api/v1/workspaces/{workspace_id}/meta/pages/{connection_id}/metrics-schedule",
+            headers=headers, json={"enabled": False},
+        )
+        assert disabled_schedule.status_code == 200, disabled_schedule.text
 
         metric_import = client.post(
             f"/api/v1/workspaces/{workspace_id}/metrics/import",

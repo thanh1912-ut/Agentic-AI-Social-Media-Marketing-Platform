@@ -16,6 +16,7 @@ from .errors import ApiProblem
 from .job_service import (
     _record_dispatch,
     accepted_response,
+    dispatch_campaign_plan_job,
     dispatch_content_generation_job,
     dispatch_document_job,
     serialize_job,
@@ -49,7 +50,7 @@ async def get_job_events(job_id: str, after_seq: int = Query(default=0, ge=0), u
 @router.post("/{job_id}/cancel", response_model=JobOut, dependencies=[Depends(require_csrf)])
 async def cancel_job(job_id: str, user: User = Depends(current_user), db: AsyncSession = Depends(get_db)):
     job = await _tenant_job(job_id, user, db)
-    if job.kind in {"meta_publish", "meta_metrics_sync"}:
+    if job.kind in {"meta_publish", "meta_publish_scheduled", "meta_metrics_sync"}:
         raise ApiProblem(409, "state_conflict", "Job Fanpage không hỗ trợ huỷ; hãy chờ kết quả hoặc đối soát lần đăng.")
     if job.status not in {"queued", "running"}:
         raise ApiProblem(409, "state_conflict", "Job này không còn có thể huỷ.")
@@ -87,14 +88,17 @@ async def retry_job(job_id: str, user: User = Depends(current_user), db: AsyncSe
     job = await _tenant_job(job_id, user, db)
     if job.status not in {"failed", "cancelled"}:
         raise ApiProblem(409, "state_conflict", "Job này không thể thử lại ở trạng thái hiện tại.")
-    if job.kind not in {"document_ingest", "content_generation", "content_revise"}:
+    if job.kind not in {"document_ingest", "content_generation", "content_revise", "campaign_plan"}:
         raise ApiProblem(409, "state_conflict", "Loại job này chưa hỗ trợ thử lại.")
     document_id = (job.result or {}).get("document_id")
     has_content_payload = job.kind in {"content_generation", "content_revise"} and bool((job.result or {}).get("campaign_id"))
+    has_plan_payload = job.kind == "campaign_plan" and bool((job.result or {}).get("prompt"))
     if job.kind == "document_ingest" and not document_id:
         raise ApiProblem(409, "state_conflict", "Job không có dữ liệu để thử lại.")
     if job.kind in {"content_generation", "content_revise"} and not has_content_payload:
         raise ApiProblem(409, "state_conflict", "Job không có dữ liệu để thử lại.")
+    if job.kind == "campaign_plan" and not has_plan_payload:
+        raise ApiProblem(409, "state_conflict", "Yêu cầu lập kế hoạch không còn dữ liệu để thử lại.")
     if job.attempts >= settings.max_job_attempts:
         raise ApiProblem(409, "retry_limit_exceeded", "Job đã hết số lần thử tự động.", details={"max_attempts": settings.max_job_attempts})
     result = dict(job.result or {})
@@ -136,6 +140,8 @@ async def retry_job(job_id: str, user: User = Depends(current_user), db: AsyncSe
     await db.commit()
     if job.kind == "document_ingest":
         sent = await dispatch_document_job(job.id, str(document_id))
+    elif job.kind == "campaign_plan":
+        sent = await dispatch_campaign_plan_job(job.id)
     else:
         sent = await dispatch_content_generation_job(job.id)
     await _record_dispatch(db, job.id, sent)

@@ -44,6 +44,10 @@ import type {
   ApiAnalyticsDashboard,
   ApiApplyRecommendationRequest,
   ApiCampaignUpdateRequest,
+  ApiCampaignPlanRequest,
+  ApiCampaignPlanJobResult,
+  ApiContentReviewOut,
+  ApiMailGuardConversionAnalytics,
   ApiRecommendationDraftDecisionRequest,
   ApiRecommendationFeedbackRequest,
   ApiSaveRecommendationRequest,
@@ -350,6 +354,50 @@ export function useCreateCampaign(workspaceId: string) {
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: queryKeys.campaigns(workspaceId) });
     },
+  });
+}
+
+export function usePlanCampaign(workspaceId: string) {
+  return useMutation({
+    mutationFn: (body: ApiCampaignPlanRequest) => api.campaign.plan(workspaceId, body),
+  });
+}
+
+export function useCampaignPlanJob(workspaceId: string, jobId: string | null): UseQueryResult<ApiCampaignPlanJobResult> {
+  return useQuery({
+    queryKey: ['workspaces', workspaceId, 'campaign-plan', jobId ?? ''],
+    queryFn: () => api.campaign.planJob(workspaceId, jobId ?? ''),
+    enabled: workspaceId !== '' && Boolean(jobId),
+    refetchInterval: (query) => {
+      const status = query.state.data?.status;
+      return status === 'queued' || status === 'running' ? JOB_POLL_INTERVAL_MS : false;
+    },
+  });
+}
+
+export function usePostReviews(workspaceId: string, postId: string): UseQueryResult<readonly ApiContentReviewOut[]> {
+  return useQuery({
+    queryKey: queryKeys.postReviews(workspaceId, postId),
+    queryFn: () => api.post.reviews(workspaceId, postId),
+    enabled: workspaceId !== '' && postId !== '',
+  });
+}
+
+export function useRunPostReview(workspaceId: string, postId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (version: number) => api.post.review(workspaceId, postId, version),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.postReviews(workspaceId, postId) });
+    },
+  });
+}
+
+export function useMailGuardConversionAnalytics(workspaceId: string): UseQueryResult<ApiMailGuardConversionAnalytics> {
+  return useQuery({
+    queryKey: queryKeys.mailGuardConversions(workspaceId),
+    queryFn: () => api.mailGuard.conversionAnalytics(workspaceId),
+    enabled: workspaceId !== '',
   });
 }
 

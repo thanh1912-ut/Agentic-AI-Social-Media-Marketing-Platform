@@ -30,6 +30,14 @@ function latestPublication(publications: MetaPublication[], postId: string, vers
     .sort((a, b) => b.created_at.localeCompare(a.created_at))[0] ?? null;
 }
 
+function vnDateTimeInput(): string {
+  return new Date(Date.now() + 7 * 60 * 60_000).toISOString().slice(0, 16);
+}
+
+function vnLocalDateTimeToIso(value: string): string | undefined {
+  return value ? new Date(`${value}:00+07:00`).toISOString() : undefined;
+}
+
 export default function PublishingPage() {
   const params = useParams<{ workspaceId?: string }>();
   const workspaceId = params?.workspaceId ?? '';
@@ -55,7 +63,13 @@ export default function PublishingPage() {
     enabled: activeId !== '',
     refetchInterval: (query) => query.state.data?.some((item) => item.status === 'queued' || item.status === 'sending') ? 3_000 : false,
   });
+  const schedules = useQuery({
+    queryKey: metaQueryKeys.schedules(activeId),
+    queryFn: () => metaApi.schedules(activeId),
+    enabled: activeId !== '',
+  });
   const [confirmPost, setConfirmPost] = useState<{ id: string; version: number } | null>(null);
+  const [scheduledAt, setScheduledAt] = useState('');
   const [selectedPageByPost, setSelectedPageByPost] = useState<Record<string, string>>({});
   const [reconcileId, setReconcileId] = useState<string | null>(null);
   const [reconcileOutcome, setReconcileOutcome] = useState<'published' | 'not_published'>('published');
@@ -65,12 +79,21 @@ export default function PublishingPage() {
   const [reconcileError, setReconcileError] = useState<string | null>(null);
   const [lastJobId, setLastJobId] = useState<string | null>(null);
   const publish = useMutation({
-    mutationFn: ({ postId, version, connectionId }: { postId: string; version: number; connectionId: string }) =>
-      metaApi.publish(activeId, postId, version, connectionId),
+    mutationFn: ({ postId, version, connectionId, scheduledAt: time }: { postId: string; version: number; connectionId: string; scheduledAt?: string }) =>
+      metaApi.publish(activeId, postId, version, connectionId, time),
     onSuccess: (result) => {
       setLastJobId(result.job_id);
       setConfirmPost(null);
+      setScheduledAt('');
       void queryClient.invalidateQueries({ queryKey: metaQueryKeys.publications(activeId) });
+      void queryClient.invalidateQueries({ queryKey: metaQueryKeys.schedules(activeId) });
+      void queryClient.invalidateQueries({ queryKey: ['workspaces', activeId, 'posts'] });
+    },
+  });
+  const cancelSchedule = useMutation({
+    mutationFn: (scheduleId: string) => metaApi.cancelSchedule(activeId, scheduleId),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: metaQueryKeys.schedules(activeId) });
       void queryClient.invalidateQueries({ queryKey: ['workspaces', activeId, 'posts'] });
     },
   });
@@ -171,10 +194,14 @@ export default function PublishingPage() {
                 {previous ? <p className="mt-2 text-xs text-slate-600">{PUBLICATION_STATUS[previous.status].hint}</p> : null}
                 {isConfirming ? (
                   <div className="mt-4 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-950">
-                    <p>Gửi phiên bản {post.version} lên <strong>{selectedPage?.page_name || 'Fanpage đã chọn'}</strong> ngay bây giờ?</p>
+                    <p>Phiên bản {post.version} · <strong>{selectedPage?.page_name || 'Fanpage đã chọn'}</strong></p>
+                    <label className="mt-3 block max-w-sm space-y-1">Hẹn giờ đăng (giờ Việt Nam). Để trống để đăng ngay.
+                      <input type="datetime-local" min={vnDateTimeInput()} value={scheduledAt} onChange={(event) => setScheduledAt(event.currentTarget.value)} className="block w-full rounded-lg border border-amber-300 bg-white px-3 py-2" />
+                    </label>
+                    <p className="mt-2 text-xs">Máy cần hoạt động đúng giờ. Nếu máy dừng quá 15 phút sau giờ hẹn, lịch sẽ bị đánh dấu lỡ và Owner cần chọn giờ mới.</p>
                     <div className="mt-3 flex flex-wrap gap-2">
-                      <Button onClick={() => publish.mutate({ postId: post.id, version: post.version, connectionId: selectedConnectionId })} loading={publish.isPending} disabled={Boolean(disabledReason)} disabledReason={disabledReason}>Xác nhận đăng bản {post.version}</Button>
-                      <Button variant="secondary" onClick={() => setConfirmPost(null)}>Hủy</Button>
+                      <Button onClick={() => publish.mutate({ postId: post.id, version: post.version, connectionId: selectedConnectionId, scheduledAt: vnLocalDateTimeToIso(scheduledAt) })} loading={publish.isPending} disabled={Boolean(disabledReason)} disabledReason={disabledReason}>{scheduledAt ? `Lên lịch bản ${post.version}` : `Xác nhận đăng bản ${post.version}`}</Button>
+                      <Button variant="secondary" onClick={() => { setConfirmPost(null); setScheduledAt(''); }}>Hủy</Button>
                     </div>
                   </div>
                 ) : (
@@ -192,7 +219,7 @@ export default function PublishingPage() {
                         </select>
                       </label>
                     ) : null}
-                    <Button onClick={() => { publish.reset(); setConfirmPost({ id: post.id, version: post.version }); }} disabled={Boolean(disabledReason)} disabledReason={disabledReason}>Đăng bản {post.version} lên Fanpage</Button>
+                    <Button onClick={() => { publish.reset(); setScheduledAt(''); setConfirmPost({ id: post.id, version: post.version }); }} disabled={Boolean(disabledReason)} disabledReason={disabledReason}>Đăng hoặc hẹn giờ bản {post.version}</Button>
                     {disabledReason ? <p className="mt-1 text-xs text-slate-600">{disabledReason}</p> : null}
                   </div>
                 )}
@@ -204,6 +231,14 @@ export default function PublishingPage() {
           message={publish.error instanceof ApiError ? publish.error.message : 'Hãy tải lại lịch sử xuất bản và kiểm tra Fanpage trước khi gửi lại.'}
           onRetry={() => void publications.refetch()} retryable retryLabel="Tải lại lịch sử" /> : null}
         {lastJobId ? <p role="status" className="mt-3 text-sm text-emerald-800">Đã nhận yêu cầu đăng. <Link href={`/w/${workspaceId}/jobs/${lastJobId}`} className="font-medium underline">Xem tiến độ job</Link>.</p> : null}
+      </Card>
+
+      <Card title="Bài đã hẹn giờ" description="Lịch được lưu trong PostgreSQL và chỉ đưa vào hàng đợi khi đến giờ. Chỉ hủy được trước khi worker bắt đầu gửi.">
+        {schedules.isPending ? <LoadingBlock label="Đang tải lịch đăng…" /> : null}
+        {schedules.isError ? <ErrorPanel title="Không tải được lịch đăng" message={schedules.error instanceof ApiError ? schedules.error.message : 'Vui lòng tải lại lịch.'} retryable onRetry={() => void schedules.refetch()} /> : null}
+        {!schedules.isPending && !schedules.isError && !schedules.data?.length ? <EmptyState title="Chưa có bài hẹn giờ" description="Khi Owner chọn ngày giờ ở bước xác nhận, lịch sẽ xuất hiện tại đây." /> : null}
+        <div className="space-y-3">{schedules.data?.map((item) => <article key={item.id} className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-slate-200 p-3 text-sm"><div><p className="font-medium">Bài {item.post_id} · phiên bản {item.post_version}</p><p className="mt-1 text-slate-600">{formatDateTime(item.scheduled_at)} · Page {item.page_id} · trạng thái {item.status}</p></div>{item.status === 'scheduled' && canPublish ? <Button variant="secondary" size="sm" onClick={() => cancelSchedule.mutate(item.id)} loading={cancelSchedule.isPending}>Hủy lịch</Button> : null}</article>)}</div>
+        {cancelSchedule.error ? <p role="alert" className="mt-3 text-sm text-rose-700">{cancelSchedule.error instanceof ApiError ? cancelSchedule.error.message : 'Không hủy được lịch.'}</p> : null}
       </Card>
 
       <Card title="Lịch sử xuất bản" description="Kết quả chưa rõ phải được đối soát trên Fanpage trước khi có hành động khác.">
