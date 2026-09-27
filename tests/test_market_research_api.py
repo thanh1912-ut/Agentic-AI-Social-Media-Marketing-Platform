@@ -14,7 +14,7 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from sqlalchemy.pool import StaticPool
 
 from database.models import (
-    Base, MarketEvidence, MarketEvidenceVersion, MarketObservation, MetaPageConnection,
+    Base, Job, MarketEvidence, MarketEvidenceVersion, MarketObservation, MetaPageConnection,
     MarketReport, MarketReportEvidence, MetaPageGroup, ResearchCycle, ResearchSource, new_id,
 )
 from services.api import market_research as market_research_routes
@@ -171,7 +171,10 @@ def test_manual_competitor_import_masks_private_contact_data(market_api) -> None
     )
     assert created.status_code == 201, created.text
     source = created.json()
-    assert source["status"] == "manual_import_only"
+    assert source["status"] == "active"
+    assert source["collection_mode"] == "public_web"
+    assert source["collection_post_limit"] == 50
+    assert source["schedule_enabled"] is True
 
     imported = client.post(
         f"/api/v1/workspaces/{workspace_id}/market-research/sources/{source['id']}/import",
@@ -187,6 +190,13 @@ def test_manual_competitor_import_masks_private_contact_data(market_api) -> None
     )
     assert imported.status_code == 201, imported.text
     assert imported.json()["imported"] == 1
+
+    saved_posts = client.get(
+        f"/api/v1/workspaces/{workspace_id}/market-research/sources/{source['id']}/posts",
+    )
+    assert saved_posts.status_code == 200, saved_posts.text
+    assert saved_posts.json()["posts"][0]["url"] == "https://www.facebook.com/rival/posts/42"
+    assert saved_posts.json()["posts"][0]["metrics"]["comments"] == 7
 
     async def read_evidence():
         async with session_factory() as db:
@@ -220,6 +230,85 @@ def test_manual_competitor_import_masks_private_contact_data(market_api) -> None
     )
     assert changed_snapshot.status_code == 409
     assert changed_snapshot.json()["error"]["code"] == "observation_version_conflict"
+
+
+def test_competitor_source_runs_without_page_token_and_keeps_collection_settings(market_api, monkeypatch) -> None:
+    async def no_redis_dispatch(_job_id: str) -> bool:
+        return False
+
+    monkeypatch.setattr(market_research_routes, "dispatch_research_job", no_redis_dispatch)
+    client, session_factory, _encryption_key = market_api
+    workspace_id, headers = _owner(client, "public-page-owner@example.com")
+    group_id = _create_group(client, workspace_id, headers)
+    created = client.post(
+        f"/api/v1/workspaces/{workspace_id}/market-research/sources",
+        headers=headers,
+        json={
+            "group_id": group_id,
+            "source_type": "competitor_facebook_page",
+            "name": "Fanpage đối thủ",
+            "url": "https://www.facebook.com/rival",
+        },
+    )
+    assert created.status_code == 201, created.text
+    source = created.json()
+    assert source["collection_mode"] == "public_web"
+
+    updated = client.patch(
+        f"/api/v1/workspaces/{workspace_id}/market-research/sources/{source['id']}/collection-settings",
+        headers=headers,
+        json={"collector": "public_web", "schedule_enabled": False, "post_limit": 12},
+    )
+    assert updated.status_code == 200, updated.text
+    assert updated.json()["collection_post_limit"] == 12
+    assert updated.json()["schedule_enabled"] is False
+
+    accepted = client.post(
+        f"/api/v1/workspaces/{workspace_id}/market-research/sources/{source['id']}/crawl",
+        headers=headers,
+    )
+    assert accepted.status_code == 202, accepted.text
+    job_id = accepted.json()["job_id"]
+
+    async def read_job():
+        async with session_factory() as db:
+            return await db.get(Job, job_id)
+
+    job = asyncio.run(read_job())
+    assert job is not None
+    assert job.result["source_ids"] == [source["id"]]
+
+
+def test_public_facebook_collection_requires_documented_platform_permission(market_api, monkeypatch) -> None:
+    _client, _session_factory, _encryption_key = market_api
+    monkeypatch.setattr(research_tasks, "settings", SimpleNamespace(
+        facebook_public_automation_authorized=False,
+    ))
+    finished: list[dict[str, object]] = []
+
+    async def open_run(*_args):
+        return "run-1"
+
+    async def finish_run(_company_id, _run_id, **kwargs):
+        finished.append(kwargs)
+
+    monkeypatch.setattr(research_tasks, "_open_competitor_run", open_run)
+    monkeypatch.setattr(research_tasks, "_finish_competitor_run", finish_run)
+    source = SimpleNamespace(id="source-1", collection_post_limit=50, url="https://facebook.com/rival")
+
+    async def collect():
+        return await research_tasks._collect_public_competitor_page(
+            "company-1", "group-1", source, datetime.now(timezone.utc),
+            cycle_id="cycle-1", job_id="job-1",
+        )
+
+    with pytest.raises(research_tasks.CrawlError) as error:
+        asyncio.run(collect())
+
+    assert error.value.code == "platform_permission_required"
+    assert len(finished) == 1
+    assert finished[0]["status"] == "blocked"
+    assert finished[0]["counters"]["pages_requested"] == 0
 
 
 def test_competitor_page_uses_approved_public_api_token_when_configured(market_api, monkeypatch) -> None:
@@ -286,6 +375,7 @@ def test_competitor_page_uses_approved_public_api_token_when_configured(market_a
 
             source = await db.get(ResearchSource, source_id)
             assert source is not None
+            source.collection_mode = "meta_api"
         return await research_tasks._collect_competitor_page(
             workspace_id, group_id, source, datetime.now(timezone.utc),
         )
@@ -558,3 +648,18 @@ def test_disabling_last_source_schedule_clears_group_due_time(market_api) -> Non
     source_due, group_due = asyncio.run(read_due_times())
     assert source_due is None
     assert group_due is None
+
+    async def make_disabled_source_overdue_and_enqueue() -> int:
+        now = datetime.now(timezone.utc)
+        async with session_factory() as db:
+            source = await db.get(ResearchSource, source_id)
+            group = await db.get(MetaPageGroup, group_id)
+            assert source is not None and group is not None
+            source.next_due_at = now - timedelta(seconds=1)
+            group.next_due_at = now - timedelta(seconds=1)
+            await db.commit()
+            count = await scheduled_jobs._enqueue_due_research(db, now)
+            await db.commit()
+            return count
+
+    assert asyncio.run(make_disabled_source_overdue_and_enqueue()) == 0

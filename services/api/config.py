@@ -114,6 +114,9 @@ class Settings:
     meta_public_content_access_token: str = field(
         default_factory=lambda: os.getenv("META_PUBLIC_CONTENT_ACCESS_TOKEN", "").strip(), repr=False
     )
+    # Facebook's robots.txt states automated collection needs express written permission.
+    # Public-web collection stays blocked unless an operator records that authorization.
+    facebook_public_automation_authorized: bool = _bool("FACEBOOK_PUBLIC_AUTOMATION_AUTHORIZED", False)
     meta_graph_version: str = os.getenv("META_GRAPH_VERSION", "v26.0").strip()
     meta_token_encryption_key: str = field(default_factory=lambda: os.getenv("META_TOKEN_ENCRYPTION_KEY", "").strip(), repr=False)
     meta_token_encryption_key_previous: str = field(default_factory=lambda: os.getenv("META_TOKEN_ENCRYPTION_KEY_PREVIOUS", "").strip(), repr=False)

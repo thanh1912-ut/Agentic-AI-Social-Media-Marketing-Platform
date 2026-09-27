@@ -52,6 +52,53 @@ export interface ResearchSource {
   render_mode?: 'http_only' | 'javascript';
   resource_hosts?: string[];
   schedule_enabled?: boolean;
+  collection_mode?: 'legacy' | 'public_web' | 'meta_api' | 'manual';
+  collection_post_limit?: number;
+  collection_status?: string;
+  collection_last_method?: string | null;
+  last_collection_attempt_at?: string | null;
+  last_collection_success_at?: string | null;
+}
+
+export interface CompetitorPost {
+  id: string;
+  source_id: string;
+  external_id: string | null;
+  url: string;
+  title: string;
+  text: string;
+  published_at: string | null;
+  observed_at: string | null;
+  metrics: Record<string, number | null>;
+  metric_provenance: Record<string, {
+    raw?: string | null;
+    precision?: string | null;
+    missing_reason?: string | null;
+  }>;
+  content_truncated: boolean;
+}
+
+export interface CompetitorPostsPage {
+  posts: CompetitorPost[];
+  next_cursor: string | null;
+  followers: number | null;
+  followers_observed_at: string | null;
+  followers_missing_reason: string | null;
+}
+
+export interface CompetitorCollectionRun {
+  id: string;
+  source_id: string;
+  job_id: string;
+  collector: string;
+  status: string;
+  post_limit: number;
+  counters: Record<string, unknown>;
+  coverage: Record<string, unknown>;
+  blocked_reason: string | null;
+  started_at: string | null;
+  completed_at: string | null;
+  created_at: string;
 }
 
 export interface WebOffer {
@@ -183,6 +230,10 @@ export const marketResearchKeys = {
     ['workspaces', workspaceId, 'market-research', groupId, 'reports'] as const,
   webItems: (workspaceId: string, groupId: string, kind: string) =>
     ['workspaces', workspaceId, 'market-research', groupId, 'web-items', kind] as const,
+  competitorPosts: (workspaceId: string, sourceId: string) =>
+    ['workspaces', workspaceId, 'market-research', 'competitor-posts', sourceId] as const,
+  competitorRuns: (workspaceId: string, sourceId: string) =>
+    ['workspaces', workspaceId, 'market-research', 'competitor-runs', sourceId] as const,
 };
 
 export const marketResearchApi = {
@@ -219,6 +270,28 @@ export const marketResearchApi = {
     path(workspaceId) + '/sources/' + encodeURIComponent(sourceId) + '/crawl-settings',
     { method: 'PATCH', body },
   ),
+  updateCollectionSettings: (workspaceId: string, sourceId: string, body: {
+    collector: 'public_web' | 'meta_api' | 'manual';
+    schedule_enabled: boolean;
+    post_limit: number;
+  }) => apiRequest<ResearchSource>(
+    path(workspaceId) + '/sources/' + encodeURIComponent(sourceId) + '/collection-settings',
+    { method: 'PATCH', body },
+  ),
+  crawlSource: (workspaceId: string, sourceId: string) =>
+    apiRequest<ApiAcceptedResponse>(
+      path(workspaceId) + '/sources/' + encodeURIComponent(sourceId) + '/crawl',
+      { method: 'POST' },
+    ),
+  competitorCollectionRuns: (workspaceId: string, sourceId: string) =>
+    apiRequest<CompetitorCollectionRun[]>(
+      path(workspaceId) + '/sources/' + encodeURIComponent(sourceId) + '/collection-runs',
+    ),
+  competitorPosts: (workspaceId: string, sourceId: string, cursor?: string) =>
+    apiRequest<CompetitorPostsPage>(
+      path(workspaceId) + '/sources/' + encodeURIComponent(sourceId) + '/posts',
+      { query: { limit: 25, cursor } },
+    ),
   importObservations: (workspaceId: string, sourceId: string, rows: ImportObservation[]) =>
     apiRequest<{ imported: number; observed_at: string }>(
       path(workspaceId) + '/sources/' + encodeURIComponent(sourceId) + '/import',

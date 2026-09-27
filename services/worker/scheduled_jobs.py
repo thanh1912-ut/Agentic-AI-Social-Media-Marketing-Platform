@@ -28,17 +28,20 @@ async def _enqueue_due_research(db, now: datetime) -> int:
     )).all()
     enqueued = 0
     for group in groups:
-        source_id = await db.scalar(select(ResearchSource.id).where(
+        due_sources = (await db.scalars(select(ResearchSource).where(
             ResearchSource.company_id == group.company_id,
             ResearchSource.group_id == group.id,
             ResearchSource.active.is_(True),
             ResearchSource.schedule_enabled.is_(True),
+            ResearchSource.next_due_at.is_not(None),
+            ResearchSource.next_due_at <= now,
             or_(
                 ResearchSource.status.in_(["active", "error"]),
                 and_(ResearchSource.source_type == "owned_facebook_page", ResearchSource.status == "needs_access"),
             ),
-        ).limit(1))
-        if not source_id:
+        ).order_by(ResearchSource.next_due_at).with_for_update(skip_locked=True))).all()
+        source_ids = [source.id for source in due_sources]
+        if not source_ids:
             group.next_due_at = None
             continue
         creator_id = await db.scalar(
@@ -63,7 +66,7 @@ async def _enqueue_due_research(db, now: datetime) -> int:
         job = Job(
             id=job_id, company_id=group.company_id, created_by=creator_id,
             kind="market_research", title=f"Thu thập dữ liệu thị trường: {group.name}",
-            status="queued", progress=0, result={"group_id": group.id},
+            status="queued", progress=0, result={"group_id": group.id, "source_ids": source_ids},
             idempotency_key=f"market:{group.id}:{cycle_key}",
         )
         db.add(job)

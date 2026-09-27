@@ -57,12 +57,14 @@ from .market_research_schemas import (
     ResearchSourceCreate,
     ResearchSourceOut,
     WebCrawlSettingsIn, WebCrawlRunOut, WebItemOut, WebItemsPage, WebOfferOut,
+    CollectionSettingsIn, CollectionRunOut, CompetitorPostOut, CompetitorPostsPage,
 )
 from .meta_client import MetaGraphClient, MetaGraphReadError, MetaGraphRejected, MetaGraphTokenExpired
 from .meta_tokens import TokenEncryptionUnavailable, encrypt_page_token, token_fingerprint
 from .rate_limits import rate_limit
 from .schemas import AcceptedResponse
 from services.research.web_crawler import CrawlError, canonicalize_url
+from services.research.facebook_public_crawler import normalize_facebook_page_url
 
 
 router = APIRouter(prefix="/workspaces/{company_id}/market-research", tags=["market-research"])
@@ -97,6 +99,10 @@ def _source_out(row: ResearchSource) -> ResearchSourceOut:
         crawl_mode=row.crawl_mode, crawl_page_limit=row.crawl_page_limit,
         render_mode=row.render_mode, resource_hosts=row.resource_hosts_json or [],
         schedule_enabled=row.schedule_enabled,
+        collection_mode=row.collection_mode, collection_post_limit=row.collection_post_limit,
+        collection_status=row.collection_status, collection_last_method=row.collection_last_method,
+        last_collection_attempt_at=row.last_collection_attempt_at,
+        last_collection_success_at=row.last_collection_success_at,
     )
 
 
@@ -249,6 +255,201 @@ async def list_web_crawl_runs(
                            page_limit=row.page_limit, counters=row.counters_json or {},
                            started_at=row.started_at, completed_at=row.completed_at,
                            created_at=row.created_at) for row in runs]
+
+
+@router.patch("/sources/{source_id}/collection-settings", response_model=ResearchSourceOut,
+              dependencies=[Depends(require_csrf)])
+async def update_collection_settings(
+    company_id: str, source_id: str, request: CollectionSettingsIn,
+    user: User = Depends(current_user), membership=Depends(require_permission("market:manage")),
+    db: AsyncSession = Depends(get_db),
+):
+    source = await db.scalar(select(ResearchSource).where(
+        ResearchSource.company_id == company_id, ResearchSource.id == source_id,
+        ResearchSource.source_type == "competitor_facebook_page", ResearchSource.active.is_(True),
+    ).with_for_update())
+    if source is None:
+        raise ApiProblem(404, "not_found", "Không tìm thấy Fanpage đối thủ.")
+    previous_mode = source.collection_mode
+    source.collection_mode = request.collector
+    source.collection_post_limit = request.post_limit
+    source.schedule_enabled = request.schedule_enabled
+    if previous_mode != request.collector:
+        source.collection_status = "not_started"
+        source.error_json = None
+        source.status = "active"
+    blocked = source.collection_status in {"blocked_robots", "login_required", "challenge_required"}
+    source.next_due_at = (
+        utcnow() if request.schedule_enabled and request.collector != "manual" and not blocked else None
+    )
+    source.updated_at = utcnow()
+    group = await _tenant_group(db, company_id, source.group_id, lock=True)
+    due_times = (await db.scalars(select(ResearchSource.next_due_at).where(
+        ResearchSource.company_id == company_id, ResearchSource.group_id == source.group_id,
+        ResearchSource.active.is_(True), ResearchSource.schedule_enabled.is_(True),
+    ))).all()
+    group.next_due_at = min((value for value in due_times if value is not None), default=None)
+    db.add(AuditEvent(company_id=company_id, actor_user_id=user.id, action="market.source.collection_settings",
+                      entity_type="research_source", entity_id=source.id,
+                      metadata_json={"collector": request.collector, "post_limit": request.post_limit,
+                                     "schedule_enabled": request.schedule_enabled}))
+    await db.commit()
+    return _source_out(source)
+
+
+@router.get("/sources/{source_id}/collection-runs", response_model=list[CollectionRunOut])
+async def list_competitor_collection_runs(
+    company_id: str, source_id: str,
+    user: User = Depends(current_user), db: AsyncSession = Depends(get_db),
+):
+    await membership_for(company_id, user, db)
+    source = await db.scalar(select(ResearchSource.id).where(
+        ResearchSource.company_id == company_id, ResearchSource.id == source_id,
+        ResearchSource.source_type == "competitor_facebook_page",
+    ))
+    if source is None:
+        raise ApiProblem(404, "not_found", "Không tìm thấy Fanpage đối thủ.")
+    rows = (await db.scalars(select(WebCrawlRun).where(
+        WebCrawlRun.company_id == company_id, WebCrawlRun.source_id == source_id,
+    ).order_by(WebCrawlRun.created_at.desc()).limit(50))).all()
+    return [
+        CollectionRunOut(
+            id=row.id, source_id=row.source_id, job_id=row.job_id,
+            collector=str((row.config_json or {}).get("collector", "unknown")),
+            status=row.status, post_limit=row.page_limit,
+            counters=row.counters_json or {}, coverage=(row.counters_json or {}).get("coverage", {}),
+            blocked_reason=(row.counters_json or {}).get("blocked_reason"),
+            started_at=row.started_at, completed_at=row.completed_at, created_at=row.created_at,
+        )
+        for row in rows
+    ]
+
+
+@router.get("/sources/{source_id}/posts", response_model=CompetitorPostsPage)
+async def list_competitor_posts(
+    company_id: str, source_id: str, limit: int = 25, cursor: str | None = None,
+    user: User = Depends(current_user), db: AsyncSession = Depends(get_db),
+):
+    await membership_for(company_id, user, db)
+    source = await db.scalar(select(ResearchSource).where(
+        ResearchSource.company_id == company_id, ResearchSource.id == source_id,
+        ResearchSource.source_type == "competitor_facebook_page",
+    ))
+    if source is None:
+        raise ApiProblem(404, "not_found", "Không tìm thấy Fanpage đối thủ.")
+    if not 1 <= limit <= 100:
+        raise ApiProblem(422, "invalid_limit", "Giới hạn cần nằm trong khoảng 1 đến 100.")
+    statement = select(MarketEvidence).where(
+        MarketEvidence.company_id == company_id, MarketEvidence.source_id == source_id,
+    )
+    decoded = _decode_web_cursor(cursor)
+    if decoded:
+        seen_at, evidence_id = decoded
+        statement = statement.where(
+            (MarketEvidence.last_seen_at < seen_at)
+            | ((MarketEvidence.last_seen_at == seen_at) & (MarketEvidence.id < evidence_id))
+        )
+    rows = (await db.scalars(statement.order_by(
+        MarketEvidence.last_seen_at.desc(), MarketEvidence.id.desc(),
+    ).limit(limit + 1))).all()
+    has_more = len(rows) > limit
+    rows = rows[:limit]
+    observations = (await db.scalars(select(MarketObservation).where(
+        MarketObservation.company_id == company_id,
+        MarketObservation.evidence_id.in_([evidence.id for evidence in rows] or ["__none__"]),
+    ).order_by(MarketObservation.evidence_id, MarketObservation.observed_at.desc()))).all()
+    latest_by_evidence: dict[str, MarketObservation] = {}
+    for observation in observations:
+        latest_by_evidence.setdefault(observation.evidence_id, observation)
+    posts: list[CompetitorPostOut] = []
+    for evidence in rows:
+        observation = latest_by_evidence.get(evidence.id)
+        raw_metrics = observation.metrics_json if observation and isinstance(observation.metrics_json, dict) else {}
+        metrics = {
+            key: value if isinstance(value, (int, float)) and not isinstance(value, bool) else None
+            for key, value in raw_metrics.items()
+            if key in {"reactions", "comments", "shares", "views"}
+        }
+        provenance = raw_metrics.get("_provenance", {})
+        posts.append(CompetitorPostOut(
+            id=evidence.id, source_id=source_id, external_id=evidence.external_id,
+            url=evidence.canonical_url, title=evidence.title, text=evidence.text,
+            published_at=evidence.published_at,
+            observed_at=observation.observed_at if observation else None,
+            metrics=metrics, metric_provenance=provenance if isinstance(provenance, dict) else {},
+            content_truncated=bool(raw_metrics.get("content_truncated", False)),
+        ))
+    audience = await db.scalar(select(ResearchSourceMetricSnapshot).where(
+        ResearchSourceMetricSnapshot.company_id == company_id,
+        ResearchSourceMetricSnapshot.source_id == source_id,
+    ).order_by(ResearchSourceMetricSnapshot.observed_at.desc()).limit(1))
+    next_cursor = _encode_web_cursor(rows[-1].last_seen_at, rows[-1].id) if has_more and rows else None
+    return CompetitorPostsPage(
+        posts=posts, next_cursor=next_cursor,
+        followers=audience.followers if audience else None,
+        followers_observed_at=audience.observed_at if audience else None,
+        followers_missing_reason=(
+            None if audience and audience.followers is not None
+            else "not_published_or_not_available" if audience
+            else "not_observed"
+        ),
+    )
+
+
+@router.post("/sources/{source_id}/crawl", response_model=AcceptedResponse, status_code=202,
+             dependencies=[Depends(require_csrf)])
+async def crawl_competitor_source_now(
+    company_id: str, source_id: str, user: User = Depends(current_user),
+    membership=Depends(require_permission("market:manage")),
+    _rate_limit: None = Depends(rate_limit("market_research_crawl", max_requests=6, window_seconds=3600)),
+    db: AsyncSession = Depends(get_db),
+):
+    source = await db.scalar(select(ResearchSource).where(
+        ResearchSource.company_id == company_id, ResearchSource.id == source_id,
+        ResearchSource.source_type == "competitor_facebook_page", ResearchSource.active.is_(True),
+    ).with_for_update())
+    if source is None:
+        raise ApiProblem(404, "not_found", "Không tìm thấy Fanpage đối thủ.")
+    if source.collection_mode == "manual":
+        raise ApiProblem(409, "manual_collection_selected", "Nguồn đang ở chế độ nhập thủ công; hãy chọn public_web hoặc meta_api.")
+    if source.collection_mode == "meta_api" and not getattr(settings, "meta_public_content_access_token", ""):
+        raise ApiProblem(409, "meta_public_access_unconfigured", "Meta App chưa cấu hình quyền Page Public Content Access.")
+    group = await _tenant_group(db, company_id, source.group_id, lock=True)
+    pending = (await db.scalars(select(ResearchCycle).where(
+        ResearchCycle.company_id == company_id, ResearchCycle.group_id == group.id,
+        ResearchCycle.status.in_(["queued", "running"]),
+    ).order_by(ResearchCycle.created_at.desc()).limit(20))).all()
+    for cycle in pending:
+        job = await db.get(Job, cycle.job_id)
+        result = (job.result or {}) if job else {}
+        selected = result.get("source_ids")
+        if job and (not selected or source.id in selected):
+            return await accepted_response(db, job)
+    now = utcnow()
+    cycle_key = f"source-manual:{source.id}:{now.strftime('%Y%m%dT%H%M%S%f')}"
+    job = Job(
+        id=new_id(), company_id=company_id, created_by=user.id, kind="market_research",
+        title=f"Thu thập Fanpage đối thủ: {source.name}", status="queued", progress=0,
+        result={"group_id": group.id, "source_ids": [source.id]},
+        idempotency_key=f"market-source:{source.id}:{cycle_key}",
+    )
+    db.add(job)
+    await db.flush()
+    db.add(JobStep(job_id=job.id, step_key="collect_sources",
+                   label="Kiểm tra quyền truy cập và thu thập bài viết công khai", status="pending"))
+    db.add(ResearchCycle(
+        id=new_id(), company_id=company_id, group_id=group.id, job_id=job.id,
+        cycle_key=cycle_key, status="queued", source_results_json=[],
+    ))
+    source.latest_job_id = job.id
+    source.collection_status = "queued"
+    group.next_due_at = None
+    db.add(AuditEvent(company_id=company_id, actor_user_id=user.id, action="market.source.crawl_request",
+                      entity_type="research_source", entity_id=source.id,
+                      metadata_json={"collector": source.collection_mode}))
+    await db.commit()
+    await dispatch_research_job(job.id)
+    return await accepted_response(db, job)
 
 
 @router.get("/groups/{group_id}/web-items", response_model=WebItemsPage)
@@ -557,6 +758,7 @@ async def create_source(
         raise ApiProblem(422, error.code, str(error)) from None
     connection = None
     status = "active"
+    collection_mode = "legacy"
     if request.source_type == "owned_facebook_page":
         if not request.connection_id:
             raise ApiProblem(422, "page_connection_required", "Chọn Fanpage đã kết nối cho nguồn này.")
@@ -572,17 +774,21 @@ async def create_source(
         if (parsed.hostname or "").casefold() not in {"facebook.com", "www.facebook.com", "m.facebook.com"}:
             raise ApiProblem(422, "facebook_url_required", "Nguồn Fanpage cần là liên kết facebook.com.")
         normalized = f"https://www.facebook.com/{connection.page_id}"
-    elif request.source_type in {"competitor_facebook_page", "facebook_group"}:
+    elif request.source_type == "competitor_facebook_page":
+        try:
+            normalized = normalize_facebook_page_url(normalized)
+        except CrawlError as error:
+            raise ApiProblem(422, error.code, str(error)) from None
+        # A user-selected public collector does not depend on the owned Page token.
+        # Access and robots policy are checked by the first durable worker run.
+        collection_mode = "public_web"
+        status = "active"
+    elif request.source_type == "facebook_group":
         parsed = urlsplit(normalized)
         host = (parsed.hostname or "").casefold()
         if host != "facebook.com" and not host.endswith(".facebook.com"):
             raise ApiProblem(422, "facebook_url_required", "Nguồn Facebook cần là liên kết facebook.com.")
-        if request.source_type == "competitor_facebook_page" and getattr(
-            settings, "meta_public_content_access_token", ""
-        ):
-            status = "active"
-        else:
-            status = "manual_import_only"
+        status = "manual_import_only"
     else:
         connection = None
     now = utcnow()
@@ -593,6 +799,8 @@ async def create_source(
         competitor_name=request.competitor_name, status=status, active=True,
         crawl_mode="site_catalog" if request.source_type == "website" else "legacy",
         crawl_page_limit=1000, render_mode="http_only", resource_hosts_json=[], schedule_enabled=True,
+        collection_mode=collection_mode, collection_post_limit=50,
+        collection_status="not_started",
         next_due_at=now if status == "active" else None, created_by=user.id,
     )
     db.add(row)
@@ -600,7 +808,7 @@ async def create_source(
     db.add(AuditEvent(company_id=company_id, actor_user_id=user.id, action="market.source.create",
                       entity_type="research_source", entity_id=row.id,
                       metadata_json={"source_type": row.source_type, "url_host": urlsplit(normalized).hostname,
-                                     "collection_mode": status}))
+                                     "collection_mode": row.collection_mode}))
     try:
         await db.commit()
     except IntegrityError:

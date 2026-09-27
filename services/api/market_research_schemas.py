@@ -88,6 +88,55 @@ class ResearchSourceOut(StrictModel):
     render_mode: Literal["http_only", "javascript"] = "http_only"
     resource_hosts: list[str] = Field(default_factory=list)
     schedule_enabled: bool = True
+    collection_mode: Literal["legacy", "public_web", "meta_api", "manual"] = "legacy"
+    collection_post_limit: int = 50
+    collection_status: str = "not_started"
+    collection_last_method: str | None = None
+    last_collection_attempt_at: datetime | None = None
+    last_collection_success_at: datetime | None = None
+
+
+class CollectionSettingsIn(StrictModel):
+    collector: Literal["public_web", "meta_api", "manual"]
+    schedule_enabled: bool = True
+    post_limit: int = Field(default=50, ge=1, le=100)
+
+
+class CollectionRunOut(StrictModel):
+    id: str
+    source_id: str
+    job_id: str
+    collector: str
+    status: str
+    post_limit: int
+    counters: dict[str, Any]
+    coverage: dict[str, Any]
+    blocked_reason: str | None = None
+    started_at: datetime | None
+    completed_at: datetime | None
+    created_at: datetime
+
+
+class CompetitorPostOut(StrictModel):
+    id: str
+    source_id: str
+    external_id: str | None
+    url: str
+    title: str
+    text: str
+    published_at: datetime | None
+    observed_at: datetime | None
+    metrics: dict[str, int | float | None]
+    metric_provenance: dict[str, Any] = Field(default_factory=dict)
+    content_truncated: bool = False
+
+
+class CompetitorPostsPage(StrictModel):
+    posts: list[CompetitorPostOut]
+    next_cursor: str | None
+    followers: int | None = None
+    followers_observed_at: datetime | None = None
+    followers_missing_reason: str | None = None
 
 
 class WebCrawlSettingsIn(StrictModel):

@@ -118,11 +118,15 @@ def _public_addresses(host: str, port: int) -> list[tuple[int, int, int, tuple]]
     return checked
 
 
-def _pinned_request(url: str, *, timeout: float = 12.0) -> FetchResult:
+def _pinned_request(
+    url: str, *, timeout: float = 12.0, allowed_hosts: set[str] | None = None,
+) -> FetchResult:
     current = canonicalize_url(url)
     for redirect in range(MAX_REDIRECTS + 1):
         parsed = urlsplit(current)
         host = parsed.hostname or ""
+        if allowed_hosts is not None and host.casefold() not in allowed_hosts:
+            raise CrawlError("source_host_out_of_scope", "Link hoặc chuyển hướng nằm ngoài host nguồn đã cho phép.")
         port = parsed.port or (443 if parsed.scheme == "https" else 80)
         address = _public_addresses(host, port)[0]
         family, socktype, proto, sockaddr = address
@@ -152,6 +156,9 @@ def _pinned_request(url: str, *, timeout: float = 12.0) -> FetchResult:
                 target = canonicalize_url(urljoin(current, location))
                 if parsed.scheme == "https" and urlsplit(target).scheme != "https":
                     raise CrawlError("source_downgrade_blocked", "Không theo chuyển hướng từ HTTPS xuống HTTP.")
+                target_host = (urlsplit(target).hostname or "").casefold()
+                if allowed_hosts is not None and target_host not in allowed_hosts:
+                    raise CrawlError("source_host_out_of_scope", "Chuyển hướng nằm ngoài host nguồn đã cho phép.")
                 current = target
                 continue
             content_length = headers.get("content-length")
@@ -175,7 +182,10 @@ def _pinned_request(url: str, *, timeout: float = 12.0) -> FetchResult:
     raise CrawlError("source_redirect_limit", "Website chuyển hướng quá nhiều lần.")
 
 
-def _safe_fetch(url: str, fetcher=_pinned_request, *, sitemap_hints: list[str] | None = None) -> FetchResult:
+def _safe_fetch(
+    url: str, fetcher=_pinned_request, *, sitemap_hints: list[str] | None = None,
+    allowed_error_statuses: set[int] | None = None,
+) -> FetchResult:
     current = canonicalize_url(url)
     parsed = urlsplit(current)
     if not parsed.hostname:
@@ -203,6 +213,8 @@ def _safe_fetch(url: str, fetcher=_pinned_request, *, sitemap_hints: list[str] |
     elif robots.status not in {404, 410}:
         raise CrawlError("robots_unavailable", "Website chưa cho phép xác minh quy tắc thu thập.", retryable=True)
     page = fetcher(current)
+    if page.status in (allowed_error_statuses or set()):
+        return page
     if page.status >= 500:
         raise CrawlError("source_server_error", "Website đang gặp lỗi tạm thời.", retryable=True)
     if page.status >= 400:
@@ -217,9 +229,10 @@ class _HTMLContentParser(HTMLParser):
     _DOM_SKIP = {"script", "style", "noscript", "svg", "iframe", "object", "canvas", "template"}
     _VOID = {"area", "base", "br", "col", "embed", "hr", "img", "input", "link", "meta", "param", "source", "track", "wbr"}
     _DOM_ATTRS = {
-        "class", "id", "itemprop", "itemtype", "itemscope", "href", "src", "content",
+        "class", "id", "role", "itemprop", "itemtype", "itemscope", "href", "src", "content",
         "datetime", "alt", "title", "aria-label", "data-product-id", "data-product_id",
         "data-product_permalink", "data-sku", "data-price", "data-currency",
+        "data-post-id", "data-id", "data-ft", "data-pagelet", "data-testid",
     }
 
     def __init__(self) -> None:

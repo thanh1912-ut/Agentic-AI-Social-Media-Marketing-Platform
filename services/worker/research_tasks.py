@@ -17,7 +17,7 @@ from sqlalchemy import select
 from database.evidence_versions import ensure_evidence_version
 from database.job_fencing import claim_job_fence, isolated_job_fence
 from database.models import (
-    AuditEvent, Job, JobEvent, JobStep, MarketEvidence, MarketEvidenceVersion,
+    AuditEvent, CrawlHostThrottle, Job, JobEvent, JobStep, MarketEvidence, MarketEvidenceVersion,
     MarketObservation,
     MarketReport, MarketReportEvidence, MarketReportWebSnapshot, MetaPageConnection, MetaPageGroup,
     MetaPageMetricSnapshot, MetaPagePost, MetaPostMetricSnapshot, ResearchCycle,
@@ -34,6 +34,7 @@ from services.api.meta_client import (
 from services.api.meta_tokens import TokenEncryptionUnavailable, decrypt_page_token
 from services.api.storage import storage
 from services.research.web_crawler import CrawlError, crawl_public_site
+from services.research.facebook_public_crawler import read_public_facebook_page
 from services.research.website_entities import PARSER_VERSION
 from .async_runtime import run_worker_coroutine
 from .celery_app import celery_app
@@ -150,6 +151,7 @@ async def _persist_evidence(
     text: str, published_at: datetime | None, metrics: dict[str, Any], comments: list[str],
     raw_body: bytes | None, observed_at: datetime,
     page_id: str | None = None, external_post_id: str | None = None,
+    public_external_id: str | None = None, parser_version: str = "market-extract-v1",
 ) -> str:
     now = utcnow()
     text = " ".join(text.split())[:12000]
@@ -163,7 +165,8 @@ async def _persist_evidence(
             evidence = MarketEvidence(
                 id=new_id(), company_id=company_id, group_id=group_id, source_id=source.id,
                 canonical_url=url, title=title[:1000], published_at=published_at,
-                text=text, content_hash=content_hash, trust_level="external_unverified",
+                text=text, content_hash=content_hash, external_id=public_external_id,
+                trust_level="external_unverified",
                 first_seen_at=now, last_seen_at=now,
             )
             db.add(evidence)
@@ -172,13 +175,15 @@ async def _persist_evidence(
             evidence.title = title[:1000] or evidence.title
             evidence.text = text
             evidence.content_hash = content_hash
+            if public_external_id:
+                evidence.external_id = public_external_id
             evidence.last_seen_at = now
             if published_at:
                 evidence.published_at = published_at
         version = await ensure_evidence_version(
             db, evidence, title=title or evidence.title, text=text,
             published_at=published_at or evidence.published_at, captured_at=observed_at,
-            parser_version="market-extract-v1",
+            parser_version=parser_version,
         )
         observation = await db.scalar(select(MarketObservation).where(
             MarketObservation.company_id == company_id, MarketObservation.evidence_id == evidence.id,
@@ -623,7 +628,237 @@ async def _collect_page(company_id: str, group_id: str, source: ResearchSource, 
     }
 
 
+async def _reserve_facebook_request_slot() -> None:
+    """Reserve a globally spaced Facebook request slot using PostgreSQL."""
+    now = utcnow()
+    async with SessionLocal() as db:
+        row = await db.get(CrawlHostThrottle, "facebook.com", with_for_update=True)
+        if row is None:
+            row = CrawlHostThrottle(host="facebook.com", next_allowed_at=now)
+            db.add(row)
+            await db.flush()
+        allowed_at = max(now, row.next_allowed_at)
+        row.next_allowed_at = allowed_at + timedelta(seconds=2)
+        await db.commit()
+    delay = max(0.0, (allowed_at - now).total_seconds())
+    if delay:
+        await asyncio.sleep(delay)
+
+
+async def _open_competitor_run(
+    company_id: str, group_id: str, source: ResearchSource, cycle_id: str, job_id: str,
+) -> str:
+    async with SessionLocal() as db:
+        run = await db.scalar(select(WebCrawlRun).where(
+            WebCrawlRun.company_id == company_id,
+            WebCrawlRun.source_id == source.id,
+            WebCrawlRun.cycle_id == cycle_id,
+        ).with_for_update())
+        if run is None:
+            run = WebCrawlRun(
+                company_id=company_id, group_id=group_id, source_id=source.id,
+                cycle_id=cycle_id, job_id=job_id, status="running",
+                page_limit=min(100, max(1, source.collection_post_limit)),
+                config_json={"collector": source.collection_mode, "parser_version": None,
+                             "window_days": 90, "request_budget": 20},
+                counters_json={"items_seen": 0, "items_saved": 0, "pages_requested": 0},
+                started_at=utcnow(),
+            )
+            db.add(run)
+            await db.flush()
+        run.status = "running"
+        run.started_at = run.started_at or utcnow()
+        await db.commit()
+        return run.id
+
+
+async def _finish_competitor_run(
+    company_id: str, run_id: str, *, status: str, counters: dict[str, Any],
+    config: dict[str, Any] | None = None,
+) -> None:
+    async with SessionLocal() as db:
+        run = await db.scalar(select(WebCrawlRun).where(
+            WebCrawlRun.company_id == company_id, WebCrawlRun.id == run_id,
+        ).with_for_update())
+        if run is not None:
+            run.status = status
+            run.counters_json = counters
+            if config:
+                run.config_json = {**(run.config_json or {}), **config}
+            run.completed_at = utcnow()
+            await db.commit()
+
+
+async def _collect_public_competitor_page(
+    company_id: str, group_id: str, source: ResearchSource, observed_at: datetime,
+    *, cycle_id: str, job_id: str,
+) -> tuple[int, dict[str, Any]]:
+    run_id = await _open_competitor_run(company_id, group_id, source, cycle_id, job_id)
+    if not getattr(settings, "facebook_public_automation_authorized", False):
+        reason = "platform_permission_required"
+        coverage = {
+            "coverage": "blocked",
+            "blocked_reason": reason,
+            "robots_url": "https://www.facebook.com/robots.txt",
+            "page_requests": 0,
+        }
+        await _finish_competitor_run(
+            company_id, run_id, status="blocked",
+            counters={"items_seen": 0, "items_saved": 0, "pages_requested": 0,
+                      "blocked_reason": reason, "coverage": coverage},
+            config={"collector": "public_web", "parser_version": "facebook-public-v1"},
+        )
+        raise CrawlError(
+            reason,
+            "Facebook nêu trong robots.txt rằng thu thập tự động cần có sự cho phép bằng văn bản. Hệ thống chưa được cấu hình xác nhận quyền này nên không tải nội dung.",
+        )
+    loop = asyncio.get_running_loop()
+
+    def request_gate() -> None:
+        future = asyncio.run_coroutine_threadsafe(_reserve_facebook_request_slot(), loop)
+        future.result(timeout=30)
+
+    last_error: CrawlError | None = None
+    result = None
+    for attempt in range(3):
+        try:
+            _fetch, result = await asyncio.to_thread(
+                read_public_facebook_page, source.url, request_gate=request_gate,
+            )
+            break
+        except CrawlError as error:
+            last_error = error
+            if not error.retryable or attempt >= 2:
+                break
+            await asyncio.sleep(2 ** attempt)
+    if last_error is not None and result is None:
+        blocked_codes = {"blocked_robots", "login_required", "challenge_required"}
+        await _finish_competitor_run(
+            company_id, run_id, status="blocked" if last_error.code in blocked_codes else "error",
+            counters={"items_seen": 0, "items_saved": 0, "pages_requested": 0,
+                      "blocked_reason": last_error.code, "coverage": {"coverage": "blocked"},
+                      "retryable": last_error.retryable},
+            config={"collector": "public_web", "parser_version": "facebook-public-v1"},
+        )
+        raise last_error
+    if result is None:
+        raise CrawlError("facebook_collection_failed", "Không đọc được dữ liệu công khai của Fanpage.")
+
+    cutoff = observed_at - timedelta(days=90)
+    in_window = [post for post in result.posts if post.published_at is None or post.published_at >= cutoff]
+    selected = in_window[: min(100, max(1, source.collection_post_limit))]
+    saved = 0
+    metric_counts = {key: 0 for key in ("reactions", "comments", "shares", "views")}
+    date_unknown = 0
+    for post in selected:
+        if post.published_at is None:
+            date_unknown += 1
+        metrics: dict[str, Any] = {
+            **post.metrics,
+            "_provenance": post.metric_provenance,
+            "content_truncated": post.content_truncated,
+        }
+        if post.external_id:
+            metrics["public_post_id"] = post.external_id
+        await _persist_evidence(
+            company_id=company_id, group_id=group_id, source=source, url=post.url,
+            title=post.text[:1000], text=post.text, published_at=post.published_at,
+            metrics=metrics, comments=[], raw_body=None, observed_at=observed_at,
+            public_external_id=post.external_id, parser_version=result.parser_version,
+        )
+        saved += 1
+        for key in metric_counts:
+            if post.metrics.get(key) is not None:
+                metric_counts[key] += 1
+    await _record_research_source_audience(
+        company_id, source, observed_at, origin="public_web",
+        metric_definition="public_page_followers_v1", followers=result.followers,
+    )
+    coverage = {
+        **result.coverage,
+        "items_seen": len(result.posts),
+        "items_saved": saved,
+        "items_outside_window": max(0, len(result.posts) - len(in_window)),
+        "date_unknown_included": date_unknown,
+        "metrics_available": [key for key, value in metric_counts.items() if value],
+        "metrics_unavailable": [key for key, value in metric_counts.items() if not value],
+        "metrics_observed_posts": metric_counts,
+        "followers_raw": result.followers_raw,
+        "followers_missing_reason": None if result.followers is not None else "not_published_or_not_parseable",
+    }
+    final_status = "partial"
+    await _finish_competitor_run(
+        company_id, run_id, status=final_status,
+        counters={"items_seen": len(result.posts), "items_saved": saved,
+                  "pages_requested": 1, "coverage": coverage},
+        config={"collector": "public_web", "parser_version": result.parser_version,
+                "render_mode": "http_only", "final_url": result.final_url},
+    )
+    return saved, {
+        "status": "partial",
+        "items_seen": len(result.posts), "items_saved": saved,
+        "coverage": coverage, "collector": "public_web",
+        "page_name": result.name, "parser_version": result.parser_version,
+        "message": None if saved else "Không thấy bài viết công khai trong HTML đã cho phép đọc.",
+    }
+
+
 async def _collect_competitor_page(
+    company_id: str, group_id: str, source: ResearchSource, observed_at: datetime,
+    *, cycle_id: str | None = None, job_id: str | None = None,
+) -> tuple[int, dict[str, Any]]:
+    mode = source.collection_mode
+    if mode == "public_web":
+        if not cycle_id or not job_id:
+            raise CrawlError("collection_context_missing", "Thiếu mã lượt thu thập bền vững.")
+        return await _collect_public_competitor_page(
+            company_id, group_id, source, observed_at, cycle_id=cycle_id, job_id=job_id,
+        )
+    if mode == "manual":
+        raise CrawlError("manual_collection_selected", "Nguồn đang chọn nhập thủ công.")
+    run_id = None
+    if cycle_id and job_id:
+        run_id = await _open_competitor_run(company_id, group_id, source, cycle_id, job_id)
+    if mode in {"legacy", "meta_api"}:
+        token = getattr(settings, "meta_public_content_access_token", "")
+        if not token:
+            if run_id:
+                await _finish_competitor_run(
+                    company_id, run_id, status="blocked",
+                    counters={"items_seen": 0, "items_saved": 0,
+                              "blocked_reason": "page_public_content_access_not_configured"},
+                    config={"collector": "meta_api"},
+                )
+            raise CrawlError(
+                "page_public_content_access_not_configured",
+                "Meta App chưa có Page Public Content Access được cấu hình; public_web vẫn cần được Facebook cho phép qua robots.",
+            )
+        if mode == "legacy":
+            source.collection_mode = "meta_api"
+    if not run_id:
+        run_id = None
+    try:
+        result = await _collect_competitor_page_via_meta(company_id, group_id, source, observed_at)
+    except CrawlError as error:
+        if run_id:
+            await _finish_competitor_run(
+                company_id, run_id, status="error",
+                counters={"items_seen": 0, "items_saved": 0, "blocked_reason": error.code},
+                config={"collector": "meta_api"},
+            )
+        raise
+    if run_id:
+        await _finish_competitor_run(
+            company_id, run_id, status="completed",
+            counters={"items_seen": result[1].get("items_seen", 0),
+                      "items_saved": result[1].get("items_saved", 0),
+                      "coverage": result[1]},
+            config={"collector": "meta_api"},
+        )
+    return result
+
+
+async def _collect_competitor_page_via_meta(
     company_id: str, group_id: str, source: ResearchSource, observed_at: datetime,
 ) -> tuple[int, dict[str, Any]]:
     token = getattr(settings, "meta_public_content_access_token", "")
@@ -920,7 +1155,11 @@ async def _run(job_id: str) -> None:
             ResearchSource.company_id == job.company_id, ResearchSource.group_id == group.id,
             ResearchSource.active.is_(True),
         ).order_by(ResearchSource.created_at))).all()
-        source_snapshot = [source.id for source in sources]
+        requested_source_ids = (job.result or {}).get("source_ids")
+        source_snapshot = [
+            source.id for source in sources
+            if not requested_source_ids or source.id in requested_source_ids
+        ]
         company_id = job.company_id
         group_snapshot = MetaPageGroup(
             id=group.id, company_id=group.company_id, name=group.name, industry=group.industry,
@@ -937,14 +1176,20 @@ async def _run(job_id: str) -> None:
             if source is None:
                 continue
             source_type = source.source_type
+            if source_type == "competitor_facebook_page":
+                source.last_collection_attempt_at = utcnow()
+                source.collection_last_method = source.collection_mode
+                await db.commit()
             try:
-                if source_type == "facebook_group" or (
-                    source.status == "manual_import_only"
-                    and not (source_type == "competitor_facebook_page"
-                             and getattr(settings, "meta_public_content_access_token", ""))
-                ):
+                if source_type == "facebook_group":
                     outcome = {"status": "manual_import_only", "items_saved": 0,
                                "message": "Nguồn Facebook chưa có quyền API phù hợp; có thể nhập dữ liệu thủ công."}
+                elif source_type == "competitor_facebook_page" and source.collection_mode == "manual":
+                    outcome = {"status": "manual_import_only", "items_saved": 0,
+                               "message": "Nguồn đang ở chế độ nhập thủ công."}
+                elif source.status == "manual_import_only" and source_type != "competitor_facebook_page":
+                    outcome = {"status": "manual_import_only", "items_saved": 0,
+                               "message": "Nguồn này đang ở chế độ nhập thủ công."}
                 elif source_type == "website":
                     _count, details = await _collect_website(
                         company_id, group_id, source, observed_at, cycle_id=cycle.id, job_id=job_id,
@@ -954,8 +1199,11 @@ async def _run(job_id: str) -> None:
                     _count, details = await _collect_page(company_id, group_id, source, observed_at)
                     outcome = {"status": "collected", **details}
                 elif source_type == "competitor_facebook_page":
-                    _count, details = await _collect_competitor_page(company_id, group_id, source, observed_at)
-                    outcome = {"status": "collected", **details}
+                    _count, details = await _collect_competitor_page(
+                        company_id, group_id, source, observed_at,
+                        cycle_id=cycle.id, job_id=job_id,
+                    )
+                    outcome = {**details}
                 else:
                     raise CrawlError("source_type_unsupported", "Loại nguồn này chưa được hỗ trợ.")
                 source.status = "active" if source_type in {
@@ -963,17 +1211,48 @@ async def _run(job_id: str) -> None:
                 } else "manual_import_only"
                 source.last_crawled_at = utcnow()
                 source.error_json = None
-                source.next_due_at = (
-                    utcnow() + timedelta(hours=12)
-                    if source.status == "active" and source.schedule_enabled
-                    else None
-                )
+                if source_type == "competitor_facebook_page":
+                    source.collection_status = outcome.get("status", "collected")
+                    source.collection_last_method = source.collection_mode
+                    if source.collection_status == "collected" or (
+                        source.collection_status == "partial" and int(outcome.get("items_saved", 0) or 0) > 0
+                    ):
+                        source.last_collection_success_at = utcnow()
+                    if source.collection_mode == "manual":
+                        source.next_due_at = None
+                    else:
+                        source.next_due_at = utcnow() + timedelta(hours=12) if source.schedule_enabled else None
+                else:
+                    source.next_due_at = (
+                        utcnow() + timedelta(hours=12)
+                        if source.status == "active" and source.schedule_enabled
+                        else None
+                    )
             except CrawlError as error:
-                outcome = {"status": "failed", "code": error.code, "message": str(error), "items_saved": 0}
-                source.status = "needs_access" if error.code in {
+                is_public_block = error.code in {
+                    "blocked_robots", "login_required", "challenge_required", "platform_permission_required",
+                }
+                outcome = {"status": "blocked" if is_public_block else "failed",
+                           "code": error.code, "message": str(error), "items_saved": 0}
+                if source_type == "competitor_facebook_page":
+                    source.collection_status = error.code
+                    source.collection_last_method = source.collection_mode
+                    source.status = "active" if is_public_block else (
+                        "needs_access" if error.code in {
+                            "page_needs_reconnect", "page_token_unavailable", "page_token_expired",
+                            "page_permission_missing", "page_public_content_access_not_configured",
+                            "page_public_access_denied", "page_public_access_token_invalid",
+                        } else "error"
+                    )
+                    source.next_due_at = (
+                        utcnow() + timedelta(hours=1)
+                        if error.retryable and source.schedule_enabled else None
+                    )
+                else:
+                    source.status = "needs_access" if error.code in {
                     "page_needs_reconnect", "page_token_unavailable", "page_token_expired", "page_permission_missing",
                     "page_public_content_access_not_configured", "page_public_access_denied", "page_public_access_token_invalid",
-                } else "error"
+                    } else "error"
                 source.error_json = {"code": error.code, "message": str(error), "retryable": error.retryable}
             except Exception:
                 logger.exception(
@@ -990,6 +1269,9 @@ async def _run(job_id: str) -> None:
                 outcome = {"status": "failed", "code": "source_processing_failed",
                            "message": "Không xử lý được nguồn này trong chu kỳ hiện tại.", "items_saved": 0}
                 source.status = "error"
+                if source_type == "competitor_facebook_page":
+                    source.collection_status = "source_processing_failed"
+                    source.next_due_at = None
                 source.error_json = {"code": "source_processing_failed", "message": outcome["message"]}
             source_results.append({"source_id": source.id, **outcome})
             await db.commit()
@@ -1007,6 +1289,66 @@ async def _run(job_id: str) -> None:
     evidence_rows = await _evidence_for_report(company_id, group_id)
     audience_rows = await _audience_for_report(company_id, group_id)
     web_snapshot_rows = await _web_snapshots_for_report(company_id, group_id, cycle.id)
+    newly_saved = sum(
+        int(item.get("items_saved", 0) or 0)
+        for item in source_results
+        if isinstance(item, dict)
+    )
+    if newly_saved <= 0 and not web_snapshot_rows:
+        finished_at = utcnow()
+        async with SessionLocal() as db:
+            job = await db.scalar(select(Job).where(Job.id == job_id).with_for_update())
+            cycle = await db.scalar(select(ResearchCycle).where(
+                ResearchCycle.job_id == job_id,
+            ).with_for_update())
+            group = await db.scalar(select(MetaPageGroup).where(
+                MetaPageGroup.company_id == company_id, MetaPageGroup.id == group_id,
+            ).with_for_update())
+            if job is None or cycle is None or job.status != "running":
+                return
+            statuses = [str(item.get("status", "")) for item in source_results if isinstance(item, dict)]
+            cycle.status = "blocked" if statuses and all(
+                status in {"blocked", "failed", "manual_import_only"} for status in statuses
+            ) else "completed_no_data"
+            cycle.source_results_json = source_results
+            cycle.completed_at = finished_at
+            if group:
+                group.last_cycle_at = finished_at
+                scheduled_due_times = (await db.scalars(select(ResearchSource.next_due_at).where(
+                    ResearchSource.company_id == company_id,
+                    ResearchSource.group_id == group_id,
+                    ResearchSource.active.is_(True),
+                    ResearchSource.schedule_enabled.is_(True),
+                ))).all()
+                group.next_due_at = min(
+                    (value for value in scheduled_due_times if value is not None), default=None,
+                )
+            job.status = "succeeded"
+            job.progress = 100
+            job.result = {
+                "group_id": group_id, "report_id": None, "evidence_count": 0,
+                "source_results": source_results, "analysis_status": "not_run_no_new_evidence",
+            }
+            job.error = None
+            job.finished_at = finished_at
+            job.lease_until = None
+            step = await db.scalar(select(JobStep).where(
+                JobStep.job_id == job_id, JobStep.step_key == "collect_sources",
+            ))
+            if step:
+                step.status = "succeeded"
+                step.progress = 100
+                step.message = "Lượt kiểm tra đã xong nhưng không có bằng chứng mới; AI chưa chạy."
+                step.finished_at = finished_at
+            db.add(AuditEvent(
+                company_id=company_id, actor_user_id=job.created_by,
+                action="market.cycle.complete_without_evidence",
+                entity_type="research_cycle", entity_id=cycle.id,
+                metadata_json={"source_count": len(source_results), "analysis_status": "not_run_no_new_evidence"},
+            ))
+            await db.commit()
+        return
+
     report_json, model_name, analysis_status = await _make_report(
         group_snapshot, evidence_rows, audience_rows, web_snapshot_rows,
     )

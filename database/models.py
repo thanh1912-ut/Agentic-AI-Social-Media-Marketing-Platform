@@ -723,6 +723,8 @@ class ResearchSource(Base, IdMixin, TimestampMixin):
         UniqueConstraint("company_id", "group_id", "normalized_url", name="uq_research_source_url"),
         UniqueConstraint("company_id", "id", name="uq_research_source_tenant_id"),
         UniqueConstraint("company_id", "group_id", "id", name="uq_research_source_tenant_group_id"),
+        CheckConstraint("collection_post_limit BETWEEN 1 AND 100",
+                        name="ck_research_source_collection_post_limit"),
         ForeignKeyConstraint(["company_id", "group_id"], ["meta_page_groups.company_id", "meta_page_groups.id"],
                              name="fk_research_source_group_tenant", ondelete="CASCADE"),
         ForeignKeyConstraint(["company_id", "connection_id"],
@@ -743,6 +745,12 @@ class ResearchSource(Base, IdMixin, TimestampMixin):
     crawl_page_limit: Mapped[int] = mapped_column(Integer, default=1000, nullable=False)
     render_mode: Mapped[str] = mapped_column(String(24), default="http_only", nullable=False)
     resource_hosts_json: Mapped[list[str]] = mapped_column(JSON, default=list, nullable=False)
+    collection_mode: Mapped[str] = mapped_column(String(24), default="legacy", nullable=False)
+    collection_post_limit: Mapped[int] = mapped_column(Integer, default=50, nullable=False)
+    collection_status: Mapped[str] = mapped_column(String(40), default="not_started", nullable=False)
+    collection_last_method: Mapped[str | None] = mapped_column(String(24))
+    last_collection_attempt_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    last_collection_success_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     schedule_enabled: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     status: Mapped[str] = mapped_column(String(32), default="active", nullable=False)
     active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
@@ -751,6 +759,15 @@ class ResearchSource(Base, IdMixin, TimestampMixin):
     latest_job_id: Mapped[str | None] = mapped_column(ForeignKey("jobs.id", ondelete="SET NULL"))
     error_json: Mapped[dict[str, Any] | None] = mapped_column(JSON)
     created_by: Mapped[str] = mapped_column(ForeignKey("users.id"), nullable=False)
+
+
+class CrawlHostThrottle(Base):
+    """Shared request spacing for public collectors across worker processes."""
+
+    __tablename__ = "crawl_host_throttles"
+
+    host: Mapped[str] = mapped_column(String(255), primary_key=True)
+    next_allowed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
 
 
 class ResearchCycle(Base, IdMixin, TimestampMixin):
