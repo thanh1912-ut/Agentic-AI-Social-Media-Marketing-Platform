@@ -20,7 +20,7 @@ Upstream pin: `tamnd/facebook-cli v0.3.0`, commit
 - [x] Chạy migration và kiểm thử PostgreSQL/Redis trên hạ tầng disposable.
 - [ ] Nghiệm thu bấm UI → worker → PostgreSQL → reload; hiện không có app/worker chạy từ checkout này.
 - [ ] Kiểm tra Page đối thủ live Tier 0; chưa có URL Page mẫu trong database test.
-- [ ] Rà diff/secret, commit, push nhánh và xác minh SHA remote.
+- [x] Rà staged diff/secret, commit feature branch, push và xác minh SHA trên remote.
 
 ## Nhật ký
 
@@ -46,6 +46,9 @@ Upstream pin: `tamnd/facebook-cli v0.3.0`, commit
 - Frontend PASS: ESLint, TypeScript typecheck, 47 Vitest tests và `next build`.
 - Ruff trên file Python đã sửa và `scripts/export_openapi.py --check`: PASS.
 - Go runner PASS: `go test ./...` và build executable; upstream giữ pin v0.3.0/full SHA.
-- Implementation commit: `136d8ad99e237687abd2de823991acf075df0048`; push vẫn đang chờ kiểm tra remote.
+- Implementation commit `136d8ad99e237687abd2de823991acf075df0048` và báo cáo
+  `89f3ae685341e5425c909802ecd064638d0a3069` đã được push; `git ls-remote`
+  xác nhận SHA remote trùng `89f3ae685341e5425c909802ecd064638d0a3069` lúc 05:54 +07.
+- Tài liệu cập nhật checklist nghiệm thu sau đó sẽ được push thành commit tiếp theo.
 - Docker không cài trên máy; không có API/frontend/worker đang chạy từ worktree này. Chưa chạy được UI → Celery → PostgreSQL → reload hay Facebook Page live. Không có Page URL mẫu trong database kiểm thử.
 - Kết quả chi tiết và giới hạn được ghi tại `docs/facebook-cli-integration-verification.md`.
