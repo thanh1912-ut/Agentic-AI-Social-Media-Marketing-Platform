@@ -27,8 +27,8 @@ Page đối thủ để thử live.
 ## Môi trường và lệnh kiểm tra
 
 - Branch: `codex/facebook-cli-collector`; base đã xác minh là
-  `4326e34baec20a37b01bb79ce5a77b08a0909d39`. Hash commit triển khai được thêm
-  sau khi commit/push.
+  `4326e34baec20a37b01bb79ce5a77b08a0909d39`; commit triển khai:
+  `136d8ad99e237687abd2de823991acf075df0048`.
 - PostgreSQL disposable: `127.0.0.1:15434`; queue Redis:
   `127.0.0.1:16381`; cache Redis: `127.0.0.1:16382`.
 - Go: `go test -count=1 ./...`; `go build -o /private/tmp/facebook-cli-runner .`.

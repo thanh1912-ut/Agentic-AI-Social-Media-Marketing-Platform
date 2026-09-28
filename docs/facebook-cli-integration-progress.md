@@ -46,5 +46,6 @@ Upstream pin: `tamnd/facebook-cli v0.3.0`, commit
 - Frontend PASS: ESLint, TypeScript typecheck, 47 Vitest tests và `next build`.
 - Ruff trên file Python đã sửa và `scripts/export_openapi.py --check`: PASS.
 - Go runner PASS: `go test ./...` và build executable; upstream giữ pin v0.3.0/full SHA.
+- Implementation commit: `136d8ad99e237687abd2de823991acf075df0048`; push vẫn đang chờ kiểm tra remote.
 - Docker không cài trên máy; không có API/frontend/worker đang chạy từ worktree này. Chưa chạy được UI → Celery → PostgreSQL → reload hay Facebook Page live. Không có Page URL mẫu trong database kiểm thử.
 - Kết quả chi tiết và giới hạn được ghi tại `docs/facebook-cli-integration-verification.md`.
