@@ -278,7 +278,7 @@ async def update_collection_settings(
         source.collection_status = "not_started"
         source.error_json = None
         source.status = "active"
-    blocked = source.collection_status in {"blocked_robots", "login_required", "challenge_required"}
+    blocked = source.collection_status in {"login_required", "access_denied", "challenge", "challenge_required"}
     source.next_due_at = (
         utcnow() if request.schedule_enabled and request.collector != "manual" and not blocked else None
     )
@@ -316,6 +316,9 @@ async def list_competitor_collection_runs(
         CollectionRunOut(
             id=row.id, source_id=row.source_id, job_id=row.job_id,
             collector=str((row.config_json or {}).get("collector", "unknown")),
+            engine=(row.config_json or {}).get("engine"),
+            engine_version=(row.config_json or {}).get("engine_version"),
+            access_tier=(row.config_json or {}).get("access_tier"),
             status=row.status, post_limit=row.page_limit,
             counters=row.counters_json or {}, coverage=(row.counters_json or {}).get("coverage", {}),
             blocked_reason=(row.counters_json or {}).get("blocked_reason"),
@@ -779,8 +782,8 @@ async def create_source(
             normalized = normalize_facebook_page_url(normalized)
         except CrawlError as error:
             raise ApiProblem(422, error.code, str(error)) from None
-        # A user-selected public collector does not depend on the owned Page token.
-        # Access and robots policy are checked by the first durable worker run.
+        # A user-selected public collector uses the pinned facebook-cli Tier 0 runner.
+        # Availability and access outcome are recorded by the first durable worker run.
         collection_mode = "public_web"
         status = "active"
     elif request.source_type == "facebook_group":

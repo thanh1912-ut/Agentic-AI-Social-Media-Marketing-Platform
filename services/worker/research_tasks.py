@@ -8,14 +8,15 @@ import json
 import logging
 import math
 import re
+from contextlib import suppress
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
-from sqlalchemy import select
+from sqlalchemy import or_, select, text
 
 from database.evidence_versions import ensure_evidence_version
-from database.job_fencing import claim_job_fence, isolated_job_fence
+from database.job_fencing import active_job_fence, claim_job_fence, isolated_job_fence
 from database.models import (
     AuditEvent, CrawlHostThrottle, Job, JobEvent, JobStep, MarketEvidence, MarketEvidenceVersion,
     MarketObservation,
@@ -34,14 +35,14 @@ from services.api.meta_client import (
 from services.api.meta_tokens import TokenEncryptionUnavailable, decrypt_page_token
 from services.api.storage import storage
 from services.research.web_crawler import CrawlError, crawl_public_site
-from services.research.facebook_public_crawler import read_public_facebook_page
+from services.research.facebook_cli_collector import ENGINE_VERSION, collect_public_facebook_page
 from services.research.website_entities import PARSER_VERSION
 from .async_runtime import run_worker_coroutine
 from .celery_app import celery_app
+from .model_provider import AIConfigurationError, configured_structured_model
 
 
 logger = logging.getLogger(__name__)
-from .model_provider import AIConfigurationError, configured_structured_model
 
 
 EMAIL_RE = re.compile(r"\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b", re.IGNORECASE)
@@ -659,7 +660,9 @@ async def _open_competitor_run(
                 company_id=company_id, group_id=group_id, source_id=source.id,
                 cycle_id=cycle_id, job_id=job_id, status="running",
                 page_limit=min(100, max(1, source.collection_post_limit)),
-                config_json={"collector": source.collection_mode, "parser_version": None,
+                config_json={"collector": source.collection_mode, "engine": "facebook-cli",
+                             "engine_version": ENGINE_VERSION, "access_tier": 0,
+                             "parser_version": "facebook-cli-adapter-v1",
                              "window_days": 90, "request_budget": 20},
                 counters_json={"items_seen": 0, "items_saved": 0, "pages_requested": 0},
                 started_at=utcnow(),
@@ -670,6 +673,80 @@ async def _open_competitor_run(
         run.started_at = run.started_at or utcnow()
         await db.commit()
         return run.id
+
+
+FACEBOOK_CLI_LOCK_KEY = 0x4642434C49
+
+
+async def _acquire_facebook_cli_lock():
+    database_url = getattr(settings, "database_url", "")
+    if not database_url.startswith("postgresql"):
+        return None, True
+    db = SessionLocal()
+    try:
+        acquired = bool((await db.execute(
+            text("SELECT pg_try_advisory_lock(:lock_key)"), {"lock_key": FACEBOOK_CLI_LOCK_KEY},
+        )).scalar_one())
+        await db.commit()
+    except Exception:
+        await db.close()
+        raise
+    if not acquired:
+        await db.close()
+        return None, False
+    return db, True
+
+
+async def _release_facebook_cli_lock(db) -> None:
+    if db is None:
+        return
+    try:
+        await db.execute(
+            text("SELECT pg_advisory_unlock(:lock_key)"), {"lock_key": FACEBOOK_CLI_LOCK_KEY},
+        )
+        await db.commit()
+    finally:
+        await db.close()
+
+
+async def _facebook_cli_heartbeat(lock_session, job_id: str) -> None:
+    if lock_session is not None:
+        await lock_session.execute(text("SELECT 1"))
+    fence = active_job_fence()
+    if fence is None or fence[0] != job_id:
+        raise RuntimeError("market-research job fence is no longer active")
+    async with SessionLocal() as db:
+        row = (await db.execute(select(Job.status, Job.claim_token, Job.lease_until).where(
+            Job.id == job_id,
+        ))).one_or_none()
+    if (
+        row is None or row.status != "running" or row.claim_token != fence[1]
+        or row.lease_until is None or row.lease_until <= utcnow()
+    ):
+        raise RuntimeError("market-research job lease is no longer owned")
+
+
+async def _known_competitor_post_urls(company_id: str, source_id: str) -> list[str]:
+    cutoff = utcnow() - timedelta(days=90)
+    async with SessionLocal() as db:
+        rows = (await db.scalars(select(MarketEvidence.canonical_url).where(
+            MarketEvidence.company_id == company_id,
+            MarketEvidence.source_id == source_id,
+            or_(MarketEvidence.published_at.is_(None), MarketEvidence.published_at >= cutoff),
+        ).order_by(MarketEvidence.last_seen_at.asc()).limit(100))).all()
+    return [str(value) for value in rows]
+
+
+async def _advance_facebook_request_slot() -> None:
+    now = utcnow()
+    async with SessionLocal() as db:
+        row = await db.get(CrawlHostThrottle, "facebook.com", with_for_update=True)
+        if row is None:
+            row = CrawlHostThrottle(host="facebook.com", next_allowed_at=now)
+            db.add(row)
+            await db.flush()
+        row.next_allowed_at = max(row.next_allowed_at, now + timedelta(seconds=2))
+        await db.commit()
 
 
 async def _finish_competitor_run(
@@ -694,85 +771,121 @@ async def _collect_public_competitor_page(
     *, cycle_id: str, job_id: str,
 ) -> tuple[int, dict[str, Any]]:
     run_id = await _open_competitor_run(company_id, group_id, source, cycle_id, job_id)
-    if not getattr(settings, "facebook_public_automation_authorized", False):
-        reason = "platform_permission_required"
-        coverage = {
-            "coverage": "blocked",
-            "blocked_reason": reason,
-            "robots_url": "https://www.facebook.com/robots.txt",
-            "page_requests": 0,
-        }
+    runner_path = getattr(settings, "facebook_cli_runner_path", "")
+    if not runner_path:
         await _finish_competitor_run(
-            company_id, run_id, status="blocked",
-            counters={"items_seen": 0, "items_saved": 0, "pages_requested": 0,
-                      "blocked_reason": reason, "coverage": coverage},
-            config={"collector": "public_web", "parser_version": "facebook-public-v1"},
+            company_id, run_id, status="error",
+            counters={"items_seen": 0, "items_saved": 0, "blocked_reason": "engine_unavailable"},
         )
-        raise CrawlError(
-            reason,
-            "Facebook nêu trong robots.txt rằng thu thập tự động cần có sự cho phép bằng văn bản. Hệ thống chưa được cấu hình xác nhận quyền này nên không tải nội dung.",
-        )
-    loop = asyncio.get_running_loop()
-
-    def request_gate() -> None:
-        future = asyncio.run_coroutine_threadsafe(_reserve_facebook_request_slot(), loop)
-        future.result(timeout=30)
-
-    last_error: CrawlError | None = None
-    result = None
-    for attempt in range(3):
-        try:
-            _fetch, result = await asyncio.to_thread(
-                read_public_facebook_page, source.url, request_gate=request_gate,
-            )
-            break
-        except CrawlError as error:
-            last_error = error
-            if not error.retryable or attempt >= 2:
-                break
-            await asyncio.sleep(2 ** attempt)
-    if last_error is not None and result is None:
-        blocked_codes = {"blocked_robots", "login_required", "challenge_required"}
+        raise CrawlError("engine_unavailable", "Cấu hình FACEBOOK_CLI_RUNNER_PATH trỏ tới runner đã build.")
+    lock_session = None
+    lock_session, acquired = await _acquire_facebook_cli_lock()
+    if not acquired:
         await _finish_competitor_run(
-            company_id, run_id, status="blocked" if last_error.code in blocked_codes else "error",
-            counters={"items_seen": 0, "items_saved": 0, "pages_requested": 0,
-                      "blocked_reason": last_error.code, "coverage": {"coverage": "blocked"},
-                      "retryable": last_error.retryable},
-            config={"collector": "public_web", "parser_version": "facebook-public-v1"},
+            company_id, run_id, status="retry_wait",
+            counters={"items_seen": 0, "items_saved": 0, "blocked_reason": "facebook_collector_busy",
+                      "retryable": True},
         )
-        raise last_error
-    if result is None:
-        raise CrawlError("facebook_collection_failed", "Không đọc được dữ liệu công khai của Fanpage.")
+        raise CrawlError("facebook_collector_busy", "Một Fanpage khác đang được đọc; thử lại sau.", retryable=True)
+    try:
+        await _reserve_facebook_request_slot()
+        known_urls = await _known_competitor_post_urls(company_id, source.id)
+        result = await collect_public_facebook_page(
+            source.url, run_id=run_id,
+            post_limit=min(100, max(1, source.collection_post_limit)),
+            known_post_urls=known_urls, runner_path=runner_path,
+            heartbeat=lambda: _facebook_cli_heartbeat(lock_session, job_id),
+        )
+    except CrawlError as error:
+        blocked_codes = {"login_required", "access_denied", "challenge"}
+        await _finish_competitor_run(
+            company_id, run_id, status="blocked" if error.code in blocked_codes else "error",
+            counters={"items_seen": 0, "items_saved": 0, "pages_requested": 0,
+                      "blocked_reason": error.code, "coverage": {"coverage": "blocked"},
+                      "retryable": error.retryable},
+            config={"collector": "public_web", "engine": "facebook-cli",
+                    "engine_version": ENGINE_VERSION, "access_tier": 0},
+        )
+        raise
+    except Exception as error:
+        await _finish_competitor_run(
+            company_id, run_id, status="error",
+            counters={"items_seen": 0, "items_saved": 0,
+                      "blocked_reason": "collector_error", "coverage": {"coverage": "failed"}},
+            config={"collector": "public_web", "engine": "facebook-cli",
+                    "engine_version": ENGINE_VERSION, "access_tier": 0},
+        )
+        raise CrawlError("collector_error", "facebook-cli không hoàn tất lượt thu thập.") from error
+    finally:
+        if lock_session is not None:
+            with suppress(Exception):
+                await _advance_facebook_request_slot()
+            with suppress(Exception):
+                await _release_facebook_cli_lock(lock_session)
 
     cutoff = observed_at - timedelta(days=90)
-    in_window = [post for post in result.posts if post.published_at is None or post.published_at >= cutoff]
+    in_window = [
+        post for post in result.posts
+        if _facebook_post_published_at(post.get("published_at"), observed_at) is None
+        or _facebook_post_published_at(post.get("published_at"), observed_at) >= cutoff
+    ]
     selected = in_window[: min(100, max(1, source.collection_post_limit))]
     saved = 0
     metric_counts = {key: 0 for key in ("reactions", "comments", "shares", "views")}
     date_unknown = 0
     for post in selected:
-        if post.published_at is None:
+        published_at = None
+        if post.get("published_at"):
+            published_at = _facebook_post_published_at(post["published_at"], observed_at)
+        if published_at is None:
             date_unknown += 1
+        counts = post.get("counts") if isinstance(post.get("counts"), dict) else {}
+        counts_raw = post.get("counts_raw") if isinstance(post.get("counts_raw"), dict) else {}
+        metric_values: dict[str, Any] = {}
+        metric_provenance: dict[str, dict[str, Any]] = {}
+        for key in metric_counts:
+            value = counts.get(key)
+            value = value if isinstance(value, int) and not isinstance(value, bool) and value >= 0 else None
+            raw = counts_raw.get(key) if isinstance(counts_raw.get(key), str) else None
+            metric_values[key] = value
+            metric_provenance[key] = {
+                "raw": raw,
+                "precision": (
+                    "lower_bound" if raw and raw.strip().endswith("+") else
+                    "approximate" if raw and any(mark in raw.casefold() for mark in ("k", "m", "b")) else
+                    "exact" if value is not None else None
+                ),
+                "missing_reason": None if value is not None else "provider_value_ambiguous",
+                "locator": "facebook-cli/counts." + key,
+            }
+        post_text = str(post.get("text") or "")[:12000]
+        post_url = str(post.get("url") or "")
+        external_id = post.get("id") if isinstance(post.get("id"), str) else None
         metrics: dict[str, Any] = {
-            **post.metrics,
-            "_provenance": post.metric_provenance,
-            "content_truncated": post.content_truncated,
+            **metric_values,
+            "_provenance": metric_provenance,
+            "content_truncated": bool(post.get("text_truncated"))
+            or len(str(post.get("text") or "")) > len(post_text),
         }
-        if post.external_id:
-            metrics["public_post_id"] = post.external_id
+        if external_id:
+            metrics["public_post_id"] = external_id
         await _persist_evidence(
-            company_id=company_id, group_id=group_id, source=source, url=post.url,
-            title=post.text[:1000], text=post.text, published_at=post.published_at,
+            company_id=company_id, group_id=group_id, source=source, url=post_url,
+            title=post_text.splitlines()[0][:1000] if post_text else "",
+            text=post_text, published_at=published_at,
             metrics=metrics, comments=[], raw_body=None, observed_at=observed_at,
-            public_external_id=post.external_id, parser_version=result.parser_version,
+            public_external_id=external_id, parser_version="facebook-cli-adapter-v1",
         )
         saved += 1
         for key in metric_counts:
-            if post.metrics.get(key) is not None:
+            if metrics.get(key) is not None:
                 metric_counts[key] += 1
+    page_followers = result.page.get("followers")
+    if isinstance(page_followers, bool) or not isinstance(page_followers, int) or page_followers < 0:
+        page_followers = None
     await _record_research_source_audience(
-        company_id, source, observed_at, origin="public_web",
-        metric_definition="public_page_followers_v1", followers=result.followers,
+        company_id, source, observed_at, origin="facebook_cli",
+        metric_definition="facebook_cli_page_followers_approx_v1", followers=page_followers,
     )
     coverage = {
         **result.coverage,
@@ -783,24 +896,38 @@ async def _collect_public_competitor_page(
         "metrics_available": [key for key, value in metric_counts.items() if value],
         "metrics_unavailable": [key for key, value in metric_counts.items() if not value],
         "metrics_observed_posts": metric_counts,
-        "followers_raw": result.followers_raw,
-        "followers_missing_reason": None if result.followers is not None else "not_published_or_not_parseable",
+        "followers_raw": None,
+        "followers_precision": result.page.get("followers_precision"),
+        "followers_missing_reason": None if page_followers is not None else "not_published_or_provider_ambiguous",
     }
-    final_status = "partial"
+    final_status = "partial" if saved else "no_posts_returned"
     await _finish_competitor_run(
         company_id, run_id, status=final_status,
         counters={"items_seen": len(result.posts), "items_saved": saved,
-                  "pages_requested": 1, "coverage": coverage},
-        config={"collector": "public_web", "parser_version": result.parser_version,
-                "render_mode": "http_only", "final_url": result.final_url},
+                  "pages_requested": coverage.get("http_requests", 0), "coverage": coverage},
+        config={"collector": "public_web", "engine": "facebook-cli",
+                "engine_version": result.engine_version, "access_tier": 0,
+                "parser_version": "facebook-cli-adapter-v1", "final_url": result.page.get("url")},
     )
     return saved, {
-        "status": "partial",
+        "status": final_status,
         "items_seen": len(result.posts), "items_saved": saved,
-        "coverage": coverage, "collector": "public_web",
-        "page_name": result.name, "parser_version": result.parser_version,
-        "message": None if saved else "Không thấy bài viết công khai trong HTML đã cho phép đọc.",
+        "coverage": coverage, "collector": "public_web", "engine": "facebook-cli",
+        "engine_version": result.engine_version, "page_name": result.page.get("name"),
+        "message": None if saved else "Facebook xác nhận được Page nhưng lượt này không trả bài viết công khai.",
     }
+
+
+def _facebook_post_published_at(value: object, fallback: datetime) -> datetime | None:
+    if not isinstance(value, str) or not value.strip():
+        return None
+    try:
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        return None
+    return _aware(parsed, fallback)
 
 
 async def _collect_competitor_page(
@@ -831,7 +958,7 @@ async def _collect_competitor_page(
                 )
             raise CrawlError(
                 "page_public_content_access_not_configured",
-                "Meta App chưa có Page Public Content Access được cấu hình; public_web vẫn cần được Facebook cho phép qua robots.",
+                "Meta App chưa cấu hình token có quyền đọc Page đối thủ; chế độ Meta API cần quyền phù hợp.",
             )
         if mode == "legacy":
             source.collection_mode = "meta_api"
@@ -1178,7 +1305,9 @@ async def _run(job_id: str) -> None:
             source_type = source.source_type
             if source_type == "competitor_facebook_page":
                 source.last_collection_attempt_at = utcnow()
-                source.collection_last_method = source.collection_mode
+                source.collection_last_method = (
+                    "facebook-cli" if source.collection_mode == "public_web" else source.collection_mode
+                )
                 await db.commit()
             try:
                 if source_type == "facebook_group":
@@ -1213,7 +1342,9 @@ async def _run(job_id: str) -> None:
                 source.error_json = None
                 if source_type == "competitor_facebook_page":
                     source.collection_status = outcome.get("status", "collected")
-                    source.collection_last_method = source.collection_mode
+                    source.collection_last_method = (
+                        "facebook-cli" if source.collection_mode == "public_web" else source.collection_mode
+                    )
                     if source.collection_status == "collected" or (
                         source.collection_status == "partial" and int(outcome.get("items_saved", 0) or 0) > 0
                     ):
@@ -1230,13 +1361,15 @@ async def _run(job_id: str) -> None:
                     )
             except CrawlError as error:
                 is_public_block = error.code in {
-                    "blocked_robots", "login_required", "challenge_required", "platform_permission_required",
+                    "login_required", "access_denied", "challenge", "challenge_required",
                 }
                 outcome = {"status": "blocked" if is_public_block else "failed",
                            "code": error.code, "message": str(error), "items_saved": 0}
                 if source_type == "competitor_facebook_page":
                     source.collection_status = error.code
-                    source.collection_last_method = source.collection_mode
+                    source.collection_last_method = (
+                        "facebook-cli" if source.collection_mode == "public_web" else source.collection_mode
+                    )
                     source.status = "active" if is_public_block else (
                         "needs_access" if error.code in {
                             "page_needs_reconnect", "page_token_unavailable", "page_token_expired",

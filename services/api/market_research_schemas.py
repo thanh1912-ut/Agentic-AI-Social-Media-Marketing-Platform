@@ -107,6 +107,9 @@ class CollectionRunOut(StrictModel):
     source_id: str
     job_id: str
     collector: str
+    engine: str | None = None
+    engine_version: str | None = None
+    access_tier: int | None = None
     status: str
     post_limit: int
     counters: dict[str, Any]

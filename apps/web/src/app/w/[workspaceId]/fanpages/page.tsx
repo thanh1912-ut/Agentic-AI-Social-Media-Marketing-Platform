@@ -59,12 +59,22 @@ const SOURCE_STATUS: Record<string, { label: string; tone: 'neutral' | 'info' | 
   collected: { label: 'Đã thu thập', tone: 'success' },
   completed: { label: 'Đã thu thập', tone: 'success' },
   partial: { label: 'Thu thập một phần', tone: 'warning' },
-  blocked_robots: { label: 'Robots.txt đang chặn', tone: 'danger' },
-  platform_permission_required: { label: 'Meta yêu cầu quyền thu thập bằng văn bản', tone: 'warning' },
+  blocked_robots: { label: 'Lượt collector cũ bị robots chặn', tone: 'danger' },
+  platform_permission_required: { label: 'Lượt collector cũ cần quyền Meta', tone: 'warning' },
+  access_denied: { label: 'Facebook từ chối truy cập', tone: 'danger' },
+  challenge: { label: 'Facebook yêu cầu xác minh', tone: 'warning' },
   login_required: { label: 'Facebook yêu cầu đăng nhập', tone: 'warning' },
   challenge_required: { label: 'Facebook yêu cầu xác minh', tone: 'warning' },
   page_public_content_access_not_configured: { label: 'Meta API chưa được cấu hình', tone: 'warning' },
   page_public_access_denied: { label: 'Meta không cấp quyền đọc', tone: 'danger' },
+  no_posts_returned: { label: 'Page đọc được, chưa trả bài viết', tone: 'warning' },
+  engine_unavailable: { label: 'facebook-cli runner chưa sẵn sàng', tone: 'danger' },
+  rate_limited: { label: 'Facebook đang giới hạn yêu cầu', tone: 'warning' },
+  network_error: { label: 'Lỗi kết nối Facebook', tone: 'danger' },
+  parser_error: { label: 'Không đọc được dữ liệu Facebook', tone: 'danger' },
+  page_identity_unverified: { label: 'Chưa xác minh được Fanpage', tone: 'warning' },
+  request_budget_reached: { label: 'Đã hết ngân sách lượt crawl', tone: 'warning' },
+  collector_coordination_lost: { label: 'Lượt dừng do worker mất quyền xử lý', tone: 'danger' },
   source_processing_failed: { label: 'Lỗi xử lý nguồn', tone: 'danger' },
 };
 
@@ -473,14 +483,14 @@ export default function FanpagesMarketResearchPage() {
 
           <Card
             title="Nguồn thu thập"
-            description="Lưu link Fanpage đối thủ một lần, rồi crawl ngay hoặc bật lịch 12 giờ. Chế độ public_web không cần Page token của bạn; Meta yêu cầu cho phép bằng văn bản đối với thu thập tự động. Khi chưa được cấu hình quyền này, hệ thống lưu trạng thái chặn và không tải nội dung."
+            description="Lưu link Fanpage đối thủ một lần, rồi crawl ngay hoặc bật lịch 12 giờ. Chế độ facebook-cli Tier 0 không dùng tài khoản đăng nhập và có thể chỉ nhận được một phần dữ liệu Facebook công khai."
           >
             {canManageMarket ? (
               <form className="grid gap-3 sm:grid-cols-2" onSubmit={submitSource}>
                 <label className="text-sm text-slate-700">Loại nguồn<select value={sourceType} onChange={(event) => setSourceType(event.currentTarget.value as ResearchSourceType)} className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2">{Object.entries(SOURCE_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
                 <label className="text-sm text-slate-700">Tên nguồn<input name="name" required maxLength={200} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2" placeholder="Tên website/Page/nhóm" /></label>
                 <label className="text-sm text-slate-700 sm:col-span-2">Link website hoặc Facebook<input name="url" required type="url" maxLength={2048} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2" placeholder="https://…" /></label>
-                {sourceType === 'competitor_facebook_page' ? <p className="text-xs text-slate-500 sm:col-span-2">Nguồn mới dùng public_web và tự lên lịch 12 giờ. Không cần Page Access Token của Fanpage bạn sở hữu. Meta ghi yêu cầu có sự cho phép bằng văn bản trước khi thu thập tự động; khi chưa cấu hình xác nhận quyền này, hệ thống không tải nội dung.</p> : null}
+                {sourceType === 'competitor_facebook_page' ? <p className="text-xs text-slate-500 sm:col-span-2">Nguồn mới dùng facebook-cli Tier 0, không cần Page Access Token và không đăng nhập Facebook. Facebook có thể trả ít bài, yêu cầu đăng nhập hoặc từ chối truy cập; giao diện sẽ giữ đúng trạng thái đó.</p> : null}
                 {sourceType === 'facebook_group' ? <p className="text-xs text-slate-500 sm:col-span-2">Link nhóm được lưu để tái sử dụng. Meta đã gỡ Groups API nên hệ thống không tự đọc bài trong nhóm; hãy nhập nội dung và số liệu mà bạn được phép sử dụng.</p> : null}
                 {sourceType === 'owned_facebook_page' ? (
                   <label className="text-sm text-slate-700 sm:col-span-2">Fanpage đã kết nối<select name="connection_id" required className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2"><option value="">Chọn Fanpage</option>{pages.filter((page) => page.status === 'verified').map((page) => <option key={page.id} value={page.id}>{page.page_name} · {page.page_id}</option>)}</select></label>
@@ -495,6 +505,7 @@ export default function FanpagesMarketResearchPage() {
                 const isCompetitor = source.source_type === 'competitor_facebook_page';
                 const statusKey = isCompetitor ? (source.collection_status || source.status) : source.status;
                 const status = SOURCE_STATUS[statusKey] ?? SOURCE_STATUS[source.status] ?? { label: statusKey, tone: 'neutral' as const };
+                const schedulePaused = ['login_required', 'access_denied', 'challenge', 'challenge_required'].includes(source.collection_status ?? '');
                 return (
                   <div key={source.id} className="rounded-lg border border-slate-200 px-3 py-3">
                     <div className="flex flex-wrap items-start justify-between gap-3">
@@ -502,7 +513,7 @@ export default function FanpagesMarketResearchPage() {
                         <div className="flex flex-wrap items-center gap-2"><p className="font-medium text-slate-900">{source.name}</p><StatusBadge label={status.label} tone={status.tone} /></div>
                         <p className="mt-1 break-all text-xs text-slate-600">{source.url}</p>
                         <p className="mt-1 text-xs text-slate-500">{SOURCE_LABELS[source.source_type]}{source.last_crawled_at ? ' · lần đọc gần nhất ' + formatDateTime(source.last_crawled_at) : ''}</p>
-                        {isCompetitor ? <p className="mt-1 text-xs text-slate-500">Lần thử: {source.last_collection_attempt_at ? formatDateTime(source.last_collection_attempt_at) : 'chưa có'} · Lần có dữ liệu: {source.last_collection_success_at ? formatDateTime(source.last_collection_success_at) : 'chưa có'} · Lịch: {source.schedule_enabled ? '12 giờ' : 'đã tắt'}</p> : null}
+                        {isCompetitor ? <p className="mt-1 text-xs text-slate-500">Engine: {source.collection_mode === 'public_web' ? 'facebook-cli · Tier 0' : source.collection_mode ?? 'chưa chọn'} · Lần thử: {source.last_collection_attempt_at ? formatDateTime(source.last_collection_attempt_at) : 'chưa có'} · Lần có dữ liệu: {source.last_collection_success_at ? formatDateTime(source.last_collection_success_at) : 'chưa có'} · Lịch: {source.schedule_enabled ? schedulePaused ? 'đang tạm dừng sau khi Facebook từ chối/yêu cầu đăng nhập' : '12 giờ' : 'đã tắt'}</p> : null}
                         {source.error?.message ? <p className="mt-1 text-xs text-rose-800">{source.error.message}</p> : null}
                       </div>
                       <div className="flex flex-wrap items-center gap-2">
@@ -510,7 +521,7 @@ export default function FanpagesMarketResearchPage() {
                           <>
                             <label className="sr-only" htmlFor={'collector-' + source.id}>Phương thức thu thập</label>
                             <select id={'collector-' + source.id} aria-label="Phương thức thu thập" value={source.collection_mode ?? 'manual'} disabled={updateCollectionSettings.isPending} onChange={(event) => updateCollectionSettings.mutate({ sourceId: source.id, settings: { collector: event.currentTarget.value as 'public_web' | 'meta_api' | 'manual', schedule_enabled: source.schedule_enabled ?? true, post_limit: source.collection_post_limit ?? 50 } })} className="rounded-lg border border-slate-300 bg-white px-2 py-2 text-xs">
-                              <option value="public_web">Tự đọc trang công khai</option>
+                              <option value="public_web">Tự thu thập công khai · facebook-cli (Tier 0)</option>
                               <option value="meta_api">Meta API đã được duyệt</option>
                               <option value="manual">Nhập thủ công</option>
                             </select>
@@ -536,7 +547,7 @@ export default function FanpagesMarketResearchPage() {
                     {isCompetitor && expandedCompetitorId === source.id ? (
                       <div className="mt-4 space-y-4 border-t border-slate-200 pt-4">
                         <div className="flex flex-wrap gap-2 text-xs text-slate-600">
-                          <Badge>Collector: {source.collection_mode ?? 'legacy'}</Badge>
+                          <Badge>{source.collection_mode === 'public_web' ? 'facebook-cli · Tier 0' : 'Collector: ' + (source.collection_mode ?? 'legacy')}</Badge>
                           <Badge>Giới hạn: {source.collection_post_limit ?? 50} bài/lượt</Badge>
                           <Badge>Người theo dõi: {competitorAudience?.followers == null ? 'chưa công bố' : new Intl.NumberFormat('vi-VN').format(competitorAudience.followers)}</Badge>
                           {competitorAudience?.followers_observed_at ? <span>Quan sát {formatDateTime(competitorAudience.followers_observed_at)}</span> : null}
@@ -559,11 +570,11 @@ export default function FanpagesMarketResearchPage() {
                             {competitorPostsQuery.hasNextPage ? <Button size="sm" variant="secondary" loading={competitorPostsQuery.isFetchingNextPage} onClick={() => void competitorPostsQuery.fetchNextPage()}>Tải thêm bài viết</Button> : null}
                           </div>
                         ) : null}
-                        {!competitorPostsQuery.isLoading && !competitorPostsQuery.error && competitorPosts.length === 0 ? <p className="text-sm text-slate-600">Chưa có bài viết lưu được. Nếu Meta yêu cầu quyền bằng văn bản, robots chặn hoặc yêu cầu đăng nhập, hệ thống giữ nguyên dữ liệu cũ và không cố vượt chặn.</p> : null}
+                        {!competitorPostsQuery.isLoading && !competitorPostsQuery.error && competitorPosts.length === 0 ? <p className="text-sm text-slate-600">Chưa có bài viết lưu được. facebook-cli chạy Tier 0, không đăng nhập; kết quả có thể chỉ gồm một phần bài viết công khai mà Facebook trả về.</p> : null}
                         <div>
                           <h4 className="text-sm font-medium text-slate-800">Lịch sử crawl</h4>
                           {competitorRunsQuery.isLoading ? <p className="mt-2 text-xs text-slate-500">Đang tải lịch sử…</p> : null}
-                          {competitorRunsQuery.data?.length ? <ul className="mt-2 space-y-2">{competitorRunsQuery.data.map((run) => <li key={run.id} className="flex flex-wrap items-center gap-2 text-xs text-slate-600"><StatusBadge label={SOURCE_STATUS[run.status]?.label ?? run.status} tone={SOURCE_STATUS[run.status]?.tone ?? 'neutral'} />{run.collector} · {formatDateTime(run.created_at)} · {String(run.counters.items_saved ?? 0)} bài lưu{run.blocked_reason ? ' · ' + run.blocked_reason : ''}{run.coverage.metrics_unavailable ? ' · thiếu: ' + String((run.coverage.metrics_unavailable as string[]).join(', ')) : ''}</li>)}</ul> : null}
+                          {competitorRunsQuery.data?.length ? <ul className="mt-2 space-y-2">{competitorRunsQuery.data.map((run) => <li key={run.id} className="rounded-md bg-slate-50 p-2 text-xs text-slate-600"><div className="flex flex-wrap items-center gap-2"><StatusBadge label={SOURCE_STATUS[run.status]?.label ?? run.status} tone={SOURCE_STATUS[run.status]?.tone ?? 'neutral'} />{run.collector}{run.engine ? ' · ' + run.engine : ''}{run.engine_version ? ' ' + run.engine_version : ''}{run.access_tier === 0 ? ' · Tier 0, không đăng nhập' : ''} · {formatDateTime(run.created_at)} · {String(run.counters.items_saved ?? 0)} bài lưu</div>{run.blocked_reason ? <p className="mt-1">Lý do: {run.blocked_reason}</p> : null}{typeof run.coverage.coverage_reason === 'string' ? <p className="mt-1">Độ phủ: {run.coverage.coverage_reason}</p> : null}{Array.isArray(run.coverage.missing_fields) && run.coverage.missing_fields.length ? <p className="mt-1">Chưa có trường: {(run.coverage.missing_fields as string[]).join(', ')}</p> : null}{run.coverage.metrics_unavailable ? <p className="mt-1">Thiếu chỉ số: {String((run.coverage.metrics_unavailable as string[]).join(', '))}</p> : null}</li>)}</ul> : null}
                           {!competitorRunsQuery.isLoading && !competitorRunsQuery.data?.length ? <p className="mt-2 text-xs text-slate-500">Chưa có lượt crawl nào.</p> : null}
                         </div>
                       </div>

@@ -2222,6 +2222,8 @@ export interface components {
         };
         /** CollectionRunOut */
         readonly CollectionRunOut: {
+            /** Access Tier */
+            readonly access_tier?: number | null;
             /** Blocked Reason */
             readonly blocked_reason?: string | null;
             /** Collector */
@@ -2241,6 +2243,10 @@ export interface components {
              * Format: date-time
              */
             readonly created_at: string;
+            /** Engine */
+            readonly engine?: string | null;
+            /** Engine Version */
+            readonly engine_version?: string | null;
             /** Id */
             readonly id: string;
             /** Job Id */

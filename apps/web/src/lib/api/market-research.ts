@@ -91,6 +91,9 @@ export interface CompetitorCollectionRun {
   source_id: string;
   job_id: string;
   collector: string;
+  engine?: string | null;
+  engine_version?: string | null;
+  access_tier?: number | null;
   status: string;
   post_limit: number;
   counters: Record<string, unknown>;

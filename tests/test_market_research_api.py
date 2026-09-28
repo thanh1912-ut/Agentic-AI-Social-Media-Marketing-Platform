@@ -279,10 +279,10 @@ def test_competitor_source_runs_without_page_token_and_keeps_collection_settings
     assert job.result["source_ids"] == [source["id"]]
 
 
-def test_public_facebook_collection_requires_documented_platform_permission(market_api, monkeypatch) -> None:
+def test_public_facebook_collection_requires_built_runner(market_api, monkeypatch) -> None:
     _client, _session_factory, _encryption_key = market_api
     monkeypatch.setattr(research_tasks, "settings", SimpleNamespace(
-        facebook_public_automation_authorized=False,
+        facebook_cli_runner_path="",
     ))
     finished: list[dict[str, object]] = []
 
@@ -305,10 +305,10 @@ def test_public_facebook_collection_requires_documented_platform_permission(mark
     with pytest.raises(research_tasks.CrawlError) as error:
         asyncio.run(collect())
 
-    assert error.value.code == "platform_permission_required"
+    assert error.value.code == "engine_unavailable"
     assert len(finished) == 1
-    assert finished[0]["status"] == "blocked"
-    assert finished[0]["counters"]["pages_requested"] == 0
+    assert finished[0]["status"] == "error"
+    assert finished[0]["counters"]["blocked_reason"] == "engine_unavailable"
 
 
 def test_competitor_page_uses_approved_public_api_token_when_configured(market_api, monkeypatch) -> None:

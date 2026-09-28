@@ -1,3 +1,9 @@
+FROM golang:1.26-alpine AS facebook-cli-builder
+WORKDIR /src
+COPY services/research/facebook_cli_runner/go.mod services/research/facebook_cli_runner/go.sum ./
+COPY services/research/facebook_cli_runner/main.go ./
+RUN mkdir -p /out && go build -trimpath -ldflags="-s -w" -o /out/facebook-cli-runner .
+
 FROM python:3.12-slim
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
@@ -11,3 +17,5 @@ COPY services ./services
 COPY database ./database
 COPY alembic.ini ./
 RUN pip install --upgrade pip && pip install .
+COPY --from=facebook-cli-builder /out/facebook-cli-runner /usr/local/bin/facebook-cli-runner
+ENV FACEBOOK_CLI_RUNNER_PATH=/usr/local/bin/facebook-cli-runner

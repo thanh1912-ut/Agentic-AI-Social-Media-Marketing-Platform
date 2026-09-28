@@ -1850,6 +1850,17 @@
       "CollectionRunOut": {
         "additionalProperties": false,
         "properties": {
+          "access_tier": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Access Tier"
+          },
           "blocked_reason": {
             "anyOf": [
               {
@@ -1891,6 +1902,28 @@
             "format": "date-time",
             "title": "Created At",
             "type": "string"
+          },
+          "engine": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Engine"
+          },
+          "engine_version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Engine Version"
           },
           "id": {
             "title": "Id",
