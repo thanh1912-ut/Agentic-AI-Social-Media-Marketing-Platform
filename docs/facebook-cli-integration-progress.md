@@ -18,7 +18,7 @@ Upstream pin: `tamnd/facebook-cli v0.3.0`, commit
 - [x] Tạo runbook và verification matrix.
 - [x] Sinh lại OpenAPI/TypeScript từ script repository; chạy frontend lint/typecheck/tests/build.
 - [x] Chạy migration và kiểm thử PostgreSQL/Redis trên hạ tầng disposable.
-- [ ] Nghiệm thu bấm UI → worker → PostgreSQL → reload; hiện không có app/worker chạy từ checkout này.
+- [ ] Nghiệm thu Crawl ngay → worker → PostgreSQL → reload; frontend real mode, API, worker và Beat đã chạy trên hạ tầng disposable, nhưng chưa có URL Page mẫu.
 - [ ] Kiểm tra Page đối thủ live Tier 0; chưa có URL Page mẫu trong database test.
 - [x] Rà staged diff/secret, commit feature branch, push và xác minh SHA trên remote.
 
@@ -50,5 +50,12 @@ Upstream pin: `tamnd/facebook-cli v0.3.0`, commit
   `89f3ae685341e5425c909802ecd064638d0a3069` đã được push; `git ls-remote`
   xác nhận SHA remote trùng `89f3ae685341e5425c909802ecd064638d0a3069` lúc 05:54 +07.
 - Tài liệu cập nhật checklist nghiệm thu sau đó sẽ được push thành commit tiếp theo.
-- Docker không cài trên máy; không có API/frontend/worker đang chạy từ worktree này. Chưa chạy được UI → Celery → PostgreSQL → reload hay Facebook Page live. Không có Page URL mẫu trong database kiểm thử.
+- Docker không cài trên máy; chưa chạy được crawl UI → Celery → PostgreSQL hay Facebook Page live. Không có Page URL mẫu trong database kiểm thử.
 - Kết quả chi tiết và giới hạn được ghi tại `docs/facebook-cli-integration-verification.md`.
+
+### 2026-09-29 06:10 +07 — preview real mode
+
+- Khởi động API `127.0.0.1:8000`, Celery worker/Beat, PostgreSQL `15434`, Redis queue/cache `16381/16382` và frontend `127.0.0.1:13101` bằng database/Redis disposable riêng; `/readyz` báo cả database, schema, Redis, cache và object storage sẵn sàng.
+- Đăng nhập giao diện real mode (mocks tắt), tải được dữ liệu workspace từ API/PostgreSQL và mở trang Fanpage & thị trường. Preview đang mở tại `http://127.0.0.1:13101/w/cd7c722e-7cac-4962-bdab-ba0aac39acfa/fanpages`.
+- Tài khoản/workspace preview là dữ liệu thử nghiệm; không có secret hoặc mật khẩu ghi vào docs/Git. Các dịch vụ giữ chạy để người dùng kiểm tra giao diện.
+- Chưa tạo crawl source hoặc chạy Facebook CLI live vì chưa có URL Fanpage đối thủ mẫu. Đây là điều kiện còn lại cho crawl end-to-end, không chặn truy cập preview.

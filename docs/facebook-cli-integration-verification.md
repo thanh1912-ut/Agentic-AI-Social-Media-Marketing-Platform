@@ -2,10 +2,10 @@
 
 ## Trạng thái
 
-**Phần code, migration và kiểm tra tự động đã qua; chưa tuyên bố live collection
-hoàn tất.** Database/Redis bên dưới là disposable local test services. Chưa có
-API/frontend/worker từ checkout này đang chạy, và database kiểm thử chưa có URL
-Page đối thủ để thử live.
+**Phần code, migration và kiểm tra tự động đã qua; preview real mode đang chạy,
+nhưng chưa tuyên bố live collection hoàn tất.** API, worker/Beat, PostgreSQL và
+Redis hiện dùng hạ tầng disposable local. Database kiểm thử chưa có URL Page
+đối thủ để thử live.
 
 | Phần | Trạng thái | Bằng chứng / giới hạn |
 |---|---|---|
@@ -20,7 +20,8 @@ Page đối thủ để thử live.
 | Python lint / API contract consistency | PASS | Ruff trên file Python đã sửa; `scripts/export_openapi.py --check` |
 | Go runner test và build | PASS | `go test ./...` và build executable trong `/private/tmp` |
 | Docker worker image build | NOT_RUN | Docker CLI/runtime không cài trên máy |
-| Pipeline UI → Redis/Celery → PostgreSQL → reload | NOT_RUN | Docker không có; app/worker không chạy từ checkout này. Test persistence riêng không chứng minh thao tác browser end-to-end |
+| Preview real mode / UI → API → PostgreSQL read | PASS | Đăng nhập browser, workspace và danh sách dữ liệu rỗng được tải từ API; `/readyz` báo DB/schema/Redis/cache/storage ready |
+| Crawl UI → Redis/Celery → PostgreSQL → reload | NOT_RUN | Preview/worker đang chạy, nhưng chưa có URL Page đối thủ nên chưa tạo nguồn hoặc bấm Crawl ngay |
 | Live competitor Page qua facebook-cli Tier 0 | NOT_RUN | Chưa có Page URL mẫu trong database test; không dùng Meta API/fixture thay bằng chứng live |
 | DeepSeek analysis | NOT_RUN | Không cần để chứng minh crawler lưu dữ liệu; chưa có live evidence để phân tích |
 
@@ -34,7 +35,12 @@ Page đối thủ để thử live.
 - Go: `go test -count=1 ./...`; `go build -o /private/tmp/facebook-cli-runner .`.
 - Python: 33 regression/API/application tests; PostgreSQL/Redis durability: 5 tests.
 - Frontend: OpenAPI export/generation, lint, typecheck, 47 unit tests, production build.
-- Docker unavailable. Ports `13101` and `3101` không có listener thuộc checkout này.
+- Preview URL: `http://127.0.0.1:13101/w/cd7c722e-7cac-4962-bdab-ba0aac39acfa/fanpages`.
+- API `/readyz`: database, schema, queue Redis, cache Redis và object storage đều `true`.
+- PostgreSQL disposable `15434`; Redis queue/cache `16381/16382`; API `8000`;
+  worker solo và Beat đang chạy. Docker không có nên không kiểm tra Docker image.
+- Cần Page URL công khai mẫu để tạo source và làm live crawl smoke. Tài khoản preview
+  và mật khẩu không ghi vào tài liệu/Git.
 - Không có secrets được in hoặc thêm vào docs. PostgreSQL/Redis test data và
   binary đặt ngoài Git trong `/private/tmp`.
 

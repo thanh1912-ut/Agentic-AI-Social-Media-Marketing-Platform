@@ -66,6 +66,26 @@ Lịch sử mỗi source lưu collector, engine/version, Tier 0, số bài và c
 DeepSeek chỉ chạy sau khi có bằng chứng hợp lệ; thiếu DeepSeek không chặn việc
 crawl và lưu bài.
 
+## Preview local hiện tại
+
+Preview real mode đang chạy tại
+`http://127.0.0.1:13101/w/cd7c722e-7cac-4962-bdab-ba0aac39acfa/fanpages`.
+Nó dùng API `127.0.0.1:8000`, PostgreSQL disposable `15434`, Redis queue/cache
+`16381/16382` và storage trong `/private/tmp/facebook-cli-runtime`. Workspace
+preview trống đang chờ thêm URL Page thử nghiệm; không dùng dữ liệu production.
+
+Để dừng API, Celery worker, Beat và Next.js, gửi `Ctrl-C` trong từng terminal
+process của phiên preview. Dừng PostgreSQL/Redis disposable bằng:
+
+```sh
+pg_ctl -D /private/tmp/facebook-cli-pgdata stop -m fast
+redis-cli -h 127.0.0.1 -p 16381 shutdown nosave
+redis-cli -h 127.0.0.1 -p 16382 shutdown nosave
+```
+
+Các lệnh này chỉ nhắm vào test ports của preview; không dừng dịch vụ dùng cổng
+`5432` hoặc `6379`.
+
 ## Rollback / nâng phiên bản
 
 Để ngừng collector mới cho một nguồn, đổi `collection_mode` qua UI sang `meta_api`
