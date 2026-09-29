@@ -89,26 +89,33 @@ test.describe('real API acceptance — auth, documents, jobs and Brand Profile',
       await navigator.serviceWorker.ready;
     });
 
-    // The real-mode shell may immediately reload once more after it unregisters
-    // the stale worker. Wait only for the navigation commit, then assert the UI
-    // and service-worker state after the app's own cleanup/reload settles.
-    await page.reload({ waitUntil: 'commit' });
-    await expect(page.getByRole('heading', { name: 'Đăng nhập' })).toBeVisible();
-    const staleWorkerState = await page.evaluate(async () => {
-      if (!('serviceWorker' in navigator)) return { registrations: 0, controlledByMock: false };
-      const registrations = await navigator.serviceWorker.getRegistrations();
-      const workerScripts = registrations.flatMap((registration) =>
-        [registration.active, registration.waiting, registration.installing]
-          .filter((worker): worker is ServiceWorker => worker !== null)
-          .map((worker) => worker.scriptURL),
-      );
-      return {
-        registrations: workerScripts.filter((url) => url.includes('/mockServiceWorker.js')).length,
-        controlledByMock:
-          navigator.serviceWorker.controller?.scriptURL.includes('/mockServiceWorker.js') ?? false,
-      };
-    });
-    expect(staleWorkerState).toEqual({ registrations: 0, controlledByMock: false });
+    // The real-mode shell unregisters the stale worker and reloads itself. That
+    // app-owned navigation can supersede Playwright's reload navigation, so
+    // treat only ERR_ABORTED as expected and wait for the browser state instead.
+    await page
+      .reload({ waitUntil: 'commit' })
+      .catch((error: unknown) => {
+        if (!(error instanceof Error) || !error.message.includes('ERR_ABORTED')) throw error;
+      });
+    await expect(page.getByRole('heading', { name: 'Chào mừng trở lại' })).toBeVisible();
+    await expect
+      .poll(async () =>
+        page.evaluate(async () => {
+          if (!('serviceWorker' in navigator)) return { registrations: 0, controlledByMock: false };
+          const registrations = await navigator.serviceWorker.getRegistrations();
+          const workerScripts = registrations.flatMap((registration) =>
+            [registration.active, registration.waiting, registration.installing]
+              .filter((worker): worker is ServiceWorker => worker !== null)
+              .map((worker) => worker.scriptURL),
+          );
+          return {
+            registrations: workerScripts.filter((url) => url.includes('/mockServiceWorker.js')).length,
+            controlledByMock:
+              navigator.serviceWorker.controller?.scriptURL.includes('/mockServiceWorker.js') ?? false,
+          };
+        }),
+      )
+      .toEqual({ registrations: 0, controlledByMock: false });
   });
 
   test('Brand Profile 409 tells user to reload and does not retry the stale edit', async ({ page }) => {

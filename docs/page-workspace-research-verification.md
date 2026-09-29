@@ -85,3 +85,14 @@ Luật 91/2025/QH15 và Nghị định 356/2025/NĐ-CP có hiệu lực từ 202
 
 - [Luật 91/2025/QH15 — Cổng văn bản Chính phủ](https://vanban.chinhphu.vn/?docid=214590&pageid=27160&typegroupid=3)
 - [Nghị định 356/2025/NĐ-CP — Công báo Chính phủ](https://congbao.chinhphu.vn/van-ban/nghi-dinh-so-356-2025-nd-cp-468371/61065.htm)
+
+## Kiểm tra real-mode bổ sung — 2026-09-30 05:58 Asia/Ho_Chi_Minh
+
+| Kiểm tra | Trạng thái | Bằng chứng và giới hạn |
+|---|---|---|
+| Dọn service worker demo trước khi hiển thị login real-mode | PASS | Playwright external-server trên `http://127.0.0.1:13104`; `removes a stale mock service worker` — 1 passed. Chỉ mở `/login`, đăng ký service worker mock trong browser context cô lập, xác nhận nó được gỡ và trang hiện form login. Không gửi thông tin xác thực, không tạo session hoặc ghi dữ liệu ứng dụng. |
+| Frontend typecheck/lint sau cập nhật E2E | PASS | `npm --workspace @agentic/web run typecheck -- --incremental false`; `npm --workspace @agentic/web run lint`; `git diff --check`. |
+| Browser E2E khởi chạy server riêng từ worktree | BLOCKED | Next build không ghi được `apps/web/.next/trace` trong worktree managed; một lần chạy trực tiếp Chromium bị macOS bootstrap permission trong sandbox. Không thay build hoặc restart preview đang dùng. |
+| Đăng ký/login thật, UI → API → Redis/Celery → PostgreSQL | NOT_RUN | Test real-mode trên chỉ xác nhận login shell và cleanup service worker; không submit form hay gọi API nghiệp vụ. |
+
+Lần chạy đầu phát hiện thêm assertion cũ tìm heading “Đăng nhập” trong khi giao diện hiện dùng “Chào mừng trở lại”; sửa assertion và xác nhận lại PASS. `ERR_ABORTED` phát sinh khi lượt reload của ứng dụng thay thế navigation của Playwright, không phải lỗi xác thực.

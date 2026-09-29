@@ -167,3 +167,12 @@ Base đã kiểm tra: `codex/creative-studio-ui` @ `b769097bfdb3568889d974c6def9
 - TODO → IN_PROGRESS: tạo worktree riêng từ nhánh UI đã chọn và đọc AGENTS.md/skills áp dụng.
 - Kết quả: nhánh mới `codex/page-workspaces-research` bắt đầu từ SHA nêu trên; lệnh `git fetch` trong worktree chỉ cập nhật metadata Git, không sửa checkout preview hay shared working tree.
 - Kiểm tra tiếp theo: hoàn tất truy vết route/session, Page model, nghiên cứu và worker trước khi chỉnh schema.
+
+### 2026-09-30 05:58 Asia/Ho_Chi_Minh — Kiểm tra real-mode login shell
+
+- DONE: Sửa test service worker cũ để chờ lượt reload do ứng dụng thực hiện, chỉ chấp nhận `ERR_ABORTED` khi navigation của Playwright bị lượt reload đó thay thế; cập nhật assertion theo heading login hiện tại.
+- PASS: Playwright chạy trên preview real-mode hiện có tại `127.0.0.1:13104`, chế độ external server: test `/login` đạt `1 passed`; service worker mock không còn đăng ký/điều khiển trang.
+- PASS: Frontend typecheck (`--incremental false`), ESLint và `git diff --check` sau khi sửa test.
+- BLOCKED: Build/start server mới từ worktree riêng bị chặn quyền ghi sandbox vào `apps/web/.next/trace`; lần chạy E2E độc lập không sử dụng preview thất bại ở khâu khởi chạy Chromium trong sandbox. Không thay artifact hoặc restart preview để vượt qua.
+- NOT_RUN: Không gửi form đăng nhập/đăng ký, không ghi dữ liệu ứng dụng; real API → worker → PostgreSQL, Meta live và provider live chưa được kiểm tra.
+- TODO: Chạy lại real API → worker → PostgreSQL bằng tài khoản/workspace disposable và worker test được cô lập trước khi nghiệm thu toàn luồng.
