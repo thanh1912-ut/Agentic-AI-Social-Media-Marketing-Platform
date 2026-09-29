@@ -27,10 +27,10 @@ Yêu cầu là lưu prose thương hiệu do Owner tự viết, không dùng AI 
 ## Môi trường/commit
 
 - Nhánh: `codex/manual-brand-content-context`.
+- Commit triển khai: `5f168a672f883fe64aa7be27fe20084d3be6256f`.
 - Commit nền: `1f0e933acdb331410a7cb7ec0c2ecf6a652ad351`.
 - Runtime Python kiểm thử: `/private/tmp/docling-ingestion-venv/bin/python` (Python 3.14); test chạy từ `/private/tmp` để không ghi cache vào checkout.
 - Frontend dùng Node dependencies qua overlay tạm trong `/private/tmp`; overlay được gỡ trước khi commit.
-- Commit thay đổi: chưa tạo.
 - PostgreSQL/Redis/browser: chưa nghiệm thu trong nhánh feature.
 
 Không dùng fixture làm bằng chứng provider live. Test PDF còn thiếu model artifacts là giới hạn môi trường đã xác định; không coi nó là PASS.
