@@ -44,11 +44,19 @@ Không đưa token vào tài liệu, ticket, browser storage, query string hoặ
 - Snapshot website được chọn cũng phải thuộc cùng report/tenant và source còn active; worker chuyển phần dữ liệu đã allowlist (không kèm URL ảnh ký tạm) vào Content Agent, rồi xác minh lại các pin trước khi lưu draft.
 - Lỗi nguồn mới không được xóa kết quả nguồn thành công trước đó.
 
+## Adapter Qwen đang ở trạng thái fixture-only
+
+Adapter text yêu cầu `QWEN_API_KEY`, `QWEN_MODEL` và `QWEN_BASE_URL` do quản trị viên cung cấp từ secret store/runtime. `QWEN_BASE_URL` phải là HTTPS endpoint Model Studio đúng region/workspace; không dùng endpoint giả định. Có thể cấu hình `QWEN_MAX_TOKENS`, còn giới hạn input dùng `LLM_MAX_INPUT_CHARS`. Hiện chưa có route gọi adapter từ pipeline bình luận, chưa có Qwen pricing entry trong ledger và chưa có key/region đã nghiệm thu. Không bật bằng cách chỉ đặt ba biến; trước hết cần privacy-approved comment batch và mức giá phù hợp model/region. Xem [endpoint OpenAI-compatible chính thức](https://www.alibabacloud.com/help/en/model-studio/qwen-api-via-openai-chat-completions) và [quy tắc JSON output](https://docs.modelstudio.console.alibabacloud.com/en/model-studio/qwen-structured-output); model/region/pricing phải được xác nhận cho đúng tài khoản.
+
+## Adapter Gemini đang ở trạng thái fixture-only
+
+Media adapter yêu cầu `GEMINI_API_KEY` và `GEMINI_MODEL` tường minh; không có model mặc định hoặc fallback. Chỉ nhận byte ảnh/video đã được service gọi đánh dấu privacy-approved, có SHA-256, source/evidence IDs và MIME allowlist; cờ đó là kiểm tra phòng thủ, không thay thế quyết định pháp lý/căn cứ xử lý của tầng sở hữu dữ liệu. Adapter không nhận URL, không tải asset, không gọi Files API, không tự sửa output và không retry. Asset tối đa mặc định 10 MiB, tổng JSON request không quá 20 MiB; video lớn/dài bị từ chối chờ tích hợp upload/deletion/budget phù hợp. `estimated_cost_usd` chưa có giá trị thực, `cost_estimate_available=false`; không nối vào pipeline tự động trước khi ledger giữ reservation theo model/usage. Tài liệu Google mô tả giới hạn inline và Files API cho asset lớn/tái sử dụng: [video](https://ai.google.dev/gemini-api/docs/video-understanding), [ảnh](https://ai.google.dev/gemini-api/docs/image-understanding), [structured output](https://ai.google.dev/gemini-api/docs/structured-output).
+
 ## Trạng thái ban đầu
 
 - Account-only registration, Page-based workspace activation và reconnect được triển khai trong nhánh này; vẫn cần kiểm chứng migration trên PostgreSQL thật.
 - UI Nghiên cứu không yêu cầu người dùng chọn nhóm. Cấu trúc lưu trữ legacy vẫn group-scoped.
-- Gemini/Qwen adapters, video/image analysis, comment processing/erasure chưa triển khai.
+- Qwen/Gemini adapters có fixture nhưng chưa nối; video/image collection, comment processing/erasure chưa triển khai.
 
 ## Thao tác vận hành
 
@@ -56,7 +64,7 @@ Không bật xử lý comment/media từ cờ thủ công. Trước khi mở cá
 
 ## Phần chưa sẵn sàng
 
-- Gemini và Qwen chưa có adapter/model ID được xác minh; DeepSeek hiện là adapter cho báo cáo Nghiên cứu. Không tự fallback giữa provider.
+- Gemini và Qwen chưa có model ID/region/key được xác minh hoặc routing production; DeepSeek hiện là adapter cho báo cáo Nghiên cứu. Không tự fallback giữa provider.
 - Ledger hiện áp dụng cho báo cáo Nghiên cứu DeepSeek tự động; chưa bao phủ Gemini/Qwen, media hoặc mọi call AI tự động khác. Trang Nghiên cứu đọc số liệu qua `GET .../market-research/ai-budget`; báo cáo hoãn hiện chỉ được hiển thị, chưa có tác vụ tự lên lịch chạy lại.
 - Chưa tải hay gửi ảnh/video đến provider; không tuyên bố media analysis đã chạy.
 - Không có full comment pagination/replies hoặc database checkpoint mới. Coverage là `privacy_hold`/Tier 0 partial.

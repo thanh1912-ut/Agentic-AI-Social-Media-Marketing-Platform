@@ -21,8 +21,8 @@
 | Public Page Tier 0 | PARTIAL; live NOT_RUN | Existing facebook-cli pipeline; không chứng minh lịch sử đầy đủ |
 | Public Group Tier 0 | UNSUPPORTED/PARTIAL | Status `unsupported_tier0`; Group discussions không được hỗ trợ ở Tier 0 |
 | Comment text / replies | PRIVACY_HOLD | Không tải comment text mới; report bỏ comment text legacy khỏi model context; aggregate count riêng |
-| Media download/analysis | NOT_IMPLEMENTED | Không có asset pipeline; Gemini chưa nối |
-| Qwen / Gemini / DeepSeek routing | PARTIAL | DeepSeek hiện có; Gemini/Qwen adapters và media/comment routing chưa nối; không tự fallback |
+| Media download/analysis | NOT_IMPLEMENTED | Có Gemini inline adapter fixture; chưa có asset pipeline hoặc worker routing |
+| Qwen / Gemini / DeepSeek routing | PARTIAL | DeepSeek giữ luồng hiện có; Qwen text JSON-mode và Gemini inline media adapters có fixture nhưng chưa nối comment/media pipeline hoặc unified budget; không tự fallback |
 | AI budget $2/workspace/day | PARTIAL | PostgreSQL reservation/ledger hiện bao phủ báo cáo Nghiên cứu DeepSeek tự động; chưa áp dụng chung cho các agent, Gemini/Qwen hoặc media |
 | Ngân sách API/UI | PASS theo API fixture và frontend lint/unit; browser real NOT_RUN | `GET .../market-research/ai-budget`; `test_research_ai_budget_is_workspace_scoped_and_reports_reserved_cost` |
 | Pin bằng chứng cho hướng viết | PASS (API + worker fixture) | `test_market_suggestion_draft_pins_report_observation_and_version`, `test_content_generation_job_persists_cited_draft_and_is_idempotent` |
@@ -64,6 +64,8 @@ Không tuyên bố đã crawl hết Page/Group hoặc đạt chứng nhận phá
 - Frontend lint PASS và unit tests 50 passed. Typecheck hiện FAIL do `@agentic/contracts` draft không đồng bộ với interface backend/frontend hiện dùng ở nhiều route. Lỗi chưa được sửa trong lượt này để tránh mở rộng ngoài phần ngân sách; production build và browser real NOT_RUN.
 - Report-to-draft fixture có evidence mới hơn với text/metrics khác; campaign giữ pin của report cũ, worker chỉ dùng version/observation đó. Website snapshot được truy xuất đúng theo report link, nội dung được allowlist và signed image URL bị loại; worker kiểm tra lại source/pins trước khi lưu. Comment text không gửi cho model. Nếu pin mất/source inactive, worker từ chối context thay vì query latest.
 - Latest focused backend checks: `tests/test_campaign_workflows.py` 11 passed, `tests/test_market_research_api.py` 10 passed, `tests/test_ai_budget.py` 9 passed. Đây là SQLite API/worker fixtures, không thay cho PostgreSQL/Redis end-to-end.
+- Report provenance/website pin tests: 30 passed ở ba nhóm worker/API/budget; provider fixture suite (Qwen + Gemini + DeepSeek) 27 passed khi bỏ `conftest.py`. Chưa có provider live call.
+- Gemini fixture kiểm tra privacy hold, SHA, MIME, inline size, structured validation và không retry; chưa xác minh Gemini API live. Pytest chuẩn hiện bị chặn khi setup vì thiếu `pgvector`; Qwen SDK integration cần package `openai` theo manifest.
 - `alembic upgrade head --sql` vẫn không hỗ trợ do migration cũ `0002_profile_knowledge` gọi schema inspector; online fresh/upgrade trên PostgreSQL test thật đã đạt. Không chạy migration lên database preview.
 - Từng phát sinh đầu ra có URL kết nối DB trong một lượt rà cấu hình. Không lặp lại hoặc commit thông tin đó; cần xoay mật khẩu sau khi có cửa sổ vận hành an toàn.
 

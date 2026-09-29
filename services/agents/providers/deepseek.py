@@ -80,36 +80,40 @@ def _status_code(error: Exception) -> int | None:
         return None
 
 
-def _request_error(error: Exception, *, repair_attempts: int = 0) -> ProviderError:
+def _request_error(
+    error: Exception, *, repair_attempts: int = 0, provider_label: str = "DeepSeek",
+) -> ProviderError:
     if isinstance(error, ProviderError):
         error.repair_attempts = repair_attempts
         return error
     kind = type(error).__name__.casefold()
     status = _status_code(error)
     if isinstance(error, TimeoutError) or "timeout" in kind:
-        return ProviderTimeoutError("The DeepSeek request timed out", repair_attempts=repair_attempts)
+        return ProviderTimeoutError(f"The {provider_label} request timed out", repair_attempts=repair_attempts)
     if status in (401, 403):
         return ProviderAuthenticationError(
-            "DeepSeek rejected the configured API credentials", repair_attempts=repair_attempts
+            f"{provider_label} rejected the configured API credentials", repair_attempts=repair_attempts
         )
     if status == 429:
-        return ProviderRateLimitError("DeepSeek rate limit reached", repair_attempts=repair_attempts)
+        return ProviderRateLimitError(f"{provider_label} rate limit reached", repair_attempts=repair_attempts)
     if status == 404:
         return ProviderModelNotFoundError(
-            "The configured DeepSeek model was not found or is unavailable",
+            f"The configured {provider_label} model was not found or is unavailable",
             repair_attempts=repair_attempts,
         )
     if status == 402:
         return ProviderRequestError(
-            "DeepSeek account balance is insufficient", retryable=False, repair_attempts=repair_attempts
+            f"{provider_label} account balance is insufficient", retryable=False, repair_attempts=repair_attempts
         )
     if status is not None:
         return ProviderRequestError(
-            "The DeepSeek request failed",
+            f"The {provider_label} request failed",
             retryable=status in (408, 500, 502, 503, 504),
             repair_attempts=repair_attempts,
         )
-    return ProviderRequestError("The DeepSeek request failed", retryable=True, repair_attempts=repair_attempts)
+    return ProviderRequestError(
+        f"The {provider_label} request failed", retryable=True, repair_attempts=repair_attempts
+    )
 
 
 def _json_example(schema: Mapping[str, Any]) -> str:
@@ -170,6 +174,7 @@ class DeepSeekStructuredModel:
         max_tokens: int = 8192,
         max_input_chars: int = 24_000,
         base_url: str = DEEPSEEK_BASE_URL,
+        provider_label: str = "DeepSeek",
         client: Any = None,
     ) -> None:
         if not api_key.strip():
@@ -183,6 +188,8 @@ class DeepSeekStructuredModel:
         if max_tokens <= 0:
             raise ProviderConfigurationError("DEEPSEEK_MAX_TOKENS must be positive")
         self.model_name = model.strip()
+        self.provider_label = provider_label
+        self.provider_name = provider_label.casefold()
         self.timeout_seconds = _positive_float(str(timeout_seconds), "AI_REQUEST_TIMEOUT_SECONDS", 60)
         self.max_tokens = max_tokens
         self.max_input_chars = max_input_chars
@@ -207,38 +214,36 @@ class DeepSeekStructuredModel:
             timeout=self.timeout_seconds,
         )
 
-    @staticmethod
-    def _content_and_reason(completion: Any) -> tuple[str | None, str | None]:
+    def _content_and_reason(self, completion: Any) -> tuple[str | None, str | None]:
         choices = getattr(completion, "choices", None)
         if not choices:
             return None, None
         choice = choices[0]
         message = getattr(choice, "message", None)
         if getattr(message, "refusal", None):
-            error = ProviderOutputError("DeepSeek refused to generate the requested structured result")
+            error = ProviderOutputError(f"{self.provider_label} refused to generate the requested structured result")
             error.repairable = False
             raise error
         content = getattr(message, "content", None) if message is not None else None
         finish_reason = getattr(choice, "finish_reason", None)
         return content if isinstance(content, str) else None, finish_reason
 
-    @staticmethod
-    def _parse(content: str | None, finish_reason: str | None, response_model: type[ModelT]) -> ModelT:
+    def _parse(self, content: str | None, finish_reason: str | None, response_model: type[ModelT]) -> ModelT:
         if finish_reason != "stop":
             reason = finish_reason or "missing finish reason"
-            error = ProviderOutputError(f"DeepSeek output did not complete normally ({reason})")
+            error = ProviderOutputError(f"{self.provider_label} output did not complete normally ({reason})")
             error.repairable = finish_reason in (None, "length")
             raise error
         if content is None or not content.strip():
-            raise ProviderOutputError("DeepSeek returned empty JSON content")
+            raise ProviderOutputError(f"{self.provider_label} returned empty JSON content")
         try:
             payload = json.loads(content)
         except (json.JSONDecodeError, TypeError):
-            raise ProviderOutputError("DeepSeek returned malformed JSON") from None
+            raise ProviderOutputError(f"{self.provider_label} returned malformed JSON") from None
         try:
             return response_model.model_validate(payload)
         except ValidationError:
-            raise ProviderOutputError("DeepSeek JSON did not match the expected schema") from None
+            raise ProviderOutputError(f"{self.provider_label} JSON did not match the expected schema") from None
 
     def generate(
         self,
@@ -282,7 +287,9 @@ class DeepSeekStructuredModel:
             try:
                 completion = self._create(messages=messages)
             except Exception as error:
-                raise _request_error(error, repair_attempts=repair_attempts) from None
+                raise _request_error(
+                    error, repair_attempts=repair_attempts, provider_label=self.provider_label,
+                ) from None
 
             usage = getattr(completion, "usage", None)
             total_input_tokens += int(getattr(usage, "prompt_tokens", 0) or 0)
@@ -314,7 +321,7 @@ class DeepSeekStructuredModel:
         actual_model = usage_model.strip() if isinstance(usage_model, str) and usage_model.strip() else self.model_name
         metadata = GenerationMetadata(
             model=actual_model,
-            provider="deepseek",
+            provider=self.provider_name,
             prompt_version="set-by-agent",
             schema_version=response_model.__name__,
             input_snapshot_id="set-by-caller",

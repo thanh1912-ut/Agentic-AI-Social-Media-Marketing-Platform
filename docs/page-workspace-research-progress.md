@@ -38,7 +38,7 @@ Base đã kiểm tra: `codex/creative-studio-ui` @ `b769097bfdb3568889d974c6def9
 - DONE: API permissions và worker claims chặn tác vụ ghi/AI/research/publish nếu Page chưa active; scheduler bỏ qua workspace cần reconnect.
 - DONE: Research source có thể tạo không truyền group ID; Nghiên cứu tự chọn nhóm nội bộ cho dữ liệu legacy. UI gộp public Page đối thủ/tin tức và giải thích giới hạn Group Tier 0.
 - DONE: Không lấy text bình luận mới cho đến khi có điều kiện xử lý phù hợp; report bỏ qua comment text legacy, trả coverage `privacy_hold`.
-- TODO: Playwright thật, Gemini/Qwen adapters, media pipeline, privacy/retention/deletion và mở rộng ledger cho mọi AI tự động.
+- TODO: Playwright thật, nối Qwen/Gemini vào comment/media pipeline, privacy/retention/deletion và mở rộng ledger cho mọi AI tự động.
 - BLOCKED: Không có căn cứ trong repo cho phép kết luận việc xử lý dữ liệu cá nhân đã đáp ứng đầy đủ luật; cần đánh giá tổ chức/pháp lý và triển khai retention/erasure trước khi mở comment/media processing.
 
 ### 2026-09-30 01:28 Asia/Ho_Chi_Minh — Kiểm thử và rà contract
@@ -91,7 +91,7 @@ Base đã kiểm tra: `codex/creative-studio-ui` @ `b769097bfdb3568889d974c6def9
 - PASS: Regression không cần Docling runtime: 236 passed, 14 skipped, 1 deselected.
 - BLOCKED: Full suite phát hiện 11 test parser hiện có không khởi tạo được Docling subprocess trong virtualenv API hiện tại; lỗi độc lập với ledger và cần worker Docling runtime/model để nghiệm thu.
 - NOT_RUN: Không gọi DeepSeek/Gemini/Qwen live; không chạy crawl worker hoặc Meta live; không rollout preview.
-- PARTIAL: Hiện chỉ báo cáo Nghiên cứu tự động DeepSeek dùng ledger. Gemini/Qwen adapters, media/comment pipeline và ngân sách các tác vụ tự động khác chưa làm.
+- PARTIAL: Hiện chỉ báo cáo Nghiên cứu tự động DeepSeek dùng ledger. Qwen/Gemini adapters fixture-only, chưa có media/comment pipeline và chưa có ngân sách chung cho các tác vụ tự động khác.
 - DONE: Commit ngân sách `2b3cb9283e9f512b9aa288ecf48af4437cde9a1f` đã push; SHA trên origin được đối chiếu khớp.
 
 ### 2026-09-30 02:35 Asia/Ho_Chi_Minh — Trạng thái ngân sách trong API và Nghiên cứu
@@ -123,8 +123,25 @@ Base đã kiểm tra: `codex/creative-studio-ui` @ `b769097bfdb3568889d974c6def9
 - PASS: Test worker dùng website snapshot cố định, giá USD, xác nhận signed image URL bị loại khỏi model input; report bài cũ tiếp tục dùng version/observation đã ghim.
 - PASS: Ruff và `git diff --check` trên các file Python thay đổi.
 - PASS: `tests/test_campaign_workflows.py tests/test_market_research_api.py tests/test_ai_budget.py` đạt 30 passed; Ruff và `scripts/export_openapi.py --check` cũng đạt.
-- IN_PROGRESS: Review staged diff và push incremental commit.
-- NOT_RUN: Provider live, media analysis, browser real, preview rollout; chưa nối Gemini/Qwen.
+- PASS: Incremental provenance commit `ae58f91966939df45851256e0a7a042e74cebb61` đã push; remote SHA khớp.
+- NOT_RUN: Provider live, media analysis, browser real, preview rollout; Qwen adapter chưa nối pipeline, Gemini adapter chưa có ở mốc này.
+
+### 2026-09-30 03:05 Asia/Ho_Chi_Minh — Adapter Qwen text có cấu hình vùng tường minh
+
+- DONE: Thêm Qwen structured text adapter dùng OpenAI-compatible JSON-object endpoint; model ID và HTTPS endpoint theo vùng phải được khai báo, không tự chọn region/model.
+- DONE: Adapter giới hạn đầu vào, validate output bằng Pydantic, chỉ sửa output một lần, chuẩn hóa lỗi và tắt retry ẩn của SDK.
+- PASS: Qwen + Gemini + DeepSeek provider fixtures đạt 27 passed với `pytest --noconftest -p no:cacheprovider`; Ruff và diff check đạt.
+- BLOCKED: Pytest thông thường không vào được fixtures vì môi trường hiện thiếu `pgvector`; Qwen factory integration cũng cần cài dependency `openai` theo manifest. Không lấy lượt fixture riêng làm bằng chứng integration.
+- PARTIAL: Chưa có QWEN key/region/model của deployment, chưa nối vào pipeline comment vì comment text vẫn `privacy_hold`, chưa tích hợp pricing/budget ledger chung.
+- NOT_RUN: Alibaba/Gemini live, media, comment analysis, provider budget end-to-end.
+
+### 2026-09-30 03:14 Asia/Ho_Chi_Minh — Gemini inline media adapter
+
+- DONE: Thêm adapter Gemini nhận byte ảnh/video inline, model/key tường minh, MIME allowlist, SHA-256/provenance và yêu cầu trạng thái `approved`; trạng thái mặc định là `privacy_hold`.
+- DONE: Không nhận URL, không upload qua Files API, không retry/repair tự động. Tổng request tối đa 20 MiB; asset mặc định tối đa 10 MiB.
+- PASS: Fixture xác nhận ảnh/video JSON, Pydantic validation, chặn privacy hold/hash/MIME/kích thước trước mạng và chỉ có một request khi output sai schema; bộ provider tests tổng cộng 27 passed.
+- PARTIAL: Adapter chưa nối vào worker/media pipeline; cờ approved không thay thế quyết định căn cứ xử lý ở tầng nghiệp vụ. Chưa có pricing/budget ledger cho Gemini.
+- NOT_RUN: Gemini live, media thật, privacy/deletion/retention end-to-end, browser real.
 
 ## Nhật ký
 
