@@ -70,6 +70,13 @@ def _document_out(document: Document) -> DocumentOut:
         knowledge_status=document.knowledge_status,
         retrieval_mode=document.retrieval_mode,
         profile_status=document.profile_status,
+        selectable_for_content=(
+            document.deleted_at is None
+            and document.is_active
+            and document.status == "ready"
+            and document.knowledge_status == "ready"
+            and bool(document.normalized_json)
+        ),
         uploaded_by=document.uploaded_by,
         uploaded_at=document.created_at,
         processed_at=document.processed_at,
@@ -255,7 +262,7 @@ async def upload_documents(
                 existing.status = "pending"
                 existing.error = None
                 existing.knowledge_status = "pending"
-                existing.profile_status = "pending"
+                existing.profile_status = "not_applicable"
                 await storage.put(existing.storage_key, content)
             if first_document is None:
                 first_document = existing
@@ -279,7 +286,7 @@ async def upload_documents(
                 source_version = int(prior_version.source_version) + 1
             except (TypeError, ValueError):
                 source_version = 2
-        document = Document(company_id=company_id, filename=filename, kind=kind, mime_type=mime_type, size_bytes=len(content), source_hash=source_hash, parser_version=settings.parser_version, storage_key=f"{company_id}/{source_hash}/{new_id()}", status="pending", uploaded_by=user.id, source_version=str(source_version))
+        document = Document(company_id=company_id, filename=filename, kind=kind, mime_type=mime_type, size_bytes=len(content), source_hash=source_hash, parser_version=settings.parser_version, storage_key=f"{company_id}/{source_hash}/{new_id()}", status="pending", profile_status="not_applicable", uploaded_by=user.id, source_version=str(source_version))
         if source_id:
             document.source_id = source_id
         db.add(document)
@@ -292,14 +299,14 @@ async def upload_documents(
     if first_document is None:
         raise ApiProblem(409, "already_exists", "Các tệp này đã được tải lên trước đó.")
     document_ids = list(dict.fromkeys(document_ids))
-    job = Job(company_id=company_id, created_by=user.id, kind="document_ingest", title="Đang đọc tài liệu và trích xuất hồ sơ thương hiệu", status="queued", progress=0, result={"document_id": first_document.id, "document_ids": document_ids}, idempotency_key=idempotency_key)
+    job = Job(company_id=company_id, created_by=user.id, kind="document_ingest", title="Đang đọc tài liệu và lưu kiến thức", status="queued", progress=0, result={"document_id": first_document.id, "document_ids": document_ids}, idempotency_key=idempotency_key)
     db.add(job)
     await db.flush()
     for document_id in document_ids:
         document = await db.get(Document, document_id)
         if document is not None and document.company_id == company_id:
             document.job_id = job.id
-    for key in ("receive_file", "detect_type", "extract_text", "normalize", "chunk_and_index", "create_brand_profile"):
+    for key in ("receive_file", "detect_type", "extract_text", "normalize", "chunk_and_index"):
         db.add(JobStep(job_id=job.id, step_key=key, label=STEP_LABELS[key], status="pending"))
     db.add(RequestDeduplication(company_id=company_id, operation="document_upload", idempotency_key=idempotency_key, response_json={"job_id": job.id}))
     await db.commit()
@@ -315,24 +322,23 @@ async def reprocess_document(company_id: str, document_id: str, request: Reproce
     if not document.is_active:
         raise ApiProblem(409, "state_conflict", "Tài liệu này đã được thay thế và không thể đọc lại như nguồn đang hoạt động.")
     mode = request.mode if request else "document"
-    if mode == "profile_only" and (not document.normalized_json or document.knowledge_status != "ready"):
-        raise ApiProblem(409, "profile_source_not_ready", "Chưa có nội dung đã đọc và lưu sẵn để thử lại riêng bước Brand Profile.")
+    if mode == "profile_only":
+        raise ApiProblem(410, "brand_profile_generation_removed", "Tài liệu chỉ được đọc và lưu làm kiến thức. Owner tự nhập hồ sơ ở mục Thương hiệu.")
     active_job = await db.scalar(select(Job).where(Job.id == document.job_id, Job.status.in_(["queued", "running"]))) if document.job_id else None
     if active_job:
         return await accepted_response(db, active_job)
-    job = Job(company_id=company_id, created_by=user.id, kind="document_ingest", title=(f"Tạo lại Brand Profile từ “{document.filename}”" if mode == "profile_only" else f"Đọc lại tài liệu “{document.filename}”"), status="queued", progress=0, result={"document_id": document.id, "mode": mode}, idempotency_key=f"reprocess:{document.id}:{mode}:{document.updated_at.timestamp()}")
+    job = Job(company_id=company_id, created_by=user.id, kind="document_ingest", title=f"Đọc lại tài liệu “{document.filename}”", status="queued", progress=0, result={"document_id": document.id, "mode": mode}, idempotency_key=f"reprocess:{document.id}:{mode}:{document.updated_at.timestamp()}")
     if mode == "document":
         document.status = "pending"
         document.error = None
         document.parser_version = settings.parser_version
         document.knowledge_status = "pending"
-    document.profile_status = "pending"
+    document.profile_status = "not_applicable"
     db.add(job)
     await db.flush()
     document.job_id = job.id
-    for key in ("receive_file", "detect_type", "extract_text", "normalize", "chunk_and_index", "create_brand_profile"):
-        step_status = "skipped" if mode == "profile_only" and key in {"receive_file", "detect_type", "extract_text", "normalize"} else "pending"
-        db.add(JobStep(job_id=job.id, step_key=key, label=STEP_LABELS[key], status=step_status, message="Dùng lại nội dung đã lưu." if step_status == "skipped" else None))
+    for key in ("receive_file", "detect_type", "extract_text", "normalize", "chunk_and_index"):
+        db.add(JobStep(job_id=job.id, step_key=key, label=STEP_LABELS[key], status="pending"))
     await db.commit()
     await dispatch_document_job(job.id, document.id)
     return await accepted_response(db, job)

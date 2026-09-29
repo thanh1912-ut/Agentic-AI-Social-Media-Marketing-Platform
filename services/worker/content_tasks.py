@@ -221,28 +221,18 @@ def _confirmed_profile(brand: Brand, company: Company, revision: BrandProfileRev
     if (
         revision.revision != brand.version
         or revision.confirmed_at is None
-        or not raw.get("confirmed_at")
+        or raw.get("profile_mode") != "manual_text_v1"
+        or not isinstance(raw.get("profile_text"), str)
+        or not raw.get("profile_text", "").strip()
     ):
         raise ContentGenerationFailure(
-            "brand_profile_not_confirmed",
-            "Hồ sơ thương hiệu chưa được xác nhận ở phiên bản hiện tại.",
+            "brand_profile_manual_required",
+            "Chưa có hồ sơ thương hiệu do Owner tự viết và áp dụng ở phiên bản hiện tại.",
         )
-    business = _field_value(raw, "description") or _field_value(raw, "business_name") or company.name
-    if not isinstance(business, str) or not business.strip():
-        business = company.name
-    # Contact details and competitor notes are not needed for post drafting.
-    voice = _strings(_field_value(raw, "tone_keywords", []))
-    brand_voice = _field_value(raw, "brand_voice")
-    if isinstance(brand_voice, str) and brand_voice.strip() and brand_voice not in voice:
-        voice.append(brand_voice.strip())
-    constraints = _strings(_field_value(raw, "do_not_use", []))
     return InternalBrandProfile(
         brand_id=brand.id,
-        business=business.strip(),
-        products=_strings(_field_value(raw, "products", [])),
-        audience=_strings(_field_value(raw, "target_audience", [])),
-        voice=voice,
-        constraints=constraints,
+        business=company.name,
+        manual_context=raw["profile_text"],
         requires_confirmation=False,
         profile_version=str(brand.version),
     )
@@ -346,7 +336,7 @@ async def content_generation_task_async(
         created_by = job.created_by if job else ""
         job_kind = job.kind if job else "content_generation"
         attempts = (job.attempts if job else 0)
-        await _set_step(db, job_id, "prepare_context", "running", 5, "Đang kiểm tra campaign, Brand Profile và tài liệu nguồn.")
+        await _set_step(db, job_id, "prepare_context", "running", 5, "Đang kiểm tra hồ sơ thương hiệu do Owner áp dụng và tài liệu đã chọn.")
         await _append_event(db, job, "progress", "Đã nhận job sinh nội dung.", 5)
         await db.commit()
         claim_job_fence(job_id, claim_token)
@@ -370,9 +360,9 @@ async def content_generation_task_async(
                 BrandProfileRevision.revision == brand.version,
             ))
             if revision is None:
-                raise ContentGenerationFailure("brand_profile_not_confirmed", "Không tìm thấy phiên bản Brand Profile hiện tại.")
+                raise ContentGenerationFailure("brand_profile_manual_required", "Không tìm thấy phiên bản hồ sơ thương hiệu do Owner áp dụng.")
             if campaign.version != payload.get("campaign_version") or brand.version != payload.get("brand_version"):
-                raise ContentGenerationFailure("content_context_changed", "Campaign hoặc Brand Profile đã đổi sau khi gửi yêu cầu; hãy tạo job mới.")
+                raise ContentGenerationFailure("content_context_changed", "Campaign hoặc hồ sơ do Owner áp dụng đã đổi sau khi gửi yêu cầu; hãy tạo job mới.")
             if job_kind == "content_revise":
                 target_post = await db.scalar(select(CampaignPost).where(
                     CampaignPost.id == payload.get("post_id"),
@@ -414,6 +404,7 @@ async def content_generation_task_async(
                 + ([f"Chiến lược nội dung campaign: {strategy_summary}"] if strategy_summary else [])
                 + ([f"Chủ đề slot: {plan_slot['topic']}"] if plan_slot else [])
                 + ([request_data["instruction"]] if request_data.get("instruction") else [])
+                + ([f"Hướng dẫn sử dụng tài liệu đã chọn: {request_data['document_usage_note']}"] if request_data.get("document_usage_note") else [])
             )
             brief = CampaignBrief(
                 objective=brief_data.get("objective_note") or brief_data.get("objective") or campaign.name,
@@ -425,14 +416,22 @@ async def content_generation_task_async(
                 end_date=slot_date or request_data.get("end_date") or brief_data.get("end_date"),
                 user_requirements=requirements,
             )
+            selected_document_ids = list(dict.fromkeys(request_data.get("document_ids") or []))
             documents = (await db.scalars(select(Document).where(
                 Document.company_id == company_id,
+                Document.id.in_(selected_document_ids or {"__no_selected_document__"}),
                 Document.is_active.is_(True),
                 Document.deleted_at.is_(None),
                 Document.status == "ready",
                 Document.knowledge_status == "ready",
                 Document.normalized_json.is_not(None),
             ))).all()
+            if len(documents) != len(selected_document_ids):
+                raise ContentGenerationFailure("selected_document_unavailable", "Tài liệu đã chọn bị xóa, tắt hoặc chưa sẵn sàng. Hãy tải lại danh sách và gửi lại yêu cầu.")
+            selected_document_state = {
+                item.id: (item.source_version, item.source_hash, item.parser_version)
+                for item in documents
+            }
             source_ids = {item.source_id for item in documents}
             brand_version = brand.version
             campaign_version = campaign.version
@@ -454,10 +453,10 @@ async def content_generation_task_async(
                 minimum_semantic_margin=settings.minimum_semantic_margin,
                 minimum_hybrid_lexical_score=settings.minimum_hybrid_lexical_score,
                 top_k=min(20, knowledge_index.max_context),
-            )
+            ) if selected_document_ids else []
             context = source_context([item.chunk for item in retrieved])
-            if not context:
-                raise ContentGenerationFailure("no_relevant_context", "Không có đoạn tài liệu đủ liên quan để làm căn cứ sinh nội dung.")
+            if selected_document_ids and not context:
+                raise ContentGenerationFailure("no_relevant_selected_context", "Không tìm thấy đoạn phù hợp trong tài liệu bạn đã chọn. Hãy đổi tài liệu hoặc sửa hướng dẫn dùng nguồn.")
             market_context = await _market_evidence_context(
                 db,
                 company_id=company_id,
@@ -571,6 +570,21 @@ async def content_generation_task_async(
             ))
             if campaign.version != campaign_version or brand.version != brand_version or revision is None or revision.confirmed_at is None:
                 raise ContentGenerationFailure("content_context_changed", "Campaign hoặc hồ sơ đã đổi khi nội dung được sinh; bản nháp chưa được lưu.")
+            if selected_document_ids:
+                current_documents = (await db.scalars(select(Document).where(
+                    Document.company_id == company_id,
+                    Document.id.in_(selected_document_ids),
+                ).with_for_update())).all()
+                current_document_by_id = {item.id: item for item in current_documents}
+                if len(current_document_by_id) != len(selected_document_ids) or any(
+                    item.deleted_at is not None
+                    or not item.is_active
+                    or item.status != "ready"
+                    or item.knowledge_status != "ready"
+                    or selected_document_state.get(item.id) != (item.source_version, item.source_hash, item.parser_version)
+                    for item in current_documents
+                ):
+                    raise ContentGenerationFailure("selected_document_context_stale", "Một tài liệu đã đổi hoặc không còn sẵn sàng trong lúc AI xử lý. Hãy tải lại bài và gửi lại yêu cầu.")
             created_posts: list[str] = []
             metadata_items: list[dict[str, Any]] = []
             total_repairs = 0
@@ -598,6 +612,10 @@ async def content_generation_task_async(
                     "citations": citation_data,
                     "evidence_ids": generated_post.get("evidence_ids", []),
                     "generation_metadata": metadata,
+                    "document_selection": {
+                        "document_ids": selected_document_ids,
+                        "document_usage_note": request_data.get("document_usage_note"),
+                    },
                 }
                 if item.get("slot_id"):
                     content["content_slot_id"] = item["slot_id"]
@@ -616,6 +634,10 @@ async def content_generation_task_async(
                     next_version = locked_post.current_version + 1
                     scope = request_data.get("scope", "all")
                     content = dict(locked_post.current_json)
+                    content["document_selection"] = {
+                        "document_ids": selected_document_ids,
+                        "document_usage_note": request_data.get("document_usage_note"),
+                    }
                     if scope in {"caption", "all"}:
                         content.update({
                             "caption": generated_post["caption"],
@@ -712,6 +734,9 @@ async def content_generation_task_async(
                     "source_count": len(context),
                     "brand_version": brand_version,
                     "campaign_version": campaign_version,
+                    "document_ids": selected_document_ids,
+                    "document_usage_note": request_data.get("document_usage_note"),
+                    "used_document_ids": sorted({str(item.get("document_id")) for item in context if item.get("document_id")}),
                 },
             ))
             db.add(AuditEvent(
@@ -735,6 +760,8 @@ async def content_generation_task_async(
                 "model": metadata_items[0]["model"] if metadata_items else settings.llm_default_model,
                 "retrieval_mode": settings.retrieval_mode,
                 "source_count": len(context),
+                "selected_document_ids": selected_document_ids,
+                "used_document_ids": sorted({str(item.get("document_id")) for item in context if item.get("document_id")}),
                 "repair_attempts": total_repairs,
                 "estimated_cost_usd": None,
                 "estimated_cost_available": False,

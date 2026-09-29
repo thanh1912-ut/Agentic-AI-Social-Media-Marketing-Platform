@@ -1845,6 +1845,10 @@ export interface components {
         };
         /** BrandProfileOut */
         readonly BrandProfileOut: {
+            /** Applied At */
+            readonly applied_at?: string | null;
+            /** Applied By */
+            readonly applied_by?: string | null;
             readonly brand_voice: components["schemas"]["BrandProfileFieldOut"];
             readonly business_name: components["schemas"]["BrandProfileFieldOut"];
             readonly competitors: components["schemas"]["BrandProfileFieldOut"];
@@ -1861,6 +1865,14 @@ export interface components {
             readonly id: string;
             readonly industry: components["schemas"]["BrandProfileFieldOut"];
             readonly products: components["schemas"]["BrandProfileFieldOut"];
+            /**
+             * Profile Mode
+             * @default legacy
+             * @enum {string}
+             */
+            readonly profile_mode: "legacy" | "manual_text_v1";
+            /** Profile Text */
+            readonly profile_text?: string | null;
             readonly target_audience: components["schemas"]["BrandProfileFieldOut"];
             readonly tone_keywords: components["schemas"]["BrandProfileFieldOut"];
             /**
@@ -2472,10 +2484,10 @@ export interface components {
             readonly processed_at?: string | null;
             /**
              * Profile Status
-             * @default pending
+             * @default not_applicable
              * @enum {string}
              */
-            readonly profile_status: "pending" | "ready" | "not_available" | "failed";
+            readonly profile_status: "pending" | "ready" | "not_available" | "not_applicable" | "failed";
             /** Progress */
             readonly progress: number | null;
             /**
@@ -2484,6 +2496,11 @@ export interface components {
              * @enum {string}
              */
             readonly retrieval_mode: "lexical" | "semantic_vector" | "not_available";
+            /**
+             * Selectable For Content
+             * @default false
+             */
+            readonly selectable_for_content: boolean;
             /** Size */
             readonly size: number;
             /** Status */
@@ -2664,6 +2681,10 @@ export interface components {
             readonly campaign_id: string;
             /** Count */
             readonly count: number;
+            /** Document Ids */
+            readonly document_ids?: readonly string[];
+            /** Document Usage Note */
+            readonly document_usage_note?: string | null;
             /** End Date */
             readonly end_date?: string | null;
             /** Formats */
@@ -3859,6 +3880,10 @@ export interface components {
         };
         /** ReviseWithAiRequest */
         readonly ReviseWithAiRequest: {
+            /** Document Ids */
+            readonly document_ids?: readonly string[] | null;
+            /** Document Usage Note */
+            readonly document_usage_note?: string | null;
             /** Instruction */
             readonly instruction: string;
             /**
@@ -3935,6 +3960,8 @@ export interface components {
             readonly confirm: boolean;
             /** Fields */
             readonly fields?: readonly components["schemas"]["ProfileFieldUpdate"][];
+            /** Profile Text */
+            readonly profile_text?: string | null;
             /** Version */
             readonly version: number;
         };

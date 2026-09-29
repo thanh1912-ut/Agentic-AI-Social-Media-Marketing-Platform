@@ -32,6 +32,7 @@ import {
 import { useMocks } from '@/lib/api/config';
 import {
   useDecideApproval,
+  useDocuments,
   usePost,
   usePostVersions,
   usePostReviews,
@@ -118,6 +119,7 @@ export default function PostEditorPage() {
   const { workspaces } = useSession();
   const workspace = workspaces.find((item) => item.id === workspaceId);
   const post = usePost(workspace ? workspaceId : '', postId);
+  const documents = useDocuments(workspace ? workspaceId : '');
   const versions = usePostVersions(workspace ? workspaceId : '', postId);
   const reviews = usePostReviews(workspace ? workspaceId : '', postId);
   const runReview = useRunPostReview(workspaceId, postId);
@@ -137,6 +139,8 @@ export default function PostEditorPage() {
   const [compareVersion, setCompareVersion] = useState<number | null>(null);
   const [revisionInstruction, setRevisionInstruction] = useState('');
   const [revisionScope, setRevisionScope] = useState<NonNullable<ReviseWithAiRequest['scope']>>('all');
+  const [revisionDocumentIds, setRevisionDocumentIds] = useState<string[]>([]);
+  const [revisionDocumentNote, setRevisionDocumentNote] = useState('');
   const [revisionJobId, setRevisionJobId] = useState<string | null>(null);
   const refreshedRevisionJob = useRef<string | null>(null);
   const revisionJob = useJob(revisionJobId);
@@ -146,6 +150,8 @@ export default function PostEditorPage() {
     setCaption(post.data.current.caption);
     setHashtags(post.data.current.hashtags.join(' '));
     setSelectedMedia(post.data.current.media.filter((item) => item.source === 'uploaded'));
+    setRevisionDocumentIds(post.data.current.document_selection?.document_ids ?? []);
+    setRevisionDocumentNote(post.data.current.document_selection?.document_usage_note ?? '');
     setMediaChanged(false);
     setNote('');
   }, [post.data]);
@@ -220,7 +226,7 @@ export default function PostEditorPage() {
     event.preventDefault();
     const instruction = revisionInstruction.trim();
     if (!instruction) return;
-    reviseWithAi.mutate({ version: current.version, instruction, scope: revisionScope }, {
+    reviseWithAi.mutate({ version: current.version, instruction, scope: revisionScope, document_ids: revisionDocumentIds, document_usage_note: revisionDocumentNote.trim() || undefined }, {
       onSuccess: (accepted) => setRevisionJobId(accepted.job_id),
     });
   }
@@ -251,7 +257,7 @@ export default function PostEditorPage() {
       {hasBlockingError ? <VersionConflictNotice currentVersion={apiError?.currentVersion} onReload={() => { void post.refetch(); void versions.refetch(); }} /> : null}
       {update.error && !hasBlockingError ? <ErrorPanel title="Không lưu được phiên bản mới" message={apiError?.message ?? 'Hãy thử lại.'} code={apiError?.code} requestId={apiError?.requestId} retryable={apiError?.retryable} onRetry={() => update.reset()} /> : null}
 
-      <Card title="Yêu cầu AI sửa" description="AI dùng Brand Profile đã xác nhận và nguồn phù hợp để tạo phiên bản mới. Bài vẫn cần người dùng duyệt; AI không đăng bài.">
+      <Card title="Yêu cầu AI sửa" description="AI dùng hồ sơ thương hiệu do Owner viết và chỉ các tài liệu bạn chọn để tạo phiên bản mới. Bài vẫn cần người dùng duyệt; AI không đăng bài.">
         {canGenerate ? <form onSubmit={requestAiRevision} className="space-y-3">
           <div>
             <label htmlFor="ai-revision-instruction" className="block text-sm font-medium text-slate-700">Bạn muốn sửa thế nào?</label>
@@ -266,6 +272,18 @@ export default function PostEditorPage() {
               <option value="all">Tất cả nội dung AI hỗ trợ</option>
             </select>
           </div>
+          <fieldset className="space-y-2 rounded-lg border border-slate-200 p-3">
+            <legend className="px-1 text-sm font-medium text-slate-800">Tài liệu tham khảo cho lần sửa này</legend>
+            <p className="text-xs text-slate-600">Lựa chọn hiện tại của bài được nạp sẵn. Bỏ hết lựa chọn để sửa chỉ dựa trên hồ sơ thương hiệu và yêu cầu của bạn.</p>
+            {documents.isPending ? <p className="text-sm text-slate-600">Đang tải tài liệu…</p> : documents.isError ? <p role="alert" className="text-sm text-rose-700">Không tải được danh sách tài liệu. Hãy thử lại trước khi gửi yêu cầu sửa.</p> : documents.data?.length ? documents.data.map((document) => <label key={document.id} className={`flex items-start gap-2 rounded-lg border p-3 text-sm ${document.selectable_for_content ? 'border-slate-200 bg-white' : 'border-slate-100 bg-slate-50 text-slate-500'}`}>
+              <input type="checkbox" checked={revisionDocumentIds.includes(document.id)} disabled={!document.selectable_for_content || revisionDocumentIds.length >= 20 && !revisionDocumentIds.includes(document.id)} onChange={(event) => setRevisionDocumentIds((currentIds) => event.target.checked ? [...currentIds, document.id] : currentIds.filter((id) => id !== document.id))} />
+              <span><span className="font-medium">{document.filename}</span><span className="ml-2 text-xs">{document.selectable_for_content ? 'Sẵn sàng' : revisionDocumentIds.includes(document.id) ? 'Đã chọn nhưng cần chọn lại' : 'Chưa sẵn sàng'}</span></span>
+            </label>) : <p className="text-sm text-slate-600">Chưa có tài liệu sẵn sàng. Có thể sửa bài mà không cần tài liệu. <Link href={`/w/${workspaceId}/documents`} className="font-medium underline">Mở mục Tài liệu</Link></p>}
+            {revisionDocumentIds.some((id) => !documents.data?.some((document) => document.id === id && document.selectable_for_content)) ? <p role="alert" className="text-sm text-amber-800">Một tài liệu đang chọn đã bị xóa hoặc chưa sẵn sàng. Hãy bỏ chọn hoặc chọn nguồn khác.</p> : null}
+            <label htmlFor="revision-document-usage-note" className="block text-sm font-medium text-slate-800">Bạn muốn dùng tài liệu này như thế nào?</label>
+            <textarea id="revision-document-usage-note" value={revisionDocumentNote} onChange={(event) => setRevisionDocumentNote(event.target.value)} maxLength={4000} rows={2} placeholder="Ví dụ: Chỉ dùng bảng giá còn hiệu lực, không suy ra số liệu khác." className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" />
+            <button type="button" className="text-sm font-medium text-indigo-700 underline" onClick={() => { setRevisionDocumentIds([]); setRevisionDocumentNote(''); }}>Bỏ hết tài liệu</button>
+          </fieldset>
           <Button type="submit" loading={reviseWithAi.isPending || revisionJob.data?.status === 'queued' || revisionJob.data?.status === 'running'} disabled={!revisionInstruction.trim() || current.status === 'scheduled' || current.status === 'published'} disabledReason={current.status === 'scheduled' || current.status === 'published' ? 'Bài đã lên lịch hoặc đã đăng.' : 'Nhập yêu cầu sửa trước.'}>Tạo phiên bản AI sửa</Button>
           {!canGenerate ? <PermissionNotice message={permissionDeniedReason(workspace, PERMISSIONS.POST_GENERATE)} requiredPermission={PERMISSIONS.POST_GENERATE} /> : null}
           {reviseWithAi.error ? <ErrorPanel title="Không gửi được yêu cầu AI sửa" message={reviseWithAi.error instanceof ApiError ? reviseWithAi.error.message : 'Hãy thử lại.'} code={reviseWithAi.error instanceof ApiError ? reviseWithAi.error.code : undefined} requestId={reviseWithAi.error instanceof ApiError ? reviseWithAi.error.requestId : undefined} retryable={reviseWithAi.error instanceof ApiError ? reviseWithAi.error.retryable : false} onRetry={() => reviseWithAi.reset()} /> : null}

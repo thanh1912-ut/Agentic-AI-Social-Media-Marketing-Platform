@@ -139,6 +139,8 @@ class GenerateContentRequest(StrictModel):
     start_date: date | None = None
     end_date: date | None = None
     instruction: str | None = Field(default=None, max_length=2000)
+    document_ids: list[str] = Field(default_factory=list, max_length=20)
+    document_usage_note: str | None = Field(default=None, max_length=4000)
 
     @model_validator(mode="after")
     def date_range_is_valid(self) -> "GenerateContentRequest":
@@ -146,6 +148,8 @@ class GenerateContentRequest(StrictModel):
             raise ValueError("end_date cannot be earlier than start_date")
         if self.slot_id and self.count != 1:
             raise ValueError("slot generation requires count=1")
+        if len(self.document_ids) != len(set(self.document_ids)):
+            raise ValueError("document_ids must be unique")
         return self
 
 
@@ -189,6 +193,14 @@ class ReviseWithAiRequest(StrictModel):
     version: int = Field(ge=1)
     instruction: str = Field(min_length=1, max_length=2000)
     scope: Literal["caption", "hashtags", "media", "all"] = "all"
+    document_ids: list[str] | None = Field(default=None, max_length=20)
+    document_usage_note: str | None = Field(default=None, max_length=4000)
+
+    @model_validator(mode="after")
+    def selected_documents_are_unique(self) -> "ReviseWithAiRequest":
+        if self.document_ids is not None and len(self.document_ids) != len(set(self.document_ids)):
+            raise ValueError("document_ids must be unique")
+        return self
 
 
 class PostOut(StrictModel):

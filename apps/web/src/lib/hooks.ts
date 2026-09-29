@@ -203,10 +203,8 @@ export function newDocumentUploadKey(): string {
 export function useReprocessDocument(workspaceId: string) {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: ({ documentId, mode }: { documentId: string; mode?: 'document' | 'profile_only' }) =>
-      mode === 'profile_only'
-        ? api.document.reprocessProfile(workspaceId, documentId)
-        : api.document.reprocess(workspaceId, documentId),
+    mutationFn: ({ documentId }: { documentId: string; mode?: 'document' }) =>
+      api.document.reprocess(workspaceId, documentId),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: queryKeys.documents(workspaceId) });
     },
@@ -239,6 +237,14 @@ export function useBrandProfile(
     queryKey: queryKeys.brandProfile(workspaceId),
     queryFn: () => api.brand.get(workspaceId),
     enabled: workspaceId !== '' && enabled,
+  });
+}
+
+export function useBrandProfileRevisions(workspaceId: string) {
+  return useQuery({
+    queryKey: [...queryKeys.brandProfile(workspaceId), 'revisions'],
+    queryFn: () => api.brand.revisions(workspaceId),
+    enabled: workspaceId !== '',
   });
 }
 

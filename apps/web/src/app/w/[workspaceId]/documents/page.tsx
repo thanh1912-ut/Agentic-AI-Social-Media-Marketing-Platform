@@ -30,7 +30,6 @@ import { formatBytes, formatDateTime, formatNumber, formatRelative } from '@/lib
 import {
   extractionStatusMeta,
   knowledgeStatusMeta,
-  profileStatusMeta,
   retrievalModeMeta,
 } from '@/lib/processing-status';
 import {
@@ -502,7 +501,7 @@ export default function TrangTaiLieu() {
       {/* ---------------------------------------------------------------- */}
       <Card
         title="Tài liệu đã tải lên"
-        description="Theo dõi riêng việc đọc nội dung, khả năng truy xuất knowledge và trạng thái tạo Brand Profile."
+        description="Tài liệu được đọc và lưu làm nguồn tham khảo cho Content Agent. Chọn nguồn cần dùng riêng trong từng yêu cầu viết bài."
         actions={
           <Button variant="secondary" size="sm" onClick={() => void documentsQuery.refetch()}>
             Làm mới danh sách
@@ -585,7 +584,6 @@ export default function TrangTaiLieu() {
                     const isPendingDelete = pendingDeleteId === doc.id;
                     const extractionMeta = extractionStatusMeta(doc.extraction_status);
                     const knowledgeMeta = knowledgeStatusMeta(doc.knowledge_status);
-                    const profileMeta = profileStatusMeta(doc.profile_status);
                     const retrievalMeta = retrievalModeMeta(doc.retrieval_mode);
 
                     return (
@@ -632,21 +630,6 @@ export default function TrangTaiLieu() {
                                 >
                                   Đọc lại tài liệu
                                 </Button>
-                              ) : null}
-                              {(doc.extraction_status === 'extracted' || doc.extraction_status === 'partial') && doc.profile_status !== 'ready' ? (
-                                <Button
-                                  variant="secondary"
-                                  size="sm"
-                                  loading={reprocess.isPending && reprocess.variables?.documentId === doc.id && reprocess.variables?.mode === 'profile_only'}
-                                  disabled={!canUpload}
-                                  disabledReason={uploadDeniedReason}
-                                  onClick={() => {
-                                    setLastReprocessId(doc.id);
-                                    reprocess.mutate({ documentId: doc.id, mode: 'profile_only' }, {
-                                      onSuccess: (response) => router.push(`/w/${workspaceId}/jobs/${response.job_id}`),
-                                    });
-                                  }}
-                                >Thử lại Brand Profile</Button>
                               ) : null}
                               {doc.extraction_status === 'extracted' || doc.extraction_status === 'partial' ? (
                                 <Button variant="ghost" size="sm" aria-expanded={expandedDocumentId === doc.id} onClick={() => setExpandedDocumentId((current) => current === doc.id ? null : doc.id)}>{expandedDocumentId === doc.id ? 'Ẩn nội dung' : 'Xem nội dung đã đọc'}</Button>
@@ -696,7 +679,6 @@ export default function TrangTaiLieu() {
                                 { label: 'Đọc tài liệu', meta: extractionMeta },
                                 { label: 'Knowledge / truy xuất', meta: knowledgeMeta },
                                 { label: 'Mode truy xuất', meta: retrievalMeta },
-                                { label: 'Brand Profile', meta: profileMeta },
                               ].map(({ label, meta }) => (
                                 <div key={label} className="rounded-lg border border-slate-200 bg-white p-3">
                                   <p className="text-xs font-medium text-slate-600">{label}</p>
@@ -752,7 +734,6 @@ export default function TrangTaiLieu() {
                                 </p>
                               ) : null}
                               {doc.extraction_status === 'partial' ? <p className="mt-2 text-sm text-amber-900">Đã lưu nội dung một phần. Kiểm tra cảnh báo trích xuất trước khi dùng làm nguồn.</p> : null}
-                              {doc.profile_status === 'not_available' ? <p className="mt-2 text-sm text-amber-900">Tài liệu đã được đọc và lưu; Brand Profile chưa tạo. Cấu hình AI rồi thử lại riêng bước này.</p> : null}
                             </td>
                           </tr>
                         ) : null}

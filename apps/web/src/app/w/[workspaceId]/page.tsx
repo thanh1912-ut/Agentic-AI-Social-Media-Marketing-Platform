@@ -13,20 +13,17 @@ import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
 
 import {
-  BRAND_FIELD_KEYS,
   DOCUMENT_ERROR_LABELS,
   DOCUMENT_STATUS_LABELS,
   DOCUMENT_STATUSES,
-  FIELD_REVIEW_STATES,
-  type BrandFieldKey,
   type OnboardingState,
 } from '@agentic/contracts';
 
 import { useSession } from '@/components/session-gate';
 import { ApiError } from '@/lib/api';
 import { useMocks } from '@/lib/api/config';
-import type { ApiBrandProfile, ApiDocument as DocumentUpload } from '@/lib/api/types';
-import { formatNumber, formatPercent, formatRelative } from '@/lib/format';
+import type { ApiDocument as DocumentUpload } from '@/lib/api/types';
+import { formatNumber, formatRelative } from '@/lib/format';
 import { useBrandProfile, useDocuments, useOnboarding } from '@/lib/hooks';
 import {
   Button,
@@ -42,23 +39,6 @@ import {
   UnavailableNotice,
   type Tone,
 } from '@/components/ui';
-
-/**
- * Thứ tự hiển thị trường hồ sơ thương hiệu. Danh sách khoá lấy từ hợp đồng,
- * không viết lại chuỗi ở đây.
- */
-const BRAND_FIELD_ORDER: BrandFieldKey[] = [
-  BRAND_FIELD_KEYS.BUSINESS_NAME,
-  BRAND_FIELD_KEYS.INDUSTRY,
-  BRAND_FIELD_KEYS.DESCRIPTION,
-  BRAND_FIELD_KEYS.PRODUCTS,
-  BRAND_FIELD_KEYS.TARGET_AUDIENCE,
-  BRAND_FIELD_KEYS.BRAND_VOICE,
-  BRAND_FIELD_KEYS.TONE_KEYWORDS,
-  BRAND_FIELD_KEYS.DO_NOT_USE,
-  BRAND_FIELD_KEYS.COMPETITORS,
-  BRAND_FIELD_KEYS.CONTACT,
-];
 
 /**
  * KHOẢNG TRỐNG HỢP ĐỒNG: `OnboardingState.steps[].status` chưa có bảng nhãn
@@ -145,23 +125,6 @@ function resolveStepTarget(
   return { href: `/w/${workspaceId}${segment === '' ? '' : `/${segment}`}` };
 }
 
-function countBrandFields(profile: ApiBrandProfile) {
-  let awaiting = 0;
-  let missing = 0;
-  let confirmed = 0;
-  for (const key of BRAND_FIELD_ORDER) {
-    const state = profile[key].state;
-    if (state === FIELD_REVIEW_STATES.SUGGESTED || state === FIELD_REVIEW_STATES.CONFLICT) {
-      awaiting += 1;
-    } else if (state === FIELD_REVIEW_STATES.MISSING) {
-      missing += 1;
-    } else if (state === FIELD_REVIEW_STATES.CONFIRMED) {
-      confirmed += 1;
-    }
-  }
-  return { awaiting, missing, confirmed, total: BRAND_FIELD_ORDER.length };
-}
-
 /**
  * Khối lỗi dùng chung trong trang: lỗi thiếu quyền hiển thị bằng `PermissionNotice`
  * (kèm quyền còn thiếu), các lỗi khác dùng `ErrorPanel` và chỉ hiện "Thử lại" khi
@@ -211,7 +174,7 @@ export default function TrangTongQuan() {
   const mocksEnabled = useMocks();
 
   const onboarding = useOnboarding(activeId);
-  const brand = useBrandProfile(activeId, mocksEnabled);
+  const brand = useBrandProfile(activeId);
   const documents = useDocuments(activeId);
 
   // Nhãn dữ liệu demo: `useMocks()` chỉ đọc được trong trình duyệt nên phải chờ
@@ -257,11 +220,7 @@ export default function TrangTongQuan() {
     );
   }
 
-  const brandCounts = brand.data ? countBrandFields(brand.data) : null;
-  const completeness =
-    brand.data && typeof brand.data.completeness === 'number' && Number.isFinite(brand.data.completeness)
-      ? brand.data.completeness
-      : null;
+  const profileApplied = brand.data?.profile_mode === 'manual_text_v1' && Boolean(brand.data.profile_text?.trim());
 
   const docs = documents.data ?? null;
   const readyDocs = docs?.filter((doc) => doc.status === DOCUMENT_STATUSES.READY) ?? [];
@@ -397,7 +356,7 @@ export default function TrangTongQuan() {
             error={brand.error}
             onRetry={() => void brand.refetch()}
           />
-        ) : brandCounts === null ? (
+        ) : !brand.data ? (
           <EmptyState
             title="Chưa đọc được hồ sơ thương hiệu"
             description="Hệ thống không trả về dữ liệu hồ sơ cho doanh nghiệp này. Hãy thử tải lại trang."
@@ -405,26 +364,15 @@ export default function TrangTongQuan() {
         ) : (
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
             <StatCard
-              label="Độ hoàn thiện hồ sơ"
-              value={completeness === null ? '—' : formatPercent(completeness * 100, 0)}
-              hint={
-                completeness === null
-                  ? 'Máy chủ chưa trả về độ hoàn thiện nên chưa hiển thị được con số.'
-                  : `${formatNumber(brandCounts.confirmed)}/${formatNumber(brandCounts.total)} trường đã được xác nhận.`
-              }
-              tone={completeness !== null && completeness < 1 ? 'warning' : 'neutral'}
+              label="Hồ sơ thương hiệu cho AI"
+              value={profileApplied ? 'Đã áp dụng' : 'Cần Owner nhập'}
+              hint={profileApplied ? 'Content Agent dùng nguyên văn hồ sơ do Owner viết.' : 'Hồ sơ cũ chỉ để tham khảo; Owner cần tự viết và lưu.'}
+              tone={profileApplied ? 'success' : 'warning'}
             />
             <StatCard
-              label="Trường đang chờ xác nhận"
-              value={formatNumber(brandCounts.awaiting)}
-              hint="Gồm trường AI gợi ý và trường tài liệu mâu thuẫn — bạn cần chọn hoặc xác nhận."
-              tone={brandCounts.awaiting > 0 ? 'warning' : 'neutral'}
-            />
-            <StatCard
-              label="Trường còn thiếu"
-              value={formatNumber(brandCounts.missing)}
-              hint="Chưa tìm thấy thông tin trong tài liệu đã tải lên và chưa được nhập tay."
-              tone={brandCounts.missing > 0 ? 'warning' : 'neutral'}
+              label="Phiên bản hồ sơ"
+              value={formatNumber(brand.data.version)}
+              hint={brand.data.applied_at ? `Áp dụng ${formatRelative(brand.data.applied_at)}.` : 'Chưa có phiên bản do Owner áp dụng.'}
             />
             <StatCard
               label="Tài liệu đã xử lý xong"
@@ -434,6 +382,12 @@ export default function TrangTongQuan() {
                   ? 'Chưa tải được danh sách tài liệu nên chưa đếm được.'
                   : `Trên tổng số ${formatNumber(docs.length)} tài liệu đã tải lên.`
               }
+            />
+            <StatCard
+              label="Tài liệu cần xử lý lại"
+              value={docs === null ? '—' : formatNumber(failedDocs.length)}
+              hint={docs === null ? 'Chưa tải được danh sách tài liệu.' : 'Lỗi đọc tài liệu được báo riêng với lỗi AI.'}
+              tone={failedDocs.length > 0 ? 'warning' : 'neutral'}
             />
           </div>
         )}

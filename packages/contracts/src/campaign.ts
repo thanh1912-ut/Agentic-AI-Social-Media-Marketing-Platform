@@ -148,6 +148,8 @@ export interface PostVersion {
   created_at: Timestamp;
   /** Ghi chú khi sửa, vd prompt người dùng nhập cho "yêu cầu AI sửa". */
   note?: string;
+  /** Tài liệu người dùng đã chọn cho lần sinh phiên bản này. */
+  document_selection?: { document_ids: Id[]; document_usage_note?: string | null };
   /** Feedback của AI review cho version này. */
   review?: AiReview;
   /** Version này đã được duyệt. */
@@ -224,6 +226,9 @@ export interface ReviseWithAiRequest {
   instruction: string;
   /** Phạm vi sửa. */
   scope?: 'caption' | 'hashtags' | 'media' | 'all';
+  /** Bỏ trường để kế thừa lựa chọn cũ; [] nghĩa là không dùng tài liệu. */
+  document_ids?: Id[];
+  document_usage_note?: string;
 }
 
 /** Yêu cầu sinh nội dung hàng loạt. Tối đa 10 bài mỗi lần. */
@@ -240,6 +245,9 @@ export interface GenerateContentRequest {
   end_date?: DateString;
   /** Chỉ dẫn thêm cho AI. */
   instruction?: string;
+  /** Bỏ qua hoặc [] thì không dùng tài liệu tải lên nào. */
+  document_ids?: Id[];
+  document_usage_note?: string;
 }
 
 export interface GenerateContentResponse {

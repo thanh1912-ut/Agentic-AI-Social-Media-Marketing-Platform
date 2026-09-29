@@ -11,7 +11,7 @@ from services.agents.model import StructuredModel, context_payload
 
 
 class ContentAgent:
-    """Generate an immutable new post version from a confirmed profile."""
+    """Generate a new post version from Owner-authored brand context."""
 
     def __init__(self, model: StructuredModel) -> None:
         self.model = model
@@ -30,14 +30,18 @@ class ContentAgent:
         repair=None,
     ) -> tuple[GeneratedPost, GenerationMetadata | None, int]:
         if profile.requires_confirmation:
-            raise ValueError("brand profile must be user-confirmed before content generation")
+            raise ValueError("Owner-authored brand profile must be applied before content generation")
         if next_version < 1:
             raise ValueError("next_version must be positive")
         raw, metadata = self.model.generate(
             system_prompt=CONTENT_REVISE_SYSTEM_PROMPT if operation == "revise" else CONTENT_POST_SYSTEM_PROMPT,
             input_payload={
                 # The provider needs profile content, not the database brand ID.
-                "profile": profile.model_dump(mode="json") | {"brand_id": "confirmed-brand"},
+                "owner_authored_brand_profile": {
+                    "profile_text": profile.manual_context,
+                    "profile_version": profile.profile_version,
+                    "authorship": "workspace_owner",
+                },
                 "brief": brief.model_dump(mode="json"),
                 "base_version": base_version,
                 "next_version": next_version,

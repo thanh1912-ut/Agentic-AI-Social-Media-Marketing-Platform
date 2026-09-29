@@ -3,9 +3,9 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any, Literal
+from typing import Annotated, Any, Literal
 
-from pydantic import BaseModel, ConfigDict, EmailStr, Field
+from pydantic import BaseModel, ConfigDict, EmailStr, Field, StringConstraints
 
 
 class StrictSchema(BaseModel):
@@ -167,7 +167,8 @@ class DocumentOut(StrictSchema):
     extraction_status: Literal["pending", "extracted", "partial", "metadata_only", "failed"] = "pending"
     knowledge_status: Literal["pending", "ready", "not_available", "failed"] = "pending"
     retrieval_mode: Literal["lexical", "semantic_vector", "not_available"] = "not_available"
-    profile_status: Literal["pending", "ready", "not_available", "failed"] = "pending"
+    profile_status: Literal["pending", "ready", "not_available", "not_applicable", "failed"] = "not_applicable"
+    selectable_for_content: bool = False
     uploaded_by: str
     uploaded_at: datetime
     processed_at: datetime | None = None
@@ -291,6 +292,10 @@ class BrandProfileOut(StrictSchema):
     id: str
     workspace_id: str
     version: int
+    profile_text: str | None = None
+    profile_mode: Literal["legacy", "manual_text_v1"] = "legacy"
+    applied_at: datetime | None = None
+    applied_by: str | None = None
     business_name: BrandProfileFieldOut
     industry: BrandProfileFieldOut
     description: BrandProfileFieldOut
@@ -314,6 +319,7 @@ class ProfileFieldUpdate(StrictSchema):
 
 class UpdateBrandProfileRequest(StrictSchema):
     version: int = Field(ge=1)
+    profile_text: Annotated[str, StringConstraints(strip_whitespace=False, min_length=1, max_length=20_000)] | None = None
     fields: list[ProfileFieldUpdate] = Field(default_factory=list, max_length=10)
     confirm: bool = False
 

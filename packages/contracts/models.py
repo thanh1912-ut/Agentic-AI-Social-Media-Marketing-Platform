@@ -98,6 +98,8 @@ class BrandFact(StrictModel):
 class BrandProfile(StrictModel):
     brand_id: NonEmpty
     business: NonEmpty
+    # Owner-authored prose, preserved verbatim and never synthesized from files.
+    manual_context: str | None = None
     products: list[NonEmpty] = Field(default_factory=list)
     audience: list[NonEmpty] = Field(default_factory=list)
     voice: list[NonEmpty] = Field(default_factory=list)

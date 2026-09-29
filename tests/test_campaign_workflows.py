@@ -464,7 +464,7 @@ def test_mailguard_conversion_receiver_is_tenant_bound_and_deduplicates(workflow
     assert reissued_replay.json()["duplicate"] is True
 
 
-def test_content_generation_requires_current_confirmed_brand_profile(workflow_api, monkeypatch) -> None:
+def test_content_generation_requires_owner_authored_manual_profile(workflow_api, monkeypatch) -> None:
     client, _session_factory = workflow_api
     owner = _register(client, "content-confirmation@example.com")
     workspace_id = owner["active_workspace_id"]
@@ -504,7 +504,7 @@ def test_content_generation_requires_current_confirmed_brand_profile(workflow_ap
         json={"campaign_id": campaign.json()["id"], "count": 1},
     )
     assert response.status_code == 409
-    assert response.json()["error"]["code"] == "brand_profile_not_confirmed"
+    assert response.json()["error"]["code"] == "brand_profile_manual_required"
 
 
 def test_content_slot_reservation_releases_on_failure_and_cancel_and_reacquires_on_retry(workflow_api, monkeypatch) -> None:
@@ -530,14 +530,7 @@ def test_content_slot_reservation_releases_on_failure_and_cancel_and_reacquires_
     profile = client.get(f"/api/v1/workspaces/{workspace_id}/brand-profile").json()
     confirmed = client.patch(f"/api/v1/workspaces/{workspace_id}/brand-profile", headers=headers, json={
         "version": profile["version"],
-        "fields": [
-            {"key": "business_name", "value": "Bếp Mộc"},
-            {"key": "description", "value": "Quán món Việt cho gia đình"},
-            {"key": "products", "value": [{"name": "Cơm gà"}]},
-            {"key": "target_audience", "value": ["Gia đình"]},
-            {"key": "tone_keywords", "value": ["Thân thiện"]},
-        ],
-        "confirm": True,
+        "profile_text": "Bên mình bán cơm gà cho gia đình. Viết gần gũi và rõ ràng.",
     })
     assert confirmed.status_code == 200, confirmed.text
 
@@ -625,13 +618,7 @@ def test_content_generation_job_persists_cited_draft_and_is_idempotent(workflow_
     updated = client.patch(
         f"/api/v1/workspaces/{workspace_id}/brand-profile",
         headers=headers,
-        json={"version": profile["version"], "fields": [
-            {"key": "business_name", "value": "Bếp Mộc"},
-            {"key": "description", "value": "Quán món Việt cho gia đình"},
-            {"key": "products", "value": [{"name": "Cơm gà"}]},
-            {"key": "target_audience", "value": ["Gia đình"]},
-            {"key": "tone_keywords", "value": ["Thân thiện"]},
-        ], "confirm": True},
+        json={"version": profile["version"], "profile_text": "Bên mình bán cơm gà cho gia đình. Viết gần gũi và rõ ràng."},
     )
     assert updated.status_code == 200, updated.text
     now = datetime.now(timezone.utc)
@@ -715,7 +702,7 @@ def test_content_generation_job_persists_cited_draft_and_is_idempotent(workflow_
         return None
     monkeypatch.setattr(campaign_workflows, "dispatch_content_generation_job", no_dispatch)
     request_headers = {**headers, "Idempotency-Key": "generation-content-0001"}
-    body = {"campaign_id": campaign_id, "count": 1, "slot_id": "slot-family-dinner"}
+    body = {"campaign_id": campaign_id, "count": 1, "slot_id": "slot-family-dinner", "document_ids": [document_id], "document_usage_note": "Dùng đúng nội dung trong menu."}
     accepted = client.post(f"/api/v1/workspaces/{workspace_id}/posts/generate", headers=request_headers, json=body)
     assert accepted.status_code == 202, accepted.text
     job_id = accepted.json()["job_id"]
@@ -756,6 +743,15 @@ def test_content_generation_job_persists_cited_draft_and_is_idempotent(workflow_
     fixed_model = FixedModel()
     asyncio.run(content_tasks.content_generation_task_async(job_id, agent=ContentAgent(fixed_model)))
     model_payload = json.dumps(fixed_model.last_input_payload, ensure_ascii=False)
+    assert fixed_model.last_input_payload["owner_authored_brand_profile"] == {
+        "profile_text": "Bên mình bán cơm gà cho gia đình. Viết gần gũi và rõ ràng.",
+        "profile_version": str(updated.json()["version"]),
+        "authorship": "workspace_owner",
+    }
+    assert {
+        item["document_id"] for item in fixed_model.last_input_payload["sources"]
+        if item.get("document_id") and item.get("source_kind") != "market_research"
+    } == {document_id}
     assert fixed_model.last_input_payload["content_requirements"]["strategy_summary"] == "Tập trung món cơm gà, bữa cơm ấm áp cho gia đình."
     assert fixed_model.last_input_payload["content_requirements"]["slot_topic"] == "Món cơm gà cho bữa tối cuối tuần"
     assert fixed_model.last_input_payload["content_requirements"]["start_date"] == "2026-09-15"
@@ -789,8 +785,14 @@ def test_content_generation_job_persists_cited_draft_and_is_idempotent(workflow_
     assert versions[0].source == "ai_generated"
     assert versions[0].generation_job_id == job_id
     assert posts[0].current_json["citations"][0]["document_id"] == document_id
+    assert posts[0].current_json["document_selection"] == {
+        "document_ids": [document_id],
+        "document_usage_note": "Dùng đúng nội dung trong menu.",
+    }
     assert posts[0].current_json["content_slot_id"] == "slot-family-dinner"
     assert posts[0].current_json["planned_date"] == "2026-09-15"
+    post_response = client.get(f"/api/v1/workspaces/{workspace_id}/posts/{posts[0].id}")
+    assert post_response.json()["current"]["document_selection"]["document_ids"] == [document_id]
     assert job.result["estimated_cost_available"] is False
 
     duplicate_after_completion = client.post(f"/api/v1/workspaces/{workspace_id}/posts/generate", headers=request_headers, json=body)
@@ -858,6 +860,11 @@ def test_content_generation_job_persists_cited_draft_and_is_idempotent(workflow_
     assert revised_versions[0].source == "ai_revised"
     assert revised_versions[0].generation_job_id == revise_job_id
     assert revised_versions[1].content_json["caption"] == posts[0].current_json["caption"]
+    assert revised_post.current_json["document_selection"]["document_ids"] == [document_id]
+    assert {
+        item["document_id"] for item in fixed_model.last_input_payload["sources"]
+        if item.get("document_id") and item.get("source_kind") != "market_research"
+    } == {document_id}
     assert fixed_model.last_system_prompt == CONTENT_REVISE_SYSTEM_PROMPT
     assert fixed_model.last_input_payload["content_requirements"]["existing_post"]["caption"] == posts[0].current_json["caption"]
 
@@ -886,6 +893,47 @@ def test_content_generation_job_persists_cited_draft_and_is_idempotent(workflow_
     assert ungrounded_job.error["code"] == "content_citations_missing"
     assert unchanged_post.current_version == 2
     assert saved_version_count == 2
+
+    async def unexpected_document_retrieval(self, *_args, **_kwargs):
+        pytest.fail("an empty document selection must not search the workspace knowledge store")
+
+    monkeypatch.setattr(content_tasks.PostgresKnowledgeIndex, "retrieve", unexpected_document_retrieval)
+
+    class NoCitationModel:
+        last_input_payload = None
+
+        def generate(self, *, system_prompt, input_payload, response_model):
+            self.last_input_payload = input_payload
+            return GeneratedPost(
+                base_version="ignored", version=1, channel="ignored",
+                caption="Một lời mời chia sẻ bữa cơm gia đình.",
+                hashtags=["#GiaDinh"], image_brief="Bữa cơm gia đình ấm cúng", citations=[],
+            ), None
+
+    no_document_model = NoCitationModel()
+    no_document_response = client.post(
+        f"/api/v1/workspaces/{workspace_id}/posts/generate",
+        headers={**headers, "Idempotency-Key": "generation-no-document-0001"},
+        json={"campaign_id": campaign_id, "count": 1, "pillars": ["product"], "formats": ["text"], "document_ids": []},
+    )
+    assert no_document_response.status_code == 202, no_document_response.text
+    no_document_job_id = no_document_response.json()["job_id"]
+    asyncio.run(content_tasks.content_generation_task_async(
+        no_document_job_id, agent=ContentAgent(no_document_model),
+    ))
+
+    async def no_document_state():
+        async with session_factory() as db:
+            return await db.get(Job, no_document_job_id)
+
+    no_document_job = asyncio.run(no_document_state())
+    assert no_document_job.status == "succeeded", no_document_job.error
+    assert no_document_job.result["selected_document_ids"] == []
+    assert no_document_model.last_input_payload["owner_authored_brand_profile"]["profile_text"].startswith("Bên mình bán cơm gà")
+    assert not any(
+        item.get("document_id") and item.get("source_kind") != "market_research"
+        for item in no_document_model.last_input_payload["sources"]
+    )
 
 
 def test_export_writes_downloadable_csv_and_is_idempotent(workflow_api, tmp_path, monkeypatch) -> None:

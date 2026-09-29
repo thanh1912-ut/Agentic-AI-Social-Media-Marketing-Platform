@@ -92,7 +92,7 @@ def test_brand_agent_rejects_citation_outside_context() -> None:
 def test_content_agent_requires_confirmation() -> None:
     profile = BrandProfile(brand_id="brand-1", business="Bếp Mộc")
     brief = CampaignBrief(objective="Tăng nhận biết", audience="Gia đình", channel="facebook")
-    with pytest.raises(ValueError, match="confirmed"):
+    with pytest.raises(ValueError, match="applied"):
         ContentAgent(FakeStructuredModel(object())).generate(
             profile=profile,
             brief=brief,

@@ -334,6 +334,7 @@ def test_document_limits_images_and_extracted_content_cursor(api_env):
 
 @pytest.mark.fixture_integration
 def test_upload_worker_profile_revision_confirm_and_tenant_isolation(api_env):
+    pytest.skip("Legacy test asserts AI-generated Brand Profile during ingestion; covered by manual-profile ingestion tests below.")
     client, sessions = api_env
     workspace_id, csrf = _register(client, "owner-one@example.com", "Bếp Mộc")
     uploaded = _upload(client, workspace_id, csrf, [("brand.txt", "Bếp Mộc phục vụ cơm gà cho gia đình.".encode())])
@@ -513,9 +514,96 @@ def test_upload_worker_profile_revision_confirm_and_tenant_isolation(api_env):
 
 
 @pytest.mark.fixture_integration
-def test_missing_deepseek_configuration_keeps_ingestion_ready_and_skips_profile(api_env, monkeypatch):
-    from services.worker.model_provider import AIConfigurationError
+def test_manual_profile_is_unchanged_by_document_ingestion(api_env, monkeypatch):
+    client, sessions = api_env
+    workspace_id, csrf = _register(client, "manual-profile-owner@example.com", "Bếp Mộc")
+    monkeypatch.setattr(
+        "services.worker.model_provider.configured_structured_model",
+        lambda: pytest.fail("manual profile save and document ingestion must not call the LLM"),
+    )
+    profile_url = f"/api/v1/workspaces/{workspace_id}/brand-profile"
+    initial = client.get(profile_url).json()
+    owner_text = "Bên mình bán cơm gà cho gia đình.\nViết gần gũi và rõ ràng."
+    applied = client.patch(profile_url, headers=csrf, json={"version": initial["version"], "profile_text": owner_text})
+    assert applied.status_code == 200, applied.text
+    assert applied.json()["profile_text"] == owner_text
+    assert applied.json()["profile_mode"] == "manual_text_v1"
+    applied_version = applied.json()["version"]
+    revisions = client.get(f"{profile_url}/revisions")
+    assert revisions.status_code == 200, revisions.text
+    assert revisions.json()[0]["profile"]["profile_text"] == owner_text
+    assert revisions.json()[0]["profile"]["applied_by"] == applied.json()["applied_by"]
 
+    with TestClient(app) as registration_client:
+        editor_workspace, _editor_csrf = _register(registration_client, "manual-profile-editor@example.com", "Editor Home")
+
+    async def grant_editor_membership():
+        from database.models import Membership, User
+        async with sessions() as db:
+            editor = await db.scalar(select(User).where(User.email == "manual-profile-editor@example.com"))
+            db.add(Membership(company_id=workspace_id, user_id=editor.id, role="editor", is_active=True))
+            await db.commit()
+
+    asyncio.run(grant_editor_membership())
+    with TestClient(app) as editor_client:
+        login = editor_client.post("/api/v1/auth/login", json={"email": "manual-profile-editor@example.com", "password": "secret123"})
+        assert login.status_code == 200, login.text
+        denied = editor_client.patch(profile_url, headers={"X-CSRF-Token": editor_client.cookies["agentic_csrf"]}, json={"version": applied_version, "profile_text": "Editor replacement"})
+        assert denied.status_code == 403
+
+    assert editor_workspace != workspace_id
+
+    uploaded = _upload(client, workspace_id, csrf, [("brand.txt", b"A price list and product facts for retrieval.")])
+    assert uploaded.status_code == 202, uploaded.text
+    job_id = uploaded.json()["job_id"]
+    document_id = uploaded.json()["job"]["result"]["document_ids"][0]
+    profile_only = client.post(
+        f"/api/v1/workspaces/{workspace_id}/documents/{document_id}/reprocess",
+        headers=csrf,
+        json={"mode": "profile_only"},
+    )
+    assert profile_only.status_code == 410
+    assert profile_only.json()["error"]["code"] == "brand_profile_generation_removed"
+    asyncio.run(tasks.ingest_document_task_batch_async(job_id, [document_id]))
+    asyncio.run(tasks.ingest_document_task_batch_async(job_id, [document_id]))
+
+    job = client.get(f"/api/v1/jobs/{job_id}").json()
+    document = client.get(f"/api/v1/workspaces/{workspace_id}/documents/{document_id}").json()
+    current_profile = client.get(profile_url).json()
+    assert job["status"] == "succeeded", job
+    assert job["result"]["knowledge_status"] == "ready"
+    assert job["result"]["profile_status"] == "not_applicable"
+    assert "profile_run" not in job["result"]
+    assert document["extraction_status"] == "extracted"
+    assert document["knowledge_status"] == "ready"
+    assert document["profile_status"] == "not_applicable"
+    assert document["selectable_for_content"] is True
+    assert current_profile["profile_text"] == owner_text
+    assert current_profile["version"] == applied_version
+
+    async def revision_and_chunks():
+        from database.models import Brand, BrandProfileRevision, KnowledgeChunk
+        async with sessions() as db:
+            brand = await db.scalar(select(Brand).where(Brand.company_id == workspace_id))
+            revisions = (await db.scalars(select(BrandProfileRevision).where(BrandProfileRevision.company_id == workspace_id))).all()
+            chunks = (await db.scalars(select(KnowledgeChunk).where(KnowledgeChunk.company_id == workspace_id))).all()
+            return brand, revisions, chunks
+
+    brand, revisions, chunks = asyncio.run(revision_and_chunks())
+    assert brand.version == applied_version
+    assert len(revisions) == 1 and revisions[0].profile_json["profile_text"] == owner_text
+    assert chunks and all(chunk.document_id == document_id for chunk in chunks)
+
+    same_text = client.patch(profile_url, headers=csrf, json={"version": applied_version, "profile_text": owner_text})
+    assert same_text.status_code == 200 and same_text.json()["version"] == applied_version
+    stale = client.patch(profile_url, headers=csrf, json={"version": 1, "profile_text": "stale text"})
+    assert stale.status_code == 409
+    legacy = client.patch(profile_url, headers=csrf, json={"version": applied_version, "fields": [{"key": "description", "value": "old format"}]})
+    assert legacy.status_code == 410
+
+
+@pytest.mark.fixture_integration
+def test_missing_deepseek_configuration_keeps_ingestion_ready_and_skips_profile(api_env, monkeypatch):
     client, _sessions = api_env
     workspace_id, csrf = _register(client, "missing-deepseek@example.com", "No LLM Co")
     uploaded = _upload(
@@ -528,11 +616,7 @@ def test_missing_deepseek_configuration_keeps_ingestion_ready_and_skips_profile(
     job_id = uploaded.json()["job_id"]
     document_id = uploaded.json()["job"]["result"]["document_ids"][0]
 
-    def no_deepseek_key():
-        raise AIConfigurationError("DEEPSEEK_API_KEY is required when LLM_PROVIDER=deepseek")
-
     monkeypatch.setattr(tasks, "configured_embedding_provider", lambda: None)
-    monkeypatch.setattr(tasks, "configured_structured_model", no_deepseek_key)
     asyncio.run(tasks.ingest_document_task_batch_async(job_id, [document_id]))
 
     job = client.get(f"/api/v1/jobs/{job_id}").json()
@@ -540,13 +624,11 @@ def test_missing_deepseek_configuration_keeps_ingestion_ready_and_skips_profile(
 
     assert job["status"] == "succeeded"
     assert job["error"] is None
-    assert job["result"]["brand_profile_status"] == "not_configured"
-    profile_step = next(step for step in job["steps"] if step["key"] == "create_brand_profile")
-    assert profile_step["status"] == "skipped"
-    assert profile_step["error"]["code"] == "ai_not_configured"
+    assert job["result"]["profile_status"] == "not_applicable"
+    assert all(step["key"] != "create_brand_profile" for step in job["steps"])
     assert document["status"] == "ready"
     assert document["knowledge_status"] == "ready"
-    assert document["profile_status"] == "not_available"
+    assert document["profile_status"] == "not_applicable"
     assert document["extracted"]["knowledge_chunks"] > 0
 
 
@@ -613,15 +695,16 @@ def test_batch_with_one_bad_file_is_not_reported_as_success(api_env):
     job_id = uploaded.json()["job_id"]
     document_ids = uploaded.json()["job"]["result"]["document_ids"]
 
-    asyncio.run(tasks.ingest_document_task_batch_async(job_id, document_ids, agent=BrandAgent(FixtureStructuredModel())))
+    asyncio.run(tasks.ingest_document_task_batch_async(job_id, document_ids))
     result = client.get(f"/api/v1/jobs/{job_id}").json()
     assert result["status"] == "failed"
     assert result["error"]["code"] == "partial_batch"
     assert result["result"]["partial"] is True
     assert len(result["result"]["normalized_document_ids"]) == 1
-    assert len(result["result"]["failed_document_ids"]) == 1
+    assert len(result["result"]["failed_documents"]) == 1
 
 
+@pytest.mark.skip(reason="Ingestion no longer retries or calls the Brand Profile model; document extraction and AI are separate workflows.")
 @pytest.mark.fixture_integration
 @pytest.mark.parametrize(
     ("failure_code", "retryable", "expected_status"),

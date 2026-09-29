@@ -244,6 +244,33 @@ def _profile_http(profile: dict[str, Any]) -> BrandProfileOut:
     return BrandProfileOut.model_validate(profile)
 
 
+async def _manual_profile_http(db: AsyncSession, brand: Brand, company: Company) -> BrandProfileOut:
+    """Expose manual prose while leaving legacy AI fields empty and read-only."""
+    raw = brand.profile if isinstance(brand.profile, dict) else {}
+    payload = await internal_profile_to_http(db, internal={}, brand=brand, company=company, profile_override={})
+    for key in FIELD_KEYS:
+        payload[key] = {
+            "key": key,
+            "label": FIELD_LABELS[key],
+            "value": None,
+            "state": "missing",
+            "provenance": [],
+            "alternatives": [],
+        }
+    payload.update({
+        "profile_mode": "manual_text_v1",
+        "profile_text": raw.get("profile_text"),
+        "confirmed_at": raw.get("confirmed_at"),
+        "confirmed_by": raw.get("confirmed_by"),
+        "applied_at": raw.get("confirmed_at"),
+        "applied_by": raw.get("confirmed_by"),
+        "completeness": 0,
+        "version": brand.version,
+        "updated_at": brand.updated_at.isoformat() if brand.updated_at else utcnow().isoformat(),
+    })
+    return _profile_http(payload)
+
+
 @router.get(
     "/workspaces/{company_id}/brand-profile",
     response_model=BrandProfileOut,
@@ -256,6 +283,8 @@ async def get_brand_profile(
 ):
     await membership_for(company_id, user, db)
     brand, company = await _brand_and_company(db, company_id)
+    if isinstance(brand.profile, dict) and brand.profile.get("profile_mode") == "manual_text_v1":
+        return await _manual_profile_http(db, brand, company)
     saved = copy.deepcopy(brand.profile) if isinstance(brand.profile, dict) else {}
     if all(key in saved for key in FIELD_KEYS):
         payload = saved
@@ -290,12 +319,18 @@ async def _profile_revision(
                 field["state"] = "confirmed"
         profile["confirmed_at"] = now.isoformat()
         profile["confirmed_by"] = actor.id
+        if profile.get("profile_mode") == "manual_text_v1":
+            profile["applied_at"] = now.isoformat()
+            profile["applied_by"] = actor.id
         profile["completeness"] = sum(
             profile.get(key, {}).get("state") == "confirmed" for key in FIELD_KEYS
         ) / len(FIELD_KEYS)
     else:
         profile["confirmed_at"] = None
         profile["confirmed_by"] = None
+        if profile.get("profile_mode") == "manual_text_v1":
+            profile["applied_at"] = None
+            profile["applied_by"] = None
     profile["version"] = next_version
     profile["updated_at"] = now.isoformat()
     brand.version = next_version
@@ -304,7 +339,7 @@ async def _profile_revision(
         AuditEvent(
             company_id=company.id,
             actor_user_id=actor.id,
-            action="brand_profile.confirm" if confirm else "brand_profile.update",
+            action=("brand_profile.apply" if profile.get("profile_mode") == "manual_text_v1" else "brand_profile.confirm") if confirm else "brand_profile.update",
             entity_type="brand_profile",
             entity_id=brand.id,
             metadata_json={"version": next_version, "job_id": job_id},
@@ -379,68 +414,46 @@ async def update_brand_profile(
     membership: Membership = Depends(require_permission("brand:edit")),
     db: AsyncSession = Depends(get_db),
 ):
-    if request.confirm and not has_permission(membership.role, "brand:confirm"):
-        raise ApiProblem(403, "forbidden", "Bạn không có quyền xác nhận hồ sơ thương hiệu.", details={"required_permission": "brand:confirm"})
-    brand, company = await _brand_and_company(db, company_id)
-    brand = await db.scalar(select(Brand).where(Brand.id == brand.id).with_for_update())
-    _check_version(brand.version, request.version)
-    if not request.fields and not request.confirm:
-        raise ApiProblem(422, "validation_error", "Chưa có thay đổi nào để lưu.")
-    saved = brand.profile if isinstance(brand.profile, dict) else {}
-    if not all(key in saved for key in FIELD_KEYS):
-        saved = await internal_profile_to_http(db, internal={}, brand=brand, company=company)
-    else:
-        saved = copy.deepcopy(saved)
-    seen: set[str] = set()
-    now = utcnow().isoformat()
-    for field in request.fields:
-        if field.key not in FIELD_LABELS:
-            raise ApiProblem(422, "validation_error", "Trường hồ sơ không được hỗ trợ.", field_errors=[{"field": f"fields.{field.key}", "message": "Trường hồ sơ không hợp lệ."}])
-        if field.key in seen:
-            raise ApiProblem(422, "validation_error", "Một trường không thể xuất hiện nhiều lần.")
-        seen.add(field.key)
-        value = field.value
-        if field.key in {"target_audience", "tone_keywords", "do_not_use", "competitors"} and value is not None and (not isinstance(value, list) or not all(isinstance(item, str) for item in value)):
-            raise ApiProblem(422, "validation_error", "Giá trị trường phải là danh sách văn bản.")
-        if field.key in {"business_name", "industry", "description", "brand_voice"} and value is not None and not isinstance(value, str):
-            raise ApiProblem(422, "validation_error", "Giá trị trường phải là văn bản.")
-        if field.key == "products" and value is not None and (not isinstance(value, list) or not all(isinstance(item, dict) and isinstance(item.get("name"), str) for item in value)):
-            raise ApiProblem(422, "validation_error", "Danh sách sản phẩm chưa hợp lệ.")
-        if field.key == "contact" and value is not None and (not isinstance(value, dict) or not all(isinstance(k, str) and isinstance(v, str) for k, v in value.items())):
-            raise ApiProblem(422, "validation_error", "Thông tin liên hệ chưa hợp lệ.")
-        saved[field.key] = {
-            "key": field.key,
-            "label": FIELD_LABELS[field.key],
-            "value": value,
-            "state": "edited" if not _is_empty(value) else "missing",
-            "provenance": [],
-            "alternatives": [],
-            "updated_at": now,
-            "updated_by": user.id,
+    if request.profile_text is not None:
+        if not has_permission(membership.role, "brand:confirm"):
+            raise ApiProblem(403, "forbidden", "Chỉ Owner mới được áp dụng hồ sơ thương hiệu.", details={"required_permission": "brand:confirm"})
+        if request.fields or request.confirm:
+            raise ApiProblem(422, "validation_error", "Hãy gửi duy nhất nội dung hồ sơ tự viết.")
+        normalized_text = request.profile_text.replace("\r\n", "\n").replace("\r", "\n")
+        if not normalized_text.strip():
+            raise ApiProblem(422, "brand_profile_empty", "Hãy nhập nội dung hồ sơ thương hiệu trước khi lưu.")
+        brand, company = await _brand_and_company(db, company_id)
+        brand = await db.scalar(select(Brand).where(Brand.id == brand.id).with_for_update())
+        _check_version(brand.version, request.version)
+        current = brand.profile if isinstance(brand.profile, dict) else {}
+        if current.get("profile_mode") == "manual_text_v1" and current.get("profile_text") == normalized_text:
+            return await _manual_profile_http(db, brand, company)
+        saved = {
+            key: {"key": key, "label": FIELD_LABELS[key], "value": None, "state": "missing", "provenance": [], "alternatives": []}
+            for key in FIELD_KEYS
         }
-    prior_revision = await db.scalar(
-        select(BrandProfileRevision).where(
-            BrandProfileRevision.brand_id == brand.id,
-            BrandProfileRevision.revision == brand.version,
+        saved.update({
+            "id": brand.id,
+            "workspace_id": company.id,
+            "profile_mode": "manual_text_v1",
+            "profile_text": normalized_text,
+        })
+        await _profile_revision(
+            db,
+            brand,
+            company,
+            user,
+            profile=saved,
+            internal_profile=None,
+            source_refs=[],
+            confirm=True,
+            create_revision=True,
         )
-    )
-    await _profile_revision(
-        db,
-        brand,
-        company,
-        user,
-        profile=saved,
-        internal_profile=prior_revision.internal_profile_json if prior_revision else None,
-        source_refs=prior_revision.source_refs_json if prior_revision else [],
-        input_snapshot_id=prior_revision.input_snapshot_id if prior_revision else None,
-        input_snapshot=prior_revision.input_snapshot_json if prior_revision else None,
-        run_metadata=prior_revision.run_metadata_json if prior_revision else None,
-        warnings=prior_revision.warnings_json if prior_revision else [],
-        confirm=request.confirm,
-        create_revision=bool(request.fields),
-    )
-    await db.commit()
-    return _profile_http(saved)
+        await db.commit()
+        return await _manual_profile_http(db, brand, company)
+    if request.fields or request.confirm:
+        raise ApiProblem(410, "legacy_brand_profile_write_removed", "Hồ sơ thương hiệu hiện được Owner tự viết trong một ô văn bản. Hãy tải lại trang và dùng nút ‘Lưu và áp dụng’.")
+    raise ApiProblem(422, "validation_error", "Thiếu profile_text.")
 
 
 @router.post(
@@ -456,35 +469,10 @@ async def confirm_brand_profile(
     membership: Membership = Depends(require_permission("brand:confirm")),
     db: AsyncSession = Depends(get_db),
 ):
-    brand, company = await _brand_and_company(db, company_id)
-    brand = await db.scalar(select(Brand).where(Brand.id == brand.id).with_for_update())
-    _check_version(brand.version, request.version)
-    saved = copy.deepcopy(brand.profile) if isinstance(brand.profile, dict) else {}
-    if not all(key in saved for key in FIELD_KEYS):
-        saved = await internal_profile_to_http(db, internal={}, brand=brand, company=company)
-    prior_revision = await db.scalar(
-        select(BrandProfileRevision).where(
-            BrandProfileRevision.brand_id == brand.id,
-            BrandProfileRevision.revision == brand.version,
-        )
-    )
-    await _profile_revision(
-        db,
-        brand,
-        company,
-        user,
-        profile=saved,
-        internal_profile=prior_revision.internal_profile_json if prior_revision else None,
-        source_refs=prior_revision.source_refs_json if prior_revision else [],
-        input_snapshot_id=prior_revision.input_snapshot_id if prior_revision else None,
-        input_snapshot=prior_revision.input_snapshot_json if prior_revision else None,
-        run_metadata=prior_revision.run_metadata_json if prior_revision else None,
-        warnings=prior_revision.warnings_json if prior_revision else [],
-        confirm=True,
-        create_revision=False,
-    )
-    await db.commit()
-    return _profile_http(saved)
+    brand, _company = await _brand_and_company(db, company_id)
+    if not isinstance(brand.profile, dict) or brand.profile.get("profile_mode") != "manual_text_v1":
+        raise ApiProblem(410, "brand_profile_manual_required", "Hồ sơ AI cũ chỉ để tham khảo. Owner cần tự viết nội dung rồi bấm ‘Lưu và áp dụng’.")
+    raise ApiProblem(410, "brand_profile_apply_on_save", "Hồ sơ văn bản đã được áp dụng khi lưu. Hãy chỉnh nội dung rồi dùng ‘Lưu và áp dụng’ để tạo phiên bản mới.")
 
 
 @router.get(

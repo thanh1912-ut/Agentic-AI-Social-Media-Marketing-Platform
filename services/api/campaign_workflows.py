@@ -23,6 +23,8 @@ from database.models import (
     BrandProfileRevision,
     Campaign,
     CampaignPost,
+    ContentGenerationRun,
+    Document,
     ExportArtifact,
     Job,
     JobStep,
@@ -86,6 +88,27 @@ EXPORT_COLUMNS = {
     "citations": "Nguồn tham khảo",
     "media": "Ảnh đính kèm (tên, SHA-256, đường dẫn API)",
 }
+
+
+async def _validate_selected_documents(db: AsyncSession, company_id: str, document_ids: list[str]) -> list[Document]:
+    ids = list(dict.fromkeys(document_ids))
+    if len(ids) != len(document_ids) or len(ids) > 20:
+        raise ApiProblem(422, "invalid_document_selection", "Chọn tối đa 20 tài liệu khác nhau.")
+    if not ids:
+        return []
+    rows = (await db.scalars(select(Document).where(
+        Document.company_id == company_id,
+        Document.id.in_(ids),
+        Document.deleted_at.is_(None),
+        Document.is_active.is_(True),
+    ))).all()
+    by_id = {row.id: row for row in rows}
+    if len(by_id) != len(ids) or any(
+        by_id[item].status != "ready" or by_id[item].knowledge_status != "ready" or not by_id[item].normalized_json
+        for item in ids if item in by_id
+    ):
+        raise ApiProblem(409, "selected_document_unavailable", "Một tài liệu đã chọn không thuộc workspace này, chưa sẵn sàng hoặc đã bị tắt. Hãy chọn lại nguồn.")
+    return [by_id[item] for item in ids]
 
 
 def _spreadsheet_safe(value: Any) -> str:
@@ -184,6 +207,17 @@ async def _post_out(db: AsyncSession, row: CampaignPost) -> PostOut:
         "created_at": version.created_at,
         "note": version.note,
     }
+    if not isinstance(current.get("document_selection"), dict):
+        prior_runs = (await db.scalars(select(ContentGenerationRun).where(
+            ContentGenerationRun.company_id == row.company_id,
+            ContentGenerationRun.campaign_id == row.campaign_id,
+        ).order_by(ContentGenerationRun.created_at.desc()).limit(100))).all()
+        prior_run = next((item for item in prior_runs if row.id in (item.post_ids_json or [])), None)
+        prior_metadata = prior_run.run_metadata_json if prior_run and isinstance(prior_run.run_metadata_json, dict) else {}
+        current["document_selection"] = {
+            "document_ids": list(prior_metadata.get("document_ids") or []),
+            "document_usage_note": prior_metadata.get("document_usage_note"),
+        }
     approval = await db.scalar(select(PostApproval).where(
         PostApproval.company_id == row.company_id,
         PostApproval.post_id == row.id,
@@ -319,8 +353,8 @@ async def plan_campaign_from_prompt(
         BrandProfileRevision.brand_id == brand.id,
         BrandProfileRevision.revision == brand.version,
     ))
-    if revision is None or revision.confirmed_at is None or not isinstance(brand.profile, dict) or not brand.profile.get("confirmed_at"):
-        raise ApiProblem(409, "brand_profile_not_confirmed", "Hãy xác nhận Brand Profile trước khi lập kế hoạch campaign.")
+    if revision is None or revision.confirmed_at is None or not isinstance(brand.profile, dict) or brand.profile.get("profile_mode") != "manual_text_v1" or not brand.profile.get("profile_text"):
+        raise ApiProblem(409, "brand_profile_manual_required", "Owner cần tự viết và áp dụng hồ sơ thương hiệu trước khi lập campaign.")
     if request.group_id and not await db.scalar(select(MetaPageGroup.id).where(
         MetaPageGroup.id == request.group_id, MetaPageGroup.company_id == company_id,
     )):
@@ -745,10 +779,20 @@ async def revise_post_with_ai(
         BrandProfileRevision.revision == brand.version,
     ))
     profile = brand.profile if isinstance(brand.profile, dict) else {}
-    if revision is None or revision.confirmed_at is None or not profile.get("confirmed_at"):
-        raise ApiProblem(409, "brand_profile_not_confirmed", "Hãy xác nhận phiên bản Brand Profile hiện tại trước khi yêu cầu AI sửa.")
+    if revision is None or revision.confirmed_at is None or profile.get("profile_mode") != "manual_text_v1" or not profile.get("profile_text"):
+        raise ApiProblem(409, "brand_profile_manual_required", "Owner cần tự viết và áp dụng hồ sơ thương hiệu trước khi yêu cầu AI sửa.")
 
     request_payload = request.model_dump(mode="json")
+    if request_payload.get("document_ids") is None:
+        prior_runs = (await db.scalars(select(ContentGenerationRun).where(
+            ContentGenerationRun.company_id == company_id,
+            ContentGenerationRun.campaign_id == campaign.id,
+        ).order_by(ContentGenerationRun.created_at.desc()).limit(100))).all()
+        previous = next((item for item in prior_runs if post_id in item.post_ids_json), None)
+        prior_metadata = previous.run_metadata_json if previous and isinstance(previous.run_metadata_json, dict) else {}
+        request_payload["document_ids"] = list(prior_metadata.get("document_ids") or [])
+        request_payload["document_usage_note"] = request_payload.get("document_usage_note") or prior_metadata.get("document_usage_note")
+    await _validate_selected_documents(db, company_id, request_payload.get("document_ids") or [])
     fingerprint_payload = {
         "request": request_payload,
         "post_id": post.id,
@@ -1144,12 +1188,13 @@ async def generate_content(
         BrandProfileRevision.revision == brand.version,
     ))
     profile = brand.profile if isinstance(brand.profile, dict) else {}
-    if revision is None or revision.confirmed_at is None or not profile.get("confirmed_at"):
+    if revision is None or revision.confirmed_at is None or profile.get("profile_mode") != "manual_text_v1" or not profile.get("profile_text"):
         raise ApiProblem(
             409,
-            "brand_profile_not_confirmed",
-            "Hãy xác nhận phiên bản Brand Profile hiện tại trước khi sinh nội dung.",
+            "brand_profile_manual_required",
+            "Owner cần tự viết và áp dụng hồ sơ thương hiệu trước khi sinh nội dung.",
         )
+    selected_documents = await _validate_selected_documents(db, company_id, request_payload.get("document_ids") or [])
     fingerprint_payload = {
         "request": request_payload,
         "campaign_id": campaign.id,

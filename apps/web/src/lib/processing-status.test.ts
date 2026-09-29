@@ -4,15 +4,13 @@ import {
   extractionStatusMeta,
   knowledgeStatusMeta,
   presentJobFailure,
-  profileStatusMeta,
   retrievalModeMeta,
 } from './processing-status';
 
 describe('trạng thái pipeline tài liệu', () => {
-  it('không coi đọc xong tài liệu là Brand Profile đã sẵn sàng', () => {
+  it('theo dõi riêng bước đọc tài liệu và lưu knowledge', () => {
     expect(extractionStatusMeta('extracted').label).toBe('Đã đọc xong nội dung');
-    expect(profileStatusMeta('pending').label).toBe('Brand Profile chưa tạo xong');
-    expect(profileStatusMeta('ready').label).toBe('Đã tạo/cập nhật Brand Profile');
+    expect(knowledgeStatusMeta('ready').label).toBe('Sẵn sàng truy xuất');
   });
 
   it('nêu riêng trạng thái knowledge chưa khả dụng và trạng thái không rõ', () => {
@@ -28,15 +26,15 @@ describe('trạng thái pipeline tài liệu', () => {
   });
 });
 
-describe('lỗi tạo Brand Profile từ JobErrorOut', () => {
+describe('lỗi AI từ JobErrorOut', () => {
   it.each([
-    ['provider_not_configured', 'Nhà cung cấp AI chưa sẵn sàng'],
-    ['ai_not_configured', 'Nhà cung cấp AI chưa sẵn sàng'],
+    ['provider_not_configured', 'Dịch vụ AI chưa sẵn sàng'],
+    ['ai_not_configured', 'Dịch vụ AI chưa sẵn sàng'],
     ['provider_model_not_found', 'Mô hình AI không khả dụng'],
     ['provider_timeout', 'Yêu cầu AI đã hết thời gian chờ'],
     ['timeout', 'Yêu cầu AI đã hết thời gian chờ'],
-    ['generation_failed', 'Chưa tạo được Brand Profile'],
-    ['brand_profile_generation_failed', 'Chưa tạo được Brand Profile'],
+    ['generation_failed', 'Tác vụ AI thất bại'],
+    ['brand_profile_generation_failed', 'Tác vụ AI thất bại'],
   ])('dịch mã lỗi %s thành thông báo provider-neutral', (code, title) => {
     expect(presentJobFailure({ code, message: 'Generic backend failure', retryable: false }).title).toBe(title);
   });

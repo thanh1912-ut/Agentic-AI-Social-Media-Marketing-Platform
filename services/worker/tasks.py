@@ -19,40 +19,27 @@ from database.models import (
     DocumentChunk,
     Job,
     JobStep,
-    User,
-    BrandProfileRevision,
     new_id,
     utcnow,
 )
 from database.job_fencing import claim_job_fence, isolated_job_fence
 from packages.contracts import BrandProfile as InternalBrandProfile
-from packages.contracts import NormalizedDocument, SourceReference, TableBlock, TextBlock
-from services.agents.brand_agent import BrandAgent
-from services.agents.brand_agent.result import run_brand_profile_handler
+from packages.contracts import NormalizedDocument, TableBlock, TextBlock
 from services.agents.knowledge.interfaces import source_context
 from services.api.config import settings
 from services.api.db import SessionLocal
 from services.api.job_service import append_job_event
 from services.api.storage import storage
-from services.api.brand_profiles import _profile_revision, internal_profile_to_http
 from services.ingestion.knowledge_store import PostgresKnowledgeIndex
 from services.ingestion.parsers import ParseError, parse_document
 from services.agents.knowledge.chunking import chunk_document
 from services.worker.async_runtime import run_worker_coroutine
 from .celery_app import celery_app
 from services.ingestion.knowledge_store import embedding_identity
-from .model_provider import AIConfigurationError, configured_embedding_provider, configured_structured_model
+from .model_provider import AIConfigurationError, configured_embedding_provider
 
 
-PROFILE_STEP = "create_brand_profile"
-MAX_CONTEXT_CHUNKS = 40
-
-
-class BrandProfileJobError(RuntimeError):
-    def __init__(self, code: str, message: str, *, retryable: bool) -> None:
-        super().__init__(message)
-        self.code = code
-        self.retryable = retryable
+PROFILE_STEP = "create_brand_profile"  # Legacy job-step key retained for existing jobs.
 
 
 async def _set_step(
@@ -133,14 +120,19 @@ async def _claim_job(job_id: str, fallback_document_ids: list[str]) -> tuple[str
             }
             await db.commit()
             return None
-        profile_only = (job.result or {}).get("mode") == "profile_only"
-        if profile_only:
-            for key in ("receive_file", "detect_type", "extract_text", "normalize"):
-                await _set_step(db, job.id, key, status="skipped", message="Dùng lại nội dung đã lưu.")
-        else:
-            await _set_step(db, job.id, "receive_file", status="succeeded", progress=100, message="Đã nhận tệp và kiểm tra quyền truy cập.")
-            await _set_step(db, job.id, "detect_type", status="succeeded", progress=100, message="Đã xác nhận định dạng tài liệu.")
-            await _set_step(db, job.id, "extract_text", status="running", progress=5, message="Đang đọc nội dung tài liệu.")
+        if (job.result or {}).get("mode") == "profile_only":
+            job.status = "failed"
+            job.progress = 100
+            job.finished_at = now
+            job.lease_until = None
+            job.claim_token = None
+            job.error = {"code": "brand_profile_generation_removed", "message": "Tài liệu chỉ được đọc và lưu làm kiến thức."}
+            await append_job_event(db, job, "error", "Brand Profile do Owner tự viết; không chạy AI trên tài liệu.", 100)
+            await db.commit()
+            return None
+        await _set_step(db, job.id, "receive_file", status="succeeded", progress=100, message="Đã nhận tệp và kiểm tra quyền truy cập.")
+        await _set_step(db, job.id, "detect_type", status="succeeded", progress=100, message="Đã xác nhận định dạng tài liệu.")
+        await _set_step(db, job.id, "extract_text", status="running", progress=5, message="Đang đọc nội dung tài liệu.")
         job.progress = 10
         await append_job_event(db, job, "status", "Worker đã nhận job.", 10)
         await db.commit()
@@ -267,7 +259,7 @@ async def _persist_normalized(
         document.normalized_json = normalized.model_dump(mode="json")
         document.knowledge_status = "ready"
         document.retrieval_mode = effective_retrieval_mode
-        document.profile_status = "pending"
+        document.profile_status = "not_applicable"
         table_characters = sum(
             sum(len(value) for value in table.headers)
             + sum(sum(len(value) for value in row) for row in table.rows)
@@ -294,7 +286,7 @@ async def _mark_document_error(company_id: str, document_id: str, error: dict[st
             document.status = "unsupported" if unsupported else "failed"
             document.error = error
             document.knowledge_status = "failed"
-            document.profile_status = "failed"
+            document.profile_status = "not_applicable"
             document.processed_at = utcnow()
             await db.commit()
 
@@ -308,7 +300,7 @@ async def _record_image_metadata(company_id: str, document_id: str, parsed) -> N
             document.normalized_json = None
             document.knowledge_status = "not_available"
             document.retrieval_mode = "not_available"
-            document.profile_status = "not_available"
+            document.profile_status = "not_applicable"
             document.processed_at = utcnow()
             await db.commit()
 
@@ -325,298 +317,6 @@ async def _set_progress(job_id: str, progress: int, message: str, step_progress:
         await _set_step(db, job_id, "chunk_and_index", status="running", progress=step_progress, message=message)
         await append_job_event(db, job, "step", message, progress)
         await db.commit()
-
-
-def _sanitize_profile_evidence(profile: InternalBrandProfile, retrieved) -> InternalBrandProfile:
-    contexts: dict[str, list[Any]] = {}
-    for item in retrieved:
-        contexts.setdefault(item.chunk.source_id, []).append(item.chunk)
-    facts = []
-    for fact in profile.facts:
-        references = []
-        for reference in fact.evidence:
-            candidates = contexts.get(reference.source_id, [])
-            if not candidates:
-                continue
-            chunk = next((item for item in candidates if item.locator == reference.locator), candidates[0])
-            excerpt = reference.excerpt
-            if not excerpt or excerpt not in chunk.text:
-                excerpt = chunk.text[: min(280, len(chunk.text))]
-            references.append(
-                SourceReference(
-                    source_id=chunk.source_id,
-                    document_id=chunk.document_id,
-                    source_version=chunk.source_version,
-                    locator=chunk.locator,
-                    excerpt=excerpt,
-                )
-            )
-        facts.append(fact.model_copy(update={"evidence": references}))
-    return profile.model_copy(update={"facts": facts, "requires_confirmation": True})
-
-
-async def _run_brand_profile(
-    *,
-    job_id: str,
-    company_id: str,
-    created_by: str,
-    document_ids: list[str],
-    all_document_ids: list[str],
-    failed_documents: list[dict[str, Any]],
-    image_ids: list[str],
-    ingestion_warnings: list[str],
-    index: PostgresKnowledgeIndex,
-    agent: BrandAgent | None,
-    embedder=None,
-) -> tuple[int, dict[str, Any], list[str]]:
-    # Tests may inject a deterministic fake. Runtime calls use the configured
-    # DeepSeek adapter; external embeddings remain independently gated.
-    agent = agent or BrandAgent(configured_structured_model())
-    _embedding_provider, embedding_model_version = embedding_identity(embedder)
-    async with SessionLocal() as db:
-        company = await db.get(Company, company_id)
-        brand = await db.scalar(select(Brand).where(Brand.company_id == company_id).with_for_update())
-        if company is None or brand is None:
-            raise RuntimeError("workspace brand record is missing")
-        eligible = (
-            await db.scalars(
-                select(Document).where(
-                    Document.company_id == company_id,
-                    Document.is_active.is_(True),
-                    Document.deleted_at.is_(None),
-                    Document.status == "ready",
-                    Document.knowledge_status == "ready",
-                    Document.normalized_json.is_not(None),
-                )
-            )
-        ).all()
-        # Re-index active normalized sources when parser/chunker/embedder identity
-        # changes. Exact-version dedup makes this cheap when nothing changed.
-        for document in eligible:
-            normalized = NormalizedDocument.model_validate(document.normalized_json)
-            await index.upsert(
-                db,
-                normalized,
-                embedder=embedder,
-                parser_version=document.parser_version,
-                chunker_version=settings.chunker_version,
-                embedding_model_version=embedding_model_version,
-            )
-            document.retrieval_mode = settings.retrieval_mode
-            if document.extracted is not None:
-                document.extracted = {**document.extracted, "retrieval_mode": settings.retrieval_mode}
-        retrieved = await index.retrieve(
-            db,
-            " ".join(
-                value
-                for value in (
-                    company.name,
-                    company.industry or "",
-                    "sản phẩm khách hàng giọng điệu",
-                )
-                if value
-            ),
-            company_id=company_id,
-            brand_id=brand.id,
-            active_source_ids={document.source_id for document in eligible},
-            embedder=embedder,
-            chunker_version=settings.chunker_version,
-            embedding_model_version=embedding_model_version,
-            minimum_score=settings.minimum_relevance_score,
-            minimum_semantic_score=settings.minimum_semantic_score,
-            minimum_semantic_margin=settings.minimum_semantic_margin,
-            minimum_hybrid_lexical_score=settings.minimum_hybrid_lexical_score,
-            top_k=MAX_CONTEXT_CHUNKS,
-        )
-        # The adapter joins active documents under this tenant before ranking.
-        # No credentials, upload metadata, or user/session tokens enter context.
-        if not retrieved:
-            raise BrandProfileJobError(
-                "no_relevant_context",
-                "No active source chunk met the configured relevance threshold.",
-                retryable=False,
-            )
-        context = source_context([item.chunk for item in retrieved])
-        snapshot_payload = {
-            "company_id": company_id,
-            "brand_id": brand.id,
-            "retrieval_mode": settings.retrieval_mode,
-            "parser_versions": sorted({document.parser_version for document in eligible}),
-            "chunker_version": settings.chunker_version,
-            "embedding_provider": _embedding_provider,
-            "embedding_model_version": embedding_model_version,
-            "minimum_relevance_score": settings.minimum_relevance_score,
-            "minimum_semantic_score": settings.minimum_semantic_score,
-            "minimum_semantic_margin": settings.minimum_semantic_margin,
-            "minimum_hybrid_lexical_score": settings.minimum_hybrid_lexical_score,
-            "documents": [
-                {
-                    "document_id": document.id,
-                    "source_id": document.source_id,
-                    "source_version": document.source_version,
-                    "source_hash": document.source_hash,
-                }
-                for document in sorted(eligible, key=lambda item: item.id)
-            ],
-            "retrieved_sources": [
-                {
-                    "document_id": item.chunk.document_id,
-                    "source_id": item.chunk.source_id,
-                    "source_version": item.chunk.source_version,
-                    "source_hash": item.chunk.source_hash,
-                    "locator": item.chunk.locator,
-                }
-                for item in retrieved
-            ],
-            "context": context,
-        }
-        snapshot_json = json.dumps(snapshot_payload, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
-        input_snapshot_id = hashlib.sha256(snapshot_json.encode("utf-8")).hexdigest()
-        await _set_step(db, job_id, PROFILE_STEP, status="running", progress=10, message="AI đang đề xuất hồ sơ thương hiệu từ các nguồn đang hoạt động.")
-        job = await db.get(Job, job_id)
-        if job:
-            job.progress = 75
-            job.lease_until = utcnow() + timedelta(minutes=settings.job_lease_minutes)
-            await append_job_event(db, job, "step", "Đang tạo hồ sơ thương hiệu và gắn trích dẫn nguồn.", 75)
-        await db.commit()
-
-    async with SessionLocal() as db:
-        existing_revision = await db.scalar(
-            select(BrandProfileRevision).where(BrandProfileRevision.job_id == job_id)
-        )
-        if existing_revision is not None:
-            return existing_revision.revision, existing_revision.run_metadata_json or {}, existing_revision.warnings_json or []
-
-    handler_result = await asyncio.to_thread(
-        run_brand_profile_handler,
-        company_id=company_id,
-        brand_id=brand.id,
-        document_ids=sorted({item["document_id"] for item in context}),
-        job_id=job_id,
-        run_id=new_id(),
-        input_snapshot_id=input_snapshot_id,
-        agent=agent,
-        business_hint=f"{company.name}; {company.industry or ''}".strip("; "),
-        context=context,
-    )
-    if handler_result.status != "succeeded" or handler_result.profile is None:
-        failure = handler_result.error
-        raise BrandProfileJobError(
-            failure.code if failure else "brand_profile_failed",
-            failure.message if failure else "The M3 Brand Profile handler did not return a profile.",
-            retryable=failure.retryable if failure else False,
-        )
-    profile = _sanitize_profile_evidence(handler_result.profile, retrieved)
-    warnings = list(ingestion_warnings) + list(profile.unknowns) + list(profile.contradictions)
-    warnings.extend(
-        warning
-        for document in eligible
-        for warning in (document.normalized_json or {}).get("extraction_warnings", [])
-    )
-    meta = handler_result.generation
-    if meta:
-        meta = meta.model_copy(update={"input_snapshot_id": input_snapshot_id})
-    run_metadata = {
-        "task_name": "run_brand_profile_handler",
-        "job_id": job_id,
-        "run_id": handler_result.run_id,
-        "repair_attempts": handler_result.repair_attempts,
-        "generation": meta.model_dump(mode="json") if meta else None,
-        "estimated_cost_available": handler_result.estimated_cost_available,
-        "retrieved_chunks": len(retrieved),
-        "retrieval_mode": settings.retrieval_mode,
-        "embedding_provider": _embedding_provider,
-        "embedding_model_version": embedding_model_version,
-        "minimum_relevance_score": settings.minimum_relevance_score,
-        "minimum_semantic_score": settings.minimum_semantic_score,
-        "minimum_semantic_margin": settings.minimum_semantic_margin,
-        "minimum_hybrid_lexical_score": settings.minimum_hybrid_lexical_score,
-        "semantic_vector_rag_accepted": False,
-        "semantic_vector_rag_verification": "not_run",
-        "lexical_mode_notice": (
-            "Lexical-only smoke mode; semantic/vector RAG has not been accepted or verified."
-            if settings.retrieval_mode == "lexical"
-            else None
-        ),
-    }
-    if settings.retrieval_mode == "lexical":
-        warnings.append("Lexical-only smoke mode; semantic/vector RAG has not been accepted or verified.")
-    source_refs = [
-        reference.model_dump(mode="json")
-        for fact in profile.facts
-        for reference in fact.evidence
-    ]
-    async with SessionLocal() as db:
-        company = await db.get(Company, company_id)
-        brand = await db.scalar(select(Brand).where(Brand.company_id == company_id).with_for_update())
-        actor = await db.get(User, created_by)
-        if company is None or brand is None or actor is None:
-            raise RuntimeError("workspace, brand, or actor disappeared during AI extraction")
-        internal_payload = profile.model_dump(mode="json")
-        internal_payload["profile_version"] = str(brand.version + 1)
-        http_payload = await internal_profile_to_http(
-            db,
-            internal=internal_payload,
-            brand=brand,
-            company=company,
-        )
-        await _profile_revision(
-            db,
-            brand,
-            company,
-            actor,
-            profile=http_payload,
-            internal_profile=internal_payload,
-            source_refs=source_refs,
-            job_id=job_id,
-            input_snapshot_id=input_snapshot_id,
-            input_snapshot=snapshot_payload,
-            run_metadata=run_metadata,
-            warnings=warnings,
-        )
-        ready_documents = (
-            await db.scalars(
-                select(Document).where(
-                    Document.company_id == company_id,
-                    Document.id.in_([document.id for document in eligible]),
-                )
-            )
-        ).all()
-        for document in ready_documents:
-            document.profile_status = "ready"
-        partial = bool(failed_documents or image_ids)
-        job = await db.get(Job, job_id)
-        if job is None:
-            raise RuntimeError("job disappeared during AI extraction")
-        job.status = "failed" if partial else "succeeded"
-        job.progress = 100
-        job.finished_at = utcnow()
-        job.lease_until = None
-        job.result = {
-            "document_ids": all_document_ids,
-            "normalized_document_ids": document_ids,
-            "failed_document_ids": [item["document_id"] for item in failed_documents],
-            "metadata_only_document_ids": image_ids,
-            "brand_id": brand.id,
-            "profile_version": brand.version,
-            "profile_run": run_metadata,
-            "warnings": list(dict.fromkeys(warnings)),
-            "partial": partial,
-        }
-        if partial:
-            job.error = {
-                "code": "partial_batch",
-                "message": "Một số tệp chưa thể đưa vào hồ sơ thương hiệu.",
-                "hint": "Kiểm tra các tệp bị lỗi rồi tải lại riêng.",
-                "retryable": False,
-            }
-        else:
-            job.error = None
-        await _set_step(db, job_id, "chunk_and_index", status="succeeded", progress=100, message="Knowledge chunks đã được lưu; nguồn cũ hoặc đã xoá không còn trong retrieval.")
-        await _set_step(db, job_id, PROFILE_STEP, status="succeeded", progress=100, message=f"Đã lưu Brand Profile bản {brand.version} cùng nguồn và input snapshot.")
-        await append_job_event(db, job, "status", "Hoàn tất trích xuất hồ sơ thương hiệu." if not partial else "Đã tạo hồ sơ; một phần tệp trong batch bị lỗi.", 100)
-        await db.commit()
-    return brand.version, run_metadata, warnings
 
 
 async def _fail_job(job_id: str, *, code: str, message: str, hint: str, retryable: bool) -> None:
@@ -648,11 +348,10 @@ async def ingest_document_task_batch_async(
     job_id: str,
     document_ids: list[str],
     *,
-    agent: BrandAgent | None = None,
     index: PostgresKnowledgeIndex | None = None,
     embedder=None,
 ) -> None:
-    """Process a multipart upload and generate at most one profile revision."""
+    """Extract supported files and persist searchable knowledge without AI profile generation."""
 
     claimed = await _claim_job(job_id, document_ids)
     if claimed is None:
@@ -670,7 +369,6 @@ async def ingest_document_task_batch_async(
     warnings: list[str] = []
     async with SessionLocal() as db:
         job = await db.get(Job, job_id)
-        profile_only = bool(job and (job.result or {}).get("mode") == "profile_only")
 
     try:
         for offset, document_id in enumerate(scoped_document_ids, start=1):
@@ -689,12 +387,9 @@ async def ingest_document_task_batch_async(
                 if document.status == "ready" and document.knowledge_status == "ready" and document.normalized_json:
                     successful_text_ids.append(document.id)
                     continue
-                if profile_only:
-                    failed_documents.append({"document_id": document_id, "code": "profile_source_not_ready"})
-                    continue
                 document.status = "processing"
                 document.error = None
-                document.profile_status = "pending"
+                document.profile_status = "not_applicable"
                 await db.commit()
                 document_snapshot = {
                     "id": document.id,
@@ -759,97 +454,43 @@ async def ingest_document_task_batch_async(
         return
 
     if successful_text_ids:
-        try:
-            if profile_only:
-                async with SessionLocal() as db:
-                    await _set_step(db, job_id, "chunk_and_index", status="succeeded", progress=100, message="Dùng lại knowledge đã lưu; không chạy lại Docling.")
-                    await db.commit()
-            else:
-                await _set_progress(job_id, 65, "Các đoạn đã được lưu bền vững; đang chuẩn bị ngữ cảnh cho AI.", 100)
-            profile_version, run_metadata, profile_warnings = await _run_brand_profile(
-                job_id=job_id,
-                company_id=company_id,
-                created_by=created_by,
-                document_ids=successful_text_ids,
-                all_document_ids=scoped_document_ids,
-                failed_documents=failed_documents,
-                image_ids=image_ids,
-                ingestion_warnings=warnings,
-                index=knowledge_index,
-                agent=agent,
-                embedder=embedder,
-            )
-            warnings.extend(profile_warnings)
-            return
-        except AIConfigurationError as exc:
-            async with SessionLocal() as db:
-                job = await db.get(Job, job_id)
-                partial = bool(failed_documents)
-                for document in (await db.scalars(select(Document).where(Document.company_id == company_id, Document.id.in_(successful_text_ids)))).all():
-                    document.profile_status = "not_available"
-                if job:
-                    job.status = "failed" if partial else "succeeded"
-                    job.progress = 100
-                    job.finished_at = utcnow()
-                    job.lease_until = None
-                    job.error = ({"code": "partial_batch", "message": "Đã lưu nội dung; một số tệp bị lỗi và Brand Profile chưa được tạo.", "hint": "Kiểm tra riêng các tệp có lỗi. Cấu hình DeepSeek sau đó có thể thử lại bước Brand Profile.", "retryable": False} if partial else None)
-                    job.result = {
-                        "document_ids": scoped_document_ids,
-                        "normalized_document_ids": successful_text_ids,
-                        "failed_document_ids": [item["document_id"] for item in failed_documents],
-                        "brand_profile_status": "not_configured",
-                        "profile_error_code": "ai_not_configured",
-                        "warnings": list(dict.fromkeys([*warnings, "DeepSeek chưa cấu hình; nội dung đã đọc và lưu, Brand Profile chưa tạo."])),
-                        "partial": partial,
-                    }
-                    await _set_step(db, job_id, PROFILE_STEP, status="skipped", message="Nội dung đã lưu. Cấu hình DeepSeek rồi dùng ‘Thử lại Brand Profile’.", error={"code": "ai_not_configured", "message": "DeepSeek chưa được cấu hình trên backend.", "hint": "Cấu hình DEEPSEEK_API_KEY và tên model ở môi trường backend."})
-                    await _set_step(db, job_id, "chunk_and_index", status="succeeded", progress=100, message="Nội dung và knowledge đã được lưu độc lập với AI.")
-                    await append_job_event(db, job, "status", "Đã lưu nội dung; Brand Profile đang chờ cấu hình AI." if not partial else "Đã lưu một phần nội dung; cần xử lý các tệp lỗi riêng.", 100)
-                await db.commit()
-            return
-        except BrandProfileJobError as exc:
-            retryable = exc.retryable
-            code = exc.code
-            message = str(exc)
-            hint = "Sửa cấu hình/model nếu cần; lỗi tạm thời sẽ được worker thử lại theo số lượt đã cấu hình."
-        except Exception:
-            retryable = True
-            code = "brand_profile_generation_failed"
-            message = "Chưa thể tạo hồ sơ thương hiệu từ tài liệu."
-            hint = "Hệ thống sẽ tự thử lại nếu còn lượt; không tải lại tệp để tránh tạo bản trùng."
         async with SessionLocal() as db:
-            job = await db.get(Job, job_id)
-            will_retry = bool(
-                retryable
-                and job is not None
-                and job.status == "running"
-                and job.attempts < settings.max_job_attempts
-            )
-            profile_status = "pending" if will_retry else "failed"
-            profile_error = None if will_retry else {
-                "code": code,
-                "message": message,
-                "hint": hint,
-                "retryable": False,
+            job = await db.scalar(select(Job).where(Job.id == job_id).with_for_update())
+            if job is None or job.status != "running":
+                await db.rollback()
+                return
+            docs = (await db.scalars(select(Document).where(
+                Document.company_id == company_id,
+                Document.id.in_(successful_text_ids),
+            ))).all()
+            for document in docs:
+                document.profile_status = "not_applicable"
+            partial = bool(failed_documents)
+            job.status = "failed" if partial else "succeeded"
+            job.progress = 100
+            job.finished_at = utcnow()
+            job.lease_until = None
+            job.error = ({"code": "partial_batch", "message": "Đã lưu kiến thức cho tệp đọc được; một số tệp bị lỗi riêng.", "retryable": False} if partial else None)
+            job.result = {
+                **(job.result or {}),
+                "document_ids": scoped_document_ids,
+                "normalized_document_ids": successful_text_ids,
+                "failed_documents": failed_documents,
+                "knowledge_status": "ready",
+                "profile_status": "not_applicable",
+                "profile_generation": "removed_owner_authored_profile",
+                "warnings": list(dict.fromkeys(warnings)),
+                "partial": partial,
             }
-            for document in (await db.scalars(select(Document).where(Document.company_id == company_id, Document.id.in_(successful_text_ids)))).all():
-                document.profile_status = profile_status
-            await _set_step(
-                db,
-                job_id,
-                PROFILE_STEP,
-                status=profile_status,
-                progress=None if will_retry else 100,
-                message="Đang chờ worker thử lại." if will_retry else message,
-                error=profile_error,
-            )
+            await _set_step(db, job_id, "chunk_and_index", status="succeeded", progress=100, message="Đã lưu kiến thức cho content agent.")
+            await _set_step(db, job_id, PROFILE_STEP, status="skipped", message="Không áp dụng: hồ sơ thương hiệu do Owner tự viết.")
+            await append_job_event(db, job, "complete" if not partial else "error", "Đã đọc tài liệu và lưu kiến thức; không tạo Brand Profile.", 100)
             await db.commit()
-        await _fail_job(job_id, code=code, message=message, hint=hint, retryable=retryable)
         return
 
     error_code = "no_text_content" if image_ids and not failed_documents else "document_ingestion_failed"
-    error_message = "Đã lưu metadata ảnh nhưng chưa có văn bản để tạo hồ sơ." if image_ids and not failed_documents else "Không có tài liệu văn bản nào xử lý thành công."
-    error_hint = "Tải lên thêm PDF có lớp chữ, DOCX, XLSX, CSV hoặc TXT; OCR ảnh chưa được bật." if image_ids and not failed_documents else "Kiểm tra tệp lỗi trong danh sách tài liệu rồi tải lại."
+    error_message = "Không có nội dung văn bản để lưu vào kiến thức." if image_ids and not failed_documents else "Không có tài liệu văn bản nào xử lý thành công."
+    error_hint = "Tải lên PDF có lớp chữ, DOCX, XLSX, CSV hoặc TXT; OCR ảnh chưa được bật." if image_ids and not failed_documents else "Kiểm tra tệp lỗi trong danh sách tài liệu rồi tải lại."
     async with SessionLocal() as db:
         job = await db.get(Job, job_id)
         if job:
@@ -867,7 +508,7 @@ async def ingest_document_task_batch_async(
             job.lease_until = None
             job.error = {"code": error_code, "message": error_message, "hint": error_hint, "retryable": False}
             await _set_step(db, job_id, "chunk_and_index", status="skipped", message="Không có văn bản chuẩn hoá để lập chỉ mục.")
-            await _set_step(db, job_id, PROFILE_STEP, status="skipped", message="Bỏ qua vì batch không có văn bản để tạo hồ sơ.")
+            await _set_step(db, job_id, PROFILE_STEP, status="skipped", message="Không áp dụng: hồ sơ thương hiệu do Owner tự viết.")
             await append_job_event(db, job, "error", error_message, 100)
             await db.commit()
 

@@ -114,6 +114,7 @@ function demoDocumentHttpOut(document: DocumentUpload): ApiDocument {
     knowledge_status: isReady ? (isImage ? 'not_available' : 'ready') : isFailed ? 'failed' : 'pending',
     retrieval_mode: isReady && !isImage ? 'lexical' : 'not_available',
     profile_status: isReady ? (isImage ? 'not_available' : 'ready') : isFailed ? 'failed' : 'pending',
+    selectable_for_content: isReady && !isImage,
   };
 }
 

@@ -23,7 +23,7 @@ const EXTRACTION_STATUS: Record<string, ProcessingStatusMeta> = {
   extracted: {
     label: 'Đã đọc xong nội dung',
     tone: 'success',
-    description: 'Máy chủ đã trích xuất nội dung; điều này chưa có nghĩa Brand Profile đã được tạo.',
+    description: 'Máy chủ đã trích xuất và chuẩn hóa nội dung tài liệu.',
   },
   partial: {
     label: 'Đã đọc được một phần',
@@ -83,29 +83,6 @@ const RETRIEVAL_MODE: Record<string, ProcessingStatusMeta> = {
   },
 };
 
-const PROFILE_STATUS: Record<string, ProcessingStatusMeta> = {
-  pending: {
-    label: 'Brand Profile chưa tạo xong',
-    tone: 'neutral',
-    description: 'Đọc xong tài liệu không đồng nghĩa Brand Profile đã được tạo; hãy theo dõi tác vụ.',
-  },
-  ready: {
-    label: 'Đã tạo/cập nhật Brand Profile',
-    tone: 'success',
-    description: 'Hồ sơ đã được tạo/cập nhật, nhưng vẫn cần người dùng xem nguồn và xác nhận.',
-  },
-  not_available: {
-    label: 'Không dùng được để tạo Brand Profile',
-    tone: 'warning',
-    description: 'Nội dung đã đọc nhưng Brand Profile chưa được tạo, thường do thiếu cấu hình AI hoặc nguồn chưa đủ thông tin.',
-  },
-  failed: {
-    label: 'Tạo Brand Profile thất bại',
-    tone: 'danger',
-    description: 'Tài liệu có thể đã đọc xong nhưng bước tạo hồ sơ chưa thành công.',
-  },
-};
-
 function lookupStatus(
   table: Record<string, ProcessingStatusMeta>,
   status: string | null | undefined,
@@ -131,12 +108,6 @@ export function retrievalModeMeta(
   return lookupStatus(RETRIEVAL_MODE, mode);
 }
 
-export function profileStatusMeta(
-  status: ApiDocument['profile_status'] | null | undefined,
-): ProcessingStatusMeta {
-  return lookupStatus(PROFILE_STATUS, status);
-}
-
 export interface JobFailurePresentation {
   title: string;
   description: string | null;
@@ -155,17 +126,17 @@ export function presentJobFailure(error: ApiJobError | null | undefined): JobFai
 
   if (['provider_not_configured', 'ai_not_configured'].includes(code)) {
     return {
-      title: 'Nhà cung cấp AI chưa sẵn sàng',
-      description: 'Tài liệu có thể đã đọc xong, nhưng Brand Profile chưa được tạo.',
+      title: 'Dịch vụ AI chưa sẵn sàng',
+      description: 'Lỗi này không làm mất phần tài liệu đã đọc và lưu thành công.',
       message: message || 'Máy chủ chưa sẵn sàng với dịch vụ AI cần cho tác vụ này.',
-      hint: hint || 'Quản trị viên cần kiểm tra cấu hình dịch vụ AI trên worker trước khi chạy lại tác vụ.',
+      hint: hint || 'Kiểm tra cấu hình dịch vụ AI trên worker rồi thử lại tác vụ AI.',
     };
   }
 
   if (code === 'provider_model_not_found') {
     return {
       title: 'Mô hình AI không khả dụng',
-      description: 'Máy chủ không thể dùng model đã cấu hình để tạo Brand Profile.',
+      description: 'Máy chủ không thể dùng model đã cấu hình cho tác vụ AI này.',
       message: message || 'Provider không nhận diện model đang được cấu hình.',
       hint: hint || 'Quản trị viên cần kiểm tra tên model và cấu hình dịch vụ AI trên server.',
     };
@@ -174,7 +145,7 @@ export function presentJobFailure(error: ApiJobError | null | undefined): JobFai
   if (['timeout', 'provider_timeout', 'generation_timeout', 'request_timeout', 'upstream_timeout'].includes(code)) {
     return {
       title: 'Yêu cầu AI đã hết thời gian chờ',
-      description: 'Brand Profile chưa được xác nhận là đã tạo xong.',
+      description: 'Tác vụ AI chưa hoàn tất; dữ liệu tài liệu đã lưu vẫn được giữ nguyên.',
       message: message || 'Máy chủ không nhận được kết quả AI trong thời gian cho phép.',
       hint: hint || 'Chỉ thử lại nếu máy chủ cho biết tác vụ có thể thử lại.',
     };
@@ -182,9 +153,9 @@ export function presentJobFailure(error: ApiJobError | null | undefined): JobFai
 
   if (['generation_failed', 'brand_profile_generation_failed'].includes(code)) {
     return {
-      title: 'Chưa tạo được Brand Profile',
-      description: 'Trạng thái đọc tài liệu được theo dõi riêng; lỗi này thuộc bước tạo hồ sơ.',
-      message: message || 'Máy chủ không hoàn tất bước tạo hồ sơ thương hiệu.',
+      title: 'Tác vụ AI thất bại',
+      description: 'Trạng thái đọc và lưu kiến thức của tài liệu được theo dõi riêng.',
+      message: message || 'Máy chủ không hoàn tất tác vụ AI.',
       hint: hint || null,
     };
   }

@@ -645,6 +645,29 @@
       "BrandProfileOut": {
         "additionalProperties": false,
         "properties": {
+          "applied_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Applied At"
+          },
+          "applied_by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Applied By"
+          },
           "brand_voice": {
             "$ref": "#/components/schemas/BrandProfileFieldOut"
           },
@@ -701,6 +724,26 @@
           },
           "products": {
             "$ref": "#/components/schemas/BrandProfileFieldOut"
+          },
+          "profile_mode": {
+            "default": "legacy",
+            "enum": [
+              "legacy",
+              "manual_text_v1"
+            ],
+            "title": "Profile Mode",
+            "type": "string"
+          },
+          "profile_text": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Profile Text"
           },
           "target_audience": {
             "$ref": "#/components/schemas/BrandProfileFieldOut"
@@ -2534,11 +2577,12 @@
             "title": "Processed At"
           },
           "profile_status": {
-            "default": "pending",
+            "default": "not_applicable",
             "enum": [
               "pending",
               "ready",
               "not_available",
+              "not_applicable",
               "failed"
             ],
             "title": "Profile Status",
@@ -2564,6 +2608,11 @@
             ],
             "title": "Retrieval Mode",
             "type": "string"
+          },
+          "selectable_for_content": {
+            "default": false,
+            "title": "Selectable For Content",
+            "type": "boolean"
           },
           "size": {
             "title": "Size",
@@ -3026,6 +3075,26 @@
             "minimum": 1.0,
             "title": "Count",
             "type": "integer"
+          },
+          "document_ids": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 20,
+            "title": "Document Ids",
+            "type": "array"
+          },
+          "document_usage_note": {
+            "anyOf": [
+              {
+                "maxLength": 4000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Document Usage Note"
           },
           "end_date": {
             "anyOf": [
@@ -6659,6 +6728,33 @@
       "ReviseWithAiRequest": {
         "additionalProperties": false,
         "properties": {
+          "document_ids": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "maxItems": 20,
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Document Ids"
+          },
+          "document_usage_note": {
+            "anyOf": [
+              {
+                "maxLength": 4000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Document Usage Note"
+          },
           "instruction": {
             "maxLength": 2000,
             "minLength": 1,
@@ -6848,6 +6944,19 @@
             "maxItems": 10,
             "title": "Fields",
             "type": "array"
+          },
+          "profile_text": {
+            "anyOf": [
+              {
+                "maxLength": 20000,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Profile Text"
           },
           "version": {
             "minimum": 1.0,

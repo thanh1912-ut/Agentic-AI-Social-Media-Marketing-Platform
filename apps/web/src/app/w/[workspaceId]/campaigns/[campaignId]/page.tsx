@@ -36,6 +36,7 @@ import {
   useCampaign,
   useCreateExport,
   useCreatePost,
+  useDocuments,
   useGenerateContent,
   usePosts,
   useUpdateCampaign,
@@ -52,12 +53,15 @@ export default function CampaignDetailPage() {
   const workspace = workspaces.find((item) => item.id === workspaceId);
   const campaign = useCampaign(workspace ? workspaceId : '', campaignId);
   const posts = usePosts(workspace ? workspaceId : '', campaignId);
+  const documents = useDocuments(workspace ? workspaceId : '');
   const generate = useGenerateContent(workspaceId);
   const createPost = useCreatePost(workspaceId, campaignId);
   const createExport = useCreateExport(workspaceId);
   const updateCampaign = useUpdateCampaign(workspaceId, campaignId);
   const mocksEnabled = useMocks();
   const [count, setCount] = useState('3');
+  const [selectedDocumentIds, setSelectedDocumentIds] = useState<string[]>([]);
+  const [documentUsageNote, setDocumentUsageNote] = useState('');
   const [format, setFormat] = useState<'csv' | 'xlsx'>(EXPORT_FORMATS.XLSX);
   const [manualCaption, setManualCaption] = useState('');
   const [manualHashtags, setManualHashtags] = useState('');
@@ -119,7 +123,7 @@ export default function CampaignDetailPage() {
     const parsed = Number(count);
     if (!Number.isInteger(parsed) || parsed < 1 || parsed > 10) return;
     generate.mutate(
-      { campaign_id: data.id, count: parsed },
+      { campaign_id: data.id, count: parsed, document_ids: selectedDocumentIds, document_usage_note: documentUsageNote.trim() || undefined },
       { onSuccess: (accepted) => router.push(`/w/${workspaceId}/jobs/${accepted.job_id}`) },
     );
   }
@@ -192,7 +196,7 @@ export default function CampaignDetailPage() {
 
   function generateFromSlot(slot: CampaignContentSlot) {
     generate.mutate(
-      { campaign_id: data.id, count: 1, slot_id: slot.id },
+      { campaign_id: data.id, count: 1, slot_id: slot.id, document_ids: selectedDocumentIds, document_usage_note: documentUsageNote.trim() || undefined },
       { onSuccess: (accepted) => router.push(`/w/${workspaceId}/jobs/${accepted.job_id}`) },
     );
   }
@@ -213,6 +217,23 @@ export default function CampaignDetailPage() {
       </header>
 
       {mocksEnabled ? <DemoNotice /> : null}
+
+      <Card title="Tài liệu tham khảo cho yêu cầu viết" description="Chỉ các tài liệu bạn chọn ở đây mới được đưa vào lần tạo bài tiếp theo. Để trống nếu muốn AI chỉ dùng hồ sơ thương hiệu và brief. Lựa chọn này áp dụng cho tạo nhiều bài và tạo bài theo slot trên trang này.">
+        {documents.isPending ? <p className="text-sm text-slate-600">Đang tải danh sách tài liệu…</p> : documents.isError ? <p role="alert" className="text-sm text-rose-700">Không tải được tài liệu. Hãy làm mới trang trước khi tạo bài có nguồn tham khảo.</p> : documents.data?.some((item) => item.selectable_for_content) ? (
+          <div className="space-y-3">
+            <fieldset className="space-y-2">
+              <legend className="text-sm font-medium text-slate-800">Chọn tài liệu đã đọc và lưu kiến thức</legend>
+              {documents.data.map((document) => <label key={document.id} className={`flex items-start gap-2 rounded-lg border p-3 text-sm ${document.selectable_for_content ? 'border-slate-200 bg-white' : 'border-slate-100 bg-slate-50 text-slate-500'}`}>
+                <input type="checkbox" checked={selectedDocumentIds.includes(document.id)} disabled={!document.selectable_for_content || selectedDocumentIds.length >= 20 && !selectedDocumentIds.includes(document.id)} onChange={(event) => setSelectedDocumentIds((current) => event.target.checked ? [...current, document.id] : current.filter((id) => id !== document.id))} />
+                <span><span className="font-medium">{document.filename}</span><span className="ml-2 text-xs">{document.selectable_for_content ? 'Sẵn sàng' : 'Chưa sẵn sàng'}</span></span>
+              </label>)}
+            </fieldset>
+            <label htmlFor="document-usage-note" className="block text-sm font-medium text-slate-800">Bạn muốn dùng tài liệu này như thế nào?</label>
+            <textarea id="document-usage-note" value={documentUsageNote} onChange={(event) => setDocumentUsageNote(event.target.value)} maxLength={4000} rows={2} placeholder="Ví dụ: Dùng bảng giá còn hiệu lực để giới thiệu các gói; không suy ra số liệu khác." className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" />
+            <p className="text-xs text-slate-500">Đã chọn {selectedDocumentIds.length}/20 tài liệu. Không chọn tài liệu thì yêu cầu vẫn chạy bình thường.</p>
+          </div>
+        ) : <p className="text-sm text-slate-600">Chưa có tài liệu nào sẵn sàng. Bạn vẫn có thể tạo bài từ hồ sơ thương hiệu và brief. <Link href={`/w/${workspaceId}/documents`} className="font-medium underline">Mở mục Tài liệu</Link></p>}
+      </Card>
 
       <Card title="Brief chiến dịch" description="Thông tin đầu vào để AI tạo nội dung — chưa tự động thay đổi campaign.">
         {editingBrief ? (

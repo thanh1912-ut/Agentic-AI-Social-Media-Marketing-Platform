@@ -57,6 +57,7 @@ import type {
   ApiMailGuardConversionAnalytics,
   ApiMailGuardIntegrationOut,
   ApiBrandProfile,
+  ApiBrandProfileRevision,
   ApiConfirmBrandProfileRequest,
   ApiDocument,
   ApiExtractedContentPage,
@@ -230,12 +231,6 @@ export const documentApi = {
       { method: 'POST' },
     ),
 
-  reprocessProfile: (workspaceId: string, documentId: string) =>
-    apiRequest<ApiAcceptedResponse>(
-      v1(`/workspaces/${workspaceId}/documents/${documentId}/reprocess`),
-      { method: 'POST', body: { mode: 'profile_only' } },
-    ),
-
   extractedContent: (workspaceId: string, documentId: string, cursor: string | null, limit = 50) => {
     const query = new URLSearchParams({ limit: String(limit) });
     if (cursor) query.set('cursor', cursor);
@@ -253,6 +248,9 @@ export const brandApi = {
   /** `GET /workspaces/{company_id}/brand-profile` — HTTP DTO from OpenAPI. */
   get: (workspaceId: string) =>
     apiRequest<ApiBrandProfile>(v1(`/workspaces/${workspaceId}/brand-profile`)),
+
+  revisions: (workspaceId: string) =>
+    apiRequest<readonly ApiBrandProfileRevision[]>(v1(`/workspaces/${workspaceId}/brand-profile/revisions`)),
 
   /** Lưu kèm `version` — lệch version sẽ nhận 409 `version_conflict`. */
   update: (workspaceId: string, body: ApiUpdateBrandProfileRequest) =>

@@ -173,7 +173,7 @@ export default function CampaignsPage() {
       {mocksEnabled ? <DemoNotice /> : null}
 
       {canCreate ? (
-        <Card title="Đề xuất brief và 3 concept từ yêu cầu" description="DeepSeek tạo bản đề xuất dựa trên Brand Profile đã xác nhận. Không tạo campaign hoặc đăng bài cho tới khi bạn chọn concept và xác nhận.">
+        <Card title="Đề xuất brief và 3 concept từ yêu cầu" description="DeepSeek đọc hồ sơ thương hiệu do Owner tự viết để lập bản đề xuất. Không tạo campaign hoặc đăng bài cho tới khi bạn chọn concept và xác nhận.">
           <form className="space-y-3" onSubmit={requestPlan}>
             <label htmlFor="campaign-planning-prompt" className="block text-sm font-medium text-slate-700">Bạn muốn truyền thông điều gì?</label>
             <textarea id="campaign-planning-prompt" value={planningPrompt} onChange={(event) => setPlanningPrompt(event.target.value)} maxLength={4000} minLength={8} required rows={3} placeholder="Ví dụ: Lên nội dung giáo dục phụ huynh nhận biết tin nhắn giả mạo trường học, không dùng số liệu nếu chưa có nguồn." className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" />
