@@ -7,9 +7,10 @@ import hashlib
 import base64
 import json
 import math
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, time, timedelta, timezone
 from decimal import Decimal
 from urllib.parse import urlsplit
+from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, Depends, Request
 from sqlalchemy import func, select
@@ -19,6 +20,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from database.evidence_versions import ensure_evidence_version
 from database.models import (
     AuditEvent,
+    AIUsageBudgetDay,
+    AIUsageLedger,
     Campaign,
     Company,
     Job,
@@ -54,6 +57,7 @@ from .market_research_schemas import (
     PageConnectIn,
     PageConnectionOut,
     ResearchReportOut,
+    ResearchAIBudgetOut,
     ResearchSourceCreate,
     ResearchSourceOut,
     WebCrawlSettingsIn, WebCrawlRunOut, WebItemOut, WebItemsPage, WebOfferOut,
@@ -70,6 +74,7 @@ from services.research.facebook_public_crawler import normalize_facebook_page_ur
 router = APIRouter(prefix="/workspaces/{company_id}/market-research", tags=["market-research"])
 MAX_ACTIVE_PAGES = 1
 MAX_SOURCES_PER_WORKSPACE = 20
+VN_TZ = ZoneInfo("Asia/Ho_Chi_Minh")
 EMAIL_RE = re.compile(r"\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b", re.IGNORECASE)
 PHONE_RE = re.compile(r"(?<!\w)(?:\+?\d[\d ().-]{7,}\d)(?!\w)")
 
@@ -1112,6 +1117,47 @@ async def list_workspace_reports(
         reports.extend(await list_reports(company_id, group_id, request, user, db))
     reports.sort(key=lambda report: report.created_at, reverse=True)
     return reports[:100]
+
+
+@router.get("/ai-budget", response_model=ResearchAIBudgetOut)
+async def get_workspace_ai_budget(
+    company_id: str, user: User = Depends(current_user), db: AsyncSession = Depends(get_db),
+):
+    """Return the current automatic-AI budget without exposing provider usage details."""
+
+    await membership_for(company_id, user, db)
+    local_now = datetime.now(timezone.utc).astimezone(VN_TZ)
+    budget_date = local_now.date()
+    day = await db.get(AIUsageBudgetDay, (company_id, budget_date))
+    configured_limit = min(
+        int(getattr(settings, "auto_ai_daily_budget_micro_usd", 2_000_000)), 2_000_000,
+    )
+    limit = day.limit_micro_usd if day else configured_limit
+    reserved = day.reserved_micro_usd if day else 0
+    spent = day.spent_micro_usd if day else 0
+    uncertain = int(await db.scalar(select(func.count(AIUsageLedger.id)).where(
+        AIUsageLedger.company_id == company_id,
+        AIUsageLedger.budget_date == budget_date,
+        AIUsageLedger.status.in_(["reserved", "unknown"]),
+    )) or 0)
+    pending = int(await db.scalar(select(func.count(MarketReport.id)).where(
+        MarketReport.company_id == company_id,
+        MarketReport.report_json["analysis_status"].as_string().in_([
+            "deferred_budget", "provider_outcome_unknown", "deepseek_not_configured",
+            "pricing_unavailable", "input_limit_exceeded",
+        ]),
+    )) or 0)
+    resets_at = datetime.combine(budget_date + timedelta(days=1), time.min, VN_TZ)
+    return ResearchAIBudgetOut(
+        budget_date=budget_date,
+        resets_at=resets_at,
+        limit_micro_usd=limit,
+        reserved_micro_usd=reserved,
+        spent_micro_usd=spent,
+        available_micro_usd=max(0, limit - reserved - spent),
+        unsettled_requests=uncertain,
+        pending_reports=pending,
+    )
 
 
 @router.get("/groups/{group_id}/reports", response_model=list[ResearchReportOut])

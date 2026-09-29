@@ -46,7 +46,7 @@ Không đưa token vào tài liệu, ticket, browser storage, query string hoặ
 
 - Account-only registration, Page-based workspace activation và reconnect được triển khai trong nhánh này; vẫn cần kiểm chứng migration trên PostgreSQL thật.
 - UI Nghiên cứu không yêu cầu người dùng chọn nhóm. Cấu trúc lưu trữ legacy vẫn group-scoped.
-- Gemini/Qwen adapters, video/image analysis, budget ledger, comment processing/erasure chưa triển khai.
+- Gemini/Qwen adapters, video/image analysis, comment processing/erasure chưa triển khai.
 
 ## Thao tác vận hành
 
@@ -55,7 +55,7 @@ Không bật xử lý comment/media từ cờ thủ công. Trước khi mở cá
 ## Phần chưa sẵn sàng
 
 - Gemini và Qwen chưa có adapter/model ID được xác minh; DeepSeek hiện là adapter cho báo cáo Nghiên cứu. Không tự fallback giữa provider.
-- Ledger hiện áp dụng cho báo cáo Nghiên cứu DeepSeek tự động; chưa bao phủ Gemini/Qwen, media hoặc mọi call AI tự động khác. UI ngân sách chưa có.
+- Ledger hiện áp dụng cho báo cáo Nghiên cứu DeepSeek tự động; chưa bao phủ Gemini/Qwen, media hoặc mọi call AI tự động khác. Trang Nghiên cứu đọc số liệu qua `GET .../market-research/ai-budget`; báo cáo hoãn hiện chỉ được hiển thị, chưa có tác vụ tự lên lịch chạy lại.
 - Chưa tải hay gửi ảnh/video đến provider; không tuyên bố media analysis đã chạy.
 - Không có full comment pagination/replies hoặc database checkpoint mới. Coverage là `privacy_hold`/Tier 0 partial.
 - Không tự nhận hệ thống tuân thủ đầy đủ Luật 91/2025/QH15 hoặc Nghị định 356/2025/NĐ-CP.

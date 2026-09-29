@@ -12,9 +12,9 @@ Base đã kiểm tra: `codex/creative-studio-ui` @ `b769097bfdb3568889d974c6def9
 - [DONE] UI Nghiên cứu không hỏi tạo/chọn nhóm; backend giữ nhóm legacy nội bộ và facade workspace cho báo cáo.
 - [PARTIAL] Page sở hữu lưu bài và chỉ số mà Meta trả. Nội dung bình luận đang `privacy_hold`; chỉ số đếm bình luận vẫn có thể được lưu.
 - [PARTIAL] Public Facebook giữ collector Tier 0 hiện có. Nhóm chỉ báo `unsupported_tier0`; không có nội dung thảo luận.
-- [PARTIAL] Ledger ngân sách tự động PostgreSQL và mức trần $2/workspace/ngày đã được thêm cho báo cáo Nghiên cứu chạy DeepSeek. Gemini/Qwen, media và các call AI tự động khác chưa nối vào ledger.
+- [PARTIAL] Ledger ngân sách tự động PostgreSQL và mức trần $2/workspace/ngày đã được thêm cho báo cáo Nghiên cứu chạy DeepSeek; API và UI hiển thị số đã dùng/giữ chỗ/còn lại. Gemini/Qwen, media và các call AI tự động khác chưa nối vào ledger.
 - [PARTIAL] Worker không gửi comment text cũ/mới cho agent. Chưa có pipeline nhận dạng/redact toàn diện, retention/deletion ledger hoặc quy trình pháp lý; không được coi là chứng nhận tuân thủ.
-- [DONE] Regenerate OpenAPI TypeScript từ OpenAPI hiện tại; frontend lint/typecheck/unit/build.
+- [PARTIAL] OpenAPI và TypeScript declarations đã được regenerate. Frontend lint/unit tests đạt ở lượt hiện tại; typecheck toàn ứng dụng hiện lỗi vì package `@agentic/contracts` không đồng bộ với các kiểu/field mà nhiều màn hình đã dùng.
 - [PARTIAL] API/worker fixtures và PostgreSQL/Redis/Celery integration test đã chạy trên môi trường disposable; browser real mode, Meta/provider live và worker crawl chưa chạy.
 
 ## Bằng chứng ban đầu
@@ -91,8 +91,19 @@ Base đã kiểm tra: `codex/creative-studio-ui` @ `b769097bfdb3568889d974c6def9
 - PASS: Regression không cần Docling runtime: 236 passed, 14 skipped, 1 deselected.
 - BLOCKED: Full suite phát hiện 11 test parser hiện có không khởi tạo được Docling subprocess trong virtualenv API hiện tại; lỗi độc lập với ledger và cần worker Docling runtime/model để nghiệm thu.
 - NOT_RUN: Không gọi DeepSeek/Gemini/Qwen live; không chạy crawl worker hoặc Meta live; không rollout preview.
-- PARTIAL: Hiện chỉ báo cáo Nghiên cứu tự động DeepSeek dùng ledger. Gemini/Qwen adapters, media/comment pipeline, ngân sách các tác vụ tự động khác và UI xem ngân sách chưa làm.
+- PARTIAL: Hiện chỉ báo cáo Nghiên cứu tự động DeepSeek dùng ledger. Gemini/Qwen adapters, media/comment pipeline và ngân sách các tác vụ tự động khác chưa làm.
 - DONE: Commit ngân sách `2b3cb9283e9f512b9aa288ecf48af4437cde9a1f` đã push; SHA trên origin được đối chiếu khớp.
+
+### 2026-09-30 02:35 Asia/Ho_Chi_Minh — Trạng thái ngân sách trong API và Nghiên cứu
+
+- DONE: Thêm `GET /api/v1/workspaces/{workspace_id}/market-research/ai-budget` để trả hạn mức, đã dùng, đang giữ chỗ, còn lại, số lượt chưa quyết toán và số báo cáo chờ do giới hạn/cấu hình. Ngày/ngày reset tính theo `Asia/Ho_Chi_Minh`; endpoint kiểm tra membership workspace.
+- DONE: Trang Nghiên cứu hiển thị mức dùng ngân sách tự động, đơn vị USD, thời điểm reset và thông báo báo cáo/lượt gọi đang chờ. Trạng thái làm mới mỗi 15 giây; chưa có chức năng tự lên lịch chạy lại các báo cáo bị hoãn.
+- PASS: `tests/test_market_research_api.py -k research_ai_budget` đạt 1 passed, kiểm tra số dư mặc định, reservation/spent, unsettled request và report `deferred_budget`.
+- PASS: `tests/test_market_research_api.py tests/test_ai_budget.py` đạt 18 passed trước khi thêm assertion cho report pending; targeted budget API test đạt lại sau thay đổi.
+- PASS: OpenAPI export và `--check` khớp. TypeScript declarations được sinh lại bằng `openapi-typescript 7.13.0`.
+- PASS: Frontend lint và unit tests: lint đạt, 50 tests passed.
+- FAIL (contract mismatch): Typecheck toàn app lỗi ở nhiều màn hình do `@agentic/contracts` không export các kiểu/field frontend đã dùng (`CampaignContentSlot`, `content_plan`, `document_ids`, `MediaAsset`, ...). Typecheck không nêu lỗi mới trong trang Nghiên cứu; toàn app chưa thể xác nhận PASS.
+- NOT_RUN: production build, browser thật, provider live, migration/runtime rollout. Không thay preview hoặc cấu hình key/provider.
 
 ## Nhật ký
 

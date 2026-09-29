@@ -5546,6 +5546,28 @@
         "title": "PageConnectionOut",
         "type": "object"
       },
+      "PageWorkspaceCreate": {
+        "additionalProperties": false,
+        "properties": {
+          "page_access_token": {
+            "maxLength": 4096,
+            "minLength": 20,
+            "title": "Page Access Token",
+            "type": "string"
+          },
+          "page_id": {
+            "pattern": "^[0-9]{1,32}$",
+            "title": "Page Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "page_id",
+          "page_access_token"
+        ],
+        "title": "PageWorkspaceCreate",
+        "type": "object"
+      },
       "PaginatedCampaigns": {
         "additionalProperties": false,
         "properties": {
@@ -6283,10 +6305,17 @@
         "additionalProperties": false,
         "properties": {
           "company_name": {
-            "maxLength": 200,
-            "minLength": 1,
-            "title": "Company Name",
-            "type": "string"
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Company Name"
           },
           "email": {
             "format": "email",
@@ -6321,8 +6350,7 @@
         "required": [
           "email",
           "password",
-          "full_name",
-          "company_name"
+          "full_name"
         ],
         "title": "RegisterRequest",
         "type": "object"
@@ -6341,6 +6369,69 @@
           }
         },
         "title": "ReprocessDocumentRequest",
+        "type": "object"
+      },
+      "ResearchAIBudgetOut": {
+        "additionalProperties": false,
+        "properties": {
+          "available_micro_usd": {
+            "minimum": 0.0,
+            "title": "Available Micro Usd",
+            "type": "integer"
+          },
+          "budget_date": {
+            "format": "date",
+            "title": "Budget Date",
+            "type": "string"
+          },
+          "currency": {
+            "const": "USD",
+            "default": "USD",
+            "title": "Currency",
+            "type": "string"
+          },
+          "limit_micro_usd": {
+            "minimum": 0.0,
+            "title": "Limit Micro Usd",
+            "type": "integer"
+          },
+          "pending_reports": {
+            "minimum": 0.0,
+            "title": "Pending Reports",
+            "type": "integer"
+          },
+          "reserved_micro_usd": {
+            "minimum": 0.0,
+            "title": "Reserved Micro Usd",
+            "type": "integer"
+          },
+          "resets_at": {
+            "format": "date-time",
+            "title": "Resets At",
+            "type": "string"
+          },
+          "spent_micro_usd": {
+            "minimum": 0.0,
+            "title": "Spent Micro Usd",
+            "type": "integer"
+          },
+          "unsettled_requests": {
+            "minimum": 0.0,
+            "title": "Unsettled Requests",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "budget_date",
+          "resets_at",
+          "limit_micro_usd",
+          "reserved_micro_usd",
+          "spent_micro_usd",
+          "available_micro_usd",
+          "unsettled_requests",
+          "pending_reports"
+        ],
+        "title": "ResearchAIBudgetOut",
         "type": "object"
       },
       "ResearchReportOut": {
@@ -6455,8 +6546,15 @@
             "title": "Connection Id"
           },
           "group_id": {
-            "title": "Group Id",
-            "type": "string"
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Group Id"
           },
           "name": {
             "maxLength": 200,
@@ -6482,7 +6580,6 @@
           }
         },
         "required": [
-          "group_id",
           "source_type",
           "name",
           "url"
@@ -7546,6 +7643,38 @@
             "title": "Name",
             "type": "string"
           },
+          "page_avatar_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Page Avatar Url"
+          },
+          "page_connection_state": {
+            "default": "connection_required",
+            "enum": [
+              "connection_required",
+              "active",
+              "needs_reconnect"
+            ],
+            "title": "Page Connection State",
+            "type": "string"
+          },
+          "page_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Page Id"
+          },
           "permissions": {
             "items": {
               "type": "string"
@@ -7681,6 +7810,22 @@
             "schema": {
               "title": "Token",
               "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
             }
           }
         ],
@@ -8342,6 +8487,66 @@
           }
         },
         "summary": "List Workspaces",
+        "tags": [
+          "workspaces"
+        ]
+      }
+    },
+    "/api/v1/workspaces/from-page": {
+      "post": {
+        "description": "Verify a Page token and make that Page the identity of a new workspace.",
+        "operationId": "create_workspace_from_page_api_v1_workspaces_from_page_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PageWorkspaceCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkspaceOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Workspace From Page",
         "tags": [
           "workspaces"
         ]
@@ -11458,6 +11663,65 @@
         ]
       }
     },
+    "/api/v1/workspaces/{company_id}/market-research/ai-budget": {
+      "get": {
+        "description": "Return the current automatic-AI budget without exposing provider usage details.",
+        "operationId": "get_workspace_ai_budget_api_v1_workspaces__company_id__market_research_ai_budget_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "company_id",
+            "required": true,
+            "schema": {
+              "title": "Company Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResearchAIBudgetOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Workspace Ai Budget",
+        "tags": [
+          "market-research"
+        ]
+      }
+    },
     "/api/v1/workspaces/{company_id}/market-research/groups": {
       "get": {
         "operationId": "list_groups_api_v1_workspaces__company_id__market_research_groups_get",
@@ -12277,6 +12541,69 @@
           }
         },
         "summary": "Disconnect Page",
+        "tags": [
+          "market-research"
+        ]
+      }
+    },
+    "/api/v1/workspaces/{company_id}/market-research/reports": {
+      "get": {
+        "description": "Workspace-level report facade; legacy storage remains group-scoped.",
+        "operationId": "list_workspace_reports_api_v1_workspaces__company_id__market_research_reports_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "company_id",
+            "required": true,
+            "schema": {
+              "title": "Company Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ResearchReportOut"
+                  },
+                  "title": "Response List Workspace Reports Api V1 Workspaces  Company Id  Market Research Reports Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Workspace Reports",
         "tags": [
           "market-research"
         ]
@@ -14643,6 +14970,74 @@
         "summary": "Import Metrics",
         "tags": [
           "analytics"
+        ]
+      }
+    },
+    "/api/v1/workspaces/{company_id}/page-connection": {
+      "patch": {
+        "operationId": "reconnect_workspace_page_api_v1_workspaces__company_id__page_connection_patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "company_id",
+            "required": true,
+            "schema": {
+              "title": "Company Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PageWorkspaceCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkspaceOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Reconnect Workspace Page",
+        "tags": [
+          "workspaces"
         ]
       }
     },

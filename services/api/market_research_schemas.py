@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import date, datetime
 from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
@@ -219,6 +219,18 @@ class ResearchReportOut(StrictModel):
     created_at: datetime
     evidence_refs: list[dict[str, Any]] = Field(default_factory=list)
     source_audience: list[dict[str, Any]] = Field(default_factory=list)
+
+
+class ResearchAIBudgetOut(StrictModel):
+    budget_date: date
+    resets_at: datetime
+    currency: Literal["USD"] = "USD"
+    limit_micro_usd: int = Field(ge=0)
+    reserved_micro_usd: int = Field(ge=0)
+    spent_micro_usd: int = Field(ge=0)
+    available_micro_usd: int = Field(ge=0)
+    unsettled_requests: int = Field(ge=0)
+    pending_reports: int = Field(ge=0)
 
 
 class DraftFromReportIn(StrictModel):

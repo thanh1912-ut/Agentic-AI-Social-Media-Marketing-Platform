@@ -14,7 +14,7 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from sqlalchemy.pool import StaticPool
 
 from database.models import (
-    Base, Job, MarketEvidence, MarketEvidenceVersion, MarketObservation, MetaPageConnection,
+    AIUsageBudgetDay, AIUsageLedger, Base, Job, MarketEvidence, MarketEvidenceVersion, MarketObservation, MetaPageConnection,
     MarketReport, MarketReportEvidence, MetaPageGroup, ResearchCycle, ResearchSource, new_id,
 )
 from services.api import market_research as market_research_routes
@@ -107,6 +107,73 @@ def _create_group(client: TestClient, workspace_id: str, headers: dict[str, str]
     )
     assert response.status_code == 201, response.text
     return response.json()["id"]
+
+
+def test_research_ai_budget_is_workspace_scoped_and_reports_reserved_cost(market_api) -> None:
+    client, session_factory, _encryption_key = market_api
+    workspace_id, headers = _owner(client, "budget-owner@example.com")
+
+    initial = client.get(f"/api/v1/workspaces/{workspace_id}/market-research/ai-budget")
+    assert initial.status_code == 200, initial.text
+    initial_payload = initial.json()
+    assert initial_payload["currency"] == "USD"
+    assert initial_payload["limit_micro_usd"] == 2_000_000
+    assert initial_payload["spent_micro_usd"] == 0
+    assert initial_payload["reserved_micro_usd"] == 0
+    assert initial_payload["available_micro_usd"] == 2_000_000
+    assert initial_payload["unsettled_requests"] == 0
+    group_id = _create_group(client, workspace_id, headers)
+
+    from datetime import datetime, timezone
+    from zoneinfo import ZoneInfo
+
+    budget_date = datetime.now(timezone.utc).astimezone(ZoneInfo("Asia/Ho_Chi_Minh")).date()
+
+    async def seed_budget() -> None:
+        async with session_factory() as db:
+            db.add(AIUsageBudgetDay(
+                company_id=workspace_id,
+                budget_date=budget_date,
+                limit_micro_usd=2_000_000,
+                reserved_micro_usd=250_000,
+                spent_micro_usd=125_000,
+            ))
+            db.add(AIUsageLedger(
+                id=new_id(),
+                company_id=workspace_id,
+                request_key="budget-api-test",
+                provider="deepseek",
+                model="deepseek-flash",
+                operation="market_research_report",
+                budget_class="automatic",
+                budget_date=budget_date,
+                pricing_version="fixture",
+                cost_basis="fixture",
+                reserved_micro_usd=250_000,
+                status="unknown",
+            ))
+            now = datetime.now(timezone.utc)
+            db.add(MarketReport(
+                id=new_id(),
+                company_id=workspace_id,
+                group_id=group_id,
+                window_start=now,
+                window_end=now,
+                report_json={"analysis_status": "deferred_budget"},
+                evidence_ids_json=[],
+                coverage_json={},
+            ))
+            await db.commit()
+
+    asyncio.run(seed_budget())
+    populated = client.get(f"/api/v1/workspaces/{workspace_id}/market-research/ai-budget")
+    assert populated.status_code == 200, populated.text
+    populated_payload = populated.json()
+    assert populated_payload["reserved_micro_usd"] == 250_000
+    assert populated_payload["spent_micro_usd"] == 125_000
+    assert populated_payload["available_micro_usd"] == 1_625_000
+    assert populated_payload["unsettled_requests"] == 1
+    assert populated_payload["pending_reports"] == 1
 
 
 def test_page_token_is_encrypted_and_same_page_can_reconnect(market_api, monkeypatch) -> None:

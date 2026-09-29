@@ -192,6 +192,18 @@ export interface MarketReport {
   created_at: string;
 }
 
+export interface ResearchAIBudget {
+  budget_date: string;
+  resets_at: string;
+  currency: 'USD';
+  limit_micro_usd: number;
+  reserved_micro_usd: number;
+  spent_micro_usd: number;
+  available_micro_usd: number;
+  unsettled_requests: number;
+  pending_reports: number;
+}
+
 interface CreateGroup {
   name: string;
   industry: string;
@@ -231,6 +243,7 @@ export const marketResearchKeys = {
     ['workspaces', workspaceId, 'market-research', 'sources', groupId ?? 'all'] as const,
   reports: (workspaceId: string, groupId: string) =>
     ['workspaces', workspaceId, 'market-research', groupId, 'reports'] as const,
+  aiBudget: (workspaceId: string) => ['workspaces', workspaceId, 'market-research', 'ai-budget'] as const,
   webItems: (workspaceId: string, groupId: string, kind: string) =>
     ['workspaces', workspaceId, 'market-research', groupId, 'web-items', kind] as const,
   competitorPosts: (workspaceId: string, sourceId: string) =>
@@ -240,6 +253,8 @@ export const marketResearchKeys = {
 };
 
 export const marketResearchApi = {
+  aiBudget: (workspaceId: string) =>
+    apiRequest<ResearchAIBudget>(path(workspaceId) + '/ai-budget'),
   groups: (workspaceId: string) =>
     apiRequest<MarketGroup[]>(path(workspaceId) + '/groups'),
   createGroup: (workspaceId: string, body: CreateGroup) =>

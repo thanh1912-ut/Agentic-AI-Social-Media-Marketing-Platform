@@ -60,6 +60,14 @@ function formatMetricChanges(metrics: Record<string, number | null> | undefined)
     .join(' · ');
 }
 
+function formatUsdMicro(value: number): string {
+  return new Intl.NumberFormat('vi-VN', {
+    style: 'currency',
+    currency: 'USD',
+    maximumFractionDigits: 4,
+  }).format(value / 1_000_000);
+}
+
 const SOURCE_STATUS: Record<string, { label: string; tone: 'neutral' | 'info' | 'success' | 'warning' | 'danger' }> = {
   active: { label: 'Tự động thu thập', tone: 'success' },
   manual_import_only: { label: 'Cần nhập dữ liệu thủ công', tone: 'info' },
@@ -141,6 +149,12 @@ export default function FanpagesMarketResearchPage() {
   const reportsQuery = useQuery({
     queryKey: marketResearchKeys.reports(workspaceId, 'all'),
     queryFn: () => marketResearchApi.allReports(workspaceId),
+    enabled: workspaceId !== '',
+    refetchInterval: (query) => query.state.fetchStatus === 'fetching' ? false : 15_000,
+  });
+  const aiBudgetQuery = useQuery({
+    queryKey: marketResearchKeys.aiBudget(workspaceId),
+    queryFn: () => marketResearchApi.aiBudget(workspaceId),
     enabled: workspaceId !== '',
     refetchInterval: (query) => query.state.fetchStatus === 'fetching' ? false : 15_000,
   });
@@ -475,6 +489,42 @@ export default function FanpagesMarketResearchPage() {
           {marketTab === "reports" ? (
         <div id="market-panel" role="tabpanel" aria-labelledby="market-tab-reports" className="route-tab-panel">
 <section id="market-reports" className="scroll-mt-24">
+          {aiBudgetQuery.data ? (
+            <section aria-labelledby="ai-budget-title" className="mb-5 rounded-xl border border-slate-200 bg-white p-4">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <h2 id="ai-budget-title" className="font-semibold text-slate-900">Ngân sách AI tự động</h2>
+                  <p className="mt-1 text-sm text-slate-600">Giới hạn dùng chung cho các tác vụ AI tự động trong ngày Việt Nam. Yêu cầu bạn chủ động chạy được tính riêng.</p>
+                </div>
+                <span className="text-sm text-slate-600">Đặt lại {formatDateTime(aiBudgetQuery.data.resets_at)}</span>
+              </div>
+              <div className="mt-4 flex flex-wrap gap-x-6 gap-y-2 text-sm">
+                <span>Đã dùng: <strong>{formatUsdMicro(aiBudgetQuery.data.spent_micro_usd)}</strong></span>
+                <span>Đang giữ chỗ: <strong>{formatUsdMicro(aiBudgetQuery.data.reserved_micro_usd)}</strong></span>
+                <span>Còn khả dụng: <strong>{formatUsdMicro(aiBudgetQuery.data.available_micro_usd)}</strong> / {formatUsdMicro(aiBudgetQuery.data.limit_micro_usd)}</span>
+              </div>
+              <div
+                className="mt-3 h-2 overflow-hidden rounded-full bg-slate-100"
+                role="progressbar"
+                aria-label="Mức sử dụng ngân sách AI tự động"
+                aria-valuemin={0}
+                aria-valuemax={aiBudgetQuery.data.limit_micro_usd}
+                aria-valuenow={Math.min(aiBudgetQuery.data.limit_micro_usd, aiBudgetQuery.data.spent_micro_usd + aiBudgetQuery.data.reserved_micro_usd)}
+              >
+                <div
+                  className="h-full rounded-full bg-pink-700 transition-[width] duration-200"
+                  style={{ width: `${aiBudgetQuery.data.limit_micro_usd > 0 ? Math.min(100, ((aiBudgetQuery.data.spent_micro_usd + aiBudgetQuery.data.reserved_micro_usd) / aiBudgetQuery.data.limit_micro_usd) * 100) : 0}%` }}
+                />
+              </div>
+              {aiBudgetQuery.data.pending_reports > 0 || aiBudgetQuery.data.unsettled_requests > 0 ? (
+                <p className="mt-3 text-sm text-amber-800">
+                  {aiBudgetQuery.data.pending_reports > 0 ? `${aiBudgetQuery.data.pending_reports} báo cáo đang chờ hoặc cần xử lý lại do giới hạn/cấu hình AI. ` : ''}
+                  {aiBudgetQuery.data.unsettled_requests > 0 ? `${aiBudgetQuery.data.unsettled_requests} lượt gọi đang chạy hoặc chưa đối soát; phần giữ chỗ vẫn được tính vào ngân sách.` : ''}
+                </p>
+              ) : null}
+            </section>
+          ) : null}
+          {aiBudgetQuery.error ? <ErrorPanel message={readableError(aiBudgetQuery.error, 'Không tải được trạng thái ngân sách AI.')} retryable onRetry={() => void aiBudgetQuery.refetch()} /> : null}
           <Card title="Báo cáo xu hướng và gợi ý" description="DeepSeek phân tích nội dung, tương tác, views, follower count và thay đổi giữa các lần crawl khi nguồn trả dữ liệu. Giá trị thiếu được để trống; kết luận có nguồn đối chiếu.">
             {reportsQuery.isLoading ? <LoadingBlock label="Đang tải báo cáo…" /> : null}
             {reportsQuery.error ? <ErrorPanel message={readableError(reportsQuery.error, 'Không tải được báo cáo.')} retryable onRetry={() => void reportsQuery.refetch()} /> : null}
