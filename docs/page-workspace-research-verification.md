@@ -15,7 +15,7 @@
 | Chống Page token tự cấp membership | PASS (SQLite API fixture) | `test_page_activation_owns_workspace_and_token_does_not_grant_membership` trả 409 cho non-member |
 | Token reconnect giữ cùng Page/data | PASS (SQLite API fixture) | `test_page_token_is_encrypted_and_same_page_can_reconnect`; reconnect cùng Page, token mã hóa thật trong test |
 | API Page activation gate | PASS (SQLite API fixture) | `test_legacy_workspace_requires_page_before_agentic_writes` trả 409 khi workspace chưa có Page |
-| Worker/scheduler Page activation gate | PARTIAL; PostgreSQL/Redis NOT_RUN | Guard được gọi ở các claim/scheduler/preflight path; chưa có integration cạnh tranh/recovery trên dịch vụ thật |
+| Worker/scheduler Page activation gate | PARTIAL | PostgreSQL test thật xác nhận worker claim chỉ thành công với workspace có Page active; Redis/Celery được thử riêng trên instance tạm; browser end-to-end NOT_RUN |
 | Nghiên cứu không cần người dùng chọn nhóm | PARTIAL | UI facade workspace; nhóm legacy vẫn là FK persistence/report |
 | Page công ty Meta collection | PARTIAL; live NOT_RUN | Existing Meta post/metrics path; bounded posts; không thêm comment bodies |
 | Public Page Tier 0 | PARTIAL; live NOT_RUN | Existing facebook-cli pipeline; không chứng minh lịch sử đầy đủ |
@@ -25,8 +25,10 @@
 | Qwen / Gemini / DeepSeek routing | NOT_IMPLEMENTED except existing DeepSeek | Không có adapter mới, model/cost validation hoặc fallback |
 | AI budget $2/workspace/day | NOT_IMPLEMENTED | Chưa có reservation/actual usage ledger; không cho rằng đã được giới hạn |
 | Privacy retention/deletion | BLOCKED | Chưa có policy version, deletion ledger/propagation hoặc legal review; không tuyên bố tuân thủ đầy đủ |
-| PostgreSQL migration fresh/upgrade | NOT_RUN | Chưa cấu hình database test riêng; không chạy migration vào DB preview |
-| Redis jobs/browser reload | NOT_RUN | Chưa chạy pipeline thật trên Redis/Celery và browser cho commit hiện tại |
+| PostgreSQL migration fresh/upgrade | PASS (test cluster tạm) | Fresh migration đạt `0021`; upgrade từ schema revision `0020` với trường hợp legacy một Page/nhiều Page/Page trùng/không có Page |
+| PostgreSQL/Redis integration | PASS (test services tạm) | `tests/test_postgres_database_integration.py`: 6 passed; queue/cache TTL; PostgreSQL fencing và cạnh tranh claim |
+| Celery dispatch | PASS (integration test, không chạy crawl worker) | Production dispatcher đưa đúng synthetic job ID vào Redis queue `agent`; test dọn message và bản ghi synthetic; worker xử lý end-to-end NOT_RUN |
+| Browser reload | NOT_RUN | Chưa chạy pipeline thật từ UI đến worker rồi reload trong commit hiện tại |
 | Facebook avatar URL | PASS (HTTP fixture) | `test_verify_page_uses_bearer_header_and_returns_verified_identity` kiểm tra Meta CDN, giữ chữ ký CDN cần thiết và loại API token; test host ngoài bị loại |
 | Frontend lint | PASS | `npm run lint` |
 | Frontend typecheck | PASS | `npm run typecheck -- --incremental false` (tránh tạo tsbuildinfo trong worktree được bảo vệ) |
@@ -44,9 +46,11 @@ Không tuyên bố đã crawl hết Page/Group hoặc đạt chứng nhận phá
 - Implementation/test commit: `d2ad5dddf7ef4055a1941d69c32a67d5d93ecf4a` trên `codex/page-workspaces-research`.
 - Remote SHA được xác minh lúc `2026-09-30 01:38 Asia/Ho_Chi_Minh`: `origin/codex/page-workspaces-research` khớp `d2ad5dddf7ef4055a1941d69c32a67d5d93ecf4a`.
 - Việc ghi nhận SHA trong tài liệu là thay đổi tài liệu sau khi chạy kiểm thử; không làm thay đổi code đã kiểm thử.
-- Đã thêm migration `0021_page_workspace_identity`; migration thật chưa chạy.
+- Đã thêm migration `0021_page_workspace_identity`. Fresh migration chạy trên PostgreSQL 18.3 test cluster tạm, từ database mới đến `0021`.
+- Upgrade migration được thử trên database riêng ở `0020`. Vì migration `0001` của checkout mới tạo metadata hiện tại, test đã gỡ riêng ba cột/index mới để mô phỏng schema cũ, seed dữ liệu synthetic và áp dụng `0021`: workspace một Page được map với `needs_reconnect`; workspace nhiều Page, Page trùng giữa workspace và không Page giữ `page_id=NULL`/`connection_required`.
+- PostgreSQL/Redis integration chạy trên test services tạm ở loopback: `tests/test_postgres_database_integration.py` đạt 6 passed. Test production Celery dispatcher đưa đúng job ID synthetic vào Redis `agent` queue; message và bản ghi test được dọn sau kiểm tra. Không chạy worker xử lý research để tránh crawl hoặc gọi provider.
 - OpenAPI được xuất vào `/private/tmp/page-workspaces-openapi.json` và frontend types sinh bằng `npm run gen:api`; stub pgvector chỉ dùng để import schema, không được tính là backend runtime/test.
-- `alembic upgrade head --sql` chưa chạy hết được vì migration cũ `0002_profile_knowledge` gọi schema inspector, không hỗ trợ Alembic offline SQL; không chạy migration lên database preview.
+- `alembic upgrade head --sql` vẫn không hỗ trợ do migration cũ `0002_profile_knowledge` gọi schema inspector; online fresh/upgrade trên PostgreSQL test thật đã đạt. Không chạy migration lên database preview.
 - Từng phát sinh đầu ra có URL kết nối DB trong một lượt rà cấu hình. Không lặp lại hoặc commit thông tin đó; cần xoay mật khẩu sau khi có cửa sổ vận hành an toàn.
 
 ## Trạng thái pháp lý và xử lý bình luận/media

@@ -66,3 +66,17 @@ Không bật xử lý comment/media từ cờ thủ công. Trước khi mở cá
 - Migration phải chạy `alembic upgrade head` trên database test riêng trước rollout; không chạy rollback phá lịch sử.
 - Đừng thay API/workers đang phục vụ preview. Drain worker cũ trước khi thay backend và giữ snapshot/rollback tương thích Page gate.
 - Cấu hình key dạng placeholder trong secret store: `DEEPSEEK_API_KEY=<secret>`, `GEMINI_API_KEY=<secret>`, `QWEN_API_KEY=<secret>`; hiện chỉ DeepSeek adapter cũ tồn tại, còn Gemini/Qwen chưa được nối.
+
+### PostgreSQL/Redis test cách ly của lần xác minh này
+
+Các lần test integration dùng cluster tạm dưới `/private/tmp/agentic-page-workspaces-it-20260930`, chỉ bind loopback; không dùng database/queue của preview. PostgreSQL nghe cổng `15433`; Redis queue `26379` và cache `26380`. Redis test không bật persistence và không chạy worker.
+
+Khi không còn cần chạy integration trong phiên làm việc, dừng đúng các tiến trình test bằng:
+
+```bash
+/opt/homebrew/bin/pg_ctl -D /private/tmp/agentic-page-workspaces-it-20260930/pgdata -m fast -w stop
+/opt/homebrew/bin/redis-cli -h 127.0.0.1 -p 26379 shutdown
+/opt/homebrew/bin/redis-cli -h 127.0.0.1 -p 26380 shutdown
+```
+
+Không dùng các lệnh này nếu đã tái sử dụng các cổng cho tiến trình khác; xác minh tiến trình/cổng trước khi dừng.

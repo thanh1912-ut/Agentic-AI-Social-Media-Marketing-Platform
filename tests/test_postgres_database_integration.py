@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import asyncio
+import base64
+import json
 import os
 import uuid
 from datetime import datetime, timedelta, timezone
@@ -32,7 +34,7 @@ def test_postgres_migrations_constraints_vector_and_job_fencing() -> None:
                 revision = await connection.exec_driver_sql(
                     "SELECT version_num FROM alembic_version ORDER BY version_num LIMIT 1"
                 )
-                assert revision.scalar_one() == "0020_facebook_cli_public_collector"
+                assert revision.scalar_one() == "0021_page_workspace_identity"
                 extension = await connection.exec_driver_sql(
                     "SELECT extversion FROM pg_extension WHERE extname='vector'"
                 )
@@ -41,6 +43,18 @@ def test_postgres_migrations_constraints_vector_and_job_fencing() -> None:
                 def assert_schema(sync_connection) -> None:
                     inspector = inspect(sync_connection)
                     assert set(Base.metadata.tables).issubset(set(inspector.get_table_names()))
+                    company_columns = {
+                        column["name"] for column in inspector.get_columns("companies")
+                    }
+                    assert {
+                        "page_id", "page_avatar_url", "page_connection_state",
+                    }.issubset(company_columns)
+                    assert any(
+                        item["name"] == "ix_companies_page_id"
+                        and item.get("unique") is True
+                        and item["column_names"] == ["page_id"]
+                        for item in inspector.get_indexes("companies")
+                    )
                     report_evidence_columns = {
                         column["name"] for column in inspector.get_columns("market_report_evidence")
                     }
@@ -230,7 +244,13 @@ def test_postgres_competing_workers_only_claim_a_research_job_once() -> None:
         sessions = async_sessionmaker(engine, expire_on_commit=False)
         try:
             async with sessions() as db:
-                company = Company(name="Claim race", slug=f"claim-{uuid.uuid4().hex[:16]}")
+                page_id = f"test-{uuid.uuid4().hex[:20]}"
+                company = Company(
+                    name="Claim race",
+                    slug=f"claim-{uuid.uuid4().hex[:16]}",
+                    page_id=page_id,
+                    page_connection_state="active",
+                )
                 user = User(
                     email=f"claim-{uuid.uuid4().hex}@example.invalid",
                     full_name="Claim test",
@@ -340,6 +360,96 @@ def test_postgres_committed_job_survives_queue_dispatch_failure(monkeypatch: pyt
                 assert recovered.dispatch_attempts == 2
                 assert recovered.last_dispatch_error is None
         finally:
+            await engine.dispose()
+
+    asyncio.run(run())
+
+
+def test_production_dispatcher_places_durable_job_on_isolated_redis_queue() -> None:
+    queue_url = os.getenv("REDIS_QUEUE_TEST_URL")
+    broker_url = os.getenv("REDIS_URL")
+    if not queue_url or not broker_url:
+        pytest.skip("REDIS_QUEUE_TEST_URL and REDIS_URL are required")
+    if broker_url != queue_url:
+        pytest.fail("REDIS_URL must point to the isolated REDIS_QUEUE_TEST_URL")
+
+    async def run() -> None:
+        assert POSTGRES_TEST_URL
+        engine = create_async_engine(POSTGRES_TEST_URL)
+        sessions = async_sessionmaker(engine, expire_on_commit=False)
+        redis = Redis.from_url(queue_url)
+        marker = uuid.uuid4().hex
+        job_id: str | None = None
+        company_id: str | None = None
+        user_id: str | None = None
+        queued_message: bytes | None = None
+        try:
+            from services.worker.celery_app import celery_app
+
+            assert celery_app.conf.broker_url == broker_url
+            async with sessions() as db:
+                company = Company(
+                    name="Celery dispatch test",
+                    slug=f"celery-{marker[:16]}",
+                    page_id=f"test-page-{marker[:16]}",
+                    page_connection_state="active",
+                )
+                user = User(
+                    email=f"celery-{marker}@example.invalid",
+                    full_name="Queue test",
+                    password_hash="test-only-not-a-login",
+                )
+                db.add_all([company, user])
+                await db.flush()
+                company_id = company.id
+                user_id = user.id
+                job = Job(
+                    company_id=company.id,
+                    created_by=user.id,
+                    kind="market_research",
+                    title="Redis dispatcher integration",
+                    status="queued",
+                    result={"group_id": "unused-isolated-test-group"},
+                    idempotency_key=f"celery:{marker}",
+                )
+                db.add(job)
+                await db.commit()
+                job_id = job.id
+
+            assert await job_service.dispatch_research_job(job_id) is True
+            messages = await redis.lrange("agent", 0, -1)
+            for message in messages:
+                try:
+                    envelope = json.loads(message)
+                    body = envelope.get("body")
+                    if not isinstance(body, str):
+                        continue
+                    padded = body + "=" * (-len(body) % 4)
+                    payload = json.loads(base64.urlsafe_b64decode(padded.encode("ascii")))
+                    if job_id in json.dumps(payload):
+                        queued_message = message
+                        break
+                except (ValueError, TypeError, UnicodeError, json.JSONDecodeError):
+                    continue
+            assert queued_message is not None, "committed job ID was not found in the Redis agent queue"
+        finally:
+            if queued_message is not None:
+                await redis.lrem("agent", 1, queued_message)
+            await redis.aclose()
+            async with sessions() as db:
+                if job_id is not None:
+                    job = await db.get(Job, job_id)
+                    if job is not None:
+                        await db.delete(job)
+                if company_id is not None:
+                    company = await db.get(Company, company_id)
+                    if company is not None:
+                        await db.delete(company)
+                if user_id is not None:
+                    user = await db.get(User, user_id)
+                    if user is not None:
+                        await db.delete(user)
+                await db.commit()
             await engine.dispose()
 
     asyncio.run(run())
