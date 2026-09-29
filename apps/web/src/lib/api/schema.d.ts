@@ -693,6 +693,23 @@ export interface paths {
         readonly patch?: never;
         readonly trace?: never;
     };
+    readonly "/api/v1/workspaces/{company_id}/documents/{document_id}/extracted-content": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /** Get Extracted Content */
+        readonly get: operations["get_extracted_content_api_v1_workspaces__company_id__documents__document_id__extracted_content_get"];
+        readonly put?: never;
+        readonly post?: never;
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
     readonly "/api/v1/workspaces/{company_id}/documents/{document_id}/reprocess": {
         readonly parameters: {
             readonly query?: never;
@@ -2434,7 +2451,7 @@ export interface components {
              * @default pending
              * @enum {string}
              */
-            readonly extraction_status: "pending" | "extracted" | "metadata_only" | "failed";
+            readonly extraction_status: "pending" | "extracted" | "partial" | "metadata_only" | "failed";
             /** Filename */
             readonly filename: string;
             /** Id */
@@ -2586,6 +2603,45 @@ export interface components {
              * @constant
              */
             readonly status: "ready";
+        };
+        /** ExtractedContentPage */
+        readonly ExtractedContentPage: {
+            /** Document Id */
+            readonly document_id: string;
+            /** Has More */
+            readonly has_more: boolean;
+            /** Items */
+            readonly items: readonly components["schemas"]["ExtractedContentUnit"][];
+            /** Next Cursor */
+            readonly next_cursor?: string | null;
+            /** Parser Version */
+            readonly parser_version: string;
+            /** Source Version */
+            readonly source_version: string;
+            /** Total Rows */
+            readonly total_rows: number;
+            /** Total Tables */
+            readonly total_tables: number;
+            /** Total Text Blocks */
+            readonly total_text_blocks: number;
+            /** Warnings */
+            readonly warnings?: readonly string[];
+        };
+        /** ExtractedContentUnit */
+        readonly ExtractedContentUnit: {
+            /** Cells */
+            readonly cells?: readonly string[] | null;
+            /** Headers */
+            readonly headers?: readonly string[] | null;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            readonly kind: "text" | "table_row";
+            /** Locator */
+            readonly locator: string;
+            /** Text */
+            readonly text?: string | null;
         };
         /** ForgotPasswordRequest */
         readonly ForgotPasswordRequest: {
@@ -3645,6 +3701,15 @@ export interface components {
             /** Password */
             readonly password: string;
         };
+        /** ReprocessDocumentRequest */
+        readonly ReprocessDocumentRequest: {
+            /**
+             * Mode
+             * @default document
+             * @enum {string}
+             */
+            readonly mode: "document" | "profile_only";
+        };
         /** ResearchReportOut */
         readonly ResearchReportOut: {
             /** Coverage */
@@ -3896,6 +3961,41 @@ export interface components {
             readonly max_file_size_bytes: number;
             /** Max Files Per Request */
             readonly max_files_per_request: number;
+            /**
+             * Max Pdf Pages
+             * @default 200
+             */
+            readonly max_pdf_pages: number;
+            /**
+             * Max Processing Seconds
+             * @default 600
+             */
+            readonly max_processing_seconds: number;
+            /**
+             * Max Table Cells
+             * @default 1000000
+             */
+            readonly max_table_cells: number;
+            /**
+             * Max Table Columns
+             * @default 256
+             */
+            readonly max_table_columns: number;
+            /**
+             * Max Table Rows
+             * @default 100000
+             */
+            readonly max_table_rows: number;
+            /**
+             * Max Text Characters
+             * @default 20000000
+             */
+            readonly max_text_characters: number;
+            /**
+             * Ocr Enabled
+             * @default false
+             */
+            readonly ocr_enabled: boolean;
         };
         /** UserOut */
         readonly UserOut: {
@@ -4121,6 +4221,8 @@ export type SchemaExperimentOutcomeCohortOut = components['schemas']['Experiment
 export type SchemaExperimentOutcomeListOut = components['schemas']['ExperimentOutcomeListOut'];
 export type SchemaExperimentOutcomeOut = components['schemas']['ExperimentOutcomeOut'];
 export type SchemaExportOut = components['schemas']['ExportOut'];
+export type SchemaExtractedContentPage = components['schemas']['ExtractedContentPage'];
+export type SchemaExtractedContentUnit = components['schemas']['ExtractedContentUnit'];
 export type SchemaForgotPasswordRequest = components['schemas']['ForgotPasswordRequest'];
 export type SchemaForgotPasswordResponse = components['schemas']['ForgotPasswordResponse'];
 export type SchemaGenerateContentRequest = components['schemas']['GenerateContentRequest'];
@@ -4182,6 +4284,7 @@ export type SchemaRecommendationFeedbackRequest = components['schemas']['Recomme
 export type SchemaRecommendationOut = components['schemas']['RecommendationOut'];
 export type SchemaRecordExperimentOutcomeRequest = components['schemas']['RecordExperimentOutcomeRequest'];
 export type SchemaRegisterRequest = components['schemas']['RegisterRequest'];
+export type SchemaReprocessDocumentRequest = components['schemas']['ReprocessDocumentRequest'];
 export type SchemaResearchReportOut = components['schemas']['ResearchReportOut'];
 export type SchemaResearchSourceCreate = components['schemas']['ResearchSourceCreate'];
 export type SchemaResearchSourceOut = components['schemas']['ResearchSourceOut'];
@@ -6048,6 +6151,43 @@ export interface operations {
             };
         };
     };
+    readonly get_extracted_content_api_v1_workspaces__company_id__documents__document_id__extracted_content_get: {
+        readonly parameters: {
+            readonly query?: {
+                readonly cursor?: string | null;
+                readonly limit?: number;
+            };
+            readonly header?: {
+                readonly authorization?: string | null;
+            };
+            readonly path: {
+                readonly company_id: string;
+                readonly document_id: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ExtractedContentPage"];
+                };
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     readonly reprocess_document_api_v1_workspaces__company_id__documents__document_id__reprocess_post: {
         readonly parameters: {
             readonly query?: never;
@@ -6060,7 +6200,11 @@ export interface operations {
             };
             readonly cookie?: never;
         };
-        readonly requestBody?: never;
+        readonly requestBody?: {
+            readonly content: {
+                readonly "application/json": components["schemas"]["ReprocessDocumentRequest"] | null;
+            };
+        };
         readonly responses: {
             /** @description Successful Response */
             readonly 202: {

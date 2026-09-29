@@ -25,6 +25,11 @@ const EXTRACTION_STATUS: Record<string, ProcessingStatusMeta> = {
     tone: 'success',
     description: 'Máy chủ đã trích xuất nội dung; điều này chưa có nghĩa Brand Profile đã được tạo.',
   },
+  partial: {
+    label: 'Đã đọc được một phần',
+    tone: 'warning',
+    description: 'Có nội dung đã lưu nhưng máy chủ ghi nhận trang hoặc phần dữ liệu bị thiếu; xem cảnh báo trước khi dùng.',
+  },
   metadata_only: {
     label: 'Chỉ lưu metadata',
     tone: 'warning',
@@ -92,7 +97,7 @@ const PROFILE_STATUS: Record<string, ProcessingStatusMeta> = {
   not_available: {
     label: 'Không dùng được để tạo Brand Profile',
     tone: 'warning',
-    description: 'Máy chủ báo tài liệu này không thể tạo hồ sơ (ví dụ ảnh chưa có OCR).',
+    description: 'Nội dung đã đọc nhưng Brand Profile chưa được tạo, thường do thiếu cấu hình AI hoặc nguồn chưa đủ thông tin.',
   },
   failed: {
     label: 'Tạo Brand Profile thất bại',

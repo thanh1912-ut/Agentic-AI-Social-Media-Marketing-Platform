@@ -37,6 +37,7 @@ from services.api.storage import storage
 from services.api.brand_profiles import _profile_revision, internal_profile_to_http
 from services.ingestion.knowledge_store import PostgresKnowledgeIndex
 from services.ingestion.parsers import ParseError, parse_document
+from services.agents.knowledge.chunking import chunk_document
 from services.worker.async_runtime import run_worker_coroutine
 from .celery_app import celery_app
 from services.ingestion.knowledge_store import embedding_identity
@@ -132,9 +133,14 @@ async def _claim_job(job_id: str, fallback_document_ids: list[str]) -> tuple[str
             }
             await db.commit()
             return None
-        await _set_step(db, job.id, "receive_file", status="succeeded", progress=100, message="Đã nhận tệp và kiểm tra quyền truy cập.")
-        await _set_step(db, job.id, "detect_type", status="succeeded", progress=100, message="Đã xác nhận định dạng tài liệu.")
-        await _set_step(db, job.id, "extract_text", status="running", progress=5, message="Đang đọc nội dung tài liệu.")
+        profile_only = (job.result or {}).get("mode") == "profile_only"
+        if profile_only:
+            for key in ("receive_file", "detect_type", "extract_text", "normalize"):
+                await _set_step(db, job.id, key, status="skipped", message="Dùng lại nội dung đã lưu.")
+        else:
+            await _set_step(db, job.id, "receive_file", status="succeeded", progress=100, message="Đã nhận tệp và kiểm tra quyền truy cập.")
+            await _set_step(db, job.id, "detect_type", status="succeeded", progress=100, message="Đã xác nhận định dạng tài liệu.")
+            await _set_step(db, job.id, "extract_text", status="running", progress=5, message="Đang đọc nội dung tài liệu.")
         job.progress = 10
         await append_job_event(db, job, "status", "Worker đã nhận job.", 10)
         await db.commit()
@@ -145,11 +151,11 @@ async def _claim_job(job_id: str, fallback_document_ids: list[str]) -> tuple[str
 async def _parse_uploaded_document(document: Document):
     if hasattr(storage, "path"):
         parsed_path = storage.path(document.storage_key)
-        return parse_document(parsed_path, kind=document.kind, mime_type=document.mime_type, filename=document.filename)
+        return await asyncio.to_thread(parse_document, parsed_path, kind=document.kind, mime_type=document.mime_type, filename=document.filename)
     with TemporaryDirectory(prefix="agentic-ingest-") as temp_dir:
         parsed_path = Path(temp_dir) / Path(document.filename).name
         parsed_path.write_bytes(await storage.read(document.storage_key))
-        return parse_document(parsed_path, kind=document.kind, mime_type=document.mime_type, filename=document.filename)
+        return await asyncio.to_thread(parse_document, parsed_path, kind=document.kind, mime_type=document.mime_type, filename=document.filename)
 
 
 def _normalized_document(document: Document, brand: Brand, parsed) -> NormalizedDocument:
@@ -229,35 +235,26 @@ async def _persist_normalized(
             if prior_source_version < current_source_version:
                 prior.is_active = False
         await db.execute(delete(DocumentChunk).where(DocumentChunk.company_id == company_id, DocumentChunk.document_id == document_id))
-        chunk_index = 0
-        for block in normalized.text_blocks:
+        extracted_chunks = chunk_document(
+            normalized,
+            parser_version=document.parser_version,
+            chunker_version=settings.chunker_version,
+            embedding_model_version=embedding_identity(embedder)[1],
+        )
+        for chunk_index, chunk in enumerate(extracted_chunks):
             db.add(
                 DocumentChunk(
                     company_id=company_id,
                     document_id=document_id,
                     chunk_index=chunk_index,
-                    kind="text",
-                    text=block.text,
-                    locator=block.locator,
-                    metadata_json={"block_id": block.block_id, "warnings": block.extraction_warnings},
+                    kind=chunk.kind,
+                    text=chunk.text,
+                    locator=chunk.locator,
+                    metadata_json={"chunker_version": settings.chunker_version},
                 )
             )
-            chunk_index += 1
-        for block in normalized.table_blocks:
-            table_text = " | ".join(block.headers) + "\n" + "\n".join(" | ".join(row) for row in block.rows)
-            db.add(
-                DocumentChunk(
-                    company_id=company_id,
-                    document_id=document_id,
-                    chunk_index=chunk_index,
-                    kind="table",
-                    text=table_text,
-                    locator=block.locator,
-                    metadata_json={"block_id": block.block_id, "headers": block.headers, "warnings": block.extraction_warnings},
-                )
-            )
-            chunk_index += 1
         _embedding_provider, embedding_model_version = embedding_identity(embedder)
+        effective_retrieval_mode = "lexical" if embedder is None else settings.retrieval_mode
         knowledge_chunks = await index.upsert(
             db,
             normalized,
@@ -269,15 +266,20 @@ async def _persist_normalized(
         document.status = "ready"
         document.normalized_json = normalized.model_dump(mode="json")
         document.knowledge_status = "ready"
-        document.retrieval_mode = settings.retrieval_mode
+        document.retrieval_mode = effective_retrieval_mode
         document.profile_status = "pending"
+        table_characters = sum(
+            sum(len(value) for value in table.headers)
+            + sum(sum(len(value) for value in row) for row in table.rows)
+            for table in normalized.table_blocks
+        )
         document.extracted = {
             **parsed.metadata,
-            "characters": sum(len(block.text) for block in normalized.text_blocks),
+            "characters": sum(len(block.text) for block in normalized.text_blocks) + table_characters,
             "warnings": parsed.warnings,
-            "normalized_blocks": chunk_index,
+            "normalized_blocks": len(extracted_chunks),
             "knowledge_chunks": knowledge_chunks,
-            "retrieval_mode": settings.retrieval_mode,
+            "retrieval_mode": effective_retrieval_mode,
         }
         document.error = None
         document.processed_at = utcnow()
@@ -657,11 +659,18 @@ async def ingest_document_task_batch_async(
         return
     company_id, created_by, scoped_document_ids = claimed
     knowledge_index = index or PostgresKnowledgeIndex()
-    embedder = embedder or configured_embedding_provider()
+    if embedder is None:
+        try:
+            embedder = configured_embedding_provider()
+        except AIConfigurationError:
+            embedder = None
     successful_text_ids: list[str] = []
     failed_documents: list[dict[str, Any]] = []
     image_ids: list[str] = []
     warnings: list[str] = []
+    async with SessionLocal() as db:
+        job = await db.get(Job, job_id)
+        profile_only = bool(job and (job.result or {}).get("mode") == "profile_only")
 
     try:
         for offset, document_id in enumerate(scoped_document_ids, start=1):
@@ -679,6 +688,9 @@ async def ingest_document_task_batch_async(
                     continue
                 if document.status == "ready" and document.knowledge_status == "ready" and document.normalized_json:
                     successful_text_ids.append(document.id)
+                    continue
+                if profile_only:
+                    failed_documents.append({"document_id": document_id, "code": "profile_source_not_ready"})
                     continue
                 document.status = "processing"
                 document.error = None
@@ -748,7 +760,12 @@ async def ingest_document_task_batch_async(
 
     if successful_text_ids:
         try:
-            await _set_progress(job_id, 65, "Các đoạn đã được lưu bền vững; đang chuẩn bị ngữ cảnh cho AI.", 100)
+            if profile_only:
+                async with SessionLocal() as db:
+                    await _set_step(db, job_id, "chunk_and_index", status="succeeded", progress=100, message="Dùng lại knowledge đã lưu; không chạy lại Docling.")
+                    await db.commit()
+            else:
+                await _set_progress(job_id, 65, "Các đoạn đã được lưu bền vững; đang chuẩn bị ngữ cảnh cho AI.", 100)
             profile_version, run_metadata, profile_warnings = await _run_brand_profile(
                 job_id=job_id,
                 company_id=company_id,
@@ -765,10 +782,31 @@ async def ingest_document_task_batch_async(
             warnings.extend(profile_warnings)
             return
         except AIConfigurationError as exc:
-            retryable = False
-            code = "ai_not_configured"
-            message = str(exc)
-            hint = "Cấu hình provider và secret đã chọn trong môi trường server rồi chạy lại job. Không dùng NEXT_PUBLIC cho API key."
+            async with SessionLocal() as db:
+                job = await db.get(Job, job_id)
+                partial = bool(failed_documents)
+                for document in (await db.scalars(select(Document).where(Document.company_id == company_id, Document.id.in_(successful_text_ids)))).all():
+                    document.profile_status = "not_available"
+                if job:
+                    job.status = "failed" if partial else "succeeded"
+                    job.progress = 100
+                    job.finished_at = utcnow()
+                    job.lease_until = None
+                    job.error = ({"code": "partial_batch", "message": "Đã lưu nội dung; một số tệp bị lỗi và Brand Profile chưa được tạo.", "hint": "Kiểm tra riêng các tệp có lỗi. Cấu hình DeepSeek sau đó có thể thử lại bước Brand Profile.", "retryable": False} if partial else None)
+                    job.result = {
+                        "document_ids": scoped_document_ids,
+                        "normalized_document_ids": successful_text_ids,
+                        "failed_document_ids": [item["document_id"] for item in failed_documents],
+                        "brand_profile_status": "not_configured",
+                        "profile_error_code": "ai_not_configured",
+                        "warnings": list(dict.fromkeys([*warnings, "DeepSeek chưa cấu hình; nội dung đã đọc và lưu, Brand Profile chưa tạo."])),
+                        "partial": partial,
+                    }
+                    await _set_step(db, job_id, PROFILE_STEP, status="skipped", message="Nội dung đã lưu. Cấu hình DeepSeek rồi dùng ‘Thử lại Brand Profile’.", error={"code": "ai_not_configured", "message": "DeepSeek chưa được cấu hình trên backend.", "hint": "Cấu hình DEEPSEEK_API_KEY và tên model ở môi trường backend."})
+                    await _set_step(db, job_id, "chunk_and_index", status="succeeded", progress=100, message="Nội dung và knowledge đã được lưu độc lập với AI.")
+                    await append_job_event(db, job, "status", "Đã lưu nội dung; Brand Profile đang chờ cấu hình AI." if not partial else "Đã lưu một phần nội dung; cần xử lý các tệp lỗi riêng.", 100)
+                await db.commit()
+            return
         except BrandProfileJobError as exc:
             retryable = exc.retryable
             code = exc.code

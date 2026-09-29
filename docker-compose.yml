@@ -191,6 +191,57 @@ services:
     volumes:
       - embedding_models:/model-cache
 
+  worker-ingestion:
+    build:
+      context: .
+      dockerfile: infra/docker/python.Dockerfile
+      args:
+        INSTALL_DOCLING: "1"
+    command: ["celery", "-A", "services.worker.celery_app:celery_app", "worker", "--loglevel=INFO", "--queues=ingestion", "--concurrency=1"]
+    env_file: [.env]
+    environment:
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-agentic_marketing}
+      REDIS_URL: redis://redis:6379/0
+      S3_ENDPOINT: http://minio:9000
+      STORAGE_BACKEND: s3
+      LLM_PROVIDER: ${LLM_PROVIDER:-deepseek}
+      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
+      DEEPSEEK_BASE_URL: ${DEEPSEEK_BASE_URL:-https://api.deepseek.com}
+      LLM_DEFAULT_MODEL: ${LLM_DEFAULT_MODEL:-deepseek-flash}
+      EMBEDDING_PROVIDER: ${EMBEDDING_PROVIDER:-none}
+      EMBEDDING_API_KEY: ${EMBEDDING_API_KEY:-}
+      EMBEDDING_MODEL: ${EMBEDDING_MODEL:-}
+      EMBEDDING_DIMENSIONS: ${EMBEDDING_DIMENSIONS:-1536}
+      RETRIEVAL_MODE: ${RETRIEVAL_MODE:-lexical}
+      CHUNKER_VERSION: ${CHUNKER_VERSION:-vi-token-window-v3-300}
+      DOCLING_ARTIFACTS_PATH: /docling-models
+      HF_HUB_OFFLINE: "1"
+      TRANSFORMERS_OFFLINE: "1"
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+      storage-init:
+        condition: service_completed_successfully
+    volumes:
+      - docling_models:/docling-models
+
+  docling-model-setup:
+    profiles: ["docling-models"]
+    build:
+      context: .
+      dockerfile: infra/docker/python.Dockerfile
+      args:
+        INSTALL_DOCLING: "1"
+    command: ["python", "scripts/download_docling_models.py", "--output", "/docling-models"]
+    environment:
+      DOCLING_ARTIFACTS_PATH: /docling-models
+    volumes:
+      - docling_models:/docling-models
+
   scheduler:
     build:
       context: .
@@ -226,3 +277,4 @@ volumes:
   redis_data:
   minio_data:
   embedding_models:
+  docling_models:

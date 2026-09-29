@@ -48,14 +48,32 @@ class ParsedDocument:
     warnings: list[str] = field(default_factory=list)
 
 
-MAX_PARSED_TEXT_CHARACTERS = 2_000_000
-MAX_TABLE_ROWS = 20_000
+MAX_PARSED_TEXT_CHARACTERS = 20_000_000
+MAX_TABLE_ROWS = 100_000
 MAX_TABLE_COLUMNS = 256
-MAX_TABLE_CELLS = 200_000
-MAX_PDF_PAGES = 1_000
+MAX_TABLE_CELLS = 1_000_000
+MAX_PDF_PAGES = 200
+MAX_TABLE_BATCH_ROWS = 1_000
+MAX_TABLE_BATCH_CELLS = 20_000
+MAX_DOCUMENT_CONVERSION_SECONDS = 600
 MAX_ARCHIVE_UNCOMPRESSED_BYTES = 100 * 1024 * 1024
 MAX_ARCHIVE_ENTRIES = 10_000
 MAX_IMAGE_PIXELS = 40_000_000
+IMAGE_SIGNATURES = (
+    b"\xff\xd8\xff",  # JPEG
+    b"\x89PNG\r\n\x1a\n",  # PNG
+    b"GIF87a",
+    b"GIF89a",
+    b"II*\x00",  # TIFF little-endian
+    b"MM\x00*",  # TIFF big-endian
+    b"\x00\x00\x01\x00",  # ICO
+)
+
+
+def is_image_signature(header: bytes) -> bool:
+    return any(header.startswith(signature) for signature in IMAGE_SIGNATURES) or (
+        len(header) >= 12 and header.startswith(b"RIFF") and header[8:12] == b"WEBP"
+    )
 
 
 SUPPORTED_MIME_TYPES = {
@@ -64,9 +82,6 @@ SUPPORTED_MIME_TYPES = {
     "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": "xlsx",
     "text/csv": "csv",
     "text/plain": "txt",
-    "image/jpeg": "image",
-    "image/png": "image",
-    "image/webp": "image",
 }
 SUPPORTED_EXTENSIONS = {
     ".pdf": "pdf",
@@ -74,10 +89,6 @@ SUPPORTED_EXTENSIONS = {
     ".xlsx": "xlsx",
     ".csv": "csv",
     ".txt": "txt",
-    ".jpg": "image",
-    ".jpeg": "image",
-    ".png": "image",
-    ".webp": "image",
 }
 
 
@@ -323,16 +334,13 @@ def _parse_image(path: Path, filename: str) -> ParsedDocument:
 
 
 def parse_document(path: Path, *, kind: str, mime_type: str, filename: str) -> ParsedDocument:
-    parser = {
-        "txt": _parse_txt,
-        "csv": _parse_csv,
-        "xlsx": _parse_xlsx,
-        "docx": _parse_docx,
-        "pdf": _parse_pdf,
-        "image": _parse_image,
-    }.get(kind)
-    if parser is None:
+    if kind not in {"pdf", "docx", "xlsx", "csv", "txt"}:
         guessed = infer_kind(filename, mime_type) or mimetypes.guess_type(filename)[0] or "unknown"
-        raise ParseError("unsupported_type", f"Định dạng “{guessed}” chưa được hỗ trợ.", "Chỉ nhận PDF, DOCX, XLSX, CSV, TXT và ảnh.")
-    return parser(path, filename)
+        raise ParseError(
+            "unsupported_type",
+            f"Định dạng “{guessed}” chưa được hỗ trợ.",
+            "Chỉ nhận PDF có lớp chữ, DOCX, XLSX, CSV và TXT. Ảnh không được hỗ trợ.",
+        )
+    from .docling_parser import parse_with_docling
 
+    return parse_with_docling(path, kind=kind, filename=filename)

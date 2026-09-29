@@ -59,6 +59,7 @@ import type {
   ApiBrandProfile,
   ApiConfirmBrandProfileRequest,
   ApiDocument,
+  ApiExtractedContentPage,
   ApiForgotPasswordRequest,
   ApiForgotPasswordResponse,
   ApiInvitationPreview,
@@ -228,6 +229,20 @@ export const documentApi = {
       v1(`/workspaces/${workspaceId}/documents/${documentId}/reprocess`),
       { method: 'POST' },
     ),
+
+  reprocessProfile: (workspaceId: string, documentId: string) =>
+    apiRequest<ApiAcceptedResponse>(
+      v1(`/workspaces/${workspaceId}/documents/${documentId}/reprocess`),
+      { method: 'POST', body: { mode: 'profile_only' } },
+    ),
+
+  extractedContent: (workspaceId: string, documentId: string, cursor: string | null, limit = 50) => {
+    const query = new URLSearchParams({ limit: String(limit) });
+    if (cursor) query.set('cursor', cursor);
+    return apiRequest<ApiExtractedContentPage>(
+      v1(`/workspaces/${workspaceId}/documents/${documentId}/extracted-content?${query.toString()}`),
+    );
+  },
 };
 
 // ---------------------------------------------------------------------------

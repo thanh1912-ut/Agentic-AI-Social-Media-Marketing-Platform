@@ -3,21 +3,35 @@
 from __future__ import annotations
 
 import hashlib
+import base64
+import json
+from itertools import islice
+from pathlib import Path
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, File, Header, UploadFile
+from fastapi import APIRouter, Depends, File, Header, Query, UploadFile
 from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from database.models import Document, Job, JobStep, KnowledgeChunk, Membership, RequestDeduplication, User, new_id, utcnow
-from services.ingestion.parsers import SUPPORTED_MIME_TYPES, infer_kind
+from services.ingestion.parsers import (
+    MAX_DOCUMENT_CONVERSION_SECONDS,
+    MAX_PARSED_TEXT_CHARACTERS,
+    MAX_PDF_PAGES,
+    MAX_TABLE_CELLS,
+    MAX_TABLE_COLUMNS,
+    MAX_TABLE_ROWS,
+    SUPPORTED_MIME_TYPES,
+    infer_kind,
+    is_image_signature,
+)
 from .config import settings
 from .db import get_db
 from .dependencies import current_user, membership_for, require_csrf, require_permission
 from .errors import ApiProblem
 from .job_service import STEP_LABELS, accepted_response, dispatch_document_job
 from .rate_limits import rate_limit
-from .schemas import AcceptedResponse, ApiErrorEnvelope, DocumentOut, UploadLimits
+from .schemas import AcceptedResponse, ApiErrorEnvelope, DocumentOut, ExtractedContentPage, ExtractedContentUnit, ReprocessDocumentRequest, UploadLimits
 from .storage import storage
 
 
@@ -44,6 +58,9 @@ def _document_out(document: Document) -> DocumentOut:
         extraction_status=(
             "extracted"
             if document.normalized_json
+            and not (document.extracted or {}).get("warnings")
+            else "partial"
+            if document.normalized_json
             else "metadata_only"
             if document.kind == "image" and document.status == "ready"
             else "failed"
@@ -65,8 +82,15 @@ async def upload_limits(company_id: str, user: User = Depends(current_user), db:
     return UploadLimits(
         max_file_size_bytes=settings.max_upload_bytes,
         max_files_per_request=settings.max_files_per_request,
-        accepted_kinds=["pdf", "docx", "xlsx", "csv", "txt", "image"],
+        accepted_kinds=["pdf", "docx", "xlsx", "csv", "txt"],
         accepted_mime_types=sorted(SUPPORTED_MIME_TYPES),
+        max_text_characters=MAX_PARSED_TEXT_CHARACTERS,
+        max_table_rows=MAX_TABLE_ROWS,
+        max_table_columns=MAX_TABLE_COLUMNS,
+        max_table_cells=MAX_TABLE_CELLS,
+        max_pdf_pages=MAX_PDF_PAGES,
+        max_processing_seconds=MAX_DOCUMENT_CONVERSION_SECONDS,
+        ocr_enabled=False,
     )
 
 
@@ -84,6 +108,76 @@ async def get_document(company_id: str, document_id: str, user: User = Depends(c
     if document is None or document.deleted_at is not None:
         raise ApiProblem(404, "not_found", "Không tìm thấy tài liệu.")
     return _document_out(document)
+
+
+@router.get("/workspaces/{company_id}/documents/{document_id}/extracted-content", response_model=ExtractedContentPage)
+async def get_extracted_content(
+    company_id: str,
+    document_id: str,
+    cursor: str | None = Query(default=None, max_length=2000),
+    limit: int = Query(default=50, ge=1, le=200),
+    user: User = Depends(current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    await membership_for(company_id, user, db)
+    document = await db.scalar(select(Document).where(Document.id == document_id, Document.company_id == company_id))
+    if document is None or document.deleted_at is not None:
+        raise ApiProblem(404, "not_found", "Không tìm thấy tài liệu.")
+    normalized = document.normalized_json
+    if not normalized:
+        raise ApiProblem(409, "extraction_not_ready", "Nội dung trích xuất chưa sẵn sàng.")
+
+    offset = 0
+    if cursor:
+        try:
+            payload = json.loads(base64.urlsafe_b64decode(cursor + "=" * (-len(cursor) % 4)))
+            if payload.get("document_id") != document.id or payload.get("source_hash") != document.source_hash or payload.get("parser_version") != document.parser_version:
+                raise ValueError("stale cursor")
+            offset = int(payload["offset"])
+            if offset < 0:
+                raise ValueError("negative cursor")
+        except (ValueError, TypeError, KeyError, json.JSONDecodeError) as exc:
+            raise ApiProblem(409, "extracted_content_changed", "Dữ liệu tài liệu đã đổi; hãy tải lại từ trang đầu.") from exc
+
+    text_blocks = normalized.get("text_blocks", [])
+    table_blocks = normalized.get("table_blocks", [])
+    total_rows = sum(len(table.get("rows", [])) for table in table_blocks)
+    total_units = sum((len(str(block.get("text") or "")) + 7999) // 8000 for block in text_blocks)
+    total_units += total_rows
+
+    def iter_units():
+        for block_index, block in enumerate(text_blocks, start=1):
+            text = str(block.get("text") or "")
+            base_locator = str(block.get("locator") or f"text:{block_index}")
+            # Bound response size while preserving long text across cursor pages.
+            for start in range(0, len(text), 8000):
+                end = min(len(text), start + 8000)
+                yield ExtractedContentUnit(kind="text", locator=f"{base_locator};chars={start + 1}-{end}", text=text[start:end])
+        for table_index, table in enumerate(table_blocks, start=1):
+            headers = [str(value) for value in (table.get("headers") or [])]
+            table_locator = str(table.get("locator") or f"table={table_index}")
+            for row_index, row in enumerate(table.get("rows", []), start=1):
+                yield ExtractedContentUnit(kind="table_row", locator=f"{table_locator}[row={row_index}]", headers=headers, cells=[str(value) for value in row])
+
+    selected = list(islice(iter_units(), offset, offset + limit))
+    next_offset = offset + len(selected)
+    has_more = next_offset < total_units
+    next_cursor = None
+    if has_more:
+        payload = json.dumps({"document_id": document.id, "source_hash": document.source_hash, "parser_version": document.parser_version, "offset": next_offset}, separators=(",", ":")).encode()
+        next_cursor = base64.urlsafe_b64encode(payload).decode().rstrip("=")
+    return ExtractedContentPage(
+        document_id=document.id,
+        parser_version=document.parser_version,
+        source_version=document.source_version,
+        items=selected,
+        next_cursor=next_cursor,
+        has_more=has_more,
+        total_text_blocks=len(normalized.get("text_blocks", [])),
+        total_tables=len(normalized.get("table_blocks", [])),
+        total_rows=total_rows,
+        warnings=list((document.extracted or {}).get("warnings") or []),
+    )
 
 
 @router.post(
@@ -124,9 +218,15 @@ async def upload_documents(
     for upload in files:
         filename = (upload.filename or "untitled").replace("\\", "/").rsplit("/", 1)[-1] or "untitled"
         mime_type = (upload.content_type or "application/octet-stream").lower()
+        if mime_type.startswith("image/") or Path(filename).suffix.lower() in {".png", ".jpg", ".jpeg", ".gif", ".webp", ".heic", ".tif", ".tiff", ".bmp", ".ico"}:
+            raise ApiProblem(415, "unsupported_type", "Không hỗ trợ tệp hình ảnh trong mục Tài liệu.", field_errors=[{"field": "files", "message": "Chỉ nhận PDF có lớp chữ, DOCX, XLSX, CSV và TXT. Ảnh dùng cho bài đăng vẫn được quản lý ở mục đăng bài."}])
+        header = await upload.read(16)
+        await upload.seek(0)
+        if is_image_signature(header):
+            raise ApiProblem(415, "unsupported_type", "Không hỗ trợ tệp hình ảnh trong mục Tài liệu.", field_errors=[{"field": "files", "message": "Tệp có nội dung hình ảnh dù phần mở rộng hoặc loại MIME khác. Chỉ nhận PDF có lớp chữ, DOCX, XLSX, CSV và TXT."}])
         kind = infer_kind(filename, mime_type)
         if kind is None:
-            raise ApiProblem(415, "unsupported_type", f"Định dạng tệp “{filename}” chưa được hỗ trợ.", field_errors=[{"field": "files", "message": "Chỉ nhận PDF, DOCX, XLSX, CSV, TXT và ảnh."}])
+            raise ApiProblem(415, "unsupported_type", f"Định dạng tệp “{filename}” chưa được hỗ trợ.", field_errors=[{"field": "files", "message": "Chỉ nhận PDF có lớp chữ, DOCX, XLSX, CSV và TXT."}])
         size = 0
         while size <= settings.max_upload_bytes:
             chunk = await upload.read(min(64 * 1024, settings.max_upload_bytes + 1 - size))
@@ -208,21 +308,31 @@ async def upload_documents(
 
 
 @router.post("/workspaces/{company_id}/documents/{document_id}/reprocess", response_model=AcceptedResponse, status_code=202, dependencies=[Depends(require_csrf)])
-async def reprocess_document(company_id: str, document_id: str, user: User = Depends(current_user), membership: Membership = Depends(require_permission("document:upload")), db: AsyncSession = Depends(get_db)):
+async def reprocess_document(company_id: str, document_id: str, request: ReprocessDocumentRequest | None = None, user: User = Depends(current_user), membership: Membership = Depends(require_permission("document:upload")), db: AsyncSession = Depends(get_db)):
     document = await db.scalar(select(Document).where(Document.id == document_id, Document.company_id == company_id))
     if document is None or document.deleted_at is not None:
         raise ApiProblem(404, "not_found", "Không tìm thấy tài liệu.")
     if not document.is_active:
         raise ApiProblem(409, "state_conflict", "Tài liệu này đã được thay thế và không thể đọc lại như nguồn đang hoạt động.")
-    job = Job(company_id=company_id, created_by=user.id, kind="document_ingest", title=f"Đọc lại tài liệu “{document.filename}”", status="queued", progress=0, result={"document_id": document.id}, idempotency_key=f"reprocess:{document.id}:{document.updated_at.timestamp()}")
-    document.status = "pending"
-    document.error = None
-    document.parser_version = settings.parser_version
+    mode = request.mode if request else "document"
+    if mode == "profile_only" and (not document.normalized_json or document.knowledge_status != "ready"):
+        raise ApiProblem(409, "profile_source_not_ready", "Chưa có nội dung đã đọc và lưu sẵn để thử lại riêng bước Brand Profile.")
+    active_job = await db.scalar(select(Job).where(Job.id == document.job_id, Job.status.in_(["queued", "running"]))) if document.job_id else None
+    if active_job:
+        return await accepted_response(db, active_job)
+    job = Job(company_id=company_id, created_by=user.id, kind="document_ingest", title=(f"Tạo lại Brand Profile từ “{document.filename}”" if mode == "profile_only" else f"Đọc lại tài liệu “{document.filename}”"), status="queued", progress=0, result={"document_id": document.id, "mode": mode}, idempotency_key=f"reprocess:{document.id}:{mode}:{document.updated_at.timestamp()}")
+    if mode == "document":
+        document.status = "pending"
+        document.error = None
+        document.parser_version = settings.parser_version
+        document.knowledge_status = "pending"
+    document.profile_status = "pending"
     db.add(job)
     await db.flush()
     document.job_id = job.id
     for key in ("receive_file", "detect_type", "extract_text", "normalize", "chunk_and_index", "create_brand_profile"):
-        db.add(JobStep(job_id=job.id, step_key=key, label=STEP_LABELS[key], status="pending"))
+        step_status = "skipped" if mode == "profile_only" and key in {"receive_file", "detect_type", "extract_text", "normalize"} else "pending"
+        db.add(JobStep(job_id=job.id, step_key=key, label=STEP_LABELS[key], status=step_status, message="Dùng lại nội dung đã lưu." if step_status == "skipped" else None))
     await db.commit()
     await dispatch_document_job(job.id, document.id)
     return await accepted_response(db, job)

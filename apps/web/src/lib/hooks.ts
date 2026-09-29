@@ -169,6 +169,15 @@ export function useDocuments(workspaceId: string): UseQueryResult<readonly Docum
   });
 }
 
+export function useExtractedContent(workspaceId: string, documentId: string | null, cursor: string | null) {
+  return useQuery({
+    queryKey: queryKeys.extractedContent(workspaceId, documentId ?? '', cursor),
+    queryFn: () => api.document.extractedContent(workspaceId, documentId!, cursor, 50),
+    enabled: Boolean(workspaceId && documentId),
+    staleTime: 60_000,
+  });
+}
+
 export interface UploadDocumentsVariables {
   files: File[];
   idempotencyKey: string;
@@ -194,8 +203,10 @@ export function newDocumentUploadKey(): string {
 export function useReprocessDocument(workspaceId: string) {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (documentId: string) =>
-      api.document.reprocess(workspaceId, documentId),
+    mutationFn: ({ documentId, mode }: { documentId: string; mode?: 'document' | 'profile_only' }) =>
+      mode === 'profile_only'
+        ? api.document.reprocessProfile(workspaceId, documentId)
+        : api.document.reprocess(workspaceId, documentId),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: queryKeys.documents(workspaceId) });
     },

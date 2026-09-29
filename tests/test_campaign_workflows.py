@@ -60,7 +60,7 @@ def test_job_dispatch_uses_dedicated_document_and_agent_queues(monkeypatch) -> N
     asyncio.run(job_service.dispatch_document_job("doc-job", "doc-1", ["doc-1", "doc-2"]))
     asyncio.run(job_service.dispatch_content_generation_job("content-job"))
     assert calls == [
-        ("services.worker.tasks.ingest_document_task", {"args": ["doc-job", "doc-1", ["doc-1", "doc-2"]], "queue": "default"}),
+        ("services.worker.tasks.ingest_document_task", {"args": ["doc-job", "doc-1", ["doc-1", "doc-2"]], "queue": "ingestion"}),
         ("services.worker.content_tasks.content_generation_task", {"args": ["content-job"], "queue": "agent"}),
     ]
 

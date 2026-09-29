@@ -141,7 +141,7 @@ def test_parser_returns_locators_and_rejects_scan_pdf(tmp_path) -> None:
     text_path = tmp_path / "brand.txt"
     text_path.write_text("Bếp Mộc phục vụ món Việt.", encoding="utf-8")
     parsed = parse_document(text_path, kind="txt", mime_type="text/plain", filename=text_path.name)
-    assert parsed.text_blocks[0].locator == "text:1"
+    assert parsed.text_blocks[0].locator == "item=1"
     assert parsed.text_blocks[0].text.startswith("Bếp Mộc")
 
     from services.ingestion.parsers import ParseError

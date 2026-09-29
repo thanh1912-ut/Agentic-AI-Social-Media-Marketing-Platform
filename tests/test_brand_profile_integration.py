@@ -211,7 +211,7 @@ def test_upload_preflights_entire_batch_before_writing_objects(
 def test_reprocess_updates_document_parser_version(api_env, monkeypatch):
     from dataclasses import replace
 
-    from database.models import Document
+    from database.models import Document, Job
     from services.api import documents
 
     client, sessions = api_env
@@ -219,6 +219,16 @@ def test_reprocess_updates_document_parser_version(api_env, monkeypatch):
     uploaded = _upload(client, workspace_id, csrf, [("brand.txt", b"Parser version test content.")])
     assert uploaded.status_code == 202, uploaded.text
     document_id = uploaded.json()["job"]["result"]["document_ids"][0]
+
+    async def finish_initial_job():
+        async with sessions() as db:
+            document = await db.get(Document, document_id)
+            document.job_id = None
+            job = await db.get(Job, uploaded.json()["job_id"])
+            job.status = "failed"
+            await db.commit()
+
+    asyncio.run(finish_initial_job())
 
     monkeypatch.setattr(
         documents, "settings", replace(documents.settings, parser_version="m2-parser-v2")
@@ -234,6 +244,92 @@ def test_reprocess_updates_document_parser_version(api_env, monkeypatch):
             return (await db.get(Document, document_id)).parser_version
 
     assert asyncio.run(parser_version()) == "m2-parser-v2"
+
+
+@pytest.mark.fixture_integration
+def test_document_limits_images_and_extracted_content_cursor(api_env):
+    from database.models import Document
+
+    client, sessions = api_env
+    workspace_id, csrf = _register(client, "document-preview@example.com", "Document Preview Co")
+
+    limits = client.get(f"/api/v1/workspaces/{workspace_id}/documents/limits")
+    assert limits.status_code == 200
+    assert limits.json()["accepted_kinds"] == ["pdf", "docx", "xlsx", "csv", "txt"]
+    assert limits.json()["max_text_characters"] == 20_000_000
+    assert limits.json()["max_table_rows"] == 100_000
+    assert limits.json()["max_table_columns"] == 256
+    assert limits.json()["max_table_cells"] == 1_000_000
+    assert limits.json()["max_pdf_pages"] == 200
+    assert limits.json()["max_processing_seconds"] == 600
+    assert limits.json()["ocr_enabled"] is False
+
+    image = client.post(
+        f"/api/v1/workspaces/{workspace_id}/documents",
+        headers={**csrf, "Idempotency-Key": "image-must-be-rejected"},
+        files=[("files", ("not-a-document.png", b"\x89PNG\r\n\x1a\n", "image/png"))],
+    )
+    assert image.status_code == 415
+    assert image.json()["error"]["code"] == "unsupported_type"
+
+    disguised_image = client.post(
+        f"/api/v1/workspaces/{workspace_id}/documents",
+        headers={**csrf, "Idempotency-Key": "disguised-image-must-be-rejected"},
+        files=[("files", ("photo.txt", b"\x89PNG\r\n\x1a\nfixture", "text/plain"))],
+    )
+    assert disguised_image.status_code == 415
+    assert disguised_image.json()["error"]["code"] == "unsupported_type"
+
+    uploaded = _upload(client, workspace_id, csrf, [("preview.txt", b"preview source")])
+    assert uploaded.status_code == 202, uploaded.text
+    document_id = uploaded.json()["job"]["result"]["document_ids"][0]
+
+    async def seed_extracted_content():
+        async with sessions() as db:
+            document = await db.get(Document, document_id)
+            document.normalized_json = {
+                "text_blocks": [{"text": "A long source passage.", "locator": "page=1"}],
+                "table_blocks": [{
+                    "headers": ["name", "value"],
+                    "rows": [[f"row-{index}", str(index)] for index in range(5)],
+                    "locator": "sheet=Data;row=1",
+                }],
+            }
+            document.knowledge_status = "ready"
+            await db.commit()
+
+    asyncio.run(seed_extracted_content())
+
+    first = client.get(
+        f"/api/v1/workspaces/{workspace_id}/documents/{document_id}/extracted-content",
+        params={"limit": 2},
+    )
+    assert first.status_code == 200, first.text
+    assert len(first.json()["items"]) == 2
+    assert first.json()["items"][0]["kind"] == "text"
+    assert first.json()["total_rows"] == 5
+    assert first.json()["has_more"] is True
+
+    second = client.get(
+        f"/api/v1/workspaces/{workspace_id}/documents/{document_id}/extracted-content",
+        params={"limit": 2, "cursor": first.json()["next_cursor"]},
+    )
+    assert second.status_code == 200, second.text
+    assert [item["cells"][0] for item in second.json()["items"]] == ["row-1", "row-2"]
+
+    async def change_parser_version():
+        async with sessions() as db:
+            document = await db.get(Document, document_id)
+            document.parser_version = "new-parser-version"
+            await db.commit()
+
+    asyncio.run(change_parser_version())
+    stale = client.get(
+        f"/api/v1/workspaces/{workspace_id}/documents/{document_id}/extracted-content",
+        params={"limit": 2, "cursor": second.json()["next_cursor"]},
+    )
+    assert stale.status_code == 409
+    assert stale.json()["error"]["code"] == "extracted_content_changed"
 
 
 @pytest.mark.fixture_integration
@@ -417,7 +513,7 @@ def test_upload_worker_profile_revision_confirm_and_tenant_isolation(api_env):
 
 
 @pytest.mark.fixture_integration
-def test_missing_deepseek_configuration_marks_ingested_profile_failed(api_env, monkeypatch):
+def test_missing_deepseek_configuration_keeps_ingestion_ready_and_skips_profile(api_env, monkeypatch):
     from services.worker.model_provider import AIConfigurationError
 
     client, _sessions = api_env
@@ -442,14 +538,15 @@ def test_missing_deepseek_configuration_marks_ingested_profile_failed(api_env, m
     job = client.get(f"/api/v1/jobs/{job_id}").json()
     document = client.get(f"/api/v1/workspaces/{workspace_id}/documents/{document_id}").json()
 
-    assert job["status"] == "failed"
-    assert job["error"]["code"] == "ai_not_configured"
+    assert job["status"] == "succeeded"
+    assert job["error"] is None
+    assert job["result"]["brand_profile_status"] == "not_configured"
     profile_step = next(step for step in job["steps"] if step["key"] == "create_brand_profile")
-    assert profile_step["status"] == "failed"
+    assert profile_step["status"] == "skipped"
     assert profile_step["error"]["code"] == "ai_not_configured"
     assert document["status"] == "ready"
     assert document["knowledge_status"] == "ready"
-    assert document["profile_status"] == "failed"
+    assert document["profile_status"] == "not_available"
     assert document["extracted"]["knowledge_chunks"] > 0
 
 

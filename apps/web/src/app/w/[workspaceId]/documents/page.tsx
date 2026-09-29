@@ -38,6 +38,7 @@ import {
   useDocuments,
   newDocumentUploadKey,
   useReprocessDocument,
+  useExtractedContent,
   useUploadDocuments,
   useUploadLimits,
 } from '@/lib/hooks';
@@ -68,12 +69,6 @@ const EXTENSION_KIND: Record<string, DocumentKind> = {
   xlsx: DOCUMENT_KINDS.XLSX,
   csv: DOCUMENT_KINDS.CSV,
   txt: DOCUMENT_KINDS.TXT,
-  png: DOCUMENT_KINDS.IMAGE,
-  jpg: DOCUMENT_KINDS.IMAGE,
-  jpeg: DOCUMENT_KINDS.IMAGE,
-  webp: DOCUMENT_KINDS.IMAGE,
-  gif: DOCUMENT_KINDS.IMAGE,
-  heic: DOCUMENT_KINDS.IMAGE,
 };
 
 const MIME_KIND: Record<string, DocumentKind> = {
@@ -82,11 +77,6 @@ const MIME_KIND: Record<string, DocumentKind> = {
   'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': DOCUMENT_KINDS.XLSX,
   'text/csv': DOCUMENT_KINDS.CSV,
   'text/plain': DOCUMENT_KINDS.TXT,
-  'image/png': DOCUMENT_KINDS.IMAGE,
-  'image/jpeg': DOCUMENT_KINDS.IMAGE,
-  'image/webp': DOCUMENT_KINDS.IMAGE,
-  'image/gif': DOCUMENT_KINDS.IMAGE,
-  'image/heic': DOCUMENT_KINDS.IMAGE,
 };
 
 interface RejectedFile {
@@ -239,6 +229,44 @@ function SectionError({
   );
 }
 
+function ExtractedContentPreview({ workspaceId, documentId }: { workspaceId: string; documentId: string }) {
+  const [cursors, setCursors] = useState<(string | null)[]>([null]);
+  const [pageIndex, setPageIndex] = useState(0);
+  const page = useExtractedContent(workspaceId, documentId, cursors[pageIndex] ?? null);
+
+  return (
+    <div className="rounded-lg border border-slate-200 bg-white p-3">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div>
+          <h3 className="text-sm font-semibold text-slate-900">Nội dung Docling đã lưu</h3>
+          {page.data ? <p className="mt-0.5 text-xs text-slate-600">{formatNumber(page.data.total_text_blocks)} đoạn chữ · {formatNumber(page.data.total_tables)} bảng · {formatNumber(page.data.total_rows)} dòng · parser {page.data.parser_version}</p> : null}
+        </div>
+        <div className="flex gap-2">
+          {pageIndex > 0 ? <Button variant="secondary" size="sm" onClick={() => setPageIndex((index) => index - 1)}>Phần trước</Button> : null}
+          {page.data?.has_more && page.data.next_cursor ? (
+            <Button variant="secondary" size="sm" loading={page.isFetching} onClick={() => {
+              setCursors((items) => [...items.slice(0, pageIndex + 1), page.data!.next_cursor!]);
+              setPageIndex((index) => index + 1);
+            }}>Tải phần tiếp theo</Button>
+          ) : null}
+        </div>
+      </div>
+      {page.isPending ? <p className="mt-3 text-sm text-slate-600">Đang tải nội dung đã trích xuất…</p> : null}
+      {page.isError ? <p role="alert" className="mt-3 text-sm text-rose-800">Không tải được nội dung. Làm mới trang tài liệu rồi thử lại.</p> : null}
+      {page.data?.warnings?.length ? <ul className="mt-3 list-disc space-y-1 pl-5 text-xs text-amber-900">{page.data.warnings.map((warning, index) => <li key={`${warning}-${index}`}>{warning}</li>)}</ul> : null}
+      <div className="mt-3 max-h-[32rem] space-y-3 overflow-auto">
+        {page.data?.items.map((item, index) => (
+          <article key={`${item.locator}-${index}`} className="rounded border border-slate-200 bg-slate-50 p-3">
+            <p className="text-xs font-medium text-slate-500">{item.kind === 'table_row' ? 'Dòng bảng' : 'Văn bản'} · {item.locator}</p>
+            {item.text !== undefined && item.text !== null ? <pre className="mt-2 whitespace-pre-wrap break-words font-sans text-sm text-slate-800">{item.text}</pre> : null}
+            {item.cells ? <dl className="mt-2 grid gap-1 sm:grid-cols-2">{item.cells.map((cell, cellIndex) => <div key={cellIndex} className="min-w-0 text-sm text-slate-800"><dt className="font-medium text-slate-600">{item.headers?.[cellIndex] ?? `Cột ${cellIndex + 1}`}</dt><dd className="break-words">{cell || '—'}</dd></div>)}</dl> : null}
+          </article>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 export default function TrangTaiLieu() {
   const params = useParams<{ workspaceId?: string }>();
   const workspaceId = params?.workspaceId ?? '';
@@ -260,6 +288,7 @@ export default function TrangTaiLieu() {
   const [lastBatch, setLastBatch] = useState<{ files: File[]; idempotencyKey: string } | null>(null);
   const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
   const [lastReprocessId, setLastReprocessId] = useState<string | null>(null);
+  const [expandedDocumentId, setExpandedDocumentId] = useState<string | null>(null);
 
   if (!workspace) {
     return (
@@ -365,7 +394,7 @@ export default function TrangTaiLieu() {
           />
         ) : (
           <div className="space-y-4">
-            <dl className="grid gap-3 sm:grid-cols-3">
+            <dl className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
               <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
                 <dt className="text-xs font-medium text-slate-600">Định dạng nhận</dt>
                 <dd className="mt-0.5 text-sm text-slate-900">{acceptedKindText(limits)}</dd>
@@ -382,7 +411,12 @@ export default function TrangTaiLieu() {
                   tối đa {formatNumber(limits.max_files_per_request)} tệp
                 </dd>
               </div>
+              <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
+                <dt className="text-xs font-medium text-slate-600">Giới hạn đọc bảng</dt>
+                <dd className="mt-0.5 text-sm text-slate-900">{formatNumber(limits.max_table_rows ?? 100_000)} dòng · {formatNumber(limits.max_table_columns ?? 256)} cột · {formatNumber(limits.max_table_cells ?? 1_000_000)} ô</dd>
+              </div>
             </dl>
+            <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">Ảnh không được nhận. PDF scan không có lớp chữ cũng không đọc được vì OCR đang tắt.</p>
 
             <div
               onDragOver={(event) => {
@@ -508,7 +542,7 @@ export default function TrangTaiLieu() {
                 error={reprocessError}
                 onRetry={
                   lastReprocessId && canUpload
-                    ? () => reprocess.mutate(lastReprocessId)
+                    ? () => reprocess.mutate(reprocess.variables ?? { documentId: lastReprocessId, mode: 'document' })
                     : () => undefined
                 }
               />
@@ -585,12 +619,12 @@ export default function TrangTaiLieu() {
                                 <Button
                                   variant="secondary"
                                   size="sm"
-                                  loading={reprocess.isPending && reprocess.variables === doc.id}
+                                  loading={reprocess.isPending && reprocess.variables?.documentId === doc.id}
                                   disabled={!canUpload}
                                   disabledReason={uploadDeniedReason}
                                   onClick={() => {
                                     setLastReprocessId(doc.id);
-                                    reprocess.mutate(doc.id, {
+                                    reprocess.mutate({ documentId: doc.id, mode: 'document' }, {
                                       onSuccess: (response) =>
                                         router.push(`/w/${workspaceId}/jobs/${response.job_id}`),
                                     });
@@ -598,6 +632,24 @@ export default function TrangTaiLieu() {
                                 >
                                   Đọc lại tài liệu
                                 </Button>
+                              ) : null}
+                              {(doc.extraction_status === 'extracted' || doc.extraction_status === 'partial') && doc.profile_status !== 'ready' ? (
+                                <Button
+                                  variant="secondary"
+                                  size="sm"
+                                  loading={reprocess.isPending && reprocess.variables?.documentId === doc.id && reprocess.variables?.mode === 'profile_only'}
+                                  disabled={!canUpload}
+                                  disabledReason={uploadDeniedReason}
+                                  onClick={() => {
+                                    setLastReprocessId(doc.id);
+                                    reprocess.mutate({ documentId: doc.id, mode: 'profile_only' }, {
+                                      onSuccess: (response) => router.push(`/w/${workspaceId}/jobs/${response.job_id}`),
+                                    });
+                                  }}
+                                >Thử lại Brand Profile</Button>
+                              ) : null}
+                              {doc.extraction_status === 'extracted' || doc.extraction_status === 'partial' ? (
+                                <Button variant="ghost" size="sm" aria-expanded={expandedDocumentId === doc.id} onClick={() => setExpandedDocumentId((current) => current === doc.id ? null : doc.id)}>{expandedDocumentId === doc.id ? 'Ẩn nội dung' : 'Xem nội dung đã đọc'}</Button>
                               ) : null}
 
                               {isPendingDelete ? (
@@ -699,8 +751,13 @@ export default function TrangTaiLieu() {
                                   ) : null}
                                 </p>
                               ) : null}
+                              {doc.extraction_status === 'partial' ? <p className="mt-2 text-sm text-amber-900">Đã lưu nội dung một phần. Kiểm tra cảnh báo trích xuất trước khi dùng làm nguồn.</p> : null}
+                              {doc.profile_status === 'not_available' ? <p className="mt-2 text-sm text-amber-900">Tài liệu đã được đọc và lưu; Brand Profile chưa tạo. Cấu hình AI rồi thử lại riêng bước này.</p> : null}
                             </td>
                           </tr>
+                        ) : null}
+                        {expandedDocumentId === doc.id ? (
+                          <tr className="border-b border-slate-100 bg-slate-50"><td colSpan={6} className="px-3 py-3"><ExtractedContentPreview key={doc.id} workspaceId={workspaceId} documentId={doc.id} /></td></tr>
                         ) : null}
                       </Fragment>
                     );

@@ -86,7 +86,7 @@ async def dispatch_document_job(job_id: str, document_id: str, document_ids: lis
     try:
         from services.worker.celery_app import celery_app
 
-        celery_app.send_task("services.worker.tasks.ingest_document_task", args=[job_id, document_id, document_ids or [document_id]], queue="default")
+        celery_app.send_task("services.worker.tasks.ingest_document_task", args=[job_id, document_id, document_ids or [document_id]], queue="ingestion")
         return True
     except Exception:
         # The database job remains queued and the scheduler can recover it;

@@ -23,7 +23,7 @@ def test_chunking_keeps_table_header_and_locator(normalized_document) -> None:
     table_chunks = [chunk for chunk in chunks if chunk.kind == "table"]
     assert len(table_chunks) == 2
     assert all("Sản phẩm" in chunk.text for chunk in table_chunks)
-    assert table_chunks[0].locator.endswith("[row=1]")
+    assert table_chunks[0].locator.endswith("[rows=1-1]")
     assert all(chunk.token_count <= 20 for chunk in chunks)
 
 

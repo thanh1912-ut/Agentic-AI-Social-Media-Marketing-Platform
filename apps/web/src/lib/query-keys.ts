@@ -14,6 +14,8 @@ export const queryKeys = {
   members: (workspaceId: string) => ['workspaces', workspaceId, 'members'] as const,
 
   documents: (workspaceId: string) => ['workspaces', workspaceId, 'documents'] as const,
+  extractedContent: (workspaceId: string, documentId: string, cursor: string | null) =>
+    ['workspaces', workspaceId, 'documents', documentId, 'extracted-content', cursor] as const,
   documentLimits: (workspaceId: string) =>
     ['workspaces', workspaceId, 'documents', 'limits'] as const,
 

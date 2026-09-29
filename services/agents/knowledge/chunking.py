@@ -167,13 +167,36 @@ def chunk_document(
 
     for table in document.table_blocks:
         header = " | ".join(normalize_text(item) for item in table.headers)
+        pending_rows: list[str] = []
+        pending_start = 0
+
+        def flush_table_rows(end_row: int) -> None:
+            nonlocal pending_rows, pending_start
+            if not pending_rows:
+                return
+            text = f"Bảng: {header}\n" + "\n".join(pending_rows)
+            chunks.append(
+                make_chunk(
+                    text,
+                    len(_tokens(text)),
+                    f"{table.locator}[rows={pending_start}-{end_row}]",
+                    "table",
+                )
+            )
+            pending_rows = []
+            pending_start = 0
+
         for row_index, row in enumerate(table.rows, start=1):
             row_text = " | ".join(normalize_text(item) for item in row)
-            table_text = f"Bảng: {header}\nHàng {row_index}: {row_text}"
-            row_tokens = _tokens(table_text)
-            if len(row_tokens) > max_tokens:
+            labeled_row = f"Hàng {row_index}: {row_text}"
+            table_text = f"Bảng: {header}\n" + "\n".join([*pending_rows, labeled_row])
+            if pending_rows and len(_tokens(table_text)) > max_tokens:
+                flush_table_rows(row_index - 1)
+                table_text = f"Bảng: {header}\n{labeled_row}"
+            if len(_tokens(table_text)) > max_tokens:
                 # A row remains a single semantic unit; truncate only as an
                 # explicit warning would be unsafe, so split it deterministically.
+                flush_table_rows(row_index - 1)
                 chunks.extend(
                     _windowed_chunks(
                         text=table_text,
@@ -186,12 +209,8 @@ def chunk_document(
                     )
                 )
             else:
-                chunks.append(
-                    make_chunk(
-                        table_text,
-                        len(row_tokens),
-                        f"{table.locator}[row={row_index}]",
-                        "table",
-                    )
-                )
+                if not pending_rows:
+                    pending_start = row_index
+                pending_rows.append(labeled_row)
+        flush_table_rows(len(table.rows))
     return chunks

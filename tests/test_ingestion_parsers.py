@@ -32,13 +32,14 @@ def test_docx_preserves_paragraph_and_table_locators(tmp_path: Path) -> None:
     )
 
     assert [(block.text, block.locator) for block in parsed.text_blocks] == [
-        ("Bếp Mộc phục vụ món Việt.", "paragraph=1")
+        ("Bếp Mộc phục vụ món Việt.", "item=1")
     ]
     assert len(parsed.table_blocks) == 1
     assert parsed.table_blocks[0].headers == ["Sản phẩm", "Giá"]
     assert parsed.table_blocks[0].rows == [["Cơm gà", "65.000đ"]]
-    assert parsed.table_blocks[0].locator == "table=1;row=1"
-    assert parsed.metadata == {"paragraphs": 1, "tables": 1}
+    assert parsed.table_blocks[0].locator == "table=1"
+    assert parsed.metadata["engine"] == "docling"
+    assert parsed.metadata["rows"] == 1
 
 
 def test_docx_with_only_a_table_is_valid_content(tmp_path: Path) -> None:
@@ -78,12 +79,13 @@ def test_xlsx_returns_each_sheet_as_a_located_table(tmp_path: Path) -> None:
     )
 
     assert [table.locator for table in parsed.table_blocks] == [
-        "sheet=Món Việt;row=1",
-        "sheet=Đồ uống;row=1",
+        "sheet=Món Việt;rows=2-2",
+        "sheet=Đồ uống;rows=2-2",
     ]
     assert parsed.table_blocks[0].rows == [["Cơm gà", "65.000đ"]]
     assert parsed.table_blocks[1].rows == [["Cà phê sữa", "350ml"]]
-    assert parsed.metadata == {"rows": 4, "sheets": 2}
+    assert parsed.metadata["rows"] == 2
+    assert parsed.metadata["sheets"] == 2
 
 
 def test_csv_and_txt_preserve_vietnamese_content_and_locators(tmp_path: Path) -> None:
@@ -92,13 +94,14 @@ def test_csv_and_txt_preserve_vietnamese_content_and_locators(tmp_path: Path) ->
     csv_parsed = parse_document(csv_path, kind="csv", mime_type="text/csv", filename=csv_path.name)
     assert csv_parsed.table_blocks[0].headers == ["Sản phẩm", "Giá"]
     assert csv_parsed.table_blocks[0].rows == [["Cơm gà", "65.000đ"]]
-    assert csv_parsed.table_blocks[0].locator == "csv:row=1"
+    assert csv_parsed.table_blocks[0].locator == "csv:row=2-2"
+    assert csv_parsed.metadata["engine"] == "docling"
 
     txt_path = tmp_path / "brand.txt"
     txt_path.write_text("Bếp Mộc, giọng nói thân thiện.", encoding="utf-8")
     txt_parsed = parse_document(txt_path, kind="txt", mime_type="text/plain", filename=txt_path.name)
     assert txt_parsed.text_blocks[0].text == "Bếp Mộc, giọng nói thân thiện."
-    assert txt_parsed.text_blocks[0].locator == "text:1"
+    assert txt_parsed.text_blocks[0].locator == "item=1"
 
 
 def test_csv_skips_empty_rows_and_rejects_files_without_any_cells(tmp_path: Path) -> None:
@@ -107,6 +110,13 @@ def test_csv_skips_empty_rows_and_rejects_files_without_any_cells(tmp_path: Path
     parsed = parse_document(path, kind="csv", mime_type="text/csv", filename=path.name)
     assert parsed.table_blocks[0].headers == ["Product", "Price"]
     assert parsed.table_blocks[0].rows == [["Coffee", "5"]]
+
+    semicolon_path = tmp_path / "semicolon.csv"
+    semicolon_path.write_text('Tên;Mô tả\n"Cà phê";"dòng một\ndòng hai"\n', encoding="utf-8")
+    semicolon = parse_document(semicolon_path, kind="csv", mime_type="text/csv", filename=semicolon_path.name)
+    assert semicolon.table_blocks[0].headers == ["Tên", "Mô tả"]
+    assert semicolon.table_blocks[0].rows == [["Cà phê", "dòng một\ndòng hai"]]
+    assert semicolon.metadata["delimiter"] == ";"
 
     empty_path = tmp_path / "empty.csv"
     empty_path.write_text(", ,\n ,\n", encoding="utf-8")
@@ -162,8 +172,30 @@ def test_pdf_text_has_page_locator(tmp_path: Path) -> None:
     parsed = parse_document(path, kind="pdf", mime_type="application/pdf", filename=path.name)
 
     assert parsed.text_blocks[0].text == "Brand facts"
-    assert parsed.text_blocks[0].locator == "page=1"
-    assert parsed.metadata == {"pages": 1, "characters": 11}
+    assert parsed.text_blocks[0].locator == "page=1;item=1"
+    assert parsed.metadata["pages"] == 1
+    assert parsed.metadata["engine"] == "docling"
+    assert parsed.metadata["characters"] == 11
+
+
+def test_scanned_pdf_is_rejected_without_ocr_and_missing_models_are_explicit(tmp_path: Path, monkeypatch) -> None:
+    from services.ingestion import parsers
+
+    scanned = tmp_path / "scan.pdf"
+    writer = PdfWriter()
+    writer.add_blank_page(width=612, height=792)
+    with scanned.open("wb") as output:
+        writer.write(output)
+    monkeypatch.delenv("DOCLING_ARTIFACTS_PATH", raising=False)
+    with pytest.raises(ParseError) as scan_error:
+        parse_document(scanned, kind="pdf", mime_type="application/pdf", filename=scanned.name)
+    assert scan_error.value.code == "pdf_no_text_layer"
+
+    text_pdf = tmp_path / "text.pdf"
+    _write_text_pdf(text_pdf)
+    with pytest.raises(ParseError) as model_error:
+        parse_document(text_pdf, kind="pdf", mime_type="application/pdf", filename=text_pdf.name)
+    assert model_error.value.code == "parser_model_unavailable"
 
 
 def test_csv_and_pdf_enforce_parser_limits(tmp_path: Path, monkeypatch) -> None:
@@ -208,8 +240,6 @@ def test_xlsx_and_docx_enforce_uncompressed_archive_limit(tmp_path: Path, monkey
 
 
 def test_txt_csv_xlsx_and_image_enforce_output_limits(tmp_path: Path, monkeypatch) -> None:
-    from PIL import Image
-
     from services.ingestion import parsers
 
     txt_path = tmp_path / "large.txt"
@@ -243,9 +273,22 @@ def test_txt_csv_xlsx_and_image_enforce_output_limits(tmp_path: Path, monkeypatc
         )
     assert xlsx_error.value.code == "parser_limit_exceeded"
 
-    image_path = tmp_path / "large.png"
-    Image.new("RGB", (2, 2), color="white").save(image_path)
-    monkeypatch.setattr(parsers, "MAX_IMAGE_PIXELS", 3)
+    image_path = tmp_path / "photo.png"
+    image_path.write_bytes(b"\x89PNG\r\n\x1a\nfixture")
     with pytest.raises(ParseError) as image_error:
         parse_document(image_path, kind="image", mime_type="image/png", filename=image_path.name)
-    assert image_error.value.code == "parser_limit_exceeded"
+    assert image_error.value.code == "unsupported_type"
+
+
+def test_docling_csv_batches_preserve_all_rows_at_batch_boundary(tmp_path: Path) -> None:
+    path = tmp_path / "many.csv"
+    with path.open("w", encoding="utf-8", newline="") as output:
+        output.write("id;value\n")
+        for index in range(1, 1005):
+            output.write(f"{index};value-{index}\n")
+    parsed = parse_document(path, kind="csv", mime_type="text/csv", filename=path.name)
+    rows = [row for table in parsed.table_blocks for row in table.rows]
+    assert len(rows) == 1004
+    assert rows[0] == ["1", "value-1"]
+    assert rows[-1] == ["1004", "value-1004"]
+    assert len({row[0] for row in rows}) == 1004

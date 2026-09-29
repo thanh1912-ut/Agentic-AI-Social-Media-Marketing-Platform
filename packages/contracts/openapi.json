@@ -2476,6 +2476,7 @@
             "enum": [
               "pending",
               "extracted",
+              "partial",
               "metadata_only",
               "failed"
             ],
@@ -2845,6 +2846,138 @@
           "created_at"
         ],
         "title": "ExportOut",
+        "type": "object"
+      },
+      "ExtractedContentPage": {
+        "additionalProperties": false,
+        "properties": {
+          "document_id": {
+            "title": "Document Id",
+            "type": "string"
+          },
+          "has_more": {
+            "title": "Has More",
+            "type": "boolean"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ExtractedContentUnit"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
+          },
+          "parser_version": {
+            "title": "Parser Version",
+            "type": "string"
+          },
+          "source_version": {
+            "title": "Source Version",
+            "type": "string"
+          },
+          "total_rows": {
+            "title": "Total Rows",
+            "type": "integer"
+          },
+          "total_tables": {
+            "title": "Total Tables",
+            "type": "integer"
+          },
+          "total_text_blocks": {
+            "title": "Total Text Blocks",
+            "type": "integer"
+          },
+          "warnings": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Warnings",
+            "type": "array"
+          }
+        },
+        "required": [
+          "document_id",
+          "parser_version",
+          "source_version",
+          "items",
+          "has_more",
+          "total_text_blocks",
+          "total_tables",
+          "total_rows"
+        ],
+        "title": "ExtractedContentPage",
+        "type": "object"
+      },
+      "ExtractedContentUnit": {
+        "additionalProperties": false,
+        "properties": {
+          "cells": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cells"
+          },
+          "headers": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Headers"
+          },
+          "kind": {
+            "enum": [
+              "text",
+              "table_row"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "locator": {
+            "title": "Locator",
+            "type": "string"
+          },
+          "text": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Text"
+          }
+        },
+        "required": [
+          "kind",
+          "locator"
+        ],
+        "title": "ExtractedContentUnit",
         "type": "object"
       },
       "ForgotPasswordRequest": {
@@ -6125,6 +6258,22 @@
         "title": "RegisterRequest",
         "type": "object"
       },
+      "ReprocessDocumentRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "mode": {
+            "default": "document",
+            "enum": [
+              "document",
+              "profile_only"
+            ],
+            "title": "Mode",
+            "type": "string"
+          }
+        },
+        "title": "ReprocessDocumentRequest",
+        "type": "object"
+      },
       "ResearchReportOut": {
         "additionalProperties": false,
         "properties": {
@@ -6806,6 +6955,41 @@
           "max_files_per_request": {
             "title": "Max Files Per Request",
             "type": "integer"
+          },
+          "max_pdf_pages": {
+            "default": 200,
+            "title": "Max Pdf Pages",
+            "type": "integer"
+          },
+          "max_processing_seconds": {
+            "default": 600,
+            "title": "Max Processing Seconds",
+            "type": "integer"
+          },
+          "max_table_cells": {
+            "default": 1000000,
+            "title": "Max Table Cells",
+            "type": "integer"
+          },
+          "max_table_columns": {
+            "default": 256,
+            "title": "Max Table Columns",
+            "type": "integer"
+          },
+          "max_table_rows": {
+            "default": 100000,
+            "title": "Max Table Rows",
+            "type": "integer"
+          },
+          "max_text_characters": {
+            "default": 20000000,
+            "title": "Max Text Characters",
+            "type": "integer"
+          },
+          "ocr_enabled": {
+            "default": false,
+            "title": "Ocr Enabled",
+            "type": "boolean"
           }
         },
         "required": [
@@ -10589,6 +10773,102 @@
         ]
       }
     },
+    "/api/v1/workspaces/{company_id}/documents/{document_id}/extracted-content": {
+      "get": {
+        "operationId": "get_extracted_content_api_v1_workspaces__company_id__documents__document_id__extracted_content_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "company_id",
+            "required": true,
+            "schema": {
+              "title": "Company Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "document_id",
+            "required": true,
+            "schema": {
+              "title": "Document Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 2000,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 200,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExtractedContentPage"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Extracted Content",
+        "tags": [
+          "documents"
+        ]
+      }
+    },
     "/api/v1/workspaces/{company_id}/documents/{document_id}/reprocess": {
       "post": {
         "operationId": "reprocess_document_api_v1_workspaces__company_id__documents__document_id__reprocess_post",
@@ -10628,6 +10908,23 @@
             }
           }
         ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/ReprocessDocumentRequest"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Request"
+              }
+            }
+          }
+        },
         "responses": {
           "202": {
             "content": {

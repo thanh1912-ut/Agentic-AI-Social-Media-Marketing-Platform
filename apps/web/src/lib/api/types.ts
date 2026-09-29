@@ -22,6 +22,7 @@ export type ApiInviteMemberResponse = Schemas['InviteMemberResponse'];
 export type ApiUploadLimits = Schemas['UploadLimits'];
 export type ApiDocumentError = Schemas['DocumentError'];
 export type ApiDocument = Schemas['DocumentOut'];
+export type ApiExtractedContentPage = Schemas['ExtractedContentPage'];
 export type ApiCampaignUpdateRequest = Schemas['CampaignUpdateRequest'];
 export type ApiCampaignPlanRequest = Schemas['CampaignPlanRequest'];
 export type ApiCampaignPlanJobResult = Schemas['CampaignPlanJobResult'];

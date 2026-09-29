@@ -363,7 +363,9 @@ def test_postgres_api_persists_existing_product_modules(monkeypatch: pytest.Monk
         client.portal.call(tasks.ingest_document_task_batch_async, job_id, [document_id])
         document_response = client.get(f"/api/v1/workspaces/{workspace_id}/documents/{document_id}")
         assert document_response.status_code == 200, document_response.text
+        assert document_response.json()["status"] == "ready"
         assert document_response.json()["knowledge_status"] == "ready"
+        assert document_response.json()["profile_status"] == "not_available"
         rows = client.portal.call(read_persisted_rows)
         # The application's async pool is tied to TestClient's portal loop.
         # Dispose it before that loop closes so later asyncio.run() tests can
@@ -373,7 +375,10 @@ def test_postgres_api_persists_existing_product_modules(monkeypatch: pytest.Monk
     assert rows is not None
     brand, revision, document, document_job, chunks, connection, post, approval, metric, evidence, observation, version = rows
     assert brand is not None and revision is not None
-    assert document is not None and document_job is not None and document_job.status == "failed"
+    assert document is not None and document_job is not None and document_job.status == "succeeded"
+    assert document.status == "ready" and document.knowledge_status == "ready"
+    assert document.profile_status == "not_available"
+    assert document_job.result["brand_profile_status"] == "not_configured"
     assert chunks and chunks[0].embedding is None
     assert connection is not None and connection.encrypted_token != "fixture-page-token-never-sent-outside-test"
     assert post is not None and post.status == "approved"

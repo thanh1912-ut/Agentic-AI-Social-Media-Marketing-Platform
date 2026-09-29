@@ -137,6 +137,13 @@ class UploadLimits(StrictSchema):
     max_files_per_request: int
     accepted_kinds: list[str]
     accepted_mime_types: list[str]
+    max_text_characters: int = 20_000_000
+    max_table_rows: int = 100_000
+    max_table_columns: int = 256
+    max_table_cells: int = 1_000_000
+    max_pdf_pages: int = 200
+    max_processing_seconds: int = 600
+    ocr_enabled: bool = False
 
 
 class DocumentError(StrictSchema):
@@ -157,13 +164,38 @@ class DocumentOut(StrictSchema):
     job_id: str | None = None
     error: DocumentError | None = None
     extracted: dict[str, Any] | None = None
-    extraction_status: Literal["pending", "extracted", "metadata_only", "failed"] = "pending"
+    extraction_status: Literal["pending", "extracted", "partial", "metadata_only", "failed"] = "pending"
     knowledge_status: Literal["pending", "ready", "not_available", "failed"] = "pending"
     retrieval_mode: Literal["lexical", "semantic_vector", "not_available"] = "not_available"
     profile_status: Literal["pending", "ready", "not_available", "failed"] = "pending"
     uploaded_by: str
     uploaded_at: datetime
     processed_at: datetime | None = None
+
+
+class ExtractedContentUnit(StrictSchema):
+    kind: Literal["text", "table_row"]
+    locator: str
+    text: str | None = None
+    headers: list[str] | None = None
+    cells: list[str] | None = None
+
+
+class ExtractedContentPage(StrictSchema):
+    document_id: str
+    parser_version: str
+    source_version: str
+    items: list[ExtractedContentUnit]
+    next_cursor: str | None = None
+    has_more: bool
+    total_text_blocks: int
+    total_tables: int
+    total_rows: int
+    warnings: list[str] = Field(default_factory=list)
+
+
+class ReprocessDocumentRequest(StrictSchema):
+    mode: Literal["document", "profile_only"] = "document"
 
 
 class JobErrorOut(StrictSchema):
