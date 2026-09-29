@@ -38,3 +38,21 @@ Thời điểm cập nhật: 2026-09-29 10:18 UTC
 - Branch: `codex/auth-registration-login`.
 - Commit đã push: `4cd0a06dbcec387266b34e6f0a05c785aabd53cd`.
 - Remote SHA khớp với commit local.
+
+## Tiếp tục: giữ DeepSeek qua lần khởi động (2026-09-29)
+
+- [x] Xác nhận nguyên nhân preview: launcher tạm gán `DEEPSEEK_API_KEY` rỗng và model khác; secret gốc vẫn được lưu ngoài repo.
+- [x] Xác nhận `deepseek-flash` khả dụng bằng `GET /models`; key không xuất hiện trong output.
+- [x] Đưa Python runtime, Docling models và file storage ra khỏi `/private/tmp`, giữ bản nguồn để rollback.
+- [x] Thêm runtime launcher dùng allowlist env; API/agent worker nạp DeepSeek từ secret file khi start, ingestion/Beat không nhận key.
+- [x] Cô lập auth preview khỏi các dịch vụ dùng chung: DB thử nghiệm hiện tại và Redis database `/4`.
+- [x] Thêm LaunchAgent manager cho API, frontend, hai worker và Celery Beat; không đụng LaunchAgent PostgreSQL/Redis.
+- [x] 6 test unit, Ruff và kiểm tra whitespace đã pass.
+- [x] Cài/khởi động 5 LaunchAgents: API, frontend, worker `default,agent`, worker `ingestion`, Beat. Tất cả báo `running`; `/readyz` trả `200 ready`, frontend `/login` trả `200`.
+- [x] Celery Beat recovery đã nhận job ingestion tồn trong PostgreSQL; job đạt `succeeded`, có một document record. UI sau khi kết nối hiển thị CSV với `41.188` dòng và `4.029.468` ký tự; worker ingestion không nhận DeepSeek key.
+- [x] Một job campaign-plan dùng workspace/prose tổng hợp đã dispatch qua Redis/Celery và ghi kết quả vào PostgreSQL: `succeeded`, model `deepseek-flash`, ba concept, 1.129 input tokens, 4.431 output tokens, 19.995 ms. Workspace tổng hợp được xóa sau khi đọc kết quả.
+- [x] Xác nhận tải lại frontend vẫn vào workspace đã đăng nhập, không bị chuyển về login.
+- [x] 6 test runtime, Ruff check/format, Python compile và `git diff --check` đều đạt.
+- [ ] Review diff/secrets, commit và push feature branch; xác minh SHA remote.
+
+Lượt cài LaunchAgent đầu tiên gặp lỗi bootstrap thoáng qua sau khi thay API cũ. Installer được bổ sung retry có giới hạn và kiểm tra trạng thái thực; lượt cài lại thành công cho cả 5 service. Key vẫn chỉ nằm trong secret store, không được in ra.

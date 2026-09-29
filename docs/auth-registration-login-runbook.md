@@ -59,3 +59,41 @@ Trên HTTPS production, bật `COOKIE_SECURE=1`, cấu hình domain/CORS đúng 
 ## Preview kiểm thử hiện tại
 
 Branch preview riêng: `http://127.0.0.1:13104/register` (frontend) và API `http://127.0.0.1:8001`. Preview này dùng PostgreSQL thử nghiệm `agentic_marketing_auth_test_20260929`, không dùng chung dữ liệu đăng nhập/workspace của preview cũ ở cổng 13103/8000. Tài khoản tạo tại đây chỉ nằm trong database thử nghiệm.
+
+## DeepSeek và dịch vụ preview bền vững
+
+Preview `13104` đọc cấu hình mỗi lần tiến trình khởi động từ các file ngoài Git:
+
+- `~/.local/share/agentic-marketing/secrets/deepseek-docling.env`: `LLM_PROVIDER`, `DEEPSEEK_API_KEY`, `DEEPSEEK_BASE_URL`, `LLM_DEFAULT_MODEL`.
+- `~/.local/share/agentic-marketing/secrets/app.env`: cấu hình PostgreSQL dùng chung làm nguồn; launcher đổi tên database sang database thử nghiệm riêng.
+- `~/.local/share/agentic-marketing/secrets/auth-preview.env`: signing key ổn định cho cookie của preview đăng ký/đăng nhập.
+- `~/.local/share/agentic-marketing/auth-preview/`: virtualenv API/agent, virtualenv Docling, model local, storage, log và lịch Celery Beat.
+
+Các secret file phải thuộc người dùng hiện tại và quyền `0600`; thư mục runtime có quyền hạn chế. Không đặt key trong `.env` của frontend, LaunchAgent plist, command line, prompt, log hoặc Git. API và worker `default,agent` đọc key khi start. Worker `ingestion` và Celery Beat không nhận key. Ingestion tiếp tục chạy Docling local và không gọi DeepSeek.
+
+Preview giữ các điểm kết nối riêng: frontend `http://127.0.0.1:13104`, API `http://127.0.0.1:8001`, PostgreSQL database `agentic_marketing_auth_test_20260929`, Redis queue `127.0.0.1:16379/4` và cache `127.0.0.1:16380/4`. Không đổi tài khoản/workspace E2E và JWT secret khi restart.
+
+Kiểm tra cấu hình mà không in key:
+
+```sh
+PREVIEW_ROOT="$HOME/.local/share/agentic-marketing/auth-preview"
+WORKTREE="$HOME/.codex/worktrees/auth-registration-login/agent"
+"$PREVIEW_ROOT/venvs/api-py311/bin/python" "$WORKTREE/scripts/local_preview_runtime.py" status
+"$PREVIEW_ROOT/venvs/api-py311/bin/python" "$WORKTREE/scripts/local_preview_runtime.py" probe-model
+"$WORKTREE/scripts/install_auth_preview_agents.py" status
+```
+
+`probe-model` gọi `GET /models`; nó chỉ in key present/missing, tên model và model có sẵn hay không. Không dùng lệnh `env`, `printenv`, `cat` hoặc `echo` trên secret file.
+
+Cài/cập nhật, khởi động lại và dừng **chỉ các dịch vụ ứng dụng của preview này**:
+
+```sh
+"$PREVIEW_ROOT/venvs/api-py311/bin/python" "$WORKTREE/scripts/install_auth_preview_agents.py" install
+"$PREVIEW_ROOT/venvs/api-py311/bin/python" "$WORKTREE/scripts/install_auth_preview_agents.py" restart
+"$PREVIEW_ROOT/venvs/api-py311/bin/python" "$WORKTREE/scripts/install_auth_preview_agents.py" status
+"$PREVIEW_ROOT/venvs/api-py311/bin/python" "$WORKTREE/scripts/install_auth_preview_agents.py" stop
+```
+
+Các lệnh này quản lý API, web, worker `default,agent`, worker `ingestion` và Beat của auth preview; không dừng PostgreSQL/Redis. Beat gọi recovery task mỗi phút để tìm lại job đã commit. Để xem lỗi, xem file `auth-preview/logs/*.error.log` và không chia sẻ nguyên văn log nếu chưa rà secret/dữ liệu cá nhân. `stop` không xóa storage, database, tài khoản hay secret. Sau `install`/`restart`, kiểm tra `/readyz` và mở lại trang; cookie đăng nhập còn hợp lệ vì signing key được giữ ổn định.
+
+Nếu model bị báo unavailable, kiểm tra đúng tên model trong secret store và chạy `probe-model`; không tự đổi model hoặc gửi lại key trong chat. Việc đổi API key chỉ cần cập nhật file secret bằng secret manager/editor an toàn, giữ quyền `0600`, rồi restart API và worker. Không ghi giá trị key vào tài liệu.
