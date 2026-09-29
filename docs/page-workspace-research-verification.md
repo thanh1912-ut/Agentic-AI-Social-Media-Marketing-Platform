@@ -43,9 +43,9 @@ Không tuyên bố đã crawl hết Page/Group hoặc đạt chứng nhận phá
 ## Bằng chứng code trong lượt triển khai
 
 - Baseline branch/SHA: `codex/creative-studio-ui` @ `b769097bfdb3568889d974c6def95bb944559113`.
-- Implementation/test commit: `d2ad5dddf7ef4055a1941d69c32a67d5d93ecf4a` trên `codex/page-workspaces-research`.
-- Remote SHA được xác minh lúc `2026-09-30 01:38 Asia/Ho_Chi_Minh`: `origin/codex/page-workspaces-research` khớp `d2ad5dddf7ef4055a1941d69c32a67d5d93ecf4a`.
-- Việc ghi nhận SHA trong tài liệu là thay đổi tài liệu sau khi chạy kiểm thử; không làm thay đổi code đã kiểm thử.
+- Implementation commit: `d2ad5dddf7ef4055a1941d69c32a67d5d93ecf4a`.
+- Commit integration test PostgreSQL/Redis: `6bb99106d689444cfb1b2acc6e5ea467a8e553cc` trên `codex/page-workspaces-research`.
+- Remote SHA được xác minh lúc `2026-09-30 01:54 Asia/Ho_Chi_Minh`: `origin/codex/page-workspaces-research` khớp commit `6bb99106d689444cfb1b2acc6e5ea467a8e553cc`.
 - Đã thêm migration `0021_page_workspace_identity`. Fresh migration chạy trên PostgreSQL 18.3 test cluster tạm, từ database mới đến `0021`.
 - Upgrade migration được thử trên database riêng ở `0020`. Vì migration `0001` của checkout mới tạo metadata hiện tại, test đã gỡ riêng ba cột/index mới để mô phỏng schema cũ, seed dữ liệu synthetic và áp dụng `0021`: workspace một Page được map với `needs_reconnect`; workspace nhiều Page, Page trùng giữa workspace và không Page giữ `page_id=NULL`/`connection_required`.
 - PostgreSQL/Redis integration chạy trên test services tạm ở loopback: `tests/test_postgres_database_integration.py` đạt 6 passed. Test production Celery dispatcher đưa đúng job ID synthetic vào Redis `agent` queue; message và bản ghi test được dọn sau kiểm tra. Không chạy worker xử lý research để tránh crawl hoặc gọi provider.

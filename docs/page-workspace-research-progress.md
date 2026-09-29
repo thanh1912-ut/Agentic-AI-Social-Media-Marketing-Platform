@@ -74,6 +74,11 @@ Base đã kiểm tra: `codex/creative-studio-ui` @ `b769097bfdb3568889d974c6def9
 - PASS: cả sáu test trong file PostgreSQL/Redis chạy trên PostgreSQL 18.3 và hai Redis test riêng.
 - NOT_RUN: không có Celery worker chạy job crawl; live Meta/provider và browser vẫn chưa nghiệm thu.
 
+### 2026-09-30 01:54 Asia/Ho_Chi_Minh — Push kiểm chứng PostgreSQL/Redis
+
+- DONE: commit `6bb99106d689444cfb1b2acc6e5ea467a8e553cc` gồm integration test PostgreSQL/Redis và cập nhật runbook/verification đã push.
+- DONE: SHA trên origin được xác minh khớp commit này.
+
 ## Nhật ký
 
 ### 2026-09-30 — Baseline
