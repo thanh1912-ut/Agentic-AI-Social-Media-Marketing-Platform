@@ -34,34 +34,9 @@ async function chooseWorkspace(page: Page, id: string): Promise<boolean> {
   return explicitSelection;
 }
 
-function onePageTextPdf(text: string): Buffer {
-  const pdfText = text.replaceAll('\\', '\\\\').replaceAll('(', '\\(').replaceAll(')', '\\)');
-  const stream = `BT /F1 12 Tf 72 720 Td (${pdfText}) Tj ET`;
-  const objects = [
-    '<< /Type /Catalog /Pages 2 0 R >>',
-    '<< /Type /Pages /Kids [3 0 R] /Count 1 >>',
-    '<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R >>',
-    '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>',
-    `<< /Length ${Buffer.byteLength(stream, 'ascii')} >>\nstream\n${stream}\nendstream`,
-  ];
-
-  let document = '%PDF-1.4\n';
-  const offsets: number[] = [0];
-  for (const [index, object] of objects.entries()) {
-    offsets.push(Buffer.byteLength(document, 'ascii'));
-    document += `${index + 1} 0 obj\n${object}\nendobj\n`;
-  }
-  const xrefOffset = Buffer.byteLength(document, 'ascii');
-  document += `xref\n0 ${objects.length + 1}\n0000000000 65535 f \n`;
-  for (const offset of offsets.slice(1)) {
-    document += `${offset.toString().padStart(10, '0')} 00000 n \n`;
-  }
-  document += `trailer\n<< /Size ${objects.length + 1} /Root 1 0 R >>\nstartxref\n${xrefOffset}\n%%EOF`;
-  return Buffer.from(document, 'ascii');
-}
 
 test.describe('real API acceptance — auth, documents, jobs and Brand Profile', () => {
-  test('self registration creates an owner workspace that survives logout and login', async ({ page }) => {
+  test('self registration, document-only ingestion, manual profile, logout and login persist', async ({ page }) => {
     test.skip(
       process.env.E2E_REAL_AUTH_TESTS !== '1',
       'Set E2E_REAL_AUTH_TESTS=1 only against a disposable real API database.',
@@ -90,7 +65,57 @@ test.describe('real API acceptance — auth, documents, jobs and Brand Profile',
     await page.getByLabel('Mật khẩu').fill(password);
     await page.getByRole('button', { name: 'Đăng nhập' }).click();
     await expect(page.getByRole('button', { name: 'Đăng xuất' })).toBeVisible();
-    await expect(page).toHaveURL(new RegExp(`/w/${new URL(registeredUrl).pathname.split('/')[2]}/documents$`));
+    const workspaceId = new URL(registeredUrl).pathname.split('/')[2];
+    await expect(page).toHaveURL(new RegExp(`/w/${workspaceId}/documents$`));
+
+    const profileWrites: string[] = [];
+    page.on('request', (request) => {
+      const requestUrl = new URL(request.url());
+      if (requestUrl.pathname === `/api/v1/workspaces/${workspaceId}/brand-profile` && request.method() !== 'GET') {
+        profileWrites.push(request.method());
+      }
+    });
+
+    await page.goto(`/w/${encodeURIComponent(workspaceId)}/documents`);
+    const runId = Date.now();
+    const textName = `studio-notes-${runId}.txt`;
+    const csvName = `studio-metrics-${runId}.csv`;
+    await page.locator('#document-files').setInputFiles([
+      { name: textName, mimeType: 'text/plain', buffer: Buffer.from('Thương hiệu mẫu. Nội dung ngắn để kiểm tra Docling.') },
+      { name: csvName, mimeType: 'text/csv', buffer: Buffer.from('metric,value\norders,12\nreturns,1\n') },
+    ]);
+    await expect(page).toHaveURL(/\/jobs\//, { timeout: 30_000 });
+    await expect(page.getByText('Đã hoàn tất', { exact: true }).first()).toBeVisible({ timeout: 90_000 });
+    await page.reload();
+    await expect(page.getByText('Đã hoàn tất', { exact: true }).first()).toBeVisible({ timeout: 30_000 });
+    await page.goto(`/w/${encodeURIComponent(workspaceId)}/documents`);
+    await expect(page.getByText(textName)).toBeVisible();
+    await expect(page.getByText(csvName)).toBeVisible();
+    await expect(page.getByText('Đã đọc xong nội dung').first()).toBeVisible();
+    await expect(page.getByText('Sẵn sàng truy xuất').first()).toBeVisible();
+    await expect(page.getByText(/Đã tạo\/cập nhật Brand Profile/)).toHaveCount(0);
+    expect(profileWrites).toEqual([]);
+
+    await page.goto(`/w/${encodeURIComponent(workspaceId)}/brand`);
+    const profile = page.getByLabel('Giới thiệu thương hiệu cho AI');
+    await expect(profile).toHaveValue('');
+    const profileText = 'Thương hiệu test do người dùng tự viết. Giọng văn gần gũi, rõ ràng.';
+    await profile.fill(profileText);
+    await page.getByRole('button', { name: 'Lưu và áp dụng' }).click();
+    await expect(page.getByText(/Đã lưu và áp dụng hồ sơ/)).toBeVisible();
+    await page.reload();
+    await expect(page.getByLabel('Giới thiệu thương hiệu cho AI')).toHaveValue(profileText);
+    expect(profileWrites).toEqual(['PATCH']);
+
+    await page.getByRole('button', { name: 'Đăng xuất' }).click();
+    await expect(page).toHaveURL(/\/login$/);
+    await page.getByLabel('Email').fill(email);
+    await page.getByLabel('Mật khẩu').fill(password);
+    await page.getByRole('button', { name: 'Đăng nhập' }).click();
+    await expect(page.getByRole('button', { name: 'Đăng xuất' })).toBeVisible();
+    await expect(page).toHaveURL(new RegExp(`/w/${workspaceId}/documents$`));
+    await page.goto(`/w/${encodeURIComponent(workspaceId)}/brand`);
+    await expect(page.getByLabel('Giới thiệu thương hiệu cho AI')).toHaveValue(profileText);
   });
 
   test('removes a stale mock service worker before showing real-mode login', async ({ page }) => {
@@ -123,140 +148,6 @@ test.describe('real API acceptance — auth, documents, jobs and Brand Profile',
     expect(staleWorkerState).toEqual({ registrations: 0, controlledByMock: false });
   });
 
-  test('login → upload TXT/PDF → job → inspect AI sources → confirm → reload persisted profile', async ({
-    page,
-  }) => {
-    requireRealAccount();
-    const uploadRunId = Date.now();
-    const txtFilename = `pilot-brand-notes-${uploadRunId}.txt`;
-    const pdfFilename = `pilot-menu-text-${uploadRunId}.pdf`;
-    const apiRequests: string[] = [];
-    let uploadCsrfHeader: string | undefined;
-    const brandMutations: Array<{ method: string; body: unknown }> = [];
-    page.on('request', (request) => {
-      const requestUrl = new URL(request.url());
-      if (requestUrl.pathname.startsWith('/api/v1/')) apiRequests.push(request.url());
-      if (
-        requestUrl.pathname === `/api/v1/workspaces/${workspaceId}/documents` &&
-        request.method() === 'POST'
-      ) {
-        uploadCsrfHeader = request.headers()['x-csrf-token'];
-      }
-      if (
-        requestUrl.pathname === `/api/v1/workspaces/${workspaceId}/brand-profile` &&
-        request.method() === 'PATCH'
-      ) {
-        let body: unknown = null;
-        try {
-          body = request.postData() ? JSON.parse(request.postData() ?? 'null') : null;
-        } catch {
-          body = null;
-        }
-        brandMutations.push({ method: request.method(), body });
-      }
-      if (
-        requestUrl.pathname === `/api/v1/workspaces/${workspaceId}/brand-profile/confirm` &&
-        request.method() === 'POST'
-      ) {
-        let body: unknown = null;
-        try {
-          body = request.postData() ? JSON.parse(request.postData() ?? 'null') : null;
-        } catch {
-          body = null;
-        }
-        brandMutations.push({ method: request.method(), body });
-      }
-    });
-
-    await login(page);
-    const explicitWorkspaceSelection = await chooseWorkspace(page, workspaceId);
-    await page.goto(`/w/${encodeURIComponent(workspaceId)}/documents`);
-    await expect(page.getByRole('heading', { name: 'Tài liệu' })).toBeVisible();
-
-    await page.locator('#document-files').setInputFiles([
-      {
-        name: txtFilename,
-        mimeType: 'text/plain',
-        buffer: Buffer.from(`Pho Bac ${uploadRunId} serves northern Vietnamese noodle soup. Friendly neighborhood voice.`, 'utf8'),
-      },
-      {
-        name: pdfFilename,
-        mimeType: 'application/pdf',
-        buffer: onePageTextPdf(`Pho Bac ${uploadRunId} menu. Beef noodle soup. Open daily.`),
-      },
-    ]);
-
-    await expect(page).toHaveURL(/\/jobs\//, { timeout: 30_000 });
-    const jobUrl = page.url();
-    await expect(page.getByText('Đã hoàn tất', { exact: true })).toBeVisible({ timeout: 90_000 });
-    await page.reload();
-    await expect(page.getByText('Đã hoàn tất', { exact: true })).toBeVisible({ timeout: 30_000 });
-
-    await page.goto(`/w/${encodeURIComponent(workspaceId)}/documents`);
-    await expect(page.getByText(txtFilename)).toBeVisible();
-    await expect(page.getByText(pdfFilename)).toBeVisible();
-    await expect(page.getByText('Đã đọc xong nội dung').first()).toBeVisible();
-    await expect(page.getByText('Đã tạo/cập nhật Brand Profile').first()).toBeVisible();
-    await expect(page.getByText('Mode truy xuất').first()).toBeVisible();
-
-    await page.goto(`/w/${encodeURIComponent(workspaceId)}/brand`);
-    await expect(page.getByRole('heading', { name: 'Hồ sơ thương hiệu' })).toBeVisible();
-    const sourceToggle = page.getByRole('button', { name: /^Xem nguồn/ }).first();
-    await expect(sourceToggle).toBeVisible({ timeout: 30_000 });
-    await sourceToggle.click();
-    await expect(page.locator('blockquote').first()).toBeVisible();
-
-    // Confirm the current revision with the dedicated HTTP operation, then edit
-    // and save+confirm atomically against the revision currently shown by API.
-    if (await page.getByRole('button', { name: 'Xác nhận hồ sơ' }).isEnabled()) {
-      await page.getByRole('button', { name: 'Xác nhận hồ sơ' }).click();
-      await expect(page.getByText('Hồ sơ đã xác nhận')).toBeVisible();
-      await expect.poll(() => brandMutations.some(({ method }) => method === 'POST')).toBe(true);
-    }
-
-    const businessName = page.getByLabel(/Sửa.*Tên doanh nghiệp/);
-    await businessName.fill(`Pho Bac Pilot ${Date.now()}`);
-    const persistedName = await businessName.inputValue();
-    await page.getByRole('button', { name: 'Xác nhận hồ sơ' }).click();
-    await expect(page.getByText('Hồ sơ đã xác nhận')).toBeVisible();
-    await expect.poll(() => brandMutations.some(({ method }) => method === 'PATCH')).toBe(true);
-    const patchBody = brandMutations.find(({ method }) => method === 'PATCH')?.body;
-    expect(typeof patchBody).toBe('object');
-    expect(patchBody).not.toBeNull();
-    if (typeof patchBody === 'object' && patchBody !== null) {
-      expect('version' in patchBody && typeof patchBody.version === 'number').toBe(true);
-      expect('confirm' in patchBody && patchBody.confirm === true).toBe(true);
-    }
-
-    await page.reload();
-    await expect(page.getByRole('heading', { name: 'Hồ sơ thương hiệu' })).toBeVisible();
-    await expect(page.getByLabel(/Sửa.*Tên doanh nghiệp/)).toHaveValue(persistedName);
-    await expect(page.getByText('Hồ sơ đã xác nhận')).toBeVisible();
-
-    expect(page.url()).toContain('/brand');
-    expect(jobUrl).toContain('/jobs/');
-
-    const expectedPaths = [
-      '/api/v1/auth/login',
-      '/api/v1/me',
-      `/api/v1/workspaces/${workspaceId}/documents/limits`,
-      `/api/v1/workspaces/${workspaceId}/documents`,
-      `/api/v1/workspaces/${workspaceId}/brand-profile`,
-    ];
-    for (const path of expectedPaths) {
-      expect(apiRequests.some((url) => new URL(url).pathname === path)).toBe(true);
-    }
-    if (explicitWorkspaceSelection) {
-      expect(
-        apiRequests.some((url) => new URL(url).pathname === '/api/v1/me/active-workspace'),
-      ).toBe(true);
-    }
-    expect(apiRequests.every((url) => url.startsWith(apiOrigin))).toBe(true);
-    expect(apiRequests.some((url) => new URL(url).pathname.startsWith('/api/v1/jobs/'))).toBe(true);
-    expect(uploadCsrfHeader).toBeTruthy();
-    expect(await page.getByText('Dữ liệu demo').count()).toBe(0);
-  });
-
   test('Brand Profile 409 tells user to reload and does not retry the stale edit', async ({ page }) => {
     requireRealAccount();
     await login(page);
@@ -281,8 +172,8 @@ test.describe('real API acceptance — auth, documents, jobs and Brand Profile',
     });
     await page.goto(`/w/${encodeURIComponent(workspaceId)}/brand`);
     await expect(page.getByRole('heading', { name: 'Hồ sơ thương hiệu' })).toBeVisible();
-    await page.getByLabel(/Sửa.*Tên doanh nghiệp/).fill('Bản sửa phải giữ lại để sao chép');
-    await page.getByRole('button', { name: 'Lưu thay đổi' }).click();
+    await page.getByLabel('Giới thiệu thương hiệu cho AI').fill('Bản sửa phải giữ lại để sao chép');
+    await page.getByRole('button', { name: 'Lưu và áp dụng' }).click();
     await expect(page.getByRole('button', { name: 'Tải bản mới nhất' })).toBeVisible();
     await expect(page.getByRole('button', { name: 'Thử lại' })).toHaveCount(0);
     expect(patchCount).toBe(1);

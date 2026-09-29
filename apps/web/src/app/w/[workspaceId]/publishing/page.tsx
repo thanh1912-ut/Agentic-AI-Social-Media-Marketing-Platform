@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import { useMemo, useState } from 'react';
+import { UrlTabs, useUrlTab } from '@/components/url-tabs';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import { useSession } from '@/components/session-gate';
@@ -24,6 +25,13 @@ const PUBLICATION_STATUS: Record<MetaPublicationStatus, { label: string; tone: T
 };
 
 const BLOCKING_STATUSES: ReadonlySet<MetaPublicationStatus> = new Set(['queued', 'sending', 'published', 'outcome_unknown']);
+const PUBLISHING_TABS = ['approved', 'scheduled', 'history'] as const;
+const PUBLISHING_TAB_LABELS = { approved: 'Bài đã duyệt', scheduled: 'Lịch đăng', history: 'Lịch sử' } as const;
+const PUBLISHING_HASHES = {
+  '#approved-posts': 'approved',
+  '#scheduled-posts': 'scheduled',
+  '#publication-history': 'history',
+} as const;
 
 function latestPublication(publications: MetaPublication[], postId: string, version: number, pageId?: string): MetaPublication | null {
   return publications.filter((item) => item.post_id === postId && item.post_version === version)
@@ -69,6 +77,7 @@ export default function PublishingPage() {
     queryFn: () => metaApi.schedules(activeId),
     enabled: activeId !== '',
   });
+  const [publicationTab, setPublicationTab] = useUrlTab('tab', 'approved', PUBLISHING_TABS, PUBLISHING_HASHES);
   const [confirmPost, setConfirmPost] = useState<{ id: string; version: number } | null>(null);
   const [scheduledAt, setScheduledAt] = useState('');
   const [selectedPageByPost, setSelectedPageByPost] = useState<Record<string, string>>({});
@@ -146,19 +155,14 @@ export default function PublishingPage() {
         actions={<Link href={`/w/${workspaceId}/campaigns`} className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 transition-colors hover:border-teal-300 hover:text-teal-800"><Icon name="campaign" size={16} /> Mở Chiến dịch</Link>}
       />
 
-      <nav aria-label="Các mục xuất bản" className="grid gap-3 sm:grid-cols-3">
-        {[
-          { href: '#approved-posts', label: 'Bài đã duyệt', value: posts.isSuccess ? approvedPosts.length : '—', icon: 'check' as const, hint: 'Danh sách phiên bản đã duyệt' },
-          { href: '#scheduled-posts', label: 'Đã lên lịch', value: schedules.isSuccess ? schedules.data.filter((item) => item.status === 'scheduled').length : '—', icon: 'clock' as const, hint: 'Theo giờ Việt Nam' },
-          { href: '#publication-history', label: 'Đã xuất bản', value: publications.isSuccess ? history.filter((item) => item.status === 'published').length : '—', icon: 'publish' as const, hint: 'Theo lịch sử đã tải' },
-        ].map((item) => (
-          <a key={item.href} href={item.href} className="group flex items-center gap-4 rounded-2xl border border-slate-200/80 bg-white p-5 transition-colors hover:border-teal-300 hover:bg-teal-50/40">
-            <span className="flex size-11 shrink-0 items-center justify-center rounded-xl bg-teal-50 text-teal-800"><Icon name={item.icon} size={20} /></span>
-            <div className="min-w-0 flex-1"><p className="text-xs font-medium text-slate-500">{item.label}</p><p className="mt-1 text-3xl font-semibold tracking-tight text-slate-950">{item.value}</p><p className="mt-1 text-xs text-slate-500">{item.hint}</p></div>
-            <Icon name="chevron-right" size={16} className="text-slate-400 group-hover:text-teal-700" />
-          </a>
-        ))}
-      </nav>
+      <UrlTabs
+        label="Mục xuất bản"
+        values={PUBLISHING_TABS}
+        labels={PUBLISHING_TAB_LABELS}
+        active={publicationTab}
+        onChange={setPublicationTab}
+        idPrefix="publishing"
+      />
 
       <Card title="Kết nối Fanpage" description="Kiểm tra Fanpage trước khi xác nhận đăng." actions={<Link href={`/w/${workspaceId}/fanpages`} className="inline-flex items-center gap-1 text-sm font-semibold text-teal-800 hover:underline">Quản lý kết nối <Icon name="arrow-right" size={15} /></Link>}>
         {connection.isPending ? <LoadingBlock label="Đang tải kết nối…" /> : null}
@@ -176,7 +180,8 @@ export default function PublishingPage() {
         ) : null}
       </Card>
 
-      <section id="approved-posts" className="scroll-mt-24">
+      {publicationTab === "approved" ? (
+        <section id="publishing-panel" role="tabpanel" aria-labelledby="publishing-tab-approved" className="route-tab-panel"><span id="approved-posts" className="scroll-mt-24" />
       <Card title="Bài đã duyệt" description="Chọn Fanpage, kiểm tra nội dung rồi đăng ngay hoặc hẹn giờ. Hỗ trợ bài chữ và một ảnh JPEG/PNG.">
         {posts.isPending ? <LoadingBlock label="Đang tải bài đã duyệt…" /> : null}
         {posts.isError ? <ErrorPanel title="Không tải được bài viết" message={posts.error instanceof ApiError ? posts.error.message : 'Vui lòng tải lại bài viết.'} retryable onRetry={() => void posts.refetch()} /> : null}
@@ -252,7 +257,9 @@ export default function PublishingPage() {
       </Card>
 
       </section>
-      <section id="scheduled-posts" className="scroll-mt-24">
+      ) : null}
+      {publicationTab === "scheduled" ? (
+        <section id="publishing-panel" role="tabpanel" aria-labelledby="publishing-tab-scheduled" className="route-tab-panel"><span id="scheduled-posts" className="scroll-mt-24" />
       <Card title="Bài đã hẹn giờ" description="Lịch đăng theo giờ Việt Nam. Bạn có thể hủy trước khi bài bắt đầu được gửi.">
         {schedules.isPending ? <LoadingBlock label="Đang tải lịch đăng…" /> : null}
         {schedules.isError ? <ErrorPanel title="Không tải được lịch đăng" message={schedules.error instanceof ApiError ? schedules.error.message : 'Vui lòng tải lại lịch.'} retryable onRetry={() => void schedules.refetch()} /> : null}
@@ -262,7 +269,9 @@ export default function PublishingPage() {
       </Card>
 
       </section>
-      <section id="publication-history" className="scroll-mt-24">
+      ) : null}
+      {publicationTab === "history" ? (
+        <section id="publishing-panel" role="tabpanel" aria-labelledby="publishing-tab-history" className="route-tab-panel"><span id="publication-history" className="scroll-mt-24" />
       <Card title="Lịch sử xuất bản" description="Kết quả chưa rõ phải được đối soát trên Fanpage trước khi có hành động khác.">
         {publications.isPending ? <LoadingBlock label="Đang tải lịch sử đăng bài…" /> : null}
         {publications.isError ? <ErrorPanel title="Không tải được lịch sử xuất bản" message={publications.error instanceof ApiError ? publications.error.message : 'Vui lòng thử lại.'} retryable onRetry={() => void publications.refetch()} /> : null}
@@ -310,6 +319,7 @@ export default function PublishingPage() {
         </div>
       </Card>
       </section>
+      ) : null}
     </div>
   );
 }

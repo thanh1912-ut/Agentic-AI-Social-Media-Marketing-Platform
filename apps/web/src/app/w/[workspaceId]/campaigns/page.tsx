@@ -190,7 +190,7 @@ export default function CampaignsPage() {
       {canCreate ? <div id="create-campaign" className="scroll-mt-24 border-t border-slate-200 pt-6"><h2 className="text-lg font-semibold text-slate-900">Bắt đầu một chiến dịch</h2><p className="mt-1 text-sm text-slate-600">Nhờ AI lên ý tưởng từ hồ sơ bạn viết, hoặc tự xây brief theo kế hoạch đã có.</p></div> : null}
 
       {canCreate ? (
-        <Card title="Lên ý tưởng cùng AI" description="Nhận brief và 3 hướng nội dung từ yêu cầu của bạn. Chỉ tạo chiến dịch sau khi bạn chọn và xác nhận.">
+        <Card variant="panel" title="Lên ý tưởng cùng AI" description="Nhận brief và 3 hướng nội dung từ yêu cầu của bạn. Chỉ tạo chiến dịch sau khi bạn chọn và xác nhận.">
           <form className="space-y-3" onSubmit={requestPlan}>
             <label htmlFor="campaign-planning-prompt" className="block text-sm font-medium text-slate-700">Bạn muốn truyền thông điều gì?</label>
             <textarea id="campaign-planning-prompt" value={planningPrompt} onChange={(event) => setPlanningPrompt(event.target.value)} maxLength={4000} minLength={8} required rows={3} placeholder="Ví dụ: Lên nội dung giáo dục phụ huynh nhận biết tin nhắn giả mạo trường học, không dùng số liệu nếu chưa có nguồn." className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" />

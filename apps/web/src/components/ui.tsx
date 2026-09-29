@@ -23,7 +23,7 @@ export type Tone = 'neutral' | 'info' | 'success' | 'warning' | 'danger';
 
 export const TONE_CLASS: Record<Tone, string> = {
   neutral: 'bg-slate-100 text-slate-700 border-slate-200',
-  info: 'bg-teal-50 text-teal-900 border-teal-200',
+  info: 'bg-sky-50 text-sky-900 border-sky-200',
   success: 'bg-emerald-50 text-emerald-800 border-emerald-200',
   warning: 'bg-amber-50 text-amber-900 border-amber-200',
   danger: 'bg-rose-50 text-rose-800 border-rose-200',
@@ -342,7 +342,7 @@ export function PermissionNotice({
   requiredPermission?: string;
 }) {
   return (
-    <div role="note" className="rounded-2xl border border-slate-200 bg-white px-5 py-4 shadow-sm">
+    <div role="note" className="rounded-xl border border-slate-200 bg-white px-5 py-4">
       <h3 className="text-sm font-semibold text-slate-800">Bạn không thực hiện được việc này</h3>
       <p className="mt-1 text-sm text-slate-700">{message}</p>
       {requiredPermission ? (
@@ -371,7 +371,7 @@ export function UnavailableNotice({
   action?: ReactNode;
 }) {
   return (
-    <div role="note" className="rounded-2xl border border-slate-200 bg-white px-5 py-4 shadow-sm">
+    <div role="note" className="rounded-xl border border-slate-200 bg-white px-5 py-4">
       <h3 className="text-sm font-semibold text-slate-800">{title}</h3>
       <p className="mt-1 text-sm text-slate-700">{reason}</p>
       {remedy ? <p className="mt-1 text-sm text-slate-600">Việc cần làm: {remedy}</p> : null}
@@ -390,15 +390,17 @@ export function Card({
   actions,
   children,
   footer,
+  variant = 'section',
 }: {
   title?: string;
   description?: string;
   actions?: ReactNode;
   children: ReactNode;
   footer?: ReactNode;
+  variant?: 'section' | 'panel';
 }) {
   return (
-    <section className="ui-card rounded-2xl border border-slate-200 bg-white shadow-sm">
+    <section className={`ui-card ui-card-${variant} rounded-2xl border border-slate-200 bg-white shadow-sm`}>
       {title || actions ? (
         <header className="flex flex-wrap items-start justify-between gap-3 border-b border-slate-200 px-5 py-4">
           <div className="min-w-0">
@@ -440,7 +442,7 @@ export function StatCard({
   badge?: ReactNode;
 }) {
   return (
-    <div className="ui-card rounded-2xl border border-slate-200 bg-white px-5 py-4 shadow-sm">
+    <div className="ui-card rounded-xl border border-slate-200 bg-white px-5 py-4">
       <div className="flex items-start justify-between gap-2">
         <p className="text-sm text-slate-600">{label}</p>
         {badge}
@@ -485,7 +487,7 @@ export function FieldRow({
 type ButtonVariant = 'primary' | 'secondary' | 'danger' | 'ghost';
 
 const BUTTON_VARIANT_CLASS: Record<ButtonVariant, string> = {
-  primary: 'bg-teal-800 text-white hover:bg-teal-900 disabled:bg-slate-400',
+  primary: 'button-primary text-white disabled:bg-slate-400',
   secondary:
     'border border-slate-300 bg-white text-slate-800 hover:bg-slate-50 disabled:text-slate-400',
   danger: 'bg-rose-600 text-white hover:bg-rose-700 disabled:bg-rose-300',
@@ -536,7 +538,7 @@ export function Button({
       title={tooltip}
       aria-disabled={isDisabled}
       aria-describedby={describedBy}
-      className={`inline-flex min-h-10 items-center justify-center gap-2 rounded-xl font-semibold transition-[background,color,border,box-shadow,transform] duration-150 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-teal-700 active:scale-[.985] ${
+      className={`inline-flex min-h-10 items-center justify-center gap-2 rounded-lg font-semibold transition-[background,color,border,box-shadow,transform] duration-150 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-teal-700 active:scale-[.985] ${
         size === 'sm' ? 'px-3 py-1.5 text-sm' : 'px-4 py-2 text-sm'
       } ${BUTTON_VARIANT_CLASS[variant]} disabled:cursor-not-allowed ${className ?? ''}`}
       {...nativeProps}

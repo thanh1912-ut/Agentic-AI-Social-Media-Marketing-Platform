@@ -17,6 +17,7 @@ if (parsedApiOrigin.pathname !== '/' || parsedApiOrigin.search || parsedApiOrigi
 const apiOrigin = parsedApiOrigin.origin;
 const port = Number(process.env.E2E_REAL_PORT ?? 3101);
 const baseURL = `http://127.0.0.1:${port}`;
+const useExternalServer = process.env.E2E_REAL_EXTERNAL_SERVER === '1';
 
 export default defineConfig({
   testDir: '../../tests/e2e',
@@ -36,7 +37,7 @@ export default defineConfig({
     timezoneId: 'Asia/Ho_Chi_Minh',
   },
   projects: [{ name: 'real-api-chromium', use: { ...devices['Desktop Chrome'] } }],
-  webServer: {
+  webServer: useExternalServer ? undefined : {
     command: `npm run build && node scripts/prepare-standalone.mjs && node .next/standalone/apps/web/server.js`,
     url: baseURL,
     reuseExistingServer: false,

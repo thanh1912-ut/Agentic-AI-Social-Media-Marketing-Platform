@@ -11,7 +11,17 @@ import { Badge, Button, Card, EmptyState, ErrorPanel, LoadingBlock, PageHeader, 
 import { ApiError, marketResearchApi, marketResearchKeys, useMocks } from '@/lib/api';
 import type { ResearchSourceType } from '@/lib/api/market-research';
 import { useJob } from '@/lib/hooks';
+import { UrlTabs, useUrlTab } from '@/components/url-tabs';
 import { formatDateTime } from '@/lib/format';
+
+const MARKET_TABS = ['pages', 'sources', 'reports'] as const;
+const MARKET_TAB_LABELS = { pages: 'Fanpage', sources: 'Nguồn theo dõi', reports: 'Báo cáo' } as const;
+const MARKET_HASHES = {
+  '#fanpage-connections': 'pages',
+  '#market-sources': 'sources',
+  '#website-data': 'sources',
+  '#market-reports': 'reports',
+} as const;
 
 const SOURCE_LABELS: Record<ResearchSourceType, string> = {
   website: 'Website công khai',
@@ -86,6 +96,7 @@ function readableError(error: unknown, fallback: string): string {
 export default function FanpagesMarketResearchPage() {
   const params = useParams<{ workspaceId?: string }>();
   const workspaceId = params?.workspaceId ?? '';
+  const [marketTab, setMarketTab] = useUrlTab('tab', 'pages', MARKET_TABS, MARKET_HASHES);
   const router = useRouter();
   const queryClient = useQueryClient();
   const { workspaces } = useSession();
@@ -400,7 +411,7 @@ export default function FanpagesMarketResearchPage() {
         </div>
       ) : null}
 
-      <Card
+      <Card variant="panel"
         title="Nhóm Fanpage và thị trường"
         description="Chọn thị trường cần theo dõi. Mỗi workspace hỗ trợ tối đa 5 Fanpage và 20 nguồn."
         actions={canManageMarket ? <Button variant="secondary" onClick={() => setGroupFormOpen((value) => !value)}>{groupFormOpen ? 'Đóng' : 'Tạo nhóm'}</Button> : null}
@@ -441,15 +452,11 @@ export default function FanpagesMarketResearchPage() {
 
       {activeGroupId ? (
         <>
-          <nav aria-label="Các mục Fanpage và thị trường" className="flex flex-wrap items-center gap-2 rounded-2xl border border-slate-200/80 bg-white p-2">
-            {[
-              { href: '#fanpage-connections', label: 'Fanpage kết nối', icon: 'publish' as const },
-              { href: '#market-sources', label: 'Nguồn thu thập', icon: 'globe' as const },
-              { href: '#website-data', label: 'Dữ liệu website', icon: 'document' as const },
-              { href: '#market-reports', label: 'Báo cáo & gợi ý', icon: 'chart' as const },
-            ].map((item) => <a key={item.href} href={item.href} className="inline-flex items-center gap-2 rounded-xl px-3 py-2.5 text-sm font-medium text-slate-600 transition-colors hover:bg-teal-50 hover:text-teal-800"><Icon name={item.icon} size={16} />{item.label}</a>)}
-          </nav>
-          <section id="fanpage-connections" className="scroll-mt-24">
+          <UrlTabs label="Fanpage và thị trường" values={MARKET_TABS} labels={MARKET_TAB_LABELS}
+            active={marketTab} onChange={setMarketTab} idPrefix="market" />
+          {marketTab === "pages" ? (
+        <div id="market-panel" role="tabpanel" aria-labelledby="market-tab-pages" className="route-tab-panel">
+<section id="fanpage-connections" className="scroll-mt-24">
           <Card
             title="Kết nối Fanpage của bạn"
             description="Kết nối một lần để đăng bài và đọc số liệu. Token được mã hóa và không hiển thị lại."
@@ -484,7 +491,11 @@ export default function FanpagesMarketResearchPage() {
           </Card>
 
           </section>
-          <section id="market-sources" className="scroll-mt-24">
+        </div>
+      ) : null}
+          {marketTab === "sources" ? (
+        <div id="market-panel" role="tabpanel" aria-labelledby="market-tab-sources" className="route-tab-panel">
+<section id="market-sources" className="scroll-mt-24">
           <Card
             title="Nguồn thu thập"
             description="Lưu link một lần, thu thập ngay hoặc cập nhật mỗi 12 giờ. Facebook công khai có thể chỉ trả một phần dữ liệu."
@@ -643,7 +654,11 @@ export default function FanpagesMarketResearchPage() {
           </Card>
 
           </section>
-          <section id="market-reports" className="scroll-mt-24">
+        </div>
+      ) : null}
+          {marketTab === "reports" ? (
+        <div id="market-panel" role="tabpanel" aria-labelledby="market-tab-reports" className="route-tab-panel">
+<section id="market-reports" className="scroll-mt-24">
           <Card title="Báo cáo xu hướng và gợi ý" description="DeepSeek phân tích nội dung, tương tác, views, follower count và thay đổi giữa các lần crawl khi nguồn trả dữ liệu. Giá trị thiếu được để trống; kết luận có nguồn đối chiếu.">
             {reportsQuery.isLoading ? <LoadingBlock label="Đang tải báo cáo…" /> : null}
             {reportsQuery.error ? <ErrorPanel message={readableError(reportsQuery.error, 'Không tải được báo cáo.')} retryable onRetry={() => void reportsQuery.refetch()} /> : null}
@@ -684,6 +699,8 @@ export default function FanpagesMarketResearchPage() {
             {!reportsQuery.isLoading && reports.length === 0 ? <EmptyState title="Chưa có báo cáo" description="Sau khi lưu nguồn, bấm Thu thập ngay hoặc chờ lượt tự động đầu tiên. Lịch tiếp theo chạy sau mỗi 12 giờ." /> : null}
           </Card>
           </section>
+        </div>
+      ) : null}
         </>
       ) : null}
     </div>

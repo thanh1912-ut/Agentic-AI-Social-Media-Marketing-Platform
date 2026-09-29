@@ -45,6 +45,7 @@ import {
   useUploadMediaAsset,
 } from '@/lib/hooks';
 import { formatDateTime } from '@/lib/format';
+import { UrlTabs, useUrlTab } from '@/components/url-tabs';
 
 const SOURCE_LABELS: Record<PostVersion['source'], string> = {
   [VERSION_SOURCES.HUMAN]: 'Người dùng sửa',
@@ -52,6 +53,9 @@ const SOURCE_LABELS: Record<PostVersion['source'], string> = {
   [VERSION_SOURCES.AI_REVISED]: 'AI sửa',
   [VERSION_SOURCES.IMPORTED]: 'Nhập từ nơi khác',
 };
+
+const EDITOR_TABS = ['preview', 'sources', 'review'] as const;
+const EDITOR_TAB_LABELS = { preview: 'Xem trước', sources: 'Nguồn', review: 'Kiểm tra' } as const;
 
 function PostMediaPreview({ media, onRemove }: { media: PostMedia; onRemove?: () => void }) {
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
@@ -130,6 +134,7 @@ export default function PostEditorPage() {
   const submitApproval = useSubmitApproval(workspaceId, postId);
   const decideApproval = useDecideApproval(workspaceId, postId);
   const mocksEnabled = useMocks();
+  const [inspectorTab, setInspectorTab] = useUrlTab('tab', 'preview', EDITOR_TABS);
   const [caption, setCaption] = useState('');
   const [hashtags, setHashtags] = useState('');
   const [selectedMedia, setSelectedMedia] = useState<PostMedia[]>([]);
@@ -257,8 +262,9 @@ export default function PostEditorPage() {
       {update.error && !hasBlockingError ? <ErrorPanel title="Không lưu được phiên bản mới" message={apiError?.message ?? 'Hãy thử lại.'} code={apiError?.code} requestId={apiError?.requestId} retryable={apiError?.retryable} onRetry={() => update.reset()} /> : null}
 
 
-      <div className="grid items-start gap-5 xl:grid-cols-[minmax(0,1fr)_360px]">
-        <Card title="Nội dung bài viết" description="Mỗi lần lưu tạo phiên bản mới. Bản cũ vẫn giữ nguyên để đối chiếu.">
+      <div className="editor-layout">
+        <section className="editor-canvas" aria-label="Vùng biên tập">
+          <Card title="Nội dung bài viết" description="Mỗi lần lưu tạo phiên bản mới. Bản cũ vẫn giữ nguyên để đối chiếu.">
           <form onSubmit={save} className="space-y-4">
             <div>
               <label htmlFor="post-caption" className="block text-sm font-medium text-slate-700">Caption</label>
@@ -299,20 +305,30 @@ export default function PostEditorPage() {
             {canEdit ? <Button type="submit" loading={update.isPending} disabled={caption.trim() === '' || uploadMedia.isPending || postLocked} disabledReason={postLocked ? 'Bài đã lên lịch hoặc đã đăng; hãy tạo bài mới nếu cần nội dung khác.' : uploadMedia.isPending ? 'Chờ tải ảnh xong trước khi lưu phiên bản.' : 'Caption không được để trống.'}>Lưu thành phiên bản mới</Button> : <PermissionNotice message={permissionDeniedReason(workspace, PERMISSIONS.POST_EDIT)} requiredPermission={PERMISSIONS.POST_EDIT} />}
           </form>
         </Card>
-
-        <Card title="Xem trước Facebook" description="Bản xem trước không phải thao tác đăng bài.">
-          <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
-            <div className="flex items-center gap-2 border-b border-slate-100 px-4 py-3"><div className="flex size-8 items-center justify-center rounded-full bg-slate-900 text-xs font-semibold text-white">{(workspace?.name ?? 'Workspace').slice(0, 2).toUpperCase()}</div><div><p className="text-sm font-semibold">{workspace?.name ?? 'Workspace'}</p><p className="text-xs text-slate-500">Bản xem trước · chưa xuất bản</p></div></div>
+          <p className="editor-save-state" role="status">
+            {caption !== current.current.caption || hashtags !== current.current.hashtags.join(' ') || mediaChanged
+              ? 'Có thay đổi chưa lưu'
+              : <>Đang xem bản đã lưu {current.version}</>}
+          </p>
+        </section>
+        <aside className="editor-inspector" aria-label="Xem trước và kiểm tra bài viết">
+          <UrlTabs label="Công cụ bài viết" values={EDITOR_TABS} labels={EDITOR_TAB_LABELS}
+            active={inspectorTab} onChange={setInspectorTab} idPrefix="post-inspector" />
+          {inspectorTab === 'preview' ? (
+            <section id="post-inspector-panel" role="tabpanel" aria-labelledby="post-inspector-tab-preview" className="editor-inspector-panel">
+              <Card title="Xem trước Facebook" description="Bản xem trước không phải thao tác đăng bài.">
+          <div className="post-preview">
+            <div className="flex items-center gap-2 border-b border-slate-100 px-4 py-3"><div className="flex size-8 items-center justify-center rounded-full bg-slate-900 text-xs font-semibold text-white">{(workspace?.name ?? 'Workspace').slice(0, 2).toUpperCase()}</div><div><p className="text-sm font-semibold">{workspace?.name ?? 'Workspace'}</p><p className="text-xs text-slate-500">Bản xem trước · chưa đăng</p></div></div>
             {previewMedia.filter((media) => media.source === 'uploaded').map((media) => <PostMediaPreview key={`facebook-${media.id}`} media={media} />)}
             <div className="px-4 py-4"><p className="prose-caption text-sm text-slate-800">{caption || 'Caption sẽ hiển thị ở đây.'}</p><p className="mt-3 text-sm text-sky-700">{hashtags}</p></div>
             <div className="border-t border-slate-100 px-4 py-3 text-xs text-slate-500">Bản {current.version} · xem trước nội dung</div>
           </div>
         </Card>
-      </div>
-
-      <details className="rounded-2xl border border-slate-200 bg-white [&>section]:border-0 [&>section]:shadow-none">
-        <summary className="cursor-pointer px-5 py-4 font-semibold text-slate-900">Chỉnh sửa cùng AI <span className="ml-2 text-sm font-normal text-slate-500">Tạo một phiên bản mới từ yêu cầu của bạn</span></summary>
-      <Card title="Yêu cầu AI sửa" description="AI dùng hồ sơ thương hiệu do Owner viết và chỉ các tài liệu bạn chọn để tạo phiên bản mới. Bài vẫn cần người dùng duyệt; AI không đăng bài.">
+            </section>
+          ) : null}
+          {inspectorTab === 'sources' ? (
+            <section id="post-inspector-panel" role="tabpanel" aria-labelledby="post-inspector-tab-sources" className="editor-inspector-panel">
+              <Card title="Yêu cầu AI sửa" description="AI dùng hồ sơ thương hiệu do Owner viết và chỉ các tài liệu bạn chọn để tạo phiên bản mới. Bài vẫn cần người dùng duyệt; AI không đăng bài.">
         {canGenerate ? <form onSubmit={requestAiRevision} className="space-y-3">
           <div>
             <label htmlFor="ai-revision-instruction" className="block text-sm font-medium text-slate-700">Bạn muốn sửa thế nào?</label>
@@ -351,9 +367,11 @@ export default function PostEditorPage() {
           {revisionJob.isError ? <p role="alert" className="text-sm text-rose-700">Không theo dõi được tác vụ AI sửa. Hãy mở tác vụ hoặc tải lại trang.</p> : null}
         </form> : <PermissionNotice message={permissionDeniedReason(workspace, PERMISSIONS.POST_GENERATE)} requiredPermission={PERMISSIONS.POST_GENERATE} />}
       </Card>
-      </details>
-
-      <Card title="Duyệt nội dung" description="Kiểm tra nội dung trước, người có quyền duyệt đưa ra quyết định cuối cùng.">
+            </section>
+          ) : null}
+          {inspectorTab === 'review' ? (
+            <section id="post-inspector-panel" role="tabpanel" aria-labelledby="post-inspector-tab-review" className="editor-inspector-panel">
+              <Card title="Duyệt nội dung" description="Kiểm tra nội dung trước, người có quyền duyệt đưa ra quyết định cuối cùng.">
         <div className="mb-4 flex flex-wrap items-center gap-3">
           <Button variant="secondary" onClick={() => runReview.mutate(current.version)} loading={runReview.isPending} disabled={!canEdit || postLocked} disabledReason={postLocked ? 'Bài đã lên lịch hoặc đã đăng.' : 'Bạn không có quyền sửa bài.'}>Chạy kiểm tra bản {current.version}</Button>
           {currentReview ? <StatusBadge label={currentReview.status === 'ready' ? 'Không có mục chặn' : 'Cần sửa trước khi duyệt'} tone={currentReview.status === 'ready' ? 'success' : 'danger'} /> : <span className="text-sm text-amber-800">Chưa có kiểm tra cho phiên bản hiện tại.</span>}
@@ -374,11 +392,17 @@ export default function PostEditorPage() {
         {submitApproval.error ? <p role="alert" className="mt-3 text-sm text-rose-700">Không gửi duyệt được. Hãy tải bản mới nhất nếu phiên bản đã thay đổi.</p> : null}
         {decideApproval.error ? <p role="alert" className="mt-3 text-sm text-rose-700">Không ghi được quyết định. Hãy tải lại bài viết.</p> : null}
       </Card>
-
-      <Card title="Lịch sử phiên bản" description="Chọn một phiên bản cũ để so sánh với bản hiện tại.">
+              <details className="editor-history">
+                <summary className="cursor-pointer py-3 text-sm font-medium text-slate-800">Lịch sử phiên bản</summary>
+                <Card title="Lịch sử phiên bản" description="Chọn một phiên bản cũ để so sánh với bản hiện tại.">
         {versions.data?.versions.length ? <div className="space-y-3">{versions.data.versions.map((version) => <div key={version.version} className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-slate-200 px-3 py-3"><div><p className="text-sm font-medium text-slate-900">Bản {version.version} · {SOURCE_LABELS[version.source]}</p><p className="mt-1 text-xs text-slate-500">{formatDateTime(version.created_at)} · {version.created_by_name}</p></div><Button variant={compareVersion === version.version ? 'primary' : 'secondary'} size="sm" onClick={() => setCompareVersion(compareVersion === version.version ? null : version.version)}>So sánh</Button></div>)}</div> : <EmptyState title="Chưa có lịch sử phiên bản" description="Bài viết chưa có phiên bản nào để so sánh." />}
         {selectedVersion && selectedVersion.version !== current.version ? <div className="mt-4 grid gap-3 border-t border-slate-100 pt-4 md:grid-cols-2"><div><p className="text-sm font-semibold text-slate-900">Bản hiện tại · {current.version}</p><p className="prose-caption mt-2 rounded-lg bg-slate-50 p-3 text-sm text-slate-700">{current.current.caption}</p></div><div><p className="text-sm font-semibold text-slate-900">Bản đã chọn · {selectedVersion.version}</p><p className="prose-caption mt-2 rounded-lg bg-slate-50 p-3 text-sm text-slate-700">{selectedVersion.caption}</p></div></div> : null}
       </Card>
+              </details>
+            </section>
+          ) : null}
+        </aside>
+      </div>
     </div>
   );
 }

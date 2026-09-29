@@ -15,9 +15,9 @@ import './globals.css';
 export const dynamic = 'force-dynamic';
 
 export const metadata: Metadata = {
-  title: 'Agentic Marketing — Nền tảng marketing mạng xã hội cho doanh nghiệp nhỏ',
+  title: 'Agentic Marketing — Không gian sáng tạo nội dung',
   description:
-    'Nhập tài liệu doanh nghiệp, để AI soạn nội dung Facebook, duyệt và theo dõi hiệu quả.',
+    'Viết, kiểm tra và xuất bản nội dung thương hiệu trong một không gian làm việc.',
 };
 
 /**

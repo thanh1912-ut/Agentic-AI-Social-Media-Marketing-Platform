@@ -70,8 +70,9 @@ test.describe('lát cắt 2 — campaign và nội dung', () => {
     await caption.fill('Combo trưa 55.000đ — bản đã chỉnh sửa để gửi duyệt lại.');
     await page.getByRole('button', { name: 'Lưu thành phiên bản mới' }).click();
 
-    await expect(page.getByText('Bản 5 · Người dùng sửa')).toBeVisible();
+    await expect(page.locator('header').getByText(/Phiên bản 5/)).toBeVisible();
     await expect(page.getByText(/Phải gửi duyệt lại đúng phiên bản 5/)).toBeVisible();
+    await page.getByRole('tab', { name: 'Kiểm tra' }).click();
     await page.getByRole('button', { name: 'Gửi duyệt bản 5' }).click();
     await expect(page.getByRole('button', { name: 'Duyệt bản 5' })).toBeVisible();
   });
@@ -106,13 +107,15 @@ test.describe('lát cắt 2 — campaign và nội dung', () => {
     await login(page);
     await page.goto('/w/ws_pho_bac/campaigns/cmp_khai_truong/posts/post_2');
 
-    await page.getByText('Chỉnh sửa cùng AI').click();
+    await page.getByRole('tab', { name: 'Nguồn' }).click();
+    await expect(page.getByRole('heading', { name: 'Yêu cầu AI sửa' })).toBeVisible();
     await page.getByLabel('Bạn muốn sửa thế nào?').fill('Viết ngắn gọn hơn, giữ nguyên thông tin và hashtag.');
     await page.getByLabel('Phạm vi sửa').selectOption('caption');
     await page.getByRole('button', { name: 'Tạo phiên bản AI sửa' }).click();
 
     await expect(page.getByText(/AI demo đã tạo phiên bản mới/)).toBeVisible();
-    await expect(page.getByText(/Bản 3 · AI sửa/)).toBeVisible();
+    await page.getByRole('tab', { name: 'Xem trước' }).click();
+    await expect(page.locator('header').getByText(/Phiên bản 3/)).toBeVisible();
     await expect(page.getByRole('textbox', { name: 'Caption' })).toHaveValue(/Bản AI demo/);
     await expect(page.getByText('Dữ liệu demo').first()).toBeVisible();
   });

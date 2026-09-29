@@ -68,7 +68,7 @@ export function AppShell({ children }: { children: ReactNode }) {
     return <>
       <div className="sidebar-brand">
         <Link href={workspace ? base : '/'} className="brand-lockup" onClick={() => menu.current?.close()}>
-          <BrandMark /><span>Agentic<span className="brand-subtitle">MARKETING WORKSPACE</span></span>
+          <BrandMark /><span>Agentic Marketing</span>
         </Link>
         {mobile ? <button type="button" className="sidebar-icon-button" aria-label="Đóng menu" onClick={() => menu.current?.close()}><Icon name="close" /></button> : null}
       </div>
@@ -79,7 +79,7 @@ export function AppShell({ children }: { children: ReactNode }) {
             const nextWorkspaceId = event.currentTarget.value;
             selectWorkspace.mutate(nextWorkspaceId, { onSuccess: (session) => { menu.current?.close(); router.push(`/w/${session.active_workspace_id ?? nextWorkspaceId}`); } });
           }}>{workspaces.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select> : <p className="truncate text-sm font-semibold">{workspace.name}</p>}
-          <p className="mt-1 text-xs text-white/60">{ROLE_LABELS[workspace.role]}</p>
+          <p className="mt-1 text-xs text-slate-500">{ROLE_LABELS[workspace.role]}</p>
         </div>
       </div> : null}
       {workspace ? <nav aria-label={mobile ? 'Menu di động' : 'Khu vực làm việc'} className="sidebar-nav">
@@ -96,7 +96,7 @@ export function AppShell({ children }: { children: ReactNode }) {
         {workspace ? <Link href={`${base}/settings`} className={`sidebar-link ${active('/settings') ? 'is-active' : ''}`} aria-current={active('/settings') ? 'page' : undefined} onClick={() => menu.current?.close()}><Icon name="settings" size={19} />Cài đặt</Link> : null}
         <div className="sidebar-user">
           <span className="user-avatar">{user.full_name.trim().slice(0, 1).toUpperCase()}</span>
-          <div className="min-w-0 flex-1"><p className="truncate text-sm font-medium">{user.full_name}</p><span className="text-xs text-white/55">Tài khoản của bạn</span></div>
+          <div className="min-w-0 flex-1"><p className="truncate text-sm font-medium">{user.full_name}</p><span className="text-xs text-slate-500">Tài khoản của bạn</span></div>
           <button type="button" className="sidebar-icon-button" aria-label="Đăng xuất" title="Đăng xuất" disabled={logout.isPending} onClick={() => { setLogoutError(null); logout.mutate(); }}><Icon name="logout" size={18} /></button>
         </div>
       </div>

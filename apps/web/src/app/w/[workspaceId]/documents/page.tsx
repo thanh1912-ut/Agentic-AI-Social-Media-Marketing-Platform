@@ -382,7 +382,7 @@ export default function TrangTaiLieu() {
       {/* ---------------------------------------------------------------- */}
       {/* Hạn mức + vùng tải lên                                            */}
       {/* ---------------------------------------------------------------- */}
-      <Card
+      <Card variant="panel"
         title="Tải tài liệu lên"
         description="Đọc chữ và bảng, lưu làm kiến thức. Hồ sơ thương hiệu bạn tự viết được giữ nguyên."
       >
@@ -550,7 +550,8 @@ export default function TrangTaiLieu() {
               />
             ) : null}
 
-            <div className="table-scroll">
+            <p className="table-scroll-hint">Trên màn hình nhỏ, cuộn ngang để xem các cột còn lại.</p>
+            <div className="table-scroll" role="region" aria-label="Danh sách tài liệu, cuộn ngang để xem thêm cột" tabIndex={0}>
               <table className="w-full min-w-[640px] border-collapse text-left text-sm">
                 <caption className="sr-only">Danh sách tài liệu đã tải lên và tình trạng xử lý</caption>
                 <thead>
