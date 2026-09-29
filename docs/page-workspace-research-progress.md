@@ -136,6 +136,13 @@ Base đã kiểm tra: `codex/creative-studio-ui` @ `b769097bfdb3568889d974c6def9
 - PARTIAL: Chưa có QWEN key/region/model của deployment, chưa nối vào pipeline comment vì comment text vẫn `privacy_hold`, chưa tích hợp pricing/budget ledger chung.
 - NOT_RUN: Alibaba/Gemini live, media, comment analysis, provider budget end-to-end.
 
+### 2026-09-30 03:22 Asia/Ho_Chi_Minh — Ràng buộc batch bình luận Qwen
+
+- DONE: Thêm contract batch chỉ nhận excerpt đã sàng lọc, policy decision/version và evidence refs theo run; không có author/profile field.
+- DONE: Qwen summary phải trích refs có trong batch; không gửi ID/quyết định nội bộ provider và không tạo repair request khi chưa có budget reservation.
+- PASS: Provider fixtures Qwen/Gemini/DeepSeek đạt 30 passed; Ruff và diff check đạt.
+- PARTIAL: Contract không phải bằng chứng căn cứ pháp lý; comment collection vẫn `privacy_hold`, adapter chưa được worker gọi.
+
 ### 2026-09-30 03:14 Asia/Ho_Chi_Minh — Gemini inline media adapter
 
 - DONE: Thêm adapter Gemini nhận byte ảnh/video inline, model/key tường minh, MIME allowlist, SHA-256/provenance và yêu cầu trạng thái `approved`; trạng thái mặc định là `privacy_hold`.
