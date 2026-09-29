@@ -86,13 +86,26 @@ def bootout_if_loaded() -> None:
     if is_loaded():
         result = launchctl("bootout", f"{launch_domain()}/{LABEL}")
         if result.returncode != 0:
-            raise RuntimeError("Không dừng được đúng LaunchAgent frontend để cập nhật.")
+            detail = (result.stderr or result.stdout).strip().replace("\n", " ")[:240]
+            raise RuntimeError(f"Không dừng được LaunchAgent frontend ({detail or 'launchctl error'}).")
+        deadline = time.monotonic() + 10
+        while time.monotonic() < deadline and is_loaded():
+            time.sleep(0.2)
+        if is_loaded():
+            raise RuntimeError("LaunchAgent frontend vẫn còn nạp sau khi yêu cầu dừng.")
 
 
 def bootstrap(plist_path: Path) -> None:
-    result = launchctl("bootstrap", launch_domain(), str(plist_path))
-    if result.returncode != 0:
-        raise RuntimeError("Không nạp lại được LaunchAgent frontend.")
+    last_detail = "launchctl error"
+    for attempt in range(5):
+        if is_loaded():
+            return
+        result = launchctl("bootstrap", launch_domain(), str(plist_path))
+        if result.returncode == 0 or is_loaded():
+            return
+        last_detail = (result.stderr or result.stdout).strip().replace("\n", " ")[:240] or last_detail
+        time.sleep(0.25 * (attempt + 1))
+    raise RuntimeError(f"Không nạp lại được LaunchAgent frontend ({last_detail}).")
 
 
 def wait_for_preview(seconds: int = 30) -> bool:
