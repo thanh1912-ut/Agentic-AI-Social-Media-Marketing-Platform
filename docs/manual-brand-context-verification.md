@@ -19,9 +19,10 @@ Yêu cầu là lưu prose thương hiệu do Owner tự viết, không dùng AI 
 | Backend suite đầy đủ | PARTIAL PASS | 228 passed, 12 skipped, 1 failed. Lỗi duy nhất là `test_pdf_text_has_page_locator`: runner báo thiếu model Docling; môi trường không có `DOCLING_ARTIFACTS_PATH` và manifest model `layout`/`tableformer`. |
 | Frontend typecheck / tests / lint | PASS | `npm run typecheck`, `npm test` (47 tests) và `npm run lint` đạt. |
 | Frontend production build | PASS | `npm run build` đạt trên nhánh feature. |
-| Feature UI preview, mocks tắt | PARTIAL PASS | Giao diện mở ở `http://127.0.0.1:13103`; kiểm tra session hiện `network_error` do API `127.0.0.1:8000` không chạy. Preview chỉ chứng minh frontend render, không chứng minh pipeline. |
-| PostgreSQL/Redis thật và tenant integration trên dịch vụ thật | NOT_RUN | Các test PostgreSQL tự skip vì `POSTGRES_TEST_URL` chưa cấu hình; không dùng DB/Redis preview khác thay thế. |
-| Browser UI → API → Redis/worker → PostgreSQL → reload | NOT_RUN | Chưa dựng preview/API/worker riêng cho feature; không dùng tab cũ làm bằng chứng. |
+| Feature UI preview, mocks tắt | PARTIAL PASS | Giao diện ở `http://127.0.0.1:13103` kết nối API và hiện form đăng nhập; `/api/v1/me` trả 401 do phiên cũ hết hạn. Chưa nhập email/mật khẩu, nên chưa xác nhận đăng nhập. |
+| Migration và dịch vụ local | PASS | Backup runtime được tạo trước khi migrate `0017` → `0020`; `/readyz` trả `ready` với PostgreSQL, schema, Redis queue/cache và storage đều true. CORS từ `13103` đạt. |
+| PostgreSQL/Redis integration tests và tenant cases | NOT_RUN | Health check thật đạt; test suite tự skip vì `POSTGRES_TEST_URL` chưa cấu hình. |
+| Browser UI → API → Redis/worker → PostgreSQL → reload | NOT_RUN | Chưa đăng nhập và chưa chạy worker; không dùng fixture làm bằng chứng pipeline. |
 | DeepSeek live | NOT_RUN | Không gửi dữ liệu ra provider trong lượt nghiệm thu này; lưu hồ sơ/ingestion không cần DeepSeek, content dùng model fixture. |
 | Facebook publish | OUT OF SCOPE | Không thay publisher và không đăng bài. |
 
@@ -33,6 +34,8 @@ Yêu cầu là lưu prose thương hiệu do Owner tự viết, không dùng AI 
 - Commit nền: `1f0e933acdb331410a7cb7ec0c2ecf6a652ad351`.
 - Runtime Python kiểm thử: `/private/tmp/docling-ingestion-venv/bin/python` (Python 3.14); test chạy từ `/private/tmp` để không ghi cache vào checkout.
 - Frontend dùng Node dependencies qua overlay tạm trong `/private/tmp`; overlay được gỡ trước khi commit.
-- PostgreSQL/Redis/browser: chưa nghiệm thu trong nhánh feature.
+- PostgreSQL runtime schema hiện ở revision `0020`; backup trước migration được tạo trong backup directory đã cấu hình, bundle `agentic-agentic_marketing_fresh-20260929T091307Z`.
+- API preview đang chạy trên `127.0.0.1:8000`, frontend real-mode/mocks-off trên `127.0.0.1:13103`. Celery worker/Beat chưa khởi động.
+- API session check đã tới backend; `401` là phiên browser hết hạn, không còn là `network_error`. Cần Owner tự đăng nhập để tiếp tục UI tests.
 
 Không dùng fixture làm bằng chứng provider live. Test PDF còn thiếu model artifacts là giới hạn môi trường đã xác định; không coi nó là PASS.

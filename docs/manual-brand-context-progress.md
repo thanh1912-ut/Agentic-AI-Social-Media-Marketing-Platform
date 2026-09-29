@@ -16,9 +16,10 @@ Commit nền: `1f0e933acdb331410a7cb7ec0c2ecf6a652ad351` (`codex/docling-documen
 | Prompt, semantic review và provenance | DONE | Content/planning/review nhận prose Owner-authored; citation kiểm tra đúng nguồn; market research giữ nhãn nguồn ngoài không xác minh. |
 | OpenAPI và TypeScript | DONE | OpenAPI mới sinh lại; `scripts/export_openapi.py --check` đạt; frontend dùng `schema.d.ts` sinh tự động. |
 | Backend/frontend kiểm thử | DONE WITH LIMITATION | Frontend typecheck/test/lint/build đạt. Backend suite: 228 passed, 12 skipped; một test PDF không chạy được vì thiếu model artifacts Docling cục bộ. |
-| PostgreSQL/Redis thật, DeepSeek live và browser | NOT_RUN | Chưa cấu hình `POSTGRES_TEST_URL` trong môi trường test; không gọi provider hoặc dùng DB/preview cũ làm bằng chứng. |
-| Review, commit và push nhánh feature | DONE | Diff/staged diff và secret scan đã rà; nhánh đã push, remote SHA `290d251752555efe65b3f41c59724a405ffa9c2e` đã khớp local. |
-| Mở preview giao diện | PARTIAL | Frontend real-mode/mocks-off chạy riêng ở `http://127.0.0.1:13103`; API `127.0.0.1:8000` không chạy nên phiên đăng nhập báo `network_error`, chưa thể test sau đăng nhập. |
+| PostgreSQL/Redis và API readiness | PASS | Runtime DB `agentic_marketing_fresh` đã backup, migrate từ `0017` lên `0020`; `/readyz` xác nhận database, schema, Redis, cache và storage sẵn sàng. |
+| DeepSeek live và browser pipeline sau đăng nhập | NOT_RUN | Chưa gọi provider; chưa đăng nhập bằng thông tin của Owner hoặc chạy UI → worker → database. `POSTGRES_TEST_URL` cũng chưa có nên suite PostgreSQL vẫn skip. |
+| Review, commit và push nhánh feature | DONE | Diff/staged diff và secret scan đã rà; remote SHA mới nhất được ghi trong verification. |
+| Mở preview giao diện | PARTIAL | Frontend real-mode/mocks-off ở `http://127.0.0.1:13103` đã kết nối API và hiện form đăng nhập. Phiên cũ hết hạn; chưa nhập thông tin đăng nhập. |
 
 ## Nhật ký
 
@@ -27,10 +28,11 @@ Commit nền: `1f0e933acdb331410a7cb7ec0c2ecf6a652ad351` (`codex/docling-documen
 - 2026-09-29: Đồng bộ OpenAPI và type sinh; thêm trạng thái hồ sơ chưa áp dụng, lưu nguồn khi revise, cho phép sinh bài không đính kèm tài liệu; gỡ worker bridge AI tạo Brand Profile.
 - 2026-09-29: Backend tests liên quan, frontend typecheck/tests/lint/build và OpenAPI check chạy trong worktree feature; xem `manual-brand-context-verification.md` để biết kết quả cuối.
 - 2026-09-29: Commit triển khai `5f168a672f883fe64aa7be27fe20084d3be6256f`; staged diff sạch và chỉ gồm 36 file thuộc luồng này.
-- 2026-09-29: Push thành công; remote `codex/manual-brand-content-context` khớp `290d251752555efe65b3f41c59724a405ffa9c2e`. Preview frontend riêng ở cổng 13103 mở được; backend API không lắng nghe tại cổng 8000.
+- 2026-09-29: Tạo backup runtime trước migration; nâng `agentic_marketing_fresh` từ `0017` lên `0020` bằng role migration. API `/readyz` báo đủ database/schema/Redis/cache/storage; CORS cho cổng 13103 đạt.
+- 2026-09-29: Preview ở cổng 13103 chuyển từ lỗi kết nối sang form đăng nhập. API nhận `/api/v1/me` và trả 401 vì phiên browser đã hết hạn; không nhập email/mật khẩu.
 
 ## Giới hạn hiện tại
 
-- Nghiệm thu PostgreSQL/Redis thật và thao tác browser qua preview feature chưa chạy; không suy từ fixture SQLite hoặc preview khác.
+- PostgreSQL/Redis service health đã đạt, nhưng integration suite dùng `POSTGRES_TEST_URL` và pipeline sau đăng nhập chưa chạy.
 - Chưa gọi DeepSeek live. Lưu hồ sơ và ingest không cần model; content tests dùng model fixture.
 - Một test PDF yêu cầu `DOCLING_ARTIFACTS_PATH` có manifest/model `layout` và `tableformer`; môi trường này chưa có cấu hình đó. Xem verification.
