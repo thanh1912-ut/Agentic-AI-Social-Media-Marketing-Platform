@@ -25,7 +25,12 @@ from .openai import (
     configured_openai_structured_model,
 )
 from .gemini import ApprovedMediaInput, GeminiMediaAnalyzer, configured_gemini_media_analyzer
-from .qwen import QwenStructuredModel, configured_qwen_structured_model
+from .qwen import (
+    PrivacyApprovedCommentBatch,
+    QwenCommentAnalysis,
+    QwenStructuredModel,
+    configured_qwen_structured_model,
+)
 
 __all__ = [
     "DEEPSEEK_BASE_URL",
@@ -45,6 +50,8 @@ __all__ = [
     "ProviderRateLimitError",
     "ProviderRequestError",
     "ProviderTimeoutError",
+    "PrivacyApprovedCommentBatch",
+    "QwenCommentAnalysis",
     "QwenStructuredModel",
     "configured_deepseek_structured_model",
     "configured_gemini_media_analyzer",

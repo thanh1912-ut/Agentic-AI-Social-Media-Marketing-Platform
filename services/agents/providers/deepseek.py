@@ -175,6 +175,7 @@ class DeepSeekStructuredModel:
         max_input_chars: int = 24_000,
         base_url: str = DEEPSEEK_BASE_URL,
         provider_label: str = "DeepSeek",
+        max_repairs: int = 1,
         client: Any = None,
     ) -> None:
         if not api_key.strip():
@@ -187,11 +188,14 @@ class DeepSeekStructuredModel:
             raise ProviderConfigurationError("LLM_MAX_INPUT_CHARS must be positive")
         if max_tokens <= 0:
             raise ProviderConfigurationError("DEEPSEEK_MAX_TOKENS must be positive")
+        if max_repairs not in (0, 1):
+            raise ProviderConfigurationError("At most one structured-output repair is supported")
         self.model_name = model.strip()
         self.provider_label = provider_label
         self.provider_name = provider_label.casefold()
         self.timeout_seconds = _positive_float(str(timeout_seconds), "AI_REQUEST_TIMEOUT_SECONDS", 60)
         self.max_tokens = max_tokens
+        self.max_repairs = max_repairs
         self.max_input_chars = max_input_chars
         self.client = _client(api_key, self.timeout_seconds, base_url.rstrip("/"), client)
         self.cost_estimate_available = False
@@ -283,7 +287,7 @@ class DeepSeekStructuredModel:
         completion = None
         parsed = None
         prior_content: str | None = None
-        for attempt in range(2):
+        for attempt in range(self.max_repairs + 1):
             try:
                 completion = self._create(messages=messages)
             except Exception as error:
@@ -299,7 +303,7 @@ class DeepSeekStructuredModel:
                 parsed = self._parse(prior_content, finish_reason, response_model)
                 break
             except ProviderOutputError as error:
-                if attempt == 1 or not getattr(error, "repairable", True):
+                if attempt >= self.max_repairs or not getattr(error, "repairable", True):
                     raise ProviderOutputError(
                         str(error), retryable=False, repair_attempts=repair_attempts
                     ) from None
