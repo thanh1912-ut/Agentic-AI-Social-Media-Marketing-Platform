@@ -11,9 +11,11 @@ async function login(page: import('@playwright/test').Page) {
   await page.getByRole('button', { name: 'Đăng nhập' }).click();
   await page.waitForURL((url) => url.pathname === '/' || url.pathname.startsWith('/w/'));
   if (new URL(page.url()).pathname === '/') {
-    await page.getByRole('button', { name: 'Tiếp tục tới tài liệu' }).click();
+    await page.getByRole('button', { name: 'Mở không gian làm việc' }).click();
   }
   await page.waitForURL(/\/w\//);
+  await page.goto('/w/ws_pho_bac/documents');
+  await page.waitForURL(/\/documents$/);
 }
 
 test.describe('giao diện thích ứng và điều hướng', () => {
@@ -88,10 +90,11 @@ test.describe('giao diện thích ứng và điều hướng', () => {
   test('tab nội dung được giữ trong URL và khôi phục sau reload', async ({ page }) => {
     await login(page);
     await page.goto('/w/ws_pho_bac/fanpages');
-    await page.getByRole('tab', { name: 'Báo cáo' }).click();
+    await page.waitForURL(/\/research/);
+    await page.getByRole('tab', { name: 'Phân tích & hướng viết' }).click();
     await expect(page).toHaveURL(/tab=reports/);
     await page.reload();
-    await expect(page.getByRole('tab', { name: 'Báo cáo' })).toHaveAttribute('aria-selected', 'true');
+    await expect(page.getByRole('tab', { name: 'Phân tích & hướng viết' })).toHaveAttribute('aria-selected', 'true');
 
     await page.goto('/w/ws_pho_bac/publishing?tab=history');
     await expect(page.getByRole('tab', { name: 'Lịch sử' })).toHaveAttribute('aria-selected', 'true');

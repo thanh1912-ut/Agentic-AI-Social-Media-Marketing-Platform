@@ -20,16 +20,24 @@ async function login(page: Page): Promise<void> {
   await page.getByLabel('Mật khẩu').fill(password);
   await page.getByRole('button', { name: 'Đăng nhập' }).click();
   await expect(page.getByRole('button', { name: 'Đăng xuất' })).toBeVisible();
+  await chooseWorkspace(page, workspaceId);
 }
 
 async function chooseWorkspace(page: Page, id: string): Promise<boolean> {
   await page.goto('/');
   const chooserHeading = page.getByRole('heading', { name: 'Chọn doanh nghiệp' });
-  const explicitSelection = await chooserHeading.isVisible().catch(() => false);
+  const explicitSelection = await chooserHeading
+    .waitFor({ state: 'visible', timeout: 1_500 })
+    .then(() => true)
+    .catch(() => false);
   if (explicitSelection) {
     await page.locator(`input[name="workspace"][value="${id}"]`).check();
-    await page.getByRole('button', { name: 'Tiếp tục tới tài liệu' }).click();
+    await page.getByRole('button', { name: 'Mở không gian làm việc' }).click();
+  } else {
+    await page.waitForURL((url) => url.pathname.startsWith(`/w/${id}/`));
   }
+  await page.waitForURL((url) => url.pathname.startsWith(`/w/${id}/`));
+  await page.goto(`/w/${id}/documents`);
   await page.waitForURL((url) => url.pathname === `/w/${id}/documents`);
   return explicitSelection;
 }

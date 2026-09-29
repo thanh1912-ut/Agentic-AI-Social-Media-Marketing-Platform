@@ -23,6 +23,10 @@ export interface Workspace {
   slug: string;
   industry?: string;
   logo_url?: string;
+  /** Page activation metadata returned by the production workspace API. */
+  page_id?: string | null;
+  page_avatar_url?: string | null;
+  page_connection_state?: 'connection_required' | 'active' | 'needs_reconnect';
   /** Vai trò của NGƯỜI DÙNG HIỆN TẠI trong workspace này. */
   role: WorkspaceRole;
   /** Quyền backend cấp cho người dùng hiện tại — nguồn sự thật để ẩn/hiện nút. */

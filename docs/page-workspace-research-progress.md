@@ -14,7 +14,7 @@ Base đã kiểm tra: `codex/creative-studio-ui` @ `b769097bfdb3568889d974c6def9
 - [PARTIAL] Public Facebook giữ collector Tier 0 hiện có. Nhóm chỉ báo `unsupported_tier0`; không có nội dung thảo luận.
 - [PARTIAL] Ledger ngân sách tự động PostgreSQL và mức trần $2/workspace/ngày đã được thêm cho báo cáo Nghiên cứu chạy DeepSeek; API và UI hiển thị số đã dùng/giữ chỗ/còn lại. Gemini/Qwen, media và các call AI tự động khác chưa nối vào ledger.
 - [PARTIAL] Worker không gửi comment text cũ/mới cho agent. Chưa có pipeline nhận dạng/redact toàn diện, retention/deletion ledger hoặc quy trình pháp lý; không được coi là chứng nhận tuân thủ.
-- [PARTIAL] OpenAPI và TypeScript declarations đã được regenerate. Frontend lint/unit tests đạt ở lượt hiện tại; typecheck toàn ứng dụng hiện lỗi vì package `@agentic/contracts` không đồng bộ với các kiểu/field mà nhiều màn hình đã dùng.
+- [PARTIAL] OpenAPI và TypeScript declarations đã được regenerate. Frontend lint, typecheck, unit tests và desktop/mobile fixture E2E hiện đạt; các test này không thay cho nghiệm thu real API/browser.
 - [PARTIAL] API/worker fixtures và PostgreSQL/Redis/Celery integration test đã chạy trên môi trường disposable; browser real mode, Meta/provider live và worker crawl chưa chạy.
 
 ## Bằng chứng ban đầu
@@ -52,6 +52,14 @@ Base đã kiểm tra: `codex/creative-studio-ui` @ `b769097bfdb3568889d974c6def9
 - NOT_RUN: trình duyệt thật, migration trên PostgreSQL, Redis/Celery integration, Meta live, DeepSeek/Gemini/Qwen live. Build chỉ kiểm tra artifacts trong worktree; không thay preview.
 - BLOCKED: chạy test Docling thật do worker thiếu dependency/model runtime trong môi trường hiện tại.
 - Vận hành: đã báo người dùng rằng đầu ra chẩn đoán trước đó vô tình chứa chuỗi kết nối DB; giá trị không được lưu trong repo/docs. Xoay vòng credential DB trong cửa sổ vận hành an toàn trước khi rollout tiếp theo.
+
+### 2026-09-30 03:47 Asia/Ho_Chi_Minh — Cập nhật fixture Page và browser E2E
+
+- DONE: TypeScript workspace fixture có Page ID, avatar nullable và trạng thái kết nối; demo doanh nghiệp chính ở trạng thái Page đã xác minh, workspace rỗng vẫn `connection_required`.
+- DONE: E2E đăng nhập chọn doanh nghiệp qua nút hiện hành “Mở không gian làm việc”, bỏ giả định nút cũ “Tiếp tục tới tài liệu”. Test tab Nghiên cứu dùng nhãn “Phân tích & hướng viết” và xác nhận legacy route `/fanpages` chuyển tiếp sang `/research`.
+- PASS: frontend lint; typecheck với `--incremental false`; unit tests 50/50.
+- PASS (fixture/MSW): Playwright desktop 26 passed, 1 skipped; mobile 26 passed, 1 skipped. Test chụp ảnh UI được skip có chủ đích khi không đặt thư mục screenshot. E2E server build standalone ở cổng test `13107` trước mỗi lượt.
+- NOT_RUN: các E2E trên không gọi API thật, PostgreSQL/Redis, DeepSeek, Gemini, Qwen hoặc Meta; không phải bằng chứng Page onboarding thật hoặc dữ liệu Research live.
 
 ### 2026-09-30 01:38 Asia/Ho_Chi_Minh — Commit và push
 

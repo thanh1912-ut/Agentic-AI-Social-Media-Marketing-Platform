@@ -36,9 +36,11 @@
 | Browser reload | NOT_RUN | Chưa chạy pipeline thật từ UI đến worker rồi reload trong commit hiện tại |
 | Facebook avatar URL | PASS (HTTP fixture) | `test_verify_page_uses_bearer_header_and_returns_verified_identity` kiểm tra Meta CDN, giữ chữ ký CDN cần thiết và loại API token; test host ngoài bị loại |
 | Frontend lint | PASS | `npm run lint` |
-| Frontend typecheck | FAIL (contract mismatch) | `npm --workspace @agentic/web run typecheck -- --incremental false`; TS contract draft thiếu nhiều field/exports đang được frontend sử dụng |
+| Frontend typecheck | PASS (2026-09-30 latest) | `npm --workspace @agentic/web run typecheck -- --incremental false` |
 | Frontend unit tests | PASS | `npm test` — 50 tests |
 | Frontend production build | PASS | `npm run build` trong worktree riêng, không thay preview |
+| Browser E2E fixture desktop | PASS | 26 passed, 1 skipped; MSW/demo only; server build ở cổng test `13107` |
+| Browser E2E fixture mobile | PASS | 26 passed, 1 skipped; MSW/demo only; server build ở cổng test `13107` |
 | Python regression | PASS (fixtures) | 75 passed, 6 skipped, 1 deselected; Docling runtime test deselected do dependency/model thiếu |
 | Python lint | PASS | `ruff check --no-cache` trên các file Python của nhiệm vụ |
 
@@ -61,13 +63,21 @@ Không tuyên bố đã crawl hết Page/Group hoặc đạt chứng nhận phá
 - Giá DeepSeek pin cho budget là peak/cache-miss theo [bảng giá chính thức](https://api-docs.deepseek.com/quick_start/pricing/); model ngoài bảng không được gọi. Smoke provider live chưa chạy.
 - OpenAPI được xuất vào `/private/tmp/page-workspaces-openapi.json` và frontend types sinh bằng `npm run gen:api`; stub pgvector chỉ dùng để import schema, không được tính là backend runtime/test.
 - Cập nhật ngân sách API/UI trong lượt tiếp: endpoint trả số dư ngày `Asia/Ho_Chi_Minh`, fixture seed ledger/report và xác nhận workspace totals; frontend hiển thị số liệu USD, trạng thái pending và reset time. OpenAPI export/`--check` đạt; dùng `openapi-typescript 7.13.0` sinh declarations.
-- Frontend lint PASS và unit tests 50 passed. Typecheck hiện FAIL do `@agentic/contracts` draft không đồng bộ với interface backend/frontend hiện dùng ở nhiều route. Lỗi chưa được sửa trong lượt này để tránh mở rộng ngoài phần ngân sách; production build và browser real NOT_RUN.
+- Latest frontend checks: lint PASS, typecheck PASS, unit tests 50/50. Playwright fixture E2E desktop và mobile đều 26 passed, 1 skipped mỗi project; test screenshot skip có chủ đích khi không đặt output directory. Các suite dùng MSW/demo data, không gọi backend thật.
+- E2E xác nhận login demo → chọn Page fixture đã active → mở workspace, trạng thái brand/documents, và tab Research query được giữ sau reload. Đây là browser fixture PASS, không chứng minh Meta/Page token hoặc crawler live.
 - Report-to-draft fixture có evidence mới hơn với text/metrics khác; campaign giữ pin của report cũ, worker chỉ dùng version/observation đó. Website snapshot được truy xuất đúng theo report link, nội dung được allowlist và signed image URL bị loại; worker kiểm tra lại source/pins trước khi lưu. Comment text không gửi cho model. Nếu pin mất/source inactive, worker từ chối context thay vì query latest.
 - Latest focused backend checks: `tests/test_campaign_workflows.py` 11 passed, `tests/test_market_research_api.py` 10 passed, `tests/test_ai_budget.py` 9 passed. Đây là SQLite API/worker fixtures, không thay cho PostgreSQL/Redis end-to-end.
 - Report provenance/website pin tests: 30 passed ở ba nhóm worker/API/budget; provider fixture suite (Qwen + Gemini + DeepSeek) 31 passed khi bỏ `conftest.py`. Chưa có provider live call.
 - Gemini fixture kiểm tra privacy hold, SHA, MIME, inline size, structured validation và không retry; chưa xác minh Gemini API live. Pytest chuẩn hiện bị chặn khi setup vì thiếu `pgvector`; Qwen SDK integration cần package `openai` theo manifest.
 - `alembic upgrade head --sql` vẫn không hỗ trợ do migration cũ `0002_profile_knowledge` gọi schema inspector; online fresh/upgrade trên PostgreSQL test thật đã đạt. Không chạy migration lên database preview.
 - Từng phát sinh đầu ra có URL kết nối DB trong một lượt rà cấu hình. Không lặp lại hoặc commit thông tin đó; cần xoay mật khẩu sau khi có cửa sổ vận hành an toàn.
+
+### Cập nhật browser fixture — 2026-09-30 03:47 Asia/Ho_Chi_Minh
+
+- E2E cũ chờ CTA onboarding trước khi Page activation được thêm; fixture workspace thiếu `page_connection_state`, nên luồng demo dừng ở chooser. Đồng bộ lại seed fixture với contract hiện tại và cập nhật helper để chọn workspace đã kích hoạt.
+- Test tab cũ còn chờ nhãn “Báo cáo”; đổi sang “Phân tích & hướng viết”, đồng thời kiểm tra legacy `/fanpages` redirect.
+- Sau sửa: Playwright desktop 26 passed/1 skipped; mobile 26 passed/1 skipped. Lỗi cũ không được giữ làm kết quả cuối.
+- Mọi kết quả trong mục này là fixture/MSW; real browser → API → worker → PostgreSQL vẫn NOT_RUN.
 
 ## Trạng thái pháp lý và xử lý bình luận/media
 

@@ -7,13 +7,13 @@ async function login(page: import('@playwright/test').Page) {
   await page.getByLabel('Email').fill(OWNER.email);
   await page.getByLabel('Mật khẩu').fill(OWNER.password);
   await page.getByRole('button', { name: 'Đăng nhập' }).click();
-  await page.waitForURL((url) => url.pathname === '/' || url.pathname.startsWith('/w/'), {
-    timeout: 20_000,
-  });
+  await page.waitForURL((url) => url.pathname === '/' || url.pathname.startsWith('/w/'), { timeout: 20_000 });
   if (new URL(page.url()).pathname === '/') {
-    await page.getByRole('button', { name: 'Tiếp tục tới tài liệu' }).click();
+    await page.getByRole('button', { name: 'Mở không gian làm việc' }).click();
   }
   await page.waitForURL(/\/w\//, { timeout: 20_000 });
+  await page.goto('/w/ws_pho_bac/documents');
+  await page.waitForURL(/\/documents$/, { timeout: 20_000 });
 }
 
 test('mở dashboard số liệu và nhập snapshot demo có gắn nguồn', async ({ page }) => {

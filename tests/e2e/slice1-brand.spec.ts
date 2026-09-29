@@ -18,9 +18,11 @@ async function login(page: import('@playwright/test').Page) {
     timeout: 20_000,
   });
   if (new URL(page.url()).pathname === '/') {
-    await page.getByRole('button', { name: 'Tiếp tục tới tài liệu' }).click();
+    await page.getByRole('button', { name: 'Mở không gian làm việc' }).click();
   }
   await page.waitForURL(/\/w\//, { timeout: 20_000 });
+  await page.goto('/w/ws_pho_bac/documents');
+  await page.waitForURL(/\/documents$/, { timeout: 20_000 });
 }
 
 test.describe('lát cắt 1 — hồ sơ thương hiệu', () => {
