@@ -1,6 +1,6 @@
 # Tiến độ đăng ký và đăng nhập thật
 
-Thời điểm cập nhật: 2026-09-29 10:15 UTC
+Thời điểm cập nhật: 2026-09-29 10:18 UTC
 
 ## Checklist
 
@@ -14,7 +14,7 @@ Thời điểm cập nhật: 2026-09-29 10:15 UTC
 - [x] Khi thiếu SMTP, API quên mật khẩu trả lỗi cấu hình rõ ràng; đăng ký dùng lại `RegisterRequest` đã sinh từ OpenAPI, không đổi payload.
 - [x] Chạy backend tests, frontend tests/lint/typecheck, build và browser acceptance trên PostgreSQL thử nghiệm riêng.
 - [x] Tạo runbook và ma trận nghiệm thu.
-- [ ] Rà soát cuối, commit feature branch và push; xác minh SHA remote.
+- [x] Rà soát diff/secret, commit và push feature branch; SHA remote đã xác minh khớp.
 
 ## Kết quả kiểm chứng
 
@@ -32,3 +32,9 @@ Thời điểm cập nhật: 2026-09-29 10:15 UTC
 - Đăng ký đồng thời được bảo vệ bằng unique constraint và xử lý `409`; tình huống tải cạnh tranh PostgreSQL chưa chạy riêng.
 - Redis queue/cache đã qua readiness. Rate-limit và lỗi Redis chưa diễn tập vì môi trường Redis hiện có được preview khác dùng chung.
 - Chưa triển khai công khai, OAuth, OTP hoặc MFA.
+
+## Bàn giao
+
+- Branch: `codex/auth-registration-login`.
+- Commit đã push: `4cd0a06dbcec387266b34e6f0a05c785aabd53cd`.
+- Remote SHA khớp với commit local.
