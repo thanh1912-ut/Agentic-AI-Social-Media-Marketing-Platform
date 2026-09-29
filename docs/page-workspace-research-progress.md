@@ -12,7 +12,7 @@ Base đã kiểm tra: `codex/creative-studio-ui` @ `b769097bfdb3568889d974c6def9
 - [DONE] UI Nghiên cứu không hỏi tạo/chọn nhóm; backend giữ nhóm legacy nội bộ và facade workspace cho báo cáo.
 - [PARTIAL] Page sở hữu lưu bài và chỉ số mà Meta trả. Nội dung bình luận đang `privacy_hold`; chỉ số đếm bình luận vẫn có thể được lưu.
 - [PARTIAL] Public Facebook giữ collector Tier 0 hiện có. Nhóm chỉ báo `unsupported_tier0`; không có nội dung thảo luận.
-- [PARTIAL] Ledger ngân sách tự động PostgreSQL và mức trần $2/workspace/ngày đã được thêm cho báo cáo Nghiên cứu chạy DeepSeek; API và UI hiển thị số đã dùng/giữ chỗ/còn lại. Gemini/Qwen, media và các call AI tự động khác chưa nối vào ledger.
+- [PARTIAL] Ledger ngân sách tự động PostgreSQL và mức trần $2/workspace/ngày đã được thêm cho báo cáo Nghiên cứu chạy DeepSeek; API và UI hiển thị số đã dùng/giữ chỗ/còn lại. Bảng giá đã ghi nhận model Gemini/Qwen đã chọn, nhưng chưa route call của hai provider hoặc media vào ledger.
 - [PARTIAL] Worker không gửi comment text cũ/mới cho agent. Chưa có pipeline nhận dạng/redact toàn diện, retention/deletion ledger hoặc quy trình pháp lý; không được coi là chứng nhận tuân thủ.
 - [PARTIAL] OpenAPI và TypeScript declarations đã được regenerate. Frontend lint, typecheck, unit tests và desktop/mobile fixture E2E hiện đạt; các test này không thay cho nghiệm thu real API/browser.
 - [PARTIAL] API/worker fixtures và PostgreSQL/Redis/Celery integration test đã chạy trên môi trường disposable; browser real mode, Meta/provider live và worker crawl chưa chạy.
@@ -176,3 +176,11 @@ Base đã kiểm tra: `codex/creative-studio-ui` @ `b769097bfdb3568889d974c6def9
 - BLOCKED: Build/start server mới từ worktree riêng bị chặn quyền ghi sandbox vào `apps/web/.next/trace`; lần chạy E2E độc lập không sử dụng preview thất bại ở khâu khởi chạy Chromium trong sandbox. Không thay artifact hoặc restart preview để vượt qua.
 - NOT_RUN: Không gửi form đăng nhập/đăng ký, không ghi dữ liệu ứng dụng; real API → worker → PostgreSQL, Meta live và provider live chưa được kiểm tra.
 - TODO: Chạy lại real API → worker → PostgreSQL bằng tài khoản/workspace disposable và worker test được cô lập trước khi nghiệm thu toàn luồng.
+
+### 2026-09-30 06:04 Asia/Ho_Chi_Minh — Bổ sung bảng giá provider có thời hạn
+
+- DONE: Ghim giá công khai cho `gemini-3.8-flash` ($0.75/$3.75 mỗi triệu token, chỉ đến 2026-12-31) và `qwen3.8-27b` ($0.50/$3 mỗi triệu token, Singapore International); không trừ ưu đãi/free quota.
+- DONE: Qwen yêu cầu vùng Singapore tường minh; Gemini tự khóa giá sau ngày hiệu lực; provider ngoài DeepSeek phải có upper bound token rõ ràng trước reservation. Bảng giá có version mới `provider-public-pricing-2026-09-30-v2`.
+- PASS: Pricing-focused pytest `9 passed, 2 deselected` trên bản sao test cô lập trong `/private/tmp`; gồm micro-USD, region mismatch, ngày hết giá Gemini và từ chối reservation Gemini khi thiếu token bounds. Test database integration không chạy.
+- PARTIAL: Chỉ bảng định giá/helper được thêm. Gemini/Qwen chưa nối worker, chưa có provider key/model deployment đã xác minh và chưa thuộc thống kê chi phí pipeline.
+- NOT_RUN: Không gọi DeepSeek/Gemini/Qwen live hoặc gửi dữ liệu bình luận/media.

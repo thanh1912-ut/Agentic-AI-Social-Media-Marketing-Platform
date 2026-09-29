@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+from datetime import date
 from types import SimpleNamespace
 
 import pytest
@@ -11,6 +12,7 @@ from services.worker.ai_budget import (
     cost_micro_usd,
     price_for,
     reserve_upper_bound_micro_usd,
+    reserve_token_bound_micro_usd,
 )
 
 
@@ -29,6 +31,37 @@ def test_reservation_bounds_initial_and_repair_requests() -> None:
     )
     assert reservation > cost_micro_usd(price, 24_000, 8_192)
     assert reservation == 151_061
+
+
+def test_gemini_and_qwen_prices_are_pinned_to_exact_model_and_region() -> None:
+    gemini = price_for("gemini", "gemini-3.8-flash", on_date=date(2026, 9, 30))
+    assert cost_micro_usd(gemini, input_tokens=1_000_000, output_tokens=1_000_000) == 4_500_000
+    assert reserve_token_bound_micro_usd(
+        gemini, max_input_tokens=10_000, max_output_tokens=1_000,
+    ) == 11_250
+
+    qwen = price_for("qwen", "qwen3.8-27b", region="singapore")
+    assert qwen.basis == "singapore_international_list_price"
+    assert cost_micro_usd(qwen, input_tokens=1_000_000, output_tokens=1_000_000) == 3_500_000
+    with pytest.raises(PricingUnavailable, match="region_unverified"):
+        price_for("qwen", "qwen3.8-27b", region="beijing")
+    with pytest.raises(PricingUnavailable, match="region_unverified"):
+        price_for("qwen", "qwen3.8-27b")
+    with pytest.raises(PricingUnavailable, match="expired"):
+        price_for("gemini", "gemini-3.8-flash", on_date=date(2027, 1, 1))
+
+
+def test_non_deepseek_reservation_requires_explicit_token_bounds() -> None:
+    from services.worker.ai_budget import reserve_automatic_request
+
+    async def reserve_without_bounds():
+        return await reserve_automatic_request(
+            company_id="workspace-test", request_key="media-run-1", provider="gemini",
+            model="gemini-3.8-flash", operation="media_analysis",
+        )
+
+    with pytest.raises(PricingUnavailable, match="reservation_bounds_unavailable"):
+        asyncio.run(reserve_without_bounds())
 
 
 @pytest.mark.parametrize("provider,model", [

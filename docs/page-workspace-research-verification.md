@@ -96,3 +96,15 @@ Luật 91/2025/QH15 và Nghị định 356/2025/NĐ-CP có hiệu lực từ 202
 | Đăng ký/login thật, UI → API → Redis/Celery → PostgreSQL | NOT_RUN | Test real-mode trên chỉ xác nhận login shell và cleanup service worker; không submit form hay gọi API nghiệp vụ. |
 
 Lần chạy đầu phát hiện thêm assertion cũ tìm heading “Đăng nhập” trong khi giao diện hiện dùng “Chào mừng trở lại”; sửa assertion và xác nhận lại PASS. `ERR_ABORTED` phát sinh khi lượt reload của ứng dụng thay thế navigation của Playwright, không phải lỗi xác thực.
+
+## Bảng giá provider — 2026-09-30 06:04 Asia/Ho_Chi_Minh
+
+| Kiểm tra | Trạng thái | Bằng chứng và giới hạn |
+|---|---|---|
+| Giá Gemini exact model | PASS (unit; suite cô lập `9 passed, 2 deselected`) | `gemini-3.8-flash` Standard: $0.75 input/$3.75 output mỗi 1M token; bảng tự từ chối từ 2027-01-01 cho tới khi rate được review lại. |
+| Giá Qwen theo region | PASS (unit; suite cô lập `9 passed, 2 deselected`) | `qwen3.8-27b` Singapore International: $0.50 input/$3 output mỗi 1M token; thiếu/sai region fail closed. Tính theo list price, không trừ free quota. |
+| Reservation token bound | PASS (unit; suite cô lập `9 passed, 2 deselected`) | Helper yêu cầu explicit input/output token bounds cho Gemini/Qwen; không dùng số ký tự làm đại diện cho token media. Test được chạy từ bản sao trong `/private/tmp` để tránh `tests/conftest.py` import `pgvector` thiếu ở runtime hiện tại. |
+| Gemini/Qwen worker routing và unified ledger | NOT_RUN | Chưa có callsite trong worker; hiện ledger pipeline chỉ bao phủ DeepSeek Research report. |
+| Provider credentials/live usage | NOT_RUN | Không gọi dịch vụ live, không đọc hay yêu cầu secret trong lượt này. |
+
+Giá lấy từ [Google Gemini model update](https://ai.google.dev/gemini-api/docs/latest-model), [Google Gemini pricing](https://ai.google.dev/gemini-api/docs/pricing), [Alibaba Model Studio pricing](https://www.alibabacloud.com/help/en/model-studio/model-pricing) và [Qwen3.8-27B model page](https://docs.modelstudio.console.alibabacloud.com/en/model-studio/qwen3-8-27b). Đây là snapshot giá theo ngày kiểm tra; không phải giá đảm bảo về sau.

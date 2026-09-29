@@ -10,13 +10,11 @@ from zoneinfo import ZoneInfo
 from sqlalchemy import select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
-from database.models import AIUsageBudgetDay, AIUsageLedger, Company, new_id
 from services.api.config import settings
-from services.api.db import SessionLocal
 
 
 VN_TZ = ZoneInfo("Asia/Ho_Chi_Minh")
-PRICE_TABLE_VERSION = "provider-public-pricing-2026-09-30-v1"
+PRICE_TABLE_VERSION = "provider-public-pricing-2026-09-30-v2"
 MAX_AUTO_DAILY_BUDGET_MICRO_USD = 2_000_000
 
 
@@ -25,6 +23,7 @@ class ProviderPrice:
     input_usd_per_million_tokens: Decimal
     output_usd_per_million_tokens: Decimal
     basis: str
+    valid_through: date | None = None
 
 
 @dataclass(frozen=True)
@@ -40,19 +39,41 @@ class PricingUnavailable(ValueError):
     pass
 
 
-def price_for(provider: str, model: str) -> ProviderPrice:
-    """Prices are peak/cache-miss rates; unknown IDs fail closed."""
+def price_for(
+    provider: str, model: str, *, region: str | None = None, on_date: date | None = None,
+) -> ProviderPrice:
+    """Return only reviewed public rates; unknown IDs/regions fail closed.
 
-    if provider != "deepseek":
-        raise PricingUnavailable("pricing_unavailable")
-    prices = {
-        "deepseek-flash": ProviderPrice(Decimal("0.30"), Decimal("1.20"), "peak_cache_miss"),
-        "deepseek-v4-pro": ProviderPrice(Decimal("1.32"), Decimal("3.96"), "peak_cache_miss"),
+    Gemini's published Gemini 3.8 Flash price is promotional through the end
+    of 2026, so it must stop being used automatically after that date until the
+    rate table is reviewed again. Qwen's price is tied to the Singapore
+    International deployment; other Model Studio regions have different rates.
+    """
+
+    prices: dict[tuple[str, str], ProviderPrice] = {
+        ("deepseek", "deepseek-flash"): ProviderPrice(
+            Decimal("0.30"), Decimal("1.20"), "peak_cache_miss"
+        ),
+        ("deepseek", "deepseek-v4-pro"): ProviderPrice(
+            Decimal("1.32"), Decimal("3.96"), "peak_cache_miss"
+        ),
+        ("gemini", "gemini-3.8-flash"): ProviderPrice(
+            Decimal("0.75"), Decimal("3.75"), "standard_intro_price_through_2026_12_31",
+            valid_through=date(2026, 12, 31),
+        ),
+        ("qwen", "qwen3.8-27b"): ProviderPrice(
+            Decimal("0.5"), Decimal("3"), "singapore_international_list_price",
+        ),
     }
     try:
-        return prices[model]
+        price = prices[(provider, model)]
     except KeyError as error:
         raise PricingUnavailable("pricing_unavailable") from error
+    if provider == "qwen" and (region or "").strip().casefold() != "singapore":
+        raise PricingUnavailable("pricing_region_unverified")
+    if price.valid_through is not None and (on_date or datetime.now(VN_TZ).date()) > price.valid_through:
+        raise PricingUnavailable("pricing_expired")
+    return price
 
 
 def cost_micro_usd(price: ProviderPrice, input_tokens: int, output_tokens: int) -> int:
@@ -79,17 +100,53 @@ def reserve_upper_bound_micro_usd(price: ProviderPrice, *, max_input_chars: int,
     return cost_micro_usd(price, input_tokens, output_tokens)
 
 
+def reserve_token_bound_micro_usd(
+    price: ProviderPrice, *, max_input_tokens: int, max_output_tokens: int, max_attempts: int = 1,
+) -> int:
+    """Reserve an explicit provider-token upper bound before an automated call.
+
+    Callers handling media must get a conservative input-token bound for the
+    exact bytes before invoking a provider; character count is not a safe proxy
+    for image/video token billing.
+    """
+
+    if max_input_tokens < 1 or max_output_tokens < 1 or max_attempts < 1:
+        raise ValueError("token bounds and attempt count must be positive")
+    return cost_micro_usd(
+        price,
+        input_tokens=max_input_tokens * max_attempts,
+        output_tokens=max_output_tokens * max_attempts,
+    )
+
+
 def _budget_date(now: datetime | None = None) -> date:
     return (now or datetime.now(timezone.utc)).astimezone(VN_TZ).date()
 
 
 async def reserve_automatic_request(
     *, company_id: str, request_key: str, provider: str, model: str, operation: str,
+    region: str | None = None, max_input_tokens: int | None = None,
+    max_output_tokens: int | None = None, max_attempts: int = 1,
 ) -> Reservation:
-    price = price_for(provider, model)
-    amount = reserve_upper_bound_micro_usd(
-        price, max_input_chars=settings.llm_max_input_chars, max_output_tokens=settings.llm_max_tokens,
-    )
+    price = price_for(provider, model, region=region)
+    if max_input_tokens is not None or max_output_tokens is not None:
+        if max_input_tokens is None or max_output_tokens is None:
+            raise PricingUnavailable("pricing_reservation_bounds_unavailable")
+        amount = reserve_token_bound_micro_usd(
+            price, max_input_tokens=max_input_tokens, max_output_tokens=max_output_tokens,
+            max_attempts=max_attempts,
+        )
+    elif provider == "deepseek":
+        amount = reserve_upper_bound_micro_usd(
+            price, max_input_chars=settings.llm_max_input_chars, max_output_tokens=settings.llm_max_tokens,
+        )
+    else:
+        # In particular, media tokens cannot be safely bounded from the
+        # existing text-only limits. No provider call occurs without bounds.
+        raise PricingUnavailable("pricing_reservation_bounds_unavailable")
+    from database.models import AIUsageBudgetDay, AIUsageLedger, Company, new_id
+    from services.api.db import SessionLocal
+
     budget_date = _budget_date()
     daily_limit = min(settings.auto_ai_daily_budget_micro_usd, MAX_AUTO_DAILY_BUDGET_MICRO_USD)
     async with SessionLocal() as db:
@@ -162,13 +219,17 @@ async def reserve_automatic_request(
 async def settle_automatic_request(
     *, company_id: str, reservation: Reservation, provider: str, model: str,
     input_tokens: int | None, output_tokens: int | None, result_json: dict,
+    region: str | None = None,
 ) -> str:
     """Settle verified usage and preserve the structured result for replay."""
+
+    from database.models import AIUsageBudgetDay, AIUsageLedger
+    from services.api.db import SessionLocal
 
     if not reservation.ledger_id:
         return "missing"
     try:
-        price = price_for(provider, model)
+        price = price_for(provider, model, region=region)
     except PricingUnavailable:
         await mark_automatic_request_unknown(
             company_id=company_id, reservation=reservation, error_code="pricing_unavailable_for_actual_model",
@@ -218,6 +279,9 @@ async def mark_automatic_request_unknown(
 ) -> None:
     """Keep the reservation when provider acceptance/charge is uncertain."""
 
+    from database.models import AIUsageLedger
+    from services.api.db import SessionLocal
+
     if not reservation.ledger_id:
         return
     async with SessionLocal() as db:
@@ -236,6 +300,9 @@ async def mark_automatic_request_unknown(
 
 async def release_unsubmitted_request(*, company_id: str, reservation: Reservation) -> None:
     """Release only when the adapter proves no provider request was sent."""
+
+    from database.models import AIUsageBudgetDay, AIUsageLedger
+    from services.api.db import SessionLocal
 
     if not reservation.ledger_id:
         return

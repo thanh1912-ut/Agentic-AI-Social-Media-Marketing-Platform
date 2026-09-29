@@ -82,10 +82,13 @@ Không bật xử lý comment/media từ cờ thủ công. Trước khi mở cá
 - Mặc định `AUTO_AI_DAILY_BUDGET_MICRO_USD=2000000` (2 USD/workspace/ngày Việt Nam); cấu hình thấp hơn được phép, cao hơn cap sản phẩm bị từ chối khi nạp settings.
 - Ledger nằm trong `ai_usage_budget_days` và `ai_usage_ledger`. Mỗi research cycle có idempotency key; worker không gọi lại khi kết quả đã lưu hoặc kết quả provider trước chưa rõ.
 - Structured report chỉ được giữ trong ledger như recovery copy cho tới khi `MarketReport` commit; cùng transaction đó xóa bản sao ledger.
-- Reservation dùng giá peak/cache-miss và tính upper bound cho đầu vào cùng một lần repair. Phiên bảng giá là `provider-public-pricing-2026-09-30-v1`; cần review và bump version trước khi đổi model hoặc giá upstream.
-- Hiện chỉ có giá đã khai báo cho `deepseek-flash` và `deepseek-v4-pro`; model khác trả `pricing_unavailable` và không được gửi. Giá tham khảo từ [bảng giá DeepSeek chính thức](https://api-docs.deepseek.com/quick_start/pricing/). Đây là bảng giá đã ghi nhận, không phải đảm bảo giá nhà cung cấp không đổi.
+- DeepSeek dùng giá peak/cache-miss và upper bound cho đầu vào cùng một lần repair. Bảng đã ghi nhận `deepseek-flash`, `deepseek-v4-pro`, `gemini-3.8-flash` và `qwen3.8-27b`; phiên hiện tại là `provider-public-pricing-2026-09-30-v2`.
+- Gemini `gemini-3.8-flash`: $0.75/1M input và $3.75/1M output theo giá Standard introductory, chỉ đến hết 2026-12-31; sau ngày đó helper từ chối giá cũ cho tới khi được rà soát lại. Nguồn: [Google Gemini model update](https://ai.google.dev/gemini-api/docs/latest-model) và [bảng giá Gemini](https://ai.google.dev/gemini-api/docs/pricing).
+- Qwen `qwen3.8-27b`: $0.50/1M input và $3/1M output theo deployment International tại Singapore; dùng full list price, không trừ free quota/khuyến mại. `price_for` bắt buộc `region=singapore`; region khác trả `pricing_region_unverified`. Nguồn: [Alibaba Model Studio pricing](https://www.alibabacloud.com/help/en/model-studio/model-pricing) và [trang model Qwen3.8-27B](https://docs.modelstudio.console.alibabacloud.com/en/model-studio/qwen3-8-27b).
+- Gemini/Qwen vẫn chưa được gọi từ worker. Reservation của provider ngoài DeepSeek yêu cầu caller truyền giới hạn token tường minh; với media, character count không phải upper bound an toàn. Tích hợp phải tính cả retry/attempt trước khi mở pipeline.
+- Đây chưa phải cap chung cho mọi agent: chỉ báo cáo nghiên cứu tự động DeepSeek đã nối vào ledger; Gemini/Qwen, media và các tác vụ tự động khác vẫn chưa được route qua budget.
+- DeepSeek rates: [bảng giá DeepSeek chính thức](https://api-docs.deepseek.com/quick_start/pricing/). Giá là snapshot đã ghi nhận; model/rate ngoài bảng fail closed.
 - Nếu usage thiếu hoặc không xác định được model trả về, ledger giữ reservation ở `unknown`; không tự nhả ngân sách hay gọi lặp. Đối soát hiện chưa có giao diện.
-- Đây chưa phải cap chung cho mọi agent: chỉ báo cáo nghiên cứu tự động đã nối; tác vụ người dùng, Gemini, Qwen và media chưa thuộc ledger.
 
 ### PostgreSQL/Redis test cách ly của lần xác minh này
 
