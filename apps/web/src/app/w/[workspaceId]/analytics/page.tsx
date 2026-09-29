@@ -6,8 +6,9 @@ import { useParams } from 'next/navigation';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import { useSession } from '@/components/session-gate';
+import { Icon } from '@/components/icon';
 import { PERMISSIONS } from '@agentic/contracts';
-import { Button, EmptyState, ErrorPanel, LoadingBlock, StatusBadge, UnavailableNotice } from '@/components/ui';
+import { Button, EmptyState, ErrorPanel, LoadingBlock, PageHeader, StatusBadge, UnavailableNotice } from '@/components/ui';
 import { ApiError, facebookPostUrl, mailGuardApi, marketResearchApi, marketResearchKeys, metaApi, metaQueryKeys } from '@/lib/api';
 import type { ApiMetricImportRequest, ApiRecordExperimentOutcomeRequest } from '@/lib/api/types';
 import { formatDateTime, formatNumber } from '@/lib/format';
@@ -330,31 +331,24 @@ export default function AnalyticsPage() {
 
   return (
     <div className="space-y-6">
-      <header className="space-y-2">
-        <h1 className="text-2xl font-semibold text-slate-950">Hiệu quả nội dung</h1>
-        <p className="max-w-3xl text-sm leading-6 text-slate-600">
-          Đồng bộ bài viết và số liệu từ Fanpage hoặc nhập snapshot thủ công. Số thiếu được giữ là “—”, không tính thành 0.
-        </p>
-      </header>
-
-      <section className="space-y-4 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm" aria-labelledby="mailguard-conversions-heading">
-        <div className="flex flex-wrap items-start justify-between gap-3"><div><h2 id="mailguard-conversions-heading" className="text-lg font-semibold text-slate-900">Chuyển đổi MailGuard</h2><p className="mt-1 text-sm text-slate-600">Đầu nối sẵn sàng cho website tương lai. Website chưa có nên conversion live hiện chưa được nghiệm thu.</p></div><StatusBadge label="INTEGRATION_READY · live NOT_RUN" tone="warning" /></div>
-        {mailGuardConversions.isPending || mailGuardIntegration.isPending ? <LoadingBlock label="Đang tải trạng thái tracking…" /> : null}
-        {mailGuardConversions.isError || mailGuardIntegration.isError ? <ErrorPanel title="Không tải được trạng thái chuyển đổi" message="Kiểm tra kết nối API rồi tải lại." retryable onRetry={() => { void mailGuardConversions.refetch(); void mailGuardIntegration.refetch(); }} /> : null}
-        {mailGuardIntegration.data ? <div className="space-y-2 text-sm"><p>Server-to-server integration: <strong>{mailGuardIntegration.data.status}</strong> · key prefix {mailGuardIntegration.data.key_prefix}</p><p className="text-slate-600">Được phép gửi hai event: signup_completed và first_analysis_completed. Không gửi email, mật khẩu hoặc nội dung khách đưa vào phân tích.</p></div> : null}
-        {mailGuardConversions.data ? <div className="grid gap-3 sm:grid-cols-3"><div className="rounded-lg bg-slate-50 p-3"><p className="text-xs text-slate-600">Đăng ký</p><p className="mt-1 text-lg font-semibold">{mailGuardConversions.data.signup_count == null ? '—' : formatNumber(mailGuardConversions.data.signup_count)}</p></div><div className="rounded-lg bg-slate-50 p-3"><p className="text-xs text-slate-600">Hoàn thành phân tích đầu tiên</p><p className="mt-1 text-lg font-semibold">{mailGuardConversions.data.first_analysis_count == null ? '—' : formatNumber(mailGuardConversions.data.first_analysis_count)}</p></div><div className="rounded-lg bg-slate-50 p-3"><p className="text-xs text-slate-600">Tỷ lệ activation của cohort đủ 30 ngày</p><p className="mt-1 text-lg font-semibold">{mailGuardConversions.data.activation_rate == null ? '—' : formatMetric(mailGuardConversions.data.activation_rate, true)}</p><p className="text-xs text-slate-500">{mailGuardConversions.data.signup_cohort_count ?? '—'} signup đủ cửa sổ</p></div></div> : null}
-        {(mailGuardConversions.data?.limitations ?? []).map((item, index) => <p key={index} className="text-xs text-slate-500">{item}</p>)}
-        {hasPermission(workspace, PERMISSIONS.WORKSPACE_MANAGE) && (!mailGuardIntegration.data || mailGuardIntegration.data.status === 'revoked') ? <Button onClick={() => integrationManage.mutate()} loading={integrationManage.isPending}>Tạo khóa tích hợp server-to-server</Button> : null}
-        {integrationManage.isError ? <p role="alert" className="text-sm text-rose-700">{integrationManage.error instanceof ApiError ? integrationManage.error.message : 'Không tạo được integration.'}</p> : null}
-        {integrationKeyOnce ? <div className="space-y-2 rounded-lg border border-amber-300 bg-amber-50 p-3"><p className="font-medium text-amber-950">Sao chép khóa này vào secret store backend MailGuard. Khóa chỉ hiển thị lần này; không đặt trong JavaScript hoặc frontend.</p><input aria-label="Khóa integration hiển thị một lần" readOnly value={integrationKeyOnce} className="w-full rounded border border-amber-400 bg-white px-3 py-2 font-mono text-xs" /><Button variant="secondary" onClick={() => setIntegrationKeyOnce(null)}>Ẩn khóa</Button></div> : null}
-        {hasPermission(workspace, PERMISSIONS.WORKSPACE_MANAGE) && mailGuardIntegration.data?.status === 'active' ? <Button variant="danger" onClick={() => revokeIntegration.mutate()} loading={revokeIntegration.isPending}>Thu hồi integration</Button> : null}
-        {revokeIntegration.isError ? <p role="alert" className="text-sm text-rose-700">Không thu hồi được integration. Thử lại sau.</p> : null}
-      </section>
+      <PageHeader
+        eyebrow="Đo lường & cải thiện"
+        title="Hiệu quả nội dung"
+        description="Hiểu điều đang hiệu quả từ số liệu có nguồn. Dữ liệu chưa có luôn được hiển thị rõ."
+      />
+      <nav aria-label="Các mục hiệu quả nội dung" className="flex flex-wrap gap-2 rounded-2xl border border-slate-200/80 bg-white p-2">
+        {[
+          { href: '#meta-page-posts-heading', label: 'Số liệu Fanpage', icon: 'publish' as const },
+          { href: '#metric-entry', label: 'Nhập số liệu', icon: 'plus' as const },
+          { href: '#campaign-report', label: 'Báo cáo chiến dịch', icon: 'chart' as const },
+          { href: '#mailguard-conversions-heading', label: 'Chuyển đổi', icon: 'arrow-right' as const },
+        ].map((item) => <a key={item.href} href={item.href} className="inline-flex items-center gap-2 rounded-xl px-3 py-2.5 text-sm font-medium text-slate-600 transition-colors hover:bg-teal-50 hover:text-teal-800"><Icon name={item.icon} size={16} />{item.label}</a>)}
+      </nav>
 
       <section className="space-y-4 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm" aria-labelledby="meta-page-posts-heading">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
-            <h2 id="meta-page-posts-heading" className="text-lg font-semibold text-slate-900">Bài viết trên Fanpage</h2>
+            <h2 id="meta-page-posts-heading" className="scroll-mt-24 text-lg font-semibold text-slate-900">Bài viết trên Fanpage</h2>
             <p className="mt-1 text-sm text-slate-600">Bao gồm bài đăng trước đây hoặc đăng ngoài nền tảng. Nguồn: {metaSourceId || 'chưa kết nối Page'}.</p>
           </div>
           {metaConnection.data?.status === 'verified' ? <StatusBadge label="Nguồn Meta" tone="info" /> : null}
@@ -461,7 +455,7 @@ export default function AnalyticsPage() {
         ) : null}
       </section>
 
-      <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+      <section id="metric-entry" className="scroll-mt-24 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
         <h2 className="text-lg font-semibold text-slate-900">Nhập snapshot số liệu</h2>
         <p className="mt-1 text-sm text-slate-600">Nguồn Meta được đồng bộ ở bảng trên. Để nhập thủ công, chọn mã nguồn khác rồi thêm từng bài vào snapshot.</p>
         {isMetaSource ? <p className="mt-2 text-xs font-medium text-amber-800">Đang xem nguồn Meta; nhập thủ công vào cùng mã nguồn đã bị khóa để không trộn số liệu.</p> : null}
@@ -501,7 +495,7 @@ export default function AnalyticsPage() {
         </label>
         <div className="mt-4 flex flex-wrap gap-2">
           <button type="button" onClick={addPoint} disabled={isMetaSource} title={isMetaSource ? 'Chọn mã nguồn khác để nhập thủ công.' : undefined} className="rounded-lg border border-slate-300 px-3 py-2 text-sm font-medium text-slate-800 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50">Thêm bài vào snapshot</button>
-          <button type="button" onClick={submitSnapshot} disabled={isMetaSource || importSnapshot.isPending || pendingPoints.length === 0} title={isMetaSource ? 'Nguồn Meta được đồng bộ tự động.' : undefined} className="rounded-lg bg-slate-900 px-3 py-2 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-50">{importSnapshot.isPending ? 'Đang lưu…' : `Lưu ${pendingPoints.length} bài`}</button>
+          <button type="button" onClick={submitSnapshot} disabled={isMetaSource || importSnapshot.isPending || pendingPoints.length === 0} title={isMetaSource ? 'Nguồn Meta được đồng bộ tự động.' : undefined} className="rounded-xl bg-teal-800 px-4 py-2.5 text-sm font-semibold text-white hover:bg-teal-900 disabled:cursor-not-allowed disabled:opacity-50">{importSnapshot.isPending ? 'Đang lưu…' : `Lưu ${pendingPoints.length} bài`}</button>
           {pendingPoints.length > 0 ? <button type="button" onClick={() => setPendingPoints([])} className="rounded-lg px-3 py-2 text-sm text-slate-600 hover:bg-slate-100">Xóa danh sách</button> : null}
         </div>
         {formError ? <p role="alert" className="mt-3 text-sm text-rose-800">{formError}</p> : null}
@@ -517,7 +511,7 @@ export default function AnalyticsPage() {
         ) : null}
       </section>
 
-      <section className="space-y-3" aria-label="Báo cáo và đề xuất">
+      <section id="campaign-report" className="scroll-mt-24 space-y-4" aria-label="Báo cáo và đề xuất">
         <div className="flex flex-wrap items-end justify-between gap-3">
           <div><h2 className="text-lg font-semibold text-slate-900">Báo cáo bài thuộc chiến dịch</h2><p className="text-sm text-slate-600">Nguồn: {sourceId || 'chưa chọn'} · tuổi bài mặc định 0–30 ngày. Bài cũ ngoài nền tảng chỉ có trong bảng Fanpage ở trên.</p></div>
           {dashboard.data?.freshness_at ? <span className="text-xs text-slate-500">Đo gần nhất: {new Date(dashboard.data.freshness_at).toLocaleString('vi-VN')}</span> : null}
@@ -692,7 +686,7 @@ export default function AnalyticsPage() {
                 <label className="space-y-1 text-sm text-slate-700">Kết thúc follow-up<input className="w-full rounded-lg border border-slate-300 px-3 py-2" type="datetime-local" value={followupWindowTo} onChange={(event) => setFollowupWindowTo(event.target.value)} /></label>
               </div>
               <div className="flex flex-wrap items-center gap-3">
-                {canApplyRecommendation ? <button type="button" disabled={recordExperimentOutcome.isPending} onClick={submitExperimentOutcome} className="rounded-lg bg-slate-900 px-3 py-2 text-sm font-medium text-white disabled:opacity-50">{recordExperimentOutcome.isPending ? 'Đang tính và lưu…' : 'Ghi nhận kết quả'}</button> : <p className="text-sm text-slate-600">Chỉ chủ workspace có thể ghi nhận outcome.</p>}
+                {canApplyRecommendation ? <button type="button" disabled={recordExperimentOutcome.isPending} onClick={submitExperimentOutcome} className="rounded-xl bg-teal-800 px-4 py-2.5 text-sm font-semibold text-white hover:bg-teal-900 disabled:opacity-50">{recordExperimentOutcome.isPending ? 'Đang tính và lưu…' : 'Ghi nhận kết quả'}</button> : <p className="text-sm text-slate-600">Chỉ chủ workspace có thể ghi nhận outcome.</p>}
                 {recordExperimentOutcome.isError ? <p role="alert" className="text-sm text-rose-800">{shortError(recordExperimentOutcome.error)}</p> : null}
                 {experimentFormError ? <p role="alert" className="text-sm text-rose-800">{experimentFormError}</p> : null}
               </div>
@@ -716,6 +710,20 @@ export default function AnalyticsPage() {
           ) : null}
         </section>
       ) : null}
+
+      <section className="space-y-4 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm" aria-labelledby="mailguard-conversions-heading">
+        <div className="flex flex-wrap items-start justify-between gap-3"><div><h2 id="mailguard-conversions-heading" className="scroll-mt-24 text-lg font-semibold text-slate-900">Chuyển đổi MailGuard</h2><p className="mt-1 text-sm text-slate-600">Đầu nối sẵn sàng cho website tương lai. Website chưa có nên conversion live hiện chưa được nghiệm thu.</p></div><StatusBadge label="Chưa nghiệm thu chuyển đổi thật" tone="warning" /></div>
+        {mailGuardConversions.isPending || mailGuardIntegration.isPending ? <LoadingBlock label="Đang tải trạng thái tracking…" /> : null}
+        {mailGuardConversions.isError || mailGuardIntegration.isError ? <ErrorPanel title="Không tải được trạng thái chuyển đổi" message="Kiểm tra kết nối API rồi tải lại." retryable onRetry={() => { void mailGuardConversions.refetch(); void mailGuardIntegration.refetch(); }} /> : null}
+        {mailGuardIntegration.data ? <div className="space-y-2 text-sm"><p>Server-to-server integration: <strong>{mailGuardIntegration.data.status}</strong> · key prefix {mailGuardIntegration.data.key_prefix}</p><p className="text-slate-600">Được phép gửi hai event: signup_completed và first_analysis_completed. Không gửi email, mật khẩu hoặc nội dung khách đưa vào phân tích.</p></div> : null}
+        {mailGuardConversions.data ? <div className="grid gap-3 sm:grid-cols-3"><div className="rounded-xl border border-slate-200 bg-slate-50/60 p-4"><p className="text-xs text-slate-600">Đăng ký</p><p className="mt-2 text-3xl font-semibold tracking-tight text-slate-950">{mailGuardConversions.data.signup_count == null ? '—' : formatNumber(mailGuardConversions.data.signup_count)}</p></div><div className="rounded-xl border border-slate-200 bg-slate-50/60 p-4"><p className="text-xs text-slate-600">Hoàn thành phân tích đầu tiên</p><p className="mt-2 text-3xl font-semibold tracking-tight text-slate-950">{mailGuardConversions.data.first_analysis_count == null ? '—' : formatNumber(mailGuardConversions.data.first_analysis_count)}</p></div><div className="rounded-xl border border-slate-200 bg-slate-50/60 p-4"><p className="text-xs text-slate-600">Tỷ lệ activation của cohort đủ 30 ngày</p><p className="mt-2 text-3xl font-semibold tracking-tight text-slate-950">{mailGuardConversions.data.activation_rate == null ? '—' : formatMetric(mailGuardConversions.data.activation_rate, true)}</p><p className="text-xs text-slate-500">{mailGuardConversions.data.signup_cohort_count ?? '—'} signup đủ cửa sổ</p></div></div> : null}
+        {(mailGuardConversions.data?.limitations ?? []).map((item, index) => <p key={index} className="text-xs text-slate-500">{item}</p>)}
+        {hasPermission(workspace, PERMISSIONS.WORKSPACE_MANAGE) && (!mailGuardIntegration.data || mailGuardIntegration.data.status === 'revoked') ? <Button onClick={() => integrationManage.mutate()} loading={integrationManage.isPending}>Tạo khóa tích hợp server-to-server</Button> : null}
+        {integrationManage.isError ? <p role="alert" className="text-sm text-rose-700">{integrationManage.error instanceof ApiError ? integrationManage.error.message : 'Không tạo được integration.'}</p> : null}
+        {integrationKeyOnce ? <div className="space-y-2 rounded-lg border border-amber-300 bg-amber-50 p-3"><p className="font-medium text-amber-950">Sao chép khóa này vào secret store backend MailGuard. Khóa chỉ hiển thị lần này; không đặt trong JavaScript hoặc frontend.</p><input aria-label="Khóa integration hiển thị một lần" readOnly value={integrationKeyOnce} className="w-full rounded border border-amber-400 bg-white px-3 py-2 font-mono text-xs" /><Button variant="secondary" onClick={() => setIntegrationKeyOnce(null)}>Ẩn khóa</Button></div> : null}
+        {hasPermission(workspace, PERMISSIONS.WORKSPACE_MANAGE) && mailGuardIntegration.data?.status === 'active' ? <Button variant="danger" onClick={() => revokeIntegration.mutate()} loading={revokeIntegration.isPending}>Thu hồi integration</Button> : null}
+        {revokeIntegration.isError ? <p role="alert" className="text-sm text-rose-700">Không thu hồi được integration. Thử lại sau.</p> : null}
+      </section>
     </div>
   );
 }

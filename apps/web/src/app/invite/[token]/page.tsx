@@ -8,7 +8,8 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ApiError, api } from '@/lib/api';
 import type { ApiAcceptInvitationRequest } from '@/lib/api/types';
 import { queryKeys } from '@/lib/query-keys';
-import { Button, Card, ErrorPanel, LoadingBlock } from '@/components/ui';
+import { Button, ErrorPanel, LoadingBlock } from '@/components/ui';
+import { AuthShell } from '@/components/auth-shell';
 
 export default function AcceptInvitationPage() {
   const params = useParams<{ token?: string }>();
@@ -61,11 +62,7 @@ export default function AcceptInvitationPage() {
   const roleLabel = preview.data?.role === 'editor' ? 'Biên tập viên' : 'Chỉ xem';
 
   return (
-    <div className="mx-auto flex min-h-[70vh] max-w-lg flex-col justify-center px-4 py-10">
-      <h1 className="text-lg font-semibold text-slate-900">Tham gia doanh nghiệp</h1>
-      <p className="mt-1 text-sm text-slate-600">Xem thông tin lời mời rồi xác nhận để vào workspace.</p>
-      <div className="mt-5">
-        <Card>
+    <AuthShell title="Cùng đội ngũ của bạn" description="Xem thông tin lời mời và xác nhận để tham gia không gian làm việc của doanh nghiệp.">
           {preview.isPending ? (
             <LoadingBlock label="Đang kiểm tra lời mời…" />
           ) : previewError ? (
@@ -166,11 +163,9 @@ export default function AcceptInvitationPage() {
           ) : (
             <p role="alert" className="text-sm text-rose-700">Liên kết lời mời không có mã xác thực.</p>
           )}
-        </Card>
-      </div>
       <p className="mt-5 text-sm text-slate-600">
         <Link href="/login" className="font-medium text-slate-900 underline">Đến trang đăng nhập</Link>
       </p>
-    </div>
+    </AuthShell>
   );
 }

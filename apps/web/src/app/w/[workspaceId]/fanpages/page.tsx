@@ -6,7 +6,8 @@ import { useCallback, useEffect, useState, type FormEvent } from 'react';
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import { useSession } from '@/components/session-gate';
-import { Badge, Button, Card, EmptyState, ErrorPanel, LoadingBlock, PermissionNotice, StatusBadge } from '@/components/ui';
+import { Icon } from '@/components/icon';
+import { Badge, Button, Card, EmptyState, ErrorPanel, LoadingBlock, PageHeader, PermissionNotice, StatusBadge } from '@/components/ui';
 import { ApiError, marketResearchApi, marketResearchKeys, useMocks } from '@/lib/api';
 import type { ResearchSourceType } from '@/lib/api/market-research';
 import { useJob } from '@/lib/hooks';
@@ -377,20 +378,12 @@ export default function FanpagesMarketResearchPage() {
 
   return (
     <div className="space-y-6">
-      <header className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <h1 className="text-lg font-semibold text-slate-900">Fanpage và nghiên cứu thị trường</h1>
-          <p className="mt-1 max-w-3xl text-sm text-slate-600">
-            Kết nối tối đa 5 Fanpage và lưu 20 link nguồn cho mỗi workspace; hệ thống tổng hợp thị trường mỗi 12 giờ.
-            Báo cáo chỉ gợi ý; người trong workspace xem lại trước khi tạo nội dung.
-          </p>
-        </div>
-        {activeGroupId && canManageMarket ? (
-          <Button loading={crawlNow.isPending} onClick={() => crawlNow.mutate(activeGroupId)}>
-            Crawl ngay
-          </Button>
-        ) : null}
-      </header>
+      <PageHeader
+        eyebrow="Kết nối & nghiên cứu"
+        title="Fanpage & thị trường"
+        description="Kết nối Fanpage, theo dõi đối thủ và tìm góc nhìn mới cho nội dung."
+        actions={activeGroupId && canManageMarket ? <Button loading={crawlNow.isPending} onClick={() => crawlNow.mutate(activeGroupId)}><Icon name="globe" size={17} /> Crawl ngay</Button> : undefined}
+      />
 
       {pageNotice ? <p role="status" className="rounded-lg border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-900">{pageNotice}</p> : null}
       {lastCrawlJob?.groupId === activeGroupId ? (
@@ -409,7 +402,7 @@ export default function FanpagesMarketResearchPage() {
 
       <Card
         title="Nhóm Fanpage và thị trường"
-        description="Mỗi nhóm có một hồ sơ ngành/khu vực riêng. Hồ sơ thương hiệu vẫn dùng chung trong workspace."
+        description="Chọn thị trường cần theo dõi. Mỗi workspace hỗ trợ tối đa 5 Fanpage và 20 nguồn."
         actions={canManageMarket ? <Button variant="secondary" onClick={() => setGroupFormOpen((value) => !value)}>{groupFormOpen ? 'Đóng' : 'Tạo nhóm'}</Button> : null}
       >
         {groups.length === 0 ? (
@@ -448,13 +441,22 @@ export default function FanpagesMarketResearchPage() {
 
       {activeGroupId ? (
         <>
+          <nav aria-label="Các mục Fanpage và thị trường" className="flex flex-wrap items-center gap-2 rounded-2xl border border-slate-200/80 bg-white p-2">
+            {[
+              { href: '#fanpage-connections', label: 'Fanpage kết nối', icon: 'publish' as const },
+              { href: '#market-sources', label: 'Nguồn thu thập', icon: 'globe' as const },
+              { href: '#website-data', label: 'Dữ liệu website', icon: 'document' as const },
+              { href: '#market-reports', label: 'Báo cáo & gợi ý', icon: 'chart' as const },
+            ].map((item) => <a key={item.href} href={item.href} className="inline-flex items-center gap-2 rounded-xl px-3 py-2.5 text-sm font-medium text-slate-600 transition-colors hover:bg-teal-50 hover:text-teal-800"><Icon name={item.icon} size={16} />{item.label}</a>)}
+          </nav>
+          <section id="fanpage-connections" className="scroll-mt-24">
           <Card
             title="Kết nối Fanpage của bạn"
-            description="Nhập Page ID và Page Access Token trong ứng dụng. Token được gửi tới backend, mã hoá trước khi lưu và không xuất hiện lại trên màn hình."
+            description="Kết nối một lần để đăng bài và đọc số liệu. Token được mã hóa và không hiển thị lại."
           >
             {!canConnectPage ? <PermissionNotice message="Chỉ chủ workspace được thêm hoặc ngắt kết nối Fanpage." requiredPermission="connection:manage" /> : null}
             {canConnectPage ? (
-              <form className="grid gap-3 sm:grid-cols-2" onSubmit={(event) => void submitPageConnection(event)}>
+              <form className="grid gap-4 rounded-xl bg-slate-50/70 p-4 sm:grid-cols-2" onSubmit={(event) => void submitPageConnection(event)}>
                 <label className="text-sm text-slate-700">Page ID<input value={pageId} onChange={(event) => setPageId(event.currentTarget.value)} required inputMode="numeric" pattern="[0-9]{1,32}" className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2" placeholder="ID số của Fanpage" /></label>
                 <label className="text-sm text-slate-700">Page Access Token<input type="password" value={pageToken} onChange={(event) => setPageToken(event.currentTarget.value)} required minLength={20} maxLength={4096} autoComplete="off" spellCheck={false} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2" placeholder="Dán token vào đây, không gửi trong chat" /></label>
                 <p className="text-xs text-slate-500 sm:col-span-2">Backend xác minh ID/token bằng Meta Graph API trước khi lưu. Token cần quyền đọc bài của Page. Việc đăng bài vẫn cần duyệt nội dung theo luồng hiện có.</p>
@@ -481,12 +483,14 @@ export default function FanpagesMarketResearchPage() {
             </div>
           </Card>
 
+          </section>
+          <section id="market-sources" className="scroll-mt-24">
           <Card
             title="Nguồn thu thập"
-            description="Lưu link Fanpage đối thủ một lần, rồi crawl ngay hoặc bật lịch 12 giờ. Chế độ facebook-cli Tier 0 không dùng tài khoản đăng nhập và có thể chỉ nhận được một phần dữ liệu Facebook công khai."
+            description="Lưu link một lần, thu thập ngay hoặc cập nhật mỗi 12 giờ. Facebook công khai có thể chỉ trả một phần dữ liệu."
           >
             {canManageMarket ? (
-              <form className="grid gap-3 sm:grid-cols-2" onSubmit={submitSource}>
+              <form className="grid gap-4 rounded-xl bg-slate-50/70 p-4 sm:grid-cols-2" onSubmit={submitSource}>
                 <label className="text-sm text-slate-700">Loại nguồn<select value={sourceType} onChange={(event) => setSourceType(event.currentTarget.value as ResearchSourceType)} className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2">{Object.entries(SOURCE_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
                 <label className="text-sm text-slate-700">Tên nguồn<input name="name" required maxLength={200} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2" placeholder="Tên website/Page/nhóm" /></label>
                 <label className="text-sm text-slate-700 sm:col-span-2">Link website hoặc Facebook<input name="url" required type="url" maxLength={2048} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2" placeholder="https://…" /></label>
@@ -507,7 +511,7 @@ export default function FanpagesMarketResearchPage() {
                 const status = SOURCE_STATUS[statusKey] ?? SOURCE_STATUS[source.status] ?? { label: statusKey, tone: 'neutral' as const };
                 const schedulePaused = ['login_required', 'access_denied', 'challenge', 'challenge_required'].includes(source.collection_status ?? '');
                 return (
-                  <div key={source.id} className="rounded-lg border border-slate-200 px-3 py-3">
+                  <div key={source.id} className="rounded-2xl border border-slate-200 bg-white p-4">
                     <div className="flex flex-wrap items-start justify-between gap-3">
                       <div className="min-w-0 flex-1">
                         <div className="flex flex-wrap items-center gap-2"><p className="font-medium text-slate-900">{source.name}</p><StatusBadge label={status.label} tone={status.tone} /></div>
@@ -604,10 +608,12 @@ export default function FanpagesMarketResearchPage() {
             ) : null}
           </Card>
 
+          </section>
+          <section id="website-data" className="scroll-mt-24">
           <Card title="Dữ liệu website đã trích xuất" description="Giá, gói bán và số liệu chỉ hiện khi website công khai dữ liệu có bằng chứng. Giá không rõ được để trống; số tự công bố không được coi là số liệu đã kiểm toán.">
-            <div className="mb-4 flex flex-wrap gap-2" role="tablist" aria-label="Loại dữ liệu website">
+            <div className="mb-5 flex w-fit max-w-full flex-wrap gap-1 rounded-xl bg-slate-100 p-1" role="group" aria-label="Loại dữ liệu website">
               {([['product', 'Sản phẩm & giá'], ['article', 'Bài viết'], ['business_info', 'Thông tin website']] as const).map(([value, label]) => (
-                <Button key={value} size="sm" variant={webKind === value ? 'primary' : 'secondary'} onClick={() => setWebKind(value)}>{label}</Button>
+                <button key={value} type="button" aria-pressed={webKind === value} className={`rounded-lg px-4 py-2 text-sm font-medium transition-colors ${webKind === value ? 'bg-white text-teal-800 shadow-sm' : 'text-slate-600 hover:text-slate-950'}`} onClick={() => setWebKind(value)}>{label}</button>
               ))}
             </div>
             {webItemsQuery.isLoading ? <LoadingBlock label="Đang tải dữ liệu website…" /> : null}
@@ -636,6 +642,8 @@ export default function FanpagesMarketResearchPage() {
             {!webItemsQuery.isLoading && !webItemsQuery.error && !webItemsQuery.data?.items.length ? <EmptyState title="Chưa có dữ liệu website" description="Thêm website vào nhóm, chuyển nguồn sang chế độ sản phẩm & nội dung rồi bấm Crawl ngay. Nguồn cũ giữ chế độ legacy cho đến khi được chuyển rõ ràng." /> : null}
           </Card>
 
+          </section>
+          <section id="market-reports" className="scroll-mt-24">
           <Card title="Báo cáo xu hướng và gợi ý" description="DeepSeek phân tích nội dung, tương tác, views, follower count và thay đổi giữa các lần crawl khi nguồn trả dữ liệu. Giá trị thiếu được để trống; kết luận có nguồn đối chiếu.">
             {reportsQuery.isLoading ? <LoadingBlock label="Đang tải báo cáo…" /> : null}
             {reportsQuery.error ? <ErrorPanel message={readableError(reportsQuery.error, 'Không tải được báo cáo.')} retryable onRetry={() => void reportsQuery.refetch()} /> : null}
@@ -675,6 +683,7 @@ export default function FanpagesMarketResearchPage() {
             ))}
             {!reportsQuery.isLoading && reports.length === 0 ? <EmptyState title="Chưa có báo cáo" description="Sau khi lưu nguồn, bấm Thu thập ngay hoặc chờ lượt tự động đầu tiên. Lịch tiếp theo chạy sau mỗi 12 giờ." /> : null}
           </Card>
+          </section>
         </>
       ) : null}
     </div>

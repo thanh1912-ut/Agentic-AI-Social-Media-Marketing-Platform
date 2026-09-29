@@ -23,6 +23,7 @@ import {
   EmptyState,
   ErrorPanel,
   LoadingBlock,
+  PageHeader,
   PermissionNotice,
   ProgressBar,
   StatCard,
@@ -125,7 +126,7 @@ function JobSteps({ steps }: { steps: readonly JobStep[] }) {
         };
         const failure = step.error ? presentJobFailure(step.error) : null;
         return (
-          <li key={step.key} className="border-b border-slate-100 pb-3 last:border-b-0 last:pb-0">
+          <li key={step.key} className="relative rounded-xl border border-slate-200 bg-slate-50/50 p-4">
             <div className="flex flex-wrap items-center gap-2">
               <p className="text-sm font-medium text-slate-900">{step.label}</p>
               <StatusBadge label={meta.label} tone={meta.tone} />
@@ -279,22 +280,14 @@ export default function TrangTienDoTacVu() {
 
   return (
     <div className="space-y-6">
-      <header className="space-y-2">
-        <div className="flex flex-wrap items-center gap-2">
-          <h1 className="text-lg font-semibold text-slate-900">{job.title}</h1>
-          <StatusBadge label={statusMeta.label} tone={statusMeta.tone} />
-        </div>
-        <p className="text-sm text-slate-600">
-          Tạo lúc {formatDateTime(job.created_at)} ({formatRelative(job.created_at)})
-          {job.started_at ? ` · Bắt đầu ${formatDateTime(job.started_at)}` : ''}
-          {job.finished_at ? ` · Kết thúc ${formatDateTime(job.finished_at)}` : ''}
-        </p>
-        {isActive ? (
-          <p role="status" className="text-sm text-sky-800">
-            Đang theo dõi tiến độ — màn hình tự cập nhật cho tới khi tác vụ kết thúc.
-          </p>
-        ) : null}
-      </header>
+      <PageHeader
+        eyebrow="Tiến độ công việc"
+        title={job.title}
+        description={`Tạo lúc ${formatDateTime(job.created_at)} (${formatRelative(job.created_at)})${job.started_at ? ` · Bắt đầu ${formatDateTime(job.started_at)}` : ''}${job.finished_at ? ` · Kết thúc ${formatDateTime(job.finished_at)}` : ''}`}
+        actions={<StatusBadge label={statusMeta.label} tone={statusMeta.tone} />}
+      >
+        {isActive ? <p role="status" className="inline-flex rounded-lg bg-teal-50 px-3 py-2 text-sm text-teal-800">Đang theo dõi tiến độ — bạn có thể rời trang và quay lại sau.</p> : null}
+      </PageHeader>
 
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
         <StatCard
@@ -338,7 +331,7 @@ export default function TrangTienDoTacVu() {
 
       <Card
         title="Các bước xử lý"
-        description="Nhãn từng bước do máy chủ gửi, giữ nguyên tiếng Việt."
+        description="Theo dõi kết quả ở từng bước và xử lý lỗi nếu có."
       >
         {job.steps.length === 0 ? (
           <EmptyState
@@ -355,7 +348,7 @@ export default function TrangTienDoTacVu() {
       </Card>
 
       {job.status === 'succeeded' ? (
-        <Card title="Kết quả" description="Dữ liệu máy chủ trả về sau khi tác vụ hoàn tất.">
+        <Card title="Kết quả" description="Kết quả đã được lưu từ tác vụ này.">
           {hasResult && result ? (
             <div className="space-y-4">
               <dl className="space-y-2">

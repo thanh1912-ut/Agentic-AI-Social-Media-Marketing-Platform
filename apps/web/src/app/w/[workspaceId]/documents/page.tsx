@@ -49,6 +49,7 @@ import {
   EmptyState,
   ErrorPanel,
   LoadingBlock,
+  PageHeader,
   PermissionNotice,
   ProgressBar,
   StatusBadge,
@@ -78,6 +79,9 @@ const MIME_KIND: Record<string, DocumentKind> = {
   'text/plain': DOCUMENT_KINDS.TXT,
 };
 
+const SUPPORTED_UPLOAD_MIME_TYPES = new Set(Object.keys(MIME_KIND));
+const SUPPORTED_DOCUMENT_KINDS = new Set<string>(Object.values(EXTENSION_KIND));
+
 interface RejectedFile {
   name: string;
   reason: string;
@@ -94,8 +98,13 @@ function detectKind(file: File): DocumentKind | null {
 
 function acceptedKindText(limits: UploadLimits): string {
   return limits.accepted_kinds
+    .filter((kind) => SUPPORTED_DOCUMENT_KINDS.has(kind))
     .map((kind) => Object.entries(DOCUMENT_KIND_LABELS).find(([value]) => value === kind)?.[1] ?? kind)
     .join(', ');
+}
+
+function acceptedMimeTypes(limits: UploadLimits): string[] {
+  return limits.accepted_mime_types.filter((mimeType) => SUPPORTED_UPLOAD_MIME_TYPES.has(mimeType));
 }
 
 /** Kiểm tra sớm ở trình duyệt. Trả về cả tệp nhận và tệp bị từ chối kèm lý do. */
@@ -237,8 +246,8 @@ function ExtractedContentPreview({ workspaceId, documentId }: { workspaceId: str
     <div className="rounded-lg border border-slate-200 bg-white p-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div>
-          <h3 className="text-sm font-semibold text-slate-900">Nội dung Docling đã lưu</h3>
-          {page.data ? <p className="mt-0.5 text-xs text-slate-600">{formatNumber(page.data.total_text_blocks)} đoạn chữ · {formatNumber(page.data.total_tables)} bảng · {formatNumber(page.data.total_rows)} dòng · parser {page.data.parser_version}</p> : null}
+          <h3 className="text-sm font-semibold text-slate-900">Nội dung đã đọc</h3>
+          {page.data ? <p className="mt-0.5 text-xs text-slate-600">{formatNumber(page.data.total_text_blocks)} đoạn chữ · {formatNumber(page.data.total_tables)} bảng · {formatNumber(page.data.total_rows)} dòng</p> : null}
         </div>
         <div className="flex gap-2">
           {pageIndex > 0 ? <Button variant="secondary" size="sm" onClick={() => setPageIndex((index) => index - 1)}>Phần trước</Button> : null}
@@ -363,20 +372,19 @@ export default function TrangTaiLieu() {
 
   return (
     <div className="space-y-6">
-      <header>
-        <h1 className="text-lg font-semibold text-slate-900">Tài liệu</h1>
-        <p className="mt-1 text-sm text-slate-600">
-          Tải hồ sơ doanh nghiệp lên để hệ thống đọc và gợi ý thông tin thương hiệu. Mỗi tệp được
-          xử lý riêng, tệp lỗi có thể đọc lại.
-        </p>
-      </header>
+      <PageHeader
+        eyebrow="Nguồn tham khảo"
+        title="Tài liệu"
+        description="Lưu bảng giá, thông tin sản phẩm và dữ liệu tham khảo. Bạn chọn tài liệu cần dùng khi yêu cầu AI viết bài."
+        actions={<Link href={`/w/${workspaceId}/campaigns`} className="inline-flex items-center rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-teal-800 hover:bg-teal-50">Tạo bài viết</Link>}
+      />
 
       {/* ---------------------------------------------------------------- */}
       {/* Hạn mức + vùng tải lên                                            */}
       {/* ---------------------------------------------------------------- */}
       <Card
         title="Tải tài liệu lên"
-        description="Hạn mức dưới đây do máy chủ công bố. Hệ thống kiểm tra tệp ngay tại trình duyệt và kiểm tra lại ở máy chủ."
+        description="Đọc chữ và bảng, lưu làm kiến thức. Hồ sơ thương hiệu bạn tự viết được giữ nguyên."
       >
         {limitsQuery.isPending ? (
           <LoadingBlock label="Đang đọc hạn mức tải lên…" />
@@ -393,29 +401,11 @@ export default function TrangTaiLieu() {
           />
         ) : (
           <div className="space-y-4">
-            <dl className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-              <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
-                <dt className="text-xs font-medium text-slate-600">Định dạng nhận</dt>
-                <dd className="mt-0.5 text-sm text-slate-900">{acceptedKindText(limits)}</dd>
-              </div>
-              <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
-                <dt className="text-xs font-medium text-slate-600">Dung lượng tối đa mỗi tệp</dt>
-                <dd className="mt-0.5 text-sm text-slate-900">
-                  {formatBytes(limits.max_file_size_bytes)}
-                </dd>
-              </div>
-              <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
-                <dt className="text-xs font-medium text-slate-600">Số tệp mỗi lần gửi</dt>
-                <dd className="mt-0.5 text-sm text-slate-900">
-                  tối đa {formatNumber(limits.max_files_per_request)} tệp
-                </dd>
-              </div>
-              <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
-                <dt className="text-xs font-medium text-slate-600">Giới hạn đọc bảng</dt>
-                <dd className="mt-0.5 text-sm text-slate-900">{formatNumber(limits.max_table_rows ?? 100_000)} dòng · {formatNumber(limits.max_table_columns ?? 256)} cột · {formatNumber(limits.max_table_cells ?? 1_000_000)} ô</dd>
-              </div>
-            </dl>
-            <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">Ảnh không được nhận. PDF scan không có lớp chữ cũng không đọc được vì OCR đang tắt.</p>
+            <div className="flex flex-wrap items-center gap-x-5 gap-y-2 text-xs text-slate-600">
+              <span className="font-semibold text-slate-800">PDF, Word (DOCX), Excel (XLSX), CSV, Văn bản (TXT)</span>
+              <span>Tối đa {formatBytes(limits.max_file_size_bytes)}/tệp</span>
+              <span>{formatNumber(limits.max_files_per_request)} tệp mỗi lần</span>
+            </div>
 
             <div
               onDragOver={(event) => {
@@ -427,13 +417,13 @@ export default function TrangTaiLieu() {
               aria-disabled={!canPickFiles}
               className={`rounded-xl border-2 border-dashed px-4 py-6 text-center ${
                 isDragging && canPickFiles
-                  ? 'border-sky-400 bg-sky-50'
-                  : 'border-slate-300 bg-slate-50'
+                  ? 'border-teal-500 bg-teal-50'
+                  : 'border-teal-200 bg-teal-50/40'
               } ${canPickFiles ? '' : 'opacity-70'}`}
             >
-              <p id="upload-help" className="text-sm text-slate-700">
-                Kéo thả tệp vào ô này, hoặc chọn tệp từ máy. Tệp sai định dạng hoặc quá nặng sẽ được
-                liệt kê kèm lý do, không bị bỏ qua im lặng.
+              <p className="text-base font-semibold text-slate-900">Thêm nguồn cho bài viết tiếp theo</p>
+              <p id="upload-help" className="mt-1 text-sm text-slate-600">
+                Kéo thả tệp vào đây hoặc chọn từ máy. Tệp chưa hợp lệ sẽ có lý do cụ thể.
               </p>
               <div className="mt-3">
                 <input
@@ -441,7 +431,7 @@ export default function TrangTaiLieu() {
                   name="files"
                   type="file"
                   multiple
-                  accept={limits.accepted_mime_types.join(',')}
+                  accept={acceptedMimeTypes(limits).join(',')}
                   className="peer sr-only"
                   onChange={handleInputChange}
                   disabled={!canPickFiles || upload.isPending}
@@ -451,7 +441,7 @@ export default function TrangTaiLieu() {
                   htmlFor="document-files"
                   className={`inline-flex items-center rounded-lg px-4 py-2 text-sm font-medium peer-focus-visible:ring-2 peer-focus-visible:ring-slate-900 peer-focus-visible:ring-offset-2 ${
                     canPickFiles
-                      ? 'cursor-pointer bg-slate-900 text-white hover:bg-slate-800'
+                      ? 'cursor-pointer bg-teal-800 text-white hover:bg-teal-900'
                       : 'cursor-not-allowed bg-slate-400 text-white'
                   }`}
                 >
@@ -466,6 +456,19 @@ export default function TrangTaiLieu() {
                     : ''}
                 </DisabledReason>
               ) : null}
+            </div>
+
+            <div className="flex flex-wrap items-start justify-between gap-3 text-xs text-slate-600">
+              <p>Không hỗ trợ ảnh và PDF scan không có lớp chữ. OCR đang tắt.</p>
+              <details className="max-w-xl">
+                <summary className="cursor-pointer font-medium text-teal-800">Xem giới hạn xử lý</summary>
+                <dl className="mt-2 grid gap-2 rounded-lg border border-slate-200 bg-slate-50 p-3 sm:grid-cols-2">
+                  <div><dt className="font-medium">Số dòng bảng</dt><dd>{formatNumber(limits.max_table_rows ?? 100_000)} dòng/tệp</dd></div>
+                  <div><dt className="font-medium">Số cột mỗi bảng</dt><dd>{formatNumber(limits.max_table_columns ?? 256)} cột</dd></div>
+                  <div><dt className="font-medium">Tổng số ô</dt><dd>{formatNumber(limits.max_table_cells ?? 1_000_000)} ô/tệp</dd></div>
+                  <div><dt className="font-medium">Dung lượng tối đa mỗi tệp</dt><dd>{formatBytes(limits.max_file_size_bytes)}</dd></div>
+                </dl>
+              </details>
             </div>
 
             {rejected.length > 0 ? (
@@ -501,7 +504,7 @@ export default function TrangTaiLieu() {
       {/* ---------------------------------------------------------------- */}
       <Card
         title="Tài liệu đã tải lên"
-        description="Tài liệu được đọc và lưu làm nguồn tham khảo cho Content Agent. Chọn nguồn cần dùng riêng trong từng yêu cầu viết bài."
+        description={documents?.length ? `${formatNumber(documents.length)} tài liệu trong workspace · mở nội dung để kiểm tra trước khi dùng.` : 'Nguồn đã lưu sẽ xuất hiện tại đây, sẵn sàng để bạn chọn khi tạo bài.'}
         actions={
           <Button variant="secondary" size="sm" onClick={() => void documentsQuery.refetch()}>
             Làm mới danh sách
@@ -589,7 +592,7 @@ export default function TrangTaiLieu() {
                     return (
                       <Fragment key={doc.id}>
                         <tr className="border-b border-slate-100 align-top">
-                          <td className="px-3 py-3 text-slate-900">{doc.filename}</td>
+                          <td className="max-w-xs px-3 py-3 font-semibold text-slate-900"><span className="break-words">{doc.filename}</span>{extracted ? <p className="mt-1 text-xs font-normal text-slate-500">{extracted}</p> : null}</td>
                           <td className="px-3 py-3 text-slate-700">
                             {Object.entries(DOCUMENT_KIND_LABELS).find(([kind]) => kind === doc.kind)?.[1] ?? doc.kind}
                           </td>
@@ -674,25 +677,30 @@ export default function TrangTaiLieu() {
 
                         <tr className="border-b border-slate-100 bg-slate-50">
                           <td colSpan={6} className="px-3 py-3">
-                            <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+                            <div className="flex flex-wrap items-center gap-x-6 gap-y-2">
                               {[
-                                { label: 'Đọc tài liệu', meta: extractionMeta },
-                                { label: 'Knowledge / truy xuất', meta: knowledgeMeta },
-                                { label: 'Mode truy xuất', meta: retrievalMeta },
+                                { label: '1. Đọc tài liệu', meta: extractionMeta },
+                                { label: '2. Lưu kiến thức', meta: knowledgeMeta },
                               ].map(({ label, meta }) => (
-                                <div key={label} className="rounded-lg border border-slate-200 bg-white p-3">
-                                  <p className="text-xs font-medium text-slate-600">{label}</p>
-                                  <div className="mt-1">
-                                    <StatusBadge label={meta.label} tone={meta.tone} />
-                                  </div>
-                                  <p className="mt-1 text-xs leading-5 text-slate-600">{meta.description}</p>
+                                <div key={label} className="flex flex-wrap items-center gap-2" title={meta.description}>
+                                  <span className="text-xs font-medium text-slate-600">{label}</span>
+                                  <StatusBadge label={meta.label} tone={meta.tone} />
                                 </div>
                               ))}
+                              <details className="min-w-0 text-xs text-slate-500">
+                                <summary className="cursor-pointer font-medium text-teal-800">Chi tiết xử lý</summary>
+                                <div className="mt-2 max-w-xl space-y-2 rounded-lg border border-slate-200 bg-white p-3">
+                                  <p><strong>Đọc tài liệu:</strong> {extractionMeta.description}</p>
+                                  <p><strong>Lưu kiến thức:</strong> {knowledgeMeta.description}</p>
+                                  <p><strong>{retrievalMeta.label}:</strong> {retrievalMeta.description}</p>
+                                  {doc.processed_at ? <p>Xử lý xong lúc {formatDateTime(doc.processed_at)}</p> : null}
+                                </div>
+                              </details>
                             </div>
                           </td>
                         </tr>
 
-                        {errorDetail || extracted || isBusy ? (
+                        {errorDetail || isBusy || doc.extraction_status === 'partial' ? (
                           <tr className="border-b border-slate-100 bg-slate-50">
                             <td colSpan={6} className="px-3 py-3">
                               {errorDetail ? (
@@ -720,19 +728,6 @@ export default function TrangTaiLieu() {
                                 </div>
                               ) : null}
 
-                              {doc.status === DOCUMENT_STATUSES.READY ? (
-                                <p className="text-sm text-slate-700">
-                                  {extracted
-                                    ? `Đã đọc được: ${extracted}.`
-                                    : 'Máy chủ báo tài liệu đã xử lý xong nhưng chưa gửi số liệu trích xuất (trang/dòng/ảnh) nên chưa hiển thị được con số nào.'}
-                                  {doc.processed_at ? (
-                                    <span className="text-slate-500">
-                                      {' '}
-                                      · Xử lý xong lúc {formatDateTime(doc.processed_at)}
-                                    </span>
-                                  ) : null}
-                                </p>
-                              ) : null}
                               {doc.extraction_status === 'partial' ? <p className="mt-2 text-sm text-amber-900">Đã lưu nội dung một phần. Kiểm tra cảnh báo trích xuất trước khi dùng làm nguồn.</p> : null}
                             </td>
                           </tr>

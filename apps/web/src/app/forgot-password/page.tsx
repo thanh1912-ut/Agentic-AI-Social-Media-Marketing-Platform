@@ -14,7 +14,8 @@ import Link from 'next/link';
 import { useMutation } from '@tanstack/react-query';
 
 import { ApiError, api } from '@/lib/api';
-import { Button, Card, ErrorPanel } from '@/components/ui';
+import { Button, ErrorPanel } from '@/components/ui';
+import { AuthShell } from '@/components/auth-shell';
 
 /** Câu xác nhận trung tính — dùng chung cho mọi trường hợp gửi thành công. */
 const NEUTRAL_CONFIRMATION =
@@ -55,14 +56,7 @@ export default function TrangQuenMatKhau() {
     .join(' ');
 
   return (
-    <div className="mx-auto flex min-h-[60vh] max-w-md flex-col justify-center px-4 py-10">
-      <h1 className="text-lg font-semibold text-slate-900">Quên mật khẩu</h1>
-      <p className="mt-1 text-sm text-slate-600">
-        Nhập email đã dùng để đăng nhập. Hệ thống sẽ gửi hướng dẫn nếu email tồn tại và email delivery đã được cấu hình.
-      </p>
-
-      <div className="mt-5">
-        <Card>
+    <AuthShell title="Quên mật khẩu?" description="Nhập email đăng nhập để yêu cầu hướng dẫn đặt lại mật khẩu. Bạn sẽ thấy thông báo nếu dịch vụ gửi thư chưa sẵn sàng.">
           {submitted ? (
             <div role="status" className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3">
               <h2 className="text-sm font-semibold text-emerald-900">Đã tiếp nhận yêu cầu</h2>
@@ -94,7 +88,7 @@ export default function TrangQuenMatKhau() {
                   className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900"
                 />
                 <p id="forgot-email-hint" className="mt-1 text-xs text-slate-500">
-                  Dùng đúng email mà chủ sở hữu doanh nghiệp đã mời bạn.
+                  Email bạn đã đăng ký hoặc được mời vào doanh nghiệp.
                 </p>
                 {formatError ? (
                   <p id="forgot-email-error" role="alert" className="mt-1 text-xs text-rose-700">
@@ -127,14 +121,12 @@ export default function TrangQuenMatKhau() {
               </Button>
             </form>
           )}
-        </Card>
-      </div>
 
       <p className="mt-5 text-sm text-slate-600">
         <Link href="/login" className="font-medium text-slate-900 underline">
           Quay lại trang đăng nhập
         </Link>
       </p>
-    </div>
+    </AuthShell>
   );
 }

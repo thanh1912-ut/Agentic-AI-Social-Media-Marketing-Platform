@@ -18,7 +18,7 @@ async function login(page: import('@playwright/test').Page) {
 
 test('mở dashboard số liệu và nhập snapshot demo có gắn nguồn', async ({ page }) => {
   await login(page);
-  await page.getByRole('link', { name: 'Hiệu quả' }).click();
+  await page.goto('/w/ws_pho_bac/analytics');
   await page.waitForURL(/\/analytics$/);
   await expect(page.getByRole('heading', { name: 'Hiệu quả nội dung' })).toBeVisible();
   await expect(page.locator('select option').nth(1)).toBeAttached();
@@ -29,7 +29,7 @@ test('mở dashboard số liệu và nhập snapshot demo có gắn nguồn', as
   await page.getByRole('button', { name: 'Thêm bài vào snapshot' }).click();
   await page.getByRole('button', { name: 'Lưu 1 bài' }).click();
 
-  await expect(page.getByRole('status')).toContainText('Đã lưu 1 dòng số liệu');
+  await expect(page.locator('p[role="status"]')).toContainText('Đã lưu 1 dòng số liệu');
   await expect(page.getByRole('heading', { name: 'Báo cáo bài thuộc chiến dịch' })).toBeVisible();
   await expect(page.getByText('Dữ liệu minh họa — không phải kết quả thật.', { exact: false }).first()).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Đề xuất thử nghiệm' })).toBeVisible();
@@ -38,7 +38,7 @@ test('mở dashboard số liệu và nhập snapshot demo có gắn nguồn', as
 
 test('ghi feedback và áp dụng recommendation thành brief revision cần owner duyệt', async ({ page }) => {
   await login(page);
-  await page.getByRole('link', { name: 'Hiệu quả' }).click();
+  await page.goto('/w/ws_pho_bac/analytics');
   await page.waitForURL(/\/analytics$/);
   await page.getByLabel('Mã nguồn / Facebook Page ID').fill('demo-source-eligible');
   await expect(page.getByText('Có đề xuất')).toBeVisible();

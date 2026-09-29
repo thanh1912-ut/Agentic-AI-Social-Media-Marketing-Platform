@@ -31,6 +31,7 @@ import {
   ErrorPanel,
   FieldRow,
   LoadingBlock,
+  PageHeader,
   PermissionNotice,
   StatusBadge,
   UnavailableNotice,
@@ -140,14 +141,11 @@ export default function TrangCaiDat() {
 
   return (
     <div className="space-y-6">
-      <header>
-        <h1 className="text-lg font-semibold text-slate-900">Cài đặt</h1>
-        <p className="mt-1 text-sm text-slate-600">
-          Thông tin doanh nghiệp, vai trò của bạn và những kết nối ra bên ngoài.
-        </p>
-      </header>
+      <PageHeader eyebrow="Không gian làm việc" title="Cài đặt" description="Quản lý thông tin, thành viên và kết nối của doanh nghiệp." />
 
-      <Card title="Doanh nghiệp" description="Thông tin nhận từ máy chủ, không sửa được ở màn hình này.">
+      <div className="grid items-start gap-5 xl:grid-cols-2">
+
+      <Card title="Doanh nghiệp" description="Thông tin hiện tại của không gian làm việc.">
         <dl>
           <FieldRow label="Tên doanh nghiệp">{workspace.name}</FieldRow>
           <FieldRow label="Đường dẫn định danh (slug)">
@@ -179,7 +177,7 @@ export default function TrangCaiDat() {
           </FieldRow>
           <FieldRow
             label="Quyền đang có"
-            hint="Danh sách quyền do máy chủ cấp; giao diện chỉ dùng để ẩn/hiện nút, máy chủ vẫn kiểm tra lại."
+            hint="Các thao tác bạn được phép thực hiện trong workspace."
           >
             {workspace.permissions.length > 0 ? (
               <span className="text-sm text-slate-700">
@@ -196,6 +194,7 @@ export default function TrangCaiDat() {
         </dl>
       </Card>
 
+      </div>
       <Card
         title="Thành viên"
         description="Ai đang tham gia doanh nghiệp này và với vai trò nào."
@@ -460,7 +459,7 @@ export default function TrangCaiDat() {
       </Card>
 
       <p className="text-xs text-slate-500">
-        Cần xem lại tiến độ nhập thông tin doanh nghiệp?{' '}
+        Xem công việc và hoạt động của doanh nghiệp. {' '}
         <Link className="underline" href={`/w/${workspaceId}`}>
           Về màn hình chính
         </Link>

@@ -29,6 +29,7 @@ import {
   EmptyState,
   ErrorPanel,
   LoadingBlock,
+  PageHeader,
   PermissionNotice,
   StatusBadge,
 } from '@/components/ui';
@@ -203,25 +204,19 @@ export default function CampaignDetailPage() {
 
   return (
     <div className="space-y-6">
-      <header className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <p className="text-sm text-slate-500">
-            <Link href={`/w/${workspaceId}/campaigns`} className="underline">Chiến dịch</Link> / chi tiết
-          </p>
-          <h1 className="mt-1 text-lg font-semibold text-slate-900">{data.name}</h1>
-          <p className="mt-1 text-sm text-slate-600">
-            {formatDate(data.brief.start_date)} – {formatDate(data.brief.end_date)} · phiên bản {data.version}
-          </p>
-        </div>
-        <StatusBadge label={status.label} tone={status.tone} />
-      </header>
+      <Link href={`/w/${workspaceId}/campaigns`} className="inline-block text-sm font-medium text-teal-800 hover:underline">← Tất cả chiến dịch</Link>
+      <PageHeader
+        title={data.name}
+        description={`${formatDate(data.brief.start_date)} – ${formatDate(data.brief.end_date)} · phiên bản ${data.version}`}
+        actions={<StatusBadge label={status.label} tone={status.tone} />}
+      />
 
       {mocksEnabled ? <DemoNotice /> : null}
 
-      <Card title="Tài liệu tham khảo cho yêu cầu viết" description="Chỉ các tài liệu bạn chọn ở đây mới được đưa vào lần tạo bài tiếp theo. Để trống nếu muốn AI chỉ dùng hồ sơ thương hiệu và brief. Lựa chọn này áp dụng cho tạo nhiều bài và tạo bài theo slot trên trang này.">
+      <Card title="Tài liệu tham khảo cho yêu cầu viết" description="Chọn nguồn cho lần tạo bài tiếp theo, bao gồm tạo nhiều bài hoặc theo lịch. Để trống để chỉ dùng hồ sơ thương hiệu và brief.">
         {documents.isPending ? <p className="text-sm text-slate-600">Đang tải danh sách tài liệu…</p> : documents.isError ? <p role="alert" className="text-sm text-rose-700">Không tải được tài liệu. Hãy làm mới trang trước khi tạo bài có nguồn tham khảo.</p> : documents.data?.some((item) => item.selectable_for_content) ? (
           <div className="space-y-3">
-            <fieldset className="space-y-2">
+            <fieldset className="grid max-h-72 gap-2 overflow-y-auto md:grid-cols-2">
               <legend className="text-sm font-medium text-slate-800">Chọn tài liệu đã đọc và lưu kiến thức</legend>
               {documents.data.map((document) => <label key={document.id} className={`flex items-start gap-2 rounded-lg border p-3 text-sm ${document.selectable_for_content ? 'border-slate-200 bg-white' : 'border-slate-100 bg-slate-50 text-slate-500'}`}>
                 <input type="checkbox" checked={selectedDocumentIds.includes(document.id)} disabled={!document.selectable_for_content || selectedDocumentIds.length >= 20 && !selectedDocumentIds.includes(document.id)} onChange={(event) => setSelectedDocumentIds((current) => event.target.checked ? [...current, document.id] : current.filter((id) => id !== document.id))} />
@@ -235,7 +230,7 @@ export default function CampaignDetailPage() {
         ) : <p className="text-sm text-slate-600">Chưa có tài liệu nào sẵn sàng. Bạn vẫn có thể tạo bài từ hồ sơ thương hiệu và brief. <Link href={`/w/${workspaceId}/documents`} className="font-medium underline">Mở mục Tài liệu</Link></p>}
       </Card>
 
-      <Card title="Brief chiến dịch" description="Thông tin đầu vào để AI tạo nội dung — chưa tự động thay đổi campaign.">
+      <Card title="Brief chiến dịch" description="Mục tiêu, khán giả và thông điệp làm nền cho nội dung của chiến dịch.">
         {editingBrief ? (
           <form onSubmit={submitBrief} className="space-y-4">
             <div className="grid gap-4 md:grid-cols-2">
@@ -342,7 +337,7 @@ export default function CampaignDetailPage() {
             <section className="mt-5 border-t border-slate-200 pt-4">
               <h3 className="text-sm font-semibold text-slate-900">Chiến lược nội dung</h3>
               <p className="mt-1 whitespace-pre-wrap text-sm text-slate-700">{data.content_plan?.strategy_summary || 'Chưa có chiến lược nội dung.'}</p>
-              <h4 className="mt-4 text-sm font-semibold text-slate-900">Content slots</h4>
+              <h4 className="mt-4 text-sm font-semibold text-slate-900">Các chủ đề trong lịch</h4>
               {data.content_plan?.slots.length ? (
                 <ul className="mt-2 space-y-2">
                   {data.content_plan.slots.map((slot) => (
@@ -368,7 +363,7 @@ export default function CampaignDetailPage() {
         )}
       </Card>
 
-      <div className="grid gap-4 lg:grid-cols-3">
+      <div className="grid items-start gap-4 xl:grid-cols-[1.2fr_1fr_1fr]">
         <Card title="Tạo bài thủ công" description="Bạn vẫn có thể viết, sửa, duyệt và xuất bài khi chưa bật xử lý AI.">
           {!canEditPosts ? (
             <PermissionNotice message={permissionDeniedReason(workspace, PERMISSIONS.POST_EDIT)} requiredPermission={PERMISSIONS.POST_EDIT} />
@@ -437,7 +432,7 @@ export default function CampaignDetailPage() {
 
       <Card title="Lịch nội dung" description="Mở một bài để xem preview Facebook, sửa, xem lịch sử và gửi duyệt.">
         {!posts.data || posts.data.items.length === 0 ? (
-          <EmptyState title="Chưa có bài viết" description="Tạo bản nháp bằng AI hoặc chờ backend trả về nội dung cho campaign này." />
+          <EmptyState title="Chưa có bài viết" description="Tạo bản nháp bằng AI hoặc tự viết nội dung đầu tiên cho chiến dịch." />
         ) : (
           <div className="table-scroll">
             <table className="min-w-[760px] w-full text-left text-sm">

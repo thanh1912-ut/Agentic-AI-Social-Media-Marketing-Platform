@@ -8,7 +8,7 @@ import { useSession } from '@/components/session-gate';
 import { useBrandProfile, useBrandProfileRevisions, useUpdateBrandProfile } from '@/lib/hooks';
 import { formatDateTime } from '@/lib/format';
 import { ApiError } from '@/lib/api';
-import { Button, Card, EmptyState, ErrorPanel, LoadingBlock } from '@/components/ui';
+import { Button, Card, EmptyState, ErrorPanel, LoadingBlock, PageHeader, StatusBadge } from '@/components/ui';
 
 const MAX_PROFILE_CHARS = 20_000;
 
@@ -45,7 +45,6 @@ export default function BrandProfilePage() {
   useEffect(() => {
     if (profileVersion === undefined) return;
     setDraft(profileMode === 'manual_text_v1' ? profileText ?? '' : '');
-    setMessage(null);
   }, [profileVersion, profileMode, profileText]);
 
   if (!workspace) return <p role="alert" className="p-6 text-sm text-rose-800">Bạn không có quyền truy cập workspace này.</p>;
@@ -73,17 +72,13 @@ export default function BrandProfilePage() {
   const legacy = (revisions.data ?? []).filter((item) => item.profile.profile_mode !== 'manual_text_v1');
 
   return (
-    <div className="mx-auto max-w-4xl space-y-6 p-4 sm:p-6">
-      <header className="space-y-2">
-        <div className="flex flex-wrap items-center gap-2">
-          <h1 className="text-xl font-semibold text-slate-950">Hồ sơ thương hiệu</h1>
-          <span className="rounded-full bg-slate-100 px-3 py-1 text-xs text-slate-700">Phiên bản {current.version}</span>
-          {current.profile_mode === 'manual_text_v1'
-            ? <span className="rounded-full bg-emerald-50 px-3 py-1 text-xs font-medium text-emerald-800">Đang áp dụng</span>
-            : <span className="rounded-full bg-amber-50 px-3 py-1 text-xs font-medium text-amber-900">Chưa có hồ sơ do Owner viết</span>}
-        </div>
-        <p className="text-sm text-slate-600">Viết tự nhiên để Content Agent hiểu bạn đang bán gì và muốn nội dung được viết như thế nào.</p>
-      </header>
+    <div className="max-w-4xl space-y-6">
+      <PageHeader
+        eyebrow="Thông tin thương hiệu"
+        title="Hồ sơ thương hiệu"
+        description="Viết tự nhiên để Content Agent hiểu bạn đang bán gì và muốn nội dung được viết như thế nào."
+        actions={<><span className="rounded-full border border-slate-200 bg-white px-3 py-2 text-xs font-medium text-slate-600">Phiên bản {current.version}</span><StatusBadge label={current.profile_mode === 'manual_text_v1' ? 'Đang áp dụng' : 'Chưa có hồ sơ'} tone={current.profile_mode === 'manual_text_v1' ? 'success' : 'warning'} /></>}
+      />
 
       {current.profile_mode !== 'manual_text_v1' ? (
         <EmptyState
@@ -110,7 +105,10 @@ export default function BrandProfilePage() {
           id="brand-profile-text"
           aria-describedby="brand-profile-hint brand-profile-count"
           value={draft}
-          onChange={(event) => setDraft(event.target.value)}
+          onChange={(event) => {
+            setDraft(event.target.value);
+            setMessage(null);
+          }}
           readOnly={!isOwner}
           maxLength={MAX_PROFILE_CHARS + 1}
           rows={14}
@@ -122,7 +120,7 @@ export default function BrandProfilePage() {
             {draft.length.toLocaleString('vi-VN')} / {MAX_PROFILE_CHARS.toLocaleString('vi-VN')} ký tự
           </p>
           {isOwner ? (
-            <Button onClick={applyProfile} loading={save.isPending} disabled={!dirty || tooLong || !draft.trim()}>
+            <Button onClick={applyProfile} loading={save.isPending} disabled={!dirty || tooLong || !draft.trim()} disabledReason={tooLong ? `Rút gọn hồ sơ còn tối đa ${MAX_PROFILE_CHARS.toLocaleString('vi-VN')} ký tự.` : !draft.trim() ? 'Nhập nội dung hồ sơ trước khi áp dụng.' : 'Chỉnh sửa hồ sơ để bật thao tác lưu.'}>
               Lưu và áp dụng
             </Button>
           ) : <span className="text-sm text-slate-600">Chỉ Owner mới được sửa và áp dụng hồ sơ chung.</span>}
@@ -133,14 +131,14 @@ export default function BrandProfilePage() {
       <Card><div className="space-y-3">
         <h2 className="font-semibold text-slate-950">Tài liệu tham khảo cho Content Agent</h2>
         <p className="text-sm text-slate-600">Tải tài liệu lên để Docling đọc chữ và bảng, sau đó chọn tài liệu cần dùng cho từng bài. Nội dung file không tự sửa hồ sơ thương hiệu.</p>
-        <Link href={`/w/${workspaceId}/documents`} className="inline-flex text-sm font-medium text-indigo-700 underline">Mở mục Tài liệu</Link>
+        <Link href={`/w/${workspaceId}/documents`} className="inline-flex text-sm font-medium text-teal-800 underline underline-offset-4">Mở mục Tài liệu</Link>
       </div></Card>
 
       {legacy.length > 0 ? (
         <Card><div className="space-y-3">
           <h2 className="font-semibold text-slate-950">Hồ sơ trước đây — chỉ tham khảo</h2>
           <p className="text-sm text-slate-600">Các phiên bản AI cũ được giữ để xem lại. Chúng không được dùng làm hồ sơ đang áp dụng; hãy tự viết lại nội dung phía trên nếu cần.</p>
-          <button type="button" className="text-sm font-medium text-indigo-700 underline" aria-expanded={showLegacy} onClick={() => setShowLegacy((value) => !value)}>
+          <button type="button" className="text-sm font-medium text-teal-800 underline underline-offset-4" aria-expanded={showLegacy} onClick={() => setShowLegacy((value) => !value)}>
             {showLegacy ? 'Ẩn lịch sử cũ' : `Xem ${legacy.length} phiên bản cũ`}
           </button>
           {showLegacy ? <ol className="space-y-3">{legacy.map((revision) => {

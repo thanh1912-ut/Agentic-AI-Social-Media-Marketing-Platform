@@ -19,7 +19,7 @@ async function login(page: import('@playwright/test').Page) {
 test.describe('lát cắt 2 — campaign và nội dung', () => {
   test('mở campaign và xem lịch nội dung', async ({ page }) => {
     await login(page);
-    await page.getByRole('link', { name: 'Chiến dịch' }).click();
+    await page.goto('/w/ws_pho_bac/campaigns');
     await page.getByRole('link', { name: 'Mở chiến dịch' }).first().click();
 
     await expect(page.getByRole('heading', { name: 'Chiến dịch tháng 3 — Khách văn phòng' })).toBeVisible();
@@ -106,6 +106,7 @@ test.describe('lát cắt 2 — campaign và nội dung', () => {
     await login(page);
     await page.goto('/w/ws_pho_bac/campaigns/cmp_khai_truong/posts/post_2');
 
+    await page.getByText('Chỉnh sửa cùng AI').click();
     await page.getByLabel('Bạn muốn sửa thế nào?').fill('Viết ngắn gọn hơn, giữ nguyên thông tin và hashtag.');
     await page.getByLabel('Phạm vi sửa').selectOption('caption');
     await page.getByRole('button', { name: 'Tạo phiên bản AI sửa' }).click();

@@ -1,14 +1,5 @@
 'use client';
 
-/**
- * Đăng nhập.
- *
- * Lưu ý kiến trúc: trang này nằm trong `app/layout.tsx` — nơi bọc mọi trang bằng
- * `SessionGate`. Nếu cổng phiên chặn người chưa đăng nhập ở tầng layout thì form
- * dưới đây sẽ không bao giờ được render. Xem mục "khoảng trống hợp đồng" trong
- * báo cáo của slice này (cần tách cổng phiên ra khỏi nhánh /login).
- */
-
 import { useEffect, useState, type FormEvent } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
@@ -18,7 +9,8 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { ApiError, api } from '@/lib/api';
 import { useMocks } from '@/lib/api/config';
 import { queryKeys } from '@/lib/query-keys';
-import { Button, Card, DemoBadge, DisabledReason } from '@/components/ui';
+import { Button, DemoBadge, DisabledReason } from '@/components/ui';
+import { AuthShell } from '@/components/auth-shell';
 
 /**
  * Tài khoản mẫu cho chế độ mock.
@@ -37,13 +29,13 @@ const DEMO_ACCOUNTS: Array<{
     role: 'Chủ sở hữu (owner)',
     email: 'chu.quan@phobac.vn',
     password: 'demo1234',
-    note: 'Toàn quyền: xác nhận hồ sơ, tải tài liệu, duyệt và đăng bài.',
+    note: 'Quản lý workspace, áp dụng hồ sơ do mình viết, duyệt và xuất bản nội dung.',
   },
   {
     role: 'Biên tập viên (editor)',
     email: 'bientap@phobac.vn',
     password: 'demo1234',
-    note: 'Sửa hồ sơ và tải tài liệu; không xác nhận hồ sơ, không duyệt bài.',
+    note: 'Soạn nội dung và tải tài liệu; không áp dụng hồ sơ chung hoặc duyệt bài.',
   },
   {
     role: 'Người xem (viewer)',
@@ -60,6 +52,7 @@ export default function TrangDangNhap() {
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [passwordVisible, setPasswordVisible] = useState(false);
   const [mounted, setMounted] = useState(false);
 
   // Chỉ hiện gợi ý demo sau khi đã mount để bản render ở server và ở client khớp nhau.
@@ -100,14 +93,7 @@ export default function TrangDangNhap() {
   const errorDescribedBy = apiError || genericError ? 'login-error' : undefined;
 
   return (
-    <div className="mx-auto flex min-h-[70vh] max-w-md flex-col justify-center px-4 py-10">
-      <h1 className="text-lg font-semibold text-slate-900">Đăng nhập</h1>
-      <p className="mt-1 text-sm text-slate-600">
-        Vào khu vực làm việc của doanh nghiệp để nhập tài liệu và quản lý nội dung.
-      </p>
-
-      <div className="mt-5">
-        <Card>
+    <AuthShell title="Chào mừng trở lại" description="Đăng nhập để tiếp tục làm việc với thương hiệu và nội dung của bạn.">
           <form onSubmit={handleSubmit} className="space-y-4" noValidate>
             <div>
               <label htmlFor="login-email" className="block text-sm font-medium text-slate-700">
@@ -135,13 +121,19 @@ export default function TrangDangNhap() {
               <input
                 id="login-password"
                 name="password"
-                type="password"
+                type={passwordVisible ? 'text' : 'password'}
                 autoComplete="current-password"
                 value={password}
                 onChange={(event) => setPassword(event.target.value)}
                 aria-describedby={errorDescribedBy}
                 className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900"
               />
+              <div className="mt-2 flex items-center justify-between gap-3 text-xs">
+                <button type="button" className="font-medium text-slate-600" aria-pressed={passwordVisible} onClick={() => setPasswordVisible((value) => !value)}>
+                  {passwordVisible ? 'Ẩn mật khẩu' : 'Hiện mật khẩu'}
+                </button>
+                <Link href="/forgot-password" className="font-medium text-teal-800">Quên mật khẩu?</Link>
+              </div>
             </div>
 
             {apiError || genericError ? (
@@ -178,13 +170,8 @@ export default function TrangDangNhap() {
               {missingFields ? <DisabledReason>{disabledReason}</DisabledReason> : null}
             </div>
 
-            <p className="text-sm text-slate-600">
-              <Link href="/forgot-password" className="font-medium text-slate-900 underline">
-                Quên mật khẩu?
-              </Link>
-            </p>
             {!mocksEnabled ? (
-              <p className="text-sm text-slate-600">
+              <p className="pt-2 text-center text-sm text-slate-600">
                 Chưa có tài khoản?{' '}
                 <Link href="/register" className="font-medium text-slate-900 underline">
                   Đăng ký
@@ -192,8 +179,6 @@ export default function TrangDangNhap() {
               </p>
             ) : null}
           </form>
-        </Card>
-      </div>
 
       {mounted && mocksEnabled ? (
         <section
@@ -232,7 +217,7 @@ export default function TrangDangNhap() {
           </ul>
         </section>
       ) : null}
-    </div>
+    </AuthShell>
   );
 }
 

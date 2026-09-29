@@ -145,47 +145,21 @@ export const demoMembers: Record<string, Member[]> = {
 export const demoOnboarding: Record<string, OnboardingState> = {
   [WS_FB]: {
     steps: [
-      { key: 'business_info', label: 'Nhập thông tin doanh nghiệp', status: 'done', href: '/brand' },
-      { key: 'upload_documents', label: 'Tải tài liệu về doanh nghiệp', status: 'done', href: '/documents' },
-      {
-        key: 'confirm_brand',
-        label: 'Xác nhận hồ sơ thương hiệu',
-        status: 'in_progress',
-        blocked_reason: 'Còn 3 trường AI gợi ý chưa được bạn xác nhận.',
-        href: '/brand',
-      },
-      {
-        key: 'create_campaign',
-        label: 'Tạo chiến dịch đầu tiên',
-        status: 'todo',
-        blocked_reason: 'Cần xác nhận hồ sơ thương hiệu trước khi tạo chiến dịch.',
-        href: '/campaigns',
-      },
+      { key: 'business_info', label: 'Tự viết hồ sơ thương hiệu', status: 'todo', href: '/brand' },
+      { key: 'upload_documents', label: 'Tải tài liệu tham khảo', status: 'done', href: '/documents' },
+      { key: 'create_campaign', label: 'Tạo chiến dịch đầu tiên', status: 'todo', href: '/campaigns' },
     ],
-    completed_count: 2,
-    total_count: 4,
+    completed_count: 1,
+    total_count: 3,
   },
   [WS_RETAIL]: {
     steps: [
-      { key: 'business_info', label: 'Nhập thông tin doanh nghiệp', status: 'todo', href: '/brand' },
-      { key: 'upload_documents', label: 'Tải tài liệu về doanh nghiệp', status: 'todo', href: '/documents' },
-      {
-        key: 'confirm_brand',
-        label: 'Xác nhận hồ sơ thương hiệu',
-        status: 'blocked',
-        blocked_reason: 'Chưa có tài liệu nào được tải lên nên chưa có gì để xác nhận.',
-        href: '/brand',
-      },
-      {
-        key: 'create_campaign',
-        label: 'Tạo chiến dịch đầu tiên',
-        status: 'blocked',
-        blocked_reason: 'Phải hoàn thành hồ sơ thương hiệu trước.',
-        href: '/campaigns',
-      },
+      { key: 'business_info', label: 'Tự viết hồ sơ thương hiệu', status: 'todo', href: '/brand' },
+      { key: 'upload_documents', label: 'Tải tài liệu tham khảo', status: 'todo', href: '/documents' },
+      { key: 'create_campaign', label: 'Tạo chiến dịch đầu tiên', status: 'todo', href: '/campaigns' },
     ],
     completed_count: 0,
-    total_count: 4,
+    total_count: 3,
   },
 };
 
@@ -202,7 +176,6 @@ export const demoUploadLimits: UploadLimits = {
     DOCUMENT_KINDS.XLSX,
     DOCUMENT_KINDS.CSV,
     DOCUMENT_KINDS.TXT,
-    DOCUMENT_KINDS.IMAGE,
   ],
   accepted_mime_types: [
     'application/pdf',
@@ -210,8 +183,6 @@ export const demoUploadLimits: UploadLimits = {
     'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
     'text/csv',
     'text/plain',
-    'image/png',
-    'image/jpeg',
   ],
 };
 
@@ -305,10 +276,21 @@ const field = <T,>(
   extra: Partial<BrandProfileField<T>> = {},
 ): BrandProfileField<T> => ({ key, label, value, state, provenance: [], ...extra });
 
-const brandProfileFb: BrandProfile = {
+type DemoBrandProfile = BrandProfile & {
+  profile_mode: 'legacy' | 'manual_text_v1';
+  profile_text: string | null;
+  applied_at: string | null;
+  applied_by: string | null;
+};
+
+const brandProfileFb: DemoBrandProfile = {
   id: 'brand_pho_bac',
   workspace_id: WS_FB,
   version: 7,
+  profile_mode: 'legacy',
+  profile_text: null,
+  applied_at: null,
+  applied_by: null,
   business_name: field(BRAND_FIELD_KEYS.BUSINESS_NAME, 'Tên doanh nghiệp', 'Phở Bắc Hà Nội', FIELD_REVIEW_STATES.CONFIRMED, {
     provenance: [
       {
@@ -353,7 +335,7 @@ const brandProfileFb: BrandProfile = {
       ],
     },
   ),
-  /* AI gợi ý, chưa xác nhận → UI hiển thị "cần xác nhận" + độ tin cậy. */
+  /* Legacy snapshot chỉ được giữ trong lịch sử tham khảo, không dùng để tạo nội dung. */
   target_audience: field(
     BRAND_FIELD_KEYS.TARGET_AUDIENCE,
     'Khách hàng mục tiêu',
@@ -431,10 +413,14 @@ const brandProfileFb: BrandProfile = {
   updated_at: hoursAgo(6),
 };
 
-const brandProfileRetail: BrandProfile = {
+const brandProfileRetail: DemoBrandProfile = {
   id: 'brand_an_nhien',
   workspace_id: WS_RETAIL,
   version: 1,
+  profile_mode: 'legacy',
+  profile_text: null,
+  applied_at: null,
+  applied_by: null,
   business_name: field<string>(BRAND_FIELD_KEYS.BUSINESS_NAME, 'Tên doanh nghiệp', null, FIELD_REVIEW_STATES.MISSING),
   industry: field<string>(BRAND_FIELD_KEYS.INDUSTRY, 'Ngành hàng', null, FIELD_REVIEW_STATES.MISSING),
   description: field<string>(BRAND_FIELD_KEYS.DESCRIPTION, 'Giới thiệu doanh nghiệp', null, FIELD_REVIEW_STATES.MISSING),
@@ -449,7 +435,7 @@ const brandProfileRetail: BrandProfile = {
   updated_at: hoursAgo(3),
 };
 
-export const demoBrandProfiles: Record<string, BrandProfile> = {
+export const demoBrandProfiles: Record<string, DemoBrandProfile> = {
   [WS_FB]: brandProfileFb,
   [WS_RETAIL]: brandProfileRetail,
 };

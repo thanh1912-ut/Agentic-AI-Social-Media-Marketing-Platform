@@ -6,7 +6,8 @@ import { useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import { useSession } from '@/components/session-gate';
-import { Button, Card, EmptyState, ErrorPanel, LoadingBlock, PermissionNotice, StatusBadge, UnavailableNotice, type Tone } from '@/components/ui';
+import { Icon } from '@/components/icon';
+import { Button, Card, EmptyState, ErrorPanel, LoadingBlock, PageHeader, PermissionNotice, StatusBadge, UnavailableNotice, type Tone } from '@/components/ui';
 import { ApiError, facebookPostUrl, marketResearchApi, marketResearchKeys, metaApi, metaQueryKeys, type MetaPublication, type MetaPublicationStatus } from '@/lib/api';
 import { formatDateTime } from '@/lib/format';
 import { useCampaigns, usePosts } from '@/lib/hooks';
@@ -137,17 +138,33 @@ export default function PublishingPage() {
   if (!workspace) return <PermissionNotice message="Bạn không thuộc doanh nghiệp này." />;
 
   return (
-    <div className="mx-auto max-w-5xl space-y-6">
-      <header className="space-y-2">
-        <h1 className="text-lg font-semibold text-slate-900">Xuất bản lên Fanpage</h1>
-        <p className="max-w-3xl text-sm leading-6 text-slate-600">Chỉ gửi phiên bản đã được duyệt. Chủ sở hữu quyết định từng lần đăng và theo dõi kết quả bên dưới.</p>
-      </header>
+    <div className="space-y-7">
+      <PageHeader
+        eyebrow="Phân phối nội dung"
+        title="Xuất bản lên Fanpage"
+        description="Đưa nội dung đã duyệt đến đúng Fanpage, đúng thời điểm."
+        actions={<Link href={`/w/${workspaceId}/campaigns`} className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 transition-colors hover:border-teal-300 hover:text-teal-800"><Icon name="campaign" size={16} /> Mở Chiến dịch</Link>}
+      />
 
-      <Card title="Kết nối Fanpage" description="Xác minh chỉ đọc Page và bài gần nhất; Meta kiểm tra quyền đăng khi owner xác nhận gửi từng bài. Thông tin truy cập không xuất hiện trên trang này.">
+      <nav aria-label="Các mục xuất bản" className="grid gap-3 sm:grid-cols-3">
+        {[
+          { href: '#approved-posts', label: 'Bài đã duyệt', value: posts.isSuccess ? approvedPosts.length : '—', icon: 'check' as const, hint: 'Danh sách phiên bản đã duyệt' },
+          { href: '#scheduled-posts', label: 'Đã lên lịch', value: schedules.isSuccess ? schedules.data.filter((item) => item.status === 'scheduled').length : '—', icon: 'clock' as const, hint: 'Theo giờ Việt Nam' },
+          { href: '#publication-history', label: 'Đã xuất bản', value: publications.isSuccess ? history.filter((item) => item.status === 'published').length : '—', icon: 'publish' as const, hint: 'Theo lịch sử đã tải' },
+        ].map((item) => (
+          <a key={item.href} href={item.href} className="group flex items-center gap-4 rounded-2xl border border-slate-200/80 bg-white p-5 transition-colors hover:border-teal-300 hover:bg-teal-50/40">
+            <span className="flex size-11 shrink-0 items-center justify-center rounded-xl bg-teal-50 text-teal-800"><Icon name={item.icon} size={20} /></span>
+            <div className="min-w-0 flex-1"><p className="text-xs font-medium text-slate-500">{item.label}</p><p className="mt-1 text-3xl font-semibold tracking-tight text-slate-950">{item.value}</p><p className="mt-1 text-xs text-slate-500">{item.hint}</p></div>
+            <Icon name="chevron-right" size={16} className="text-slate-400 group-hover:text-teal-700" />
+          </a>
+        ))}
+      </nav>
+
+      <Card title="Kết nối Fanpage" description="Kiểm tra Fanpage trước khi xác nhận đăng." actions={<Link href={`/w/${workspaceId}/fanpages`} className="inline-flex items-center gap-1 text-sm font-semibold text-teal-800 hover:underline">Quản lý kết nối <Icon name="arrow-right" size={15} /></Link>}>
         {connection.isPending ? <LoadingBlock label="Đang tải kết nối…" /> : null}
         {connection.isError ? <ErrorPanel title="Không tải được kết nối" message={connection.error instanceof ApiError ? connection.error.message : 'Vui lòng tải lại trang.'} retryable onRetry={() => void connection.refetch()} /> : null}
         {connection.data ? (
-          <div className="space-y-3 text-sm text-slate-700">
+          <div className="flex flex-wrap items-center justify-between gap-3 text-sm text-slate-700">
             <p><strong>{connection.data.status === 'unconfigured' ? 'Chưa kết nối Meta' : connection.data.page_name || 'Fanpage chưa được xác minh'}</strong>{connection.data.page_id ? ` · Page ID ${connection.data.page_id}` : ''}</p>
             <p>{connection.data.message}</p>
             {ready ? <StatusBadge label="Có thể gửi yêu cầu" tone="success" /> : (
@@ -159,7 +176,8 @@ export default function PublishingPage() {
         ) : null}
       </Card>
 
-      <Card title="Bài đã duyệt" description="Hỗ trợ bài chữ hoặc một ảnh JPEG/PNG đã tải lên. Backend kiểm tra lại hash phiên bản đã duyệt trước khi gửi tới Meta.">
+      <section id="approved-posts" className="scroll-mt-24">
+      <Card title="Bài đã duyệt" description="Chọn Fanpage, kiểm tra nội dung rồi đăng ngay hoặc hẹn giờ. Hỗ trợ bài chữ và một ảnh JPEG/PNG.">
         {posts.isPending ? <LoadingBlock label="Đang tải bài đã duyệt…" /> : null}
         {posts.isError ? <ErrorPanel title="Không tải được bài viết" message={posts.error instanceof ApiError ? posts.error.message : 'Vui lòng tải lại bài viết.'} retryable onRetry={() => void posts.refetch()} /> : null}
         {!posts.isPending && !posts.isError && approvedPosts.length === 0 ? (
@@ -182,7 +200,7 @@ export default function PublishingPage() {
               : blocker ? `Phiên bản này đang ở trạng thái ${PUBLICATION_STATUS[previous.status].label.toLowerCase()}.` : undefined;
             const isConfirming = confirmPost?.id === post.id && confirmPost.version === post.version;
             return (
-              <article key={post.id} className="rounded-xl border border-slate-200 p-4">
+              <article key={post.id} className="rounded-2xl border border-slate-200 bg-slate-50/50 p-5">
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div className="min-w-0 flex-1">
                     <p className="text-sm font-semibold text-slate-900">Bản {post.version} · {post.pillar}</p>
@@ -233,7 +251,9 @@ export default function PublishingPage() {
         {lastJobId ? <p role="status" className="mt-3 text-sm text-emerald-800">Đã nhận yêu cầu đăng. <Link href={`/w/${workspaceId}/jobs/${lastJobId}`} className="font-medium underline">Xem tiến độ job</Link>.</p> : null}
       </Card>
 
-      <Card title="Bài đã hẹn giờ" description="Lịch được lưu trong PostgreSQL và chỉ đưa vào hàng đợi khi đến giờ. Chỉ hủy được trước khi worker bắt đầu gửi.">
+      </section>
+      <section id="scheduled-posts" className="scroll-mt-24">
+      <Card title="Bài đã hẹn giờ" description="Lịch đăng theo giờ Việt Nam. Bạn có thể hủy trước khi bài bắt đầu được gửi.">
         {schedules.isPending ? <LoadingBlock label="Đang tải lịch đăng…" /> : null}
         {schedules.isError ? <ErrorPanel title="Không tải được lịch đăng" message={schedules.error instanceof ApiError ? schedules.error.message : 'Vui lòng tải lại lịch.'} retryable onRetry={() => void schedules.refetch()} /> : null}
         {!schedules.isPending && !schedules.isError && !schedules.data?.length ? <EmptyState title="Chưa có bài hẹn giờ" description="Khi Owner chọn ngày giờ ở bước xác nhận, lịch sẽ xuất hiện tại đây." /> : null}
@@ -241,6 +261,8 @@ export default function PublishingPage() {
         {cancelSchedule.error ? <p role="alert" className="mt-3 text-sm text-rose-700">{cancelSchedule.error instanceof ApiError ? cancelSchedule.error.message : 'Không hủy được lịch.'}</p> : null}
       </Card>
 
+      </section>
+      <section id="publication-history" className="scroll-mt-24">
       <Card title="Lịch sử xuất bản" description="Kết quả chưa rõ phải được đối soát trên Fanpage trước khi có hành động khác.">
         {publications.isPending ? <LoadingBlock label="Đang tải lịch sử đăng bài…" /> : null}
         {publications.isError ? <ErrorPanel title="Không tải được lịch sử xuất bản" message={publications.error instanceof ApiError ? publications.error.message : 'Vui lòng thử lại.'} retryable onRetry={() => void publications.refetch()} /> : null}
@@ -287,6 +309,7 @@ export default function PublishingPage() {
           })}
         </div>
       </Card>
+      </section>
     </div>
   );
 }

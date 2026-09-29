@@ -51,7 +51,7 @@ test.describe('lát cắt 1 — hồ sơ thương hiệu', () => {
 
   test('tài liệu lỗi phải nói rõ lý do và việc cần làm', async ({ page }) => {
     await login(page);
-    await page.getByRole('link', { name: 'Tài liệu' }).click();
+    await page.goto('/w/ws_pho_bac/documents');
     await page.waitForURL(/\/documents/);
 
     // Tệp scan thiếu lớp văn bản — phải hiện lý do, không chỉ "lỗi".
@@ -59,35 +59,38 @@ test.describe('lát cắt 1 — hồ sơ thương hiệu', () => {
     await expect(page.getByText('xuất lại từ Word')).toBeVisible();
   });
 
-  test('hồ sơ thương hiệu cho xem nguồn trích xuất', async ({ page }) => {
+  test('hồ sơ cũ nằm trong lịch sử tham khảo, không thành hồ sơ đang áp dụng', async ({ page }) => {
     await login(page);
-    await page.getByRole('link', { name: 'Hồ sơ thương hiệu' }).click();
+    await page.goto('/w/ws_pho_bac/brand');
     await page.waitForURL(/\/brand/);
 
-    // Bằng chứng cho thông tin AI trích xuất phải truy cập được.
-    const sourceToggle = page.getByRole('button', { name: /Xem nguồn/i }).first();
-    await expect(sourceToggle).toBeVisible();
-    await sourceToggle.click();
-    await expect(page.locator('blockquote').first()).toBeVisible();
+    await expect(page.getByText('Chưa có hồ sơ do bạn viết')).toBeVisible();
+    await expect(page.getByText('Hồ sơ trước đây — chỉ tham khảo')).toBeVisible();
+    await page.getByRole('button', { name: /Xem .* phiên bản cũ/ }).click();
+    await expect(page.getByText(/Tên doanh nghiệp:.*Phở Bắc Hà Nội/)).toBeVisible();
   });
 
-  test('sửa và xác nhận gửi cùng revision qua mock HTTP contract', async ({ page }) => {
+  test('Owner tự viết rồi lưu và áp dụng hồ sơ nguyên văn', async ({ page }) => {
     await login(page);
     await page.goto('/w/ws_pho_bac/brand');
     await expect(page.getByRole('heading', { name: 'Hồ sơ thương hiệu' })).toBeVisible();
 
-    const revisedName = 'Quán Phở Bắc Cô Hương — đã xác nhận';
-    await page.getByLabel(/Sửa.*Tên doanh nghiệp/).fill(revisedName);
-    await page.getByRole('button', { name: 'Xác nhận hồ sơ' }).click();
+    const profileText = 'Bên mình bán phở bò tại Hà Nội. Viết gần gũi, không nói quá về sản phẩm.';
+    const textarea = page.getByLabel('Giới thiệu thương hiệu cho AI');
+    await textarea.fill(profileText);
+    await page.getByRole('button', { name: 'Lưu và áp dụng' }).click();
 
-    await expect(page.getByText('Đã lưu và xác nhận hồ sơ thương hiệu.')).toBeVisible();
-    await expect(page.getByText('Hồ sơ đã xác nhận')).toBeVisible();
-    await expect(page.getByLabel(/Sửa.*Tên doanh nghiệp/)).toHaveValue(revisedName);
+    await expect(page.locator('p[role="status"]')).toContainText('Đã lưu và áp dụng hồ sơ');
+    await expect(textarea).toHaveValue(profileText);
+    await expect(page.getByText('Đang áp dụng', { exact: true })).toBeVisible();
+    await page.reload();
+    await expect(page.getByLabel('Giới thiệu thương hiệu cho AI')).toHaveValue(profileText);
+    await expect(page.getByText('Đang áp dụng', { exact: true })).toBeVisible();
   });
 
   test('lời mời chưa có tài khoản không làm màn hình thành viên bị crash', async ({ page }) => {
     await login(page);
-    await page.getByRole('link', { name: 'Cài đặt' }).click();
+    await page.goto('/w/ws_pho_bac/settings');
     await page.waitForURL(/\/settings/);
 
     await expect(page.getByText('Lời mời đang chờ')).toBeVisible();
@@ -116,7 +119,7 @@ test.describe('lát cắt 1 — hồ sơ thương hiệu', () => {
     // The mock server's static fixture survives a full-page navigation, while
     // dynamically created mock tokens intentionally remain page-local.
     await page.goto('/invite/demo-invite-mem_3');
-    await expect(page.getByRole('heading', { name: 'Tham gia doanh nghiệp' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Cùng đội ngũ của bạn' })).toBeVisible();
     await expect(page.getByText('moi-moi@pho-bac.vn')).toBeVisible();
     await page.getByLabel('Họ tên').fill('Thành viên E2E');
     await page.getByLabel('Tạo mật khẩu nếu đây là tài khoản mới').fill('e2e-password-123');
@@ -125,13 +128,13 @@ test.describe('lát cắt 1 — hồ sơ thương hiệu', () => {
     await page.waitForURL((url) => url.pathname !== renewedInvitePath, { timeout: 20_000 });
   });
 
-  test('trường mâu thuẫn cho người dùng chọn, không tự quyết', async ({ page }) => {
+  test('hồ sơ tự viết không hiển thị form trường do AI suy ra', async ({ page }) => {
     await login(page);
     await page.goto('/w/ws_pho_bac/brand');
 
-    await expect(page.getByText(/mâu thuẫn/i).first()).toBeVisible();
-    // Phải có lựa chọn cho người dùng, không im lặng lấy một giá trị.
-    await expect(page.getByRole('radio').first()).toBeVisible();
+    await expect(page.getByLabel('Giới thiệu thương hiệu cho AI')).toBeVisible();
+    await expect(page.getByRole('button', { name: /AI đề xuất|Tạo hồ sơ|Xác nhận hồ sơ/ })).toHaveCount(0);
+    await expect(page.getByText(/confidence|độ tin cậy/i)).toHaveCount(0);
   });
 
   test('409 version conflict yêu cầu tải bản mới, không tự gửi lại', async ({ page }) => {
@@ -150,14 +153,14 @@ test.describe('lát cắt 1 — hồ sơ thương hiệu', () => {
       const updateResponse = await fetch(endpoint, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ version, fields: [], confirm: false }),
+        body: JSON.stringify({ version, profile_text: 'Hồ sơ mới được cập nhật ở tab khác.', confirm: false }),
       });
       if (!updateResponse.ok) throw new Error('Could not advance the mock revision.');
     });
 
-    await page.getByLabel(/Sửa.*Tên doanh nghiệp/).fill('Tên đang sửa ở tab cũ');
-    await page.getByRole('button', { name: 'Lưu thay đổi' }).click();
-    await expect(page.getByText(/Nội dung này vừa được người khác cập nhật/)).toBeVisible();
+    await page.getByLabel('Giới thiệu thương hiệu cho AI').fill('Hồ sơ đang sửa ở tab cũ.');
+    await page.getByRole('button', { name: 'Lưu và áp dụng' }).click();
+    await expect(page.getByText(/Bản trên máy chủ đã đổi/)).toBeVisible();
     await expect(page.getByRole('button', { name: 'Tải bản mới nhất' })).toBeVisible();
     await expect(page.getByRole('button', { name: 'Thử lại' })).toHaveCount(0);
   });
@@ -166,8 +169,9 @@ test.describe('lát cắt 1 — hồ sơ thương hiệu', () => {
     await login(page);
     await page.goto('/w/ws_pho_bac/documents');
     await expect(page.getByText('Đã đọc xong nội dung').first()).toBeVisible();
-    await expect(page.getByText('Đã tạo/cập nhật Brand Profile').first()).toBeVisible();
-    await expect(page.getByText('Truy xuất từ khóa (lexical)').first()).toBeVisible();
+    await expect(page.getByText('Lưu kiến thức').first()).toBeVisible();
+    await expect(page.getByText('Sẵn sàng truy xuất').first()).toBeVisible();
+    await expect(page.getByText(/Đã tạo\/cập nhật Brand Profile/)).toHaveCount(0);
 
     // "Đọc lại tài liệu" là BUTTON (gọi POST reprocess rồi mới chuyển trang),
     // không phải link.

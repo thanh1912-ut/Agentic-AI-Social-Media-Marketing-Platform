@@ -13,7 +13,7 @@
  * - Dữ liệu demo PHẢI mang nhãn nhìn thấy được.
  */
 
-import type { ReactNode } from 'react';
+import { useId, type ButtonHTMLAttributes, type MouseEventHandler, type ReactNode } from 'react';
 
 // ---------------------------------------------------------------------------
 // Sắc thái màu — khai báo một chỗ
@@ -23,11 +23,39 @@ export type Tone = 'neutral' | 'info' | 'success' | 'warning' | 'danger';
 
 export const TONE_CLASS: Record<Tone, string> = {
   neutral: 'bg-slate-100 text-slate-700 border-slate-200',
-  info: 'bg-sky-50 text-sky-800 border-sky-200',
+  info: 'bg-teal-50 text-teal-900 border-teal-200',
   success: 'bg-emerald-50 text-emerald-800 border-emerald-200',
   warning: 'bg-amber-50 text-amber-900 border-amber-200',
   danger: 'bg-rose-50 text-rose-800 border-rose-200',
 };
+
+export function PageHeader({
+  eyebrow,
+  title,
+  description,
+  actions,
+  children,
+  className = '',
+}: {
+  eyebrow?: string;
+  title: string;
+  description?: string;
+  actions?: ReactNode;
+  children?: ReactNode;
+  className?: string;
+}) {
+  return (
+    <header className={`page-header ${className}`}>
+      <div className="page-header-copy">
+        {eyebrow ? <p className="page-eyebrow">{eyebrow}</p> : null}
+        <h1 className="page-title">{title}</h1>
+        {description ? <p className="page-description">{description}</p> : null}
+        {children}
+      </div>
+      {actions ? <div className="page-header-actions">{actions}</div> : null}
+    </header>
+  );
+}
 
 export const TONE_DOT_CLASS: Record<Tone, string> = {
   neutral: 'bg-slate-400',
@@ -211,7 +239,7 @@ export function EmptyState({
 }) {
   return (
     <div
-      className={`rounded-lg border border-dashed px-6 py-10 text-center ${TONE_CLASS[tone]}`}
+      className={`rounded-2xl border border-dashed px-6 py-10 text-center ${TONE_CLASS[tone]}`}
     >
       <h3 className="text-sm font-semibold">{title}</h3>
       <p className="mx-auto mt-1 max-w-prose text-sm opacity-90">{description}</p>
@@ -246,7 +274,7 @@ export function ErrorPanel({
   children?: ReactNode;
 }) {
   return (
-    <div role="alert" className="rounded-lg border border-rose-200 bg-rose-50 px-4 py-4">
+    <div role="alert" className="rounded-2xl border border-rose-200 bg-rose-50 px-5 py-4">
       <h3 className="text-sm font-semibold text-rose-900">{title}</h3>
       <p className="mt-1 text-sm text-rose-800">{message}</p>
       {children}
@@ -314,7 +342,7 @@ export function PermissionNotice({
   requiredPermission?: string;
 }) {
   return (
-    <div role="note" className="rounded-lg border border-slate-300 bg-slate-50 px-4 py-3">
+    <div role="note" className="rounded-2xl border border-slate-200 bg-white px-5 py-4 shadow-sm">
       <h3 className="text-sm font-semibold text-slate-800">Bạn không thực hiện được việc này</h3>
       <p className="mt-1 text-sm text-slate-700">{message}</p>
       {requiredPermission ? (
@@ -343,7 +371,7 @@ export function UnavailableNotice({
   action?: ReactNode;
 }) {
   return (
-    <div role="note" className="rounded-lg border border-slate-300 bg-slate-50 px-4 py-3">
+    <div role="note" className="rounded-2xl border border-slate-200 bg-white px-5 py-4 shadow-sm">
       <h3 className="text-sm font-semibold text-slate-800">{title}</h3>
       <p className="mt-1 text-sm text-slate-700">{reason}</p>
       {remedy ? <p className="mt-1 text-sm text-slate-600">Việc cần làm: {remedy}</p> : null}
@@ -370,19 +398,19 @@ export function Card({
   footer?: ReactNode;
 }) {
   return (
-    <section className="rounded-xl border border-slate-200 bg-white shadow-sm">
+    <section className="ui-card rounded-2xl border border-slate-200 bg-white shadow-sm">
       {title || actions ? (
         <header className="flex flex-wrap items-start justify-between gap-3 border-b border-slate-200 px-5 py-4">
-          <div>
+          <div className="min-w-0">
             {title ? <h2 className="text-base font-semibold text-slate-900">{title}</h2> : null}
             {description ? (
-              <p className="mt-0.5 text-sm text-slate-600">{description}</p>
+              <p className="mt-1 text-sm leading-6 text-slate-600">{description}</p>
             ) : null}
           </div>
-          {actions ? <div className="flex flex-wrap gap-2">{actions}</div> : null}
+          {actions ? <div className="flex flex-wrap items-center gap-2">{actions}</div> : null}
         </header>
       ) : null}
-      <div className="px-5 py-4">{children}</div>
+      <div className="px-5 py-5">{children}</div>
       {footer ? (
         <footer className="border-t border-slate-200 px-5 py-3 text-sm text-slate-600">
           {footer}
@@ -412,7 +440,7 @@ export function StatCard({
   badge?: ReactNode;
 }) {
   return (
-    <div className="rounded-xl border border-slate-200 bg-white px-4 py-3 shadow-sm">
+    <div className="ui-card rounded-2xl border border-slate-200 bg-white px-5 py-4 shadow-sm">
       <div className="flex items-start justify-between gap-2">
         <p className="text-sm text-slate-600">{label}</p>
         {badge}
@@ -457,7 +485,7 @@ export function FieldRow({
 type ButtonVariant = 'primary' | 'secondary' | 'danger' | 'ghost';
 
 const BUTTON_VARIANT_CLASS: Record<ButtonVariant, string> = {
-  primary: 'bg-slate-900 text-white hover:bg-slate-800 disabled:bg-slate-400',
+  primary: 'bg-teal-800 text-white hover:bg-teal-900 disabled:bg-slate-400',
   secondary:
     'border border-slate-300 bg-white text-slate-800 hover:bg-slate-50 disabled:text-slate-400',
   danger: 'bg-rose-600 text-white hover:bg-rose-700 disabled:bg-rose-300',
@@ -480,9 +508,12 @@ export function Button({
   disabledReason,
   loading = false,
   title,
+  className,
+  'aria-describedby': ariaDescribedBy,
+  ...nativeProps
 }: {
-  children: ReactNode;
-  onClick?: () => void;
+  children?: ReactNode;
+  onClick?: MouseEventHandler<HTMLButtonElement>;
   type?: 'button' | 'submit';
   variant?: ButtonVariant;
   size?: 'sm' | 'md';
@@ -490,9 +521,13 @@ export function Button({
   disabledReason?: string;
   loading?: boolean;
   title?: string;
-}) {
+  className?: string;
+} & Omit<ButtonHTMLAttributes<HTMLButtonElement>, 'children' | 'type' | 'disabled' | 'onClick' | 'className' | 'title'>) {
+  const id = useId();
   const isDisabled = disabled || loading;
   const tooltip = title ?? (isDisabled ? disabledReason : undefined);
+  const describedBy = [ariaDescribedBy, isDisabled && disabledReason ? `${id}-disabled-reason` : undefined]
+    .filter(Boolean).join(' ') || undefined;
   return (
     <button
       type={type}
@@ -500,11 +535,13 @@ export function Button({
       disabled={isDisabled}
       title={tooltip}
       aria-disabled={isDisabled}
-      aria-describedby={isDisabled && disabledReason ? 'btn-disabled-reason' : undefined}
-      className={`inline-flex items-center justify-center gap-2 rounded-lg font-medium transition-colors ${
+      aria-describedby={describedBy}
+      className={`inline-flex min-h-10 items-center justify-center gap-2 rounded-xl font-semibold transition-[background,color,border,box-shadow,transform] duration-150 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-teal-700 active:scale-[.985] ${
         size === 'sm' ? 'px-3 py-1.5 text-sm' : 'px-4 py-2 text-sm'
-      } ${BUTTON_VARIANT_CLASS[variant]} disabled:cursor-not-allowed`}
+      } ${BUTTON_VARIANT_CLASS[variant]} disabled:cursor-not-allowed ${className ?? ''}`}
+      {...nativeProps}
     >
+      {isDisabled && disabledReason ? <span id={`${id}-disabled-reason`} className="sr-only">{disabledReason}</span> : null}
       {loading ? (
         <span
           role="status"

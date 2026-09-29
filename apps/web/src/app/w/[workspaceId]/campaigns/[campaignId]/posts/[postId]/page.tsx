@@ -25,6 +25,7 @@ import {
   EmptyState,
   ErrorPanel,
   LoadingBlock,
+  PageHeader,
   PermissionNotice,
   StatusBadge,
   VersionConflictNotice,
@@ -241,14 +242,12 @@ export default function PostEditorPage() {
 
   return (
     <div className="space-y-6">
-      <header className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <p className="text-sm text-slate-500"><Link href={`/w/${workspaceId}/campaigns/${campaignId}`} className="underline">Chiến dịch</Link> / bài viết</p>
-          <h1 className="mt-1 text-lg font-semibold text-slate-900">Biên tập bài viết</h1>
-          <p className="mt-1 text-sm text-slate-600">Phiên bản {current.version} · cập nhật {formatDateTime(current.updated_at)}</p>
-        </div>
-        <StatusBadge label={current.requires_reapproval ? 'Cần duyệt lại' : postStatus.label} tone={current.requires_reapproval ? 'warning' : postStatus.tone} />
-      </header>
+      <Link href={`/w/${workspaceId}/campaigns/${campaignId}`} className="inline-block text-sm font-medium text-teal-800 hover:underline">← Về chiến dịch</Link>
+      <PageHeader
+        title="Biên tập bài viết"
+        description={`Phiên bản ${current.version} · cập nhật ${formatDateTime(current.updated_at)}`}
+        actions={<StatusBadge label={current.requires_reapproval ? 'Cần duyệt lại' : postStatus.label} tone={current.requires_reapproval ? 'warning' : postStatus.tone} />}
+      />
 
       {mocksEnabled ? <DemoNotice /> : null}
       {current.requires_reapproval ? <div role="note" className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">Bài đã từng được duyệt nhưng đã có thay đổi mới. Phải gửi duyệt lại đúng phiên bản {current.version} trước khi đăng.</div> : null}
@@ -257,47 +256,8 @@ export default function PostEditorPage() {
       {hasBlockingError ? <VersionConflictNotice currentVersion={apiError?.currentVersion} onReload={() => { void post.refetch(); void versions.refetch(); }} /> : null}
       {update.error && !hasBlockingError ? <ErrorPanel title="Không lưu được phiên bản mới" message={apiError?.message ?? 'Hãy thử lại.'} code={apiError?.code} requestId={apiError?.requestId} retryable={apiError?.retryable} onRetry={() => update.reset()} /> : null}
 
-      <Card title="Yêu cầu AI sửa" description="AI dùng hồ sơ thương hiệu do Owner viết và chỉ các tài liệu bạn chọn để tạo phiên bản mới. Bài vẫn cần người dùng duyệt; AI không đăng bài.">
-        {canGenerate ? <form onSubmit={requestAiRevision} className="space-y-3">
-          <div>
-            <label htmlFor="ai-revision-instruction" className="block text-sm font-medium text-slate-700">Bạn muốn sửa thế nào?</label>
-            <textarea id="ai-revision-instruction" value={revisionInstruction} onChange={(event) => setRevisionInstruction(event.target.value)} maxLength={2000} required rows={3} placeholder="Ví dụ: viết ngắn hơn, giữ giọng thân thiện và kết thúc bằng lời mời ghé quán." className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900" />
-          </div>
-          <div>
-            <label htmlFor="ai-revision-scope" className="block text-sm font-medium text-slate-700">Phạm vi sửa</label>
-            <select id="ai-revision-scope" value={revisionScope} onChange={(event) => setRevisionScope(event.target.value as NonNullable<ReviseWithAiRequest['scope']>)} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900 sm:max-w-sm">
-              <option value="caption">Caption, hook và CTA</option>
-              <option value="hashtags">Hashtag</option>
-              <option value="media">Mô tả ảnh (không tạo hoặc thay ảnh)</option>
-              <option value="all">Tất cả nội dung AI hỗ trợ</option>
-            </select>
-          </div>
-          <fieldset className="space-y-2 rounded-lg border border-slate-200 p-3">
-            <legend className="px-1 text-sm font-medium text-slate-800">Tài liệu tham khảo cho lần sửa này</legend>
-            <p className="text-xs text-slate-600">Lựa chọn hiện tại của bài được nạp sẵn. Bỏ hết lựa chọn để sửa chỉ dựa trên hồ sơ thương hiệu và yêu cầu của bạn.</p>
-            {documents.isPending ? <p className="text-sm text-slate-600">Đang tải tài liệu…</p> : documents.isError ? <p role="alert" className="text-sm text-rose-700">Không tải được danh sách tài liệu. Hãy thử lại trước khi gửi yêu cầu sửa.</p> : documents.data?.length ? documents.data.map((document) => <label key={document.id} className={`flex items-start gap-2 rounded-lg border p-3 text-sm ${document.selectable_for_content ? 'border-slate-200 bg-white' : 'border-slate-100 bg-slate-50 text-slate-500'}`}>
-              <input type="checkbox" checked={revisionDocumentIds.includes(document.id)} disabled={!document.selectable_for_content || revisionDocumentIds.length >= 20 && !revisionDocumentIds.includes(document.id)} onChange={(event) => setRevisionDocumentIds((currentIds) => event.target.checked ? [...currentIds, document.id] : currentIds.filter((id) => id !== document.id))} />
-              <span><span className="font-medium">{document.filename}</span><span className="ml-2 text-xs">{document.selectable_for_content ? 'Sẵn sàng' : revisionDocumentIds.includes(document.id) ? 'Đã chọn nhưng cần chọn lại' : 'Chưa sẵn sàng'}</span></span>
-            </label>) : <p className="text-sm text-slate-600">Chưa có tài liệu sẵn sàng. Có thể sửa bài mà không cần tài liệu. <Link href={`/w/${workspaceId}/documents`} className="font-medium underline">Mở mục Tài liệu</Link></p>}
-            {revisionDocumentIds.some((id) => !documents.data?.some((document) => document.id === id && document.selectable_for_content)) ? <p role="alert" className="text-sm text-amber-800">Một tài liệu đang chọn đã bị xóa hoặc chưa sẵn sàng. Hãy bỏ chọn hoặc chọn nguồn khác.</p> : null}
-            <label htmlFor="revision-document-usage-note" className="block text-sm font-medium text-slate-800">Bạn muốn dùng tài liệu này như thế nào?</label>
-            <textarea id="revision-document-usage-note" value={revisionDocumentNote} onChange={(event) => setRevisionDocumentNote(event.target.value)} maxLength={4000} rows={2} placeholder="Ví dụ: Chỉ dùng bảng giá còn hiệu lực, không suy ra số liệu khác." className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" />
-            <button type="button" className="text-sm font-medium text-indigo-700 underline" onClick={() => { setRevisionDocumentIds([]); setRevisionDocumentNote(''); }}>Bỏ hết tài liệu</button>
-          </fieldset>
-          <Button type="submit" loading={reviseWithAi.isPending || revisionJob.data?.status === 'queued' || revisionJob.data?.status === 'running'} disabled={!revisionInstruction.trim() || current.status === 'scheduled' || current.status === 'published'} disabledReason={current.status === 'scheduled' || current.status === 'published' ? 'Bài đã lên lịch hoặc đã đăng.' : 'Nhập yêu cầu sửa trước.'}>Tạo phiên bản AI sửa</Button>
-          {!canGenerate ? <PermissionNotice message={permissionDeniedReason(workspace, PERMISSIONS.POST_GENERATE)} requiredPermission={PERMISSIONS.POST_GENERATE} /> : null}
-          {reviseWithAi.error ? <ErrorPanel title="Không gửi được yêu cầu AI sửa" message={reviseWithAi.error instanceof ApiError ? reviseWithAi.error.message : 'Hãy thử lại.'} code={reviseWithAi.error instanceof ApiError ? reviseWithAi.error.code : undefined} requestId={reviseWithAi.error instanceof ApiError ? reviseWithAi.error.requestId : undefined} retryable={reviseWithAi.error instanceof ApiError ? reviseWithAi.error.retryable : false} onRetry={() => reviseWithAi.reset()} /> : null}
-          {revisionJobId && revisionJob.data ? <div role="status" aria-live="polite" className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-3 text-sm text-slate-700">
-            <p className="font-medium">{revisionJob.data.title} · {revisionJob.data.status}</p>
-            {revisionJob.data.error ? <p className="mt-1 text-rose-700">{revisionJob.data.error.message}</p> : null}
-            {revisionJob.data.status === 'succeeded' ? <p className="mt-1">Phiên bản mới đã được tải vào trình biên tập. Kiểm tra nội dung rồi gửi duyệt.</p> : null}
-            <Link className="mt-2 inline-block underline" href={`/w/${workspaceId}/jobs/${revisionJobId}`}>Xem tiến trình tác vụ</Link>
-          </div> : null}
-          {revisionJob.isError ? <p role="alert" className="text-sm text-rose-700">Không theo dõi được tác vụ AI sửa. Hãy mở tác vụ hoặc tải lại trang.</p> : null}
-        </form> : <PermissionNotice message={permissionDeniedReason(workspace, PERMISSIONS.POST_GENERATE)} requiredPermission={PERMISSIONS.POST_GENERATE} />}
-      </Card>
 
-      <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_360px]">
+      <div className="grid items-start gap-5 xl:grid-cols-[minmax(0,1fr)_360px]">
         <Card title="Nội dung bài viết" description="Mỗi lần lưu tạo phiên bản mới. Bản cũ vẫn giữ nguyên để đối chiếu.">
           <form onSubmit={save} className="space-y-4">
             <div>
@@ -340,17 +300,60 @@ export default function PostEditorPage() {
           </form>
         </Card>
 
-        <Card title="Preview Facebook" description="Bản xem trước không phải thao tác đăng bài.">
+        <Card title="Xem trước Facebook" description="Bản xem trước không phải thao tác đăng bài.">
           <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
-            <div className="flex items-center gap-2 border-b border-slate-100 px-4 py-3"><div className="flex size-8 items-center justify-center rounded-full bg-slate-900 text-xs font-semibold text-white">PB</div><div><p className="text-sm font-semibold">Phở Bắc Hà Nội</p><p className="text-xs text-slate-500">Bây giờ · 🌐</p></div></div>
+            <div className="flex items-center gap-2 border-b border-slate-100 px-4 py-3"><div className="flex size-8 items-center justify-center rounded-full bg-slate-900 text-xs font-semibold text-white">{(workspace?.name ?? 'Workspace').slice(0, 2).toUpperCase()}</div><div><p className="text-sm font-semibold">{workspace?.name ?? 'Workspace'}</p><p className="text-xs text-slate-500">Bản xem trước · chưa xuất bản</p></div></div>
             {previewMedia.filter((media) => media.source === 'uploaded').map((media) => <PostMediaPreview key={`facebook-${media.id}`} media={media} />)}
             <div className="px-4 py-4"><p className="prose-caption text-sm text-slate-800">{caption || 'Caption sẽ hiển thị ở đây.'}</p><p className="mt-3 text-sm text-sky-700">{hashtags}</p></div>
-            <div className="border-t border-slate-100 px-4 py-3 text-xs text-slate-500">Bản {current.version} · chưa đăng</div>
+            <div className="border-t border-slate-100 px-4 py-3 text-xs text-slate-500">Bản {current.version} · xem trước nội dung</div>
           </div>
         </Card>
       </div>
 
-      <Card title="Duyệt nội dung" description="AI review chỉ là feedback. Quyết định cuối cùng vẫn cần người có quyền duyệt.">
+      <details className="rounded-2xl border border-slate-200 bg-white [&>section]:border-0 [&>section]:shadow-none">
+        <summary className="cursor-pointer px-5 py-4 font-semibold text-slate-900">Chỉnh sửa cùng AI <span className="ml-2 text-sm font-normal text-slate-500">Tạo một phiên bản mới từ yêu cầu của bạn</span></summary>
+      <Card title="Yêu cầu AI sửa" description="AI dùng hồ sơ thương hiệu do Owner viết và chỉ các tài liệu bạn chọn để tạo phiên bản mới. Bài vẫn cần người dùng duyệt; AI không đăng bài.">
+        {canGenerate ? <form onSubmit={requestAiRevision} className="space-y-3">
+          <div>
+            <label htmlFor="ai-revision-instruction" className="block text-sm font-medium text-slate-700">Bạn muốn sửa thế nào?</label>
+            <textarea id="ai-revision-instruction" value={revisionInstruction} onChange={(event) => setRevisionInstruction(event.target.value)} maxLength={2000} required rows={3} placeholder="Ví dụ: viết ngắn hơn, giữ giọng thân thiện và kết thúc bằng lời mời ghé quán." className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900" />
+          </div>
+          <div>
+            <label htmlFor="ai-revision-scope" className="block text-sm font-medium text-slate-700">Phạm vi sửa</label>
+            <select id="ai-revision-scope" value={revisionScope} onChange={(event) => setRevisionScope(event.target.value as NonNullable<ReviseWithAiRequest['scope']>)} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900 sm:max-w-sm">
+              <option value="caption">Caption, hook và CTA</option>
+              <option value="hashtags">Hashtag</option>
+              <option value="media">Mô tả ảnh (không tạo hoặc thay ảnh)</option>
+              <option value="all">Tất cả nội dung AI hỗ trợ</option>
+            </select>
+          </div>
+          <fieldset className="space-y-2 rounded-lg border border-slate-200 p-3">
+            <legend className="px-1 text-sm font-medium text-slate-800">Tài liệu tham khảo cho lần sửa này</legend>
+            <p className="text-xs text-slate-600">Lựa chọn hiện tại của bài được nạp sẵn. Bỏ hết lựa chọn để sửa chỉ dựa trên hồ sơ thương hiệu và yêu cầu của bạn.</p>
+            {documents.isPending ? <p className="text-sm text-slate-600">Đang tải tài liệu…</p> : documents.isError ? <p role="alert" className="text-sm text-rose-700">Không tải được danh sách tài liệu. Hãy thử lại trước khi gửi yêu cầu sửa.</p> : documents.data?.length ? documents.data.map((document) => <label key={document.id} className={`flex items-start gap-2 rounded-lg border p-3 text-sm ${document.selectable_for_content ? 'border-slate-200 bg-white' : 'border-slate-100 bg-slate-50 text-slate-500'}`}>
+              <input type="checkbox" checked={revisionDocumentIds.includes(document.id)} disabled={!document.selectable_for_content || revisionDocumentIds.length >= 20 && !revisionDocumentIds.includes(document.id)} onChange={(event) => setRevisionDocumentIds((currentIds) => event.target.checked ? [...currentIds, document.id] : currentIds.filter((id) => id !== document.id))} />
+              <span><span className="font-medium">{document.filename}</span><span className="ml-2 text-xs">{document.selectable_for_content ? 'Sẵn sàng' : revisionDocumentIds.includes(document.id) ? 'Đã chọn nhưng cần chọn lại' : 'Chưa sẵn sàng'}</span></span>
+            </label>) : <p className="text-sm text-slate-600">Chưa có tài liệu sẵn sàng. Có thể sửa bài mà không cần tài liệu. <Link href={`/w/${workspaceId}/documents`} className="font-medium underline">Mở mục Tài liệu</Link></p>}
+            {revisionDocumentIds.some((id) => !documents.data?.some((document) => document.id === id && document.selectable_for_content)) ? <p role="alert" className="text-sm text-amber-800">Một tài liệu đang chọn đã bị xóa hoặc chưa sẵn sàng. Hãy bỏ chọn hoặc chọn nguồn khác.</p> : null}
+            <label htmlFor="revision-document-usage-note" className="block text-sm font-medium text-slate-800">Bạn muốn dùng tài liệu này như thế nào?</label>
+            <textarea id="revision-document-usage-note" value={revisionDocumentNote} onChange={(event) => setRevisionDocumentNote(event.target.value)} maxLength={4000} rows={2} placeholder="Ví dụ: Chỉ dùng bảng giá còn hiệu lực, không suy ra số liệu khác." className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" />
+            <button type="button" className="text-sm font-medium text-indigo-700 underline" onClick={() => { setRevisionDocumentIds([]); setRevisionDocumentNote(''); }}>Bỏ hết tài liệu</button>
+          </fieldset>
+          <Button type="submit" loading={reviseWithAi.isPending || revisionJob.data?.status === 'queued' || revisionJob.data?.status === 'running'} disabled={!revisionInstruction.trim() || current.status === 'scheduled' || current.status === 'published'} disabledReason={current.status === 'scheduled' || current.status === 'published' ? 'Bài đã lên lịch hoặc đã đăng.' : 'Nhập yêu cầu sửa trước.'}>Tạo phiên bản AI sửa</Button>
+          {!canGenerate ? <PermissionNotice message={permissionDeniedReason(workspace, PERMISSIONS.POST_GENERATE)} requiredPermission={PERMISSIONS.POST_GENERATE} /> : null}
+          {reviseWithAi.error ? <ErrorPanel title="Không gửi được yêu cầu AI sửa" message={reviseWithAi.error instanceof ApiError ? reviseWithAi.error.message : 'Hãy thử lại.'} code={reviseWithAi.error instanceof ApiError ? reviseWithAi.error.code : undefined} requestId={reviseWithAi.error instanceof ApiError ? reviseWithAi.error.requestId : undefined} retryable={reviseWithAi.error instanceof ApiError ? reviseWithAi.error.retryable : false} onRetry={() => reviseWithAi.reset()} /> : null}
+          {revisionJobId && revisionJob.data ? <div role="status" aria-live="polite" className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-3 text-sm text-slate-700">
+            <p className="font-medium">{revisionJob.data.title} · {revisionJob.data.status}</p>
+            {revisionJob.data.error ? <p className="mt-1 text-rose-700">{revisionJob.data.error.message}</p> : null}
+            {revisionJob.data.status === 'succeeded' ? <p className="mt-1">Phiên bản mới đã được tải vào trình biên tập. Kiểm tra nội dung rồi gửi duyệt.</p> : null}
+            <Link className="mt-2 inline-block underline" href={`/w/${workspaceId}/jobs/${revisionJobId}`}>Xem tiến trình tác vụ</Link>
+          </div> : null}
+          {revisionJob.isError ? <p role="alert" className="text-sm text-rose-700">Không theo dõi được tác vụ AI sửa. Hãy mở tác vụ hoặc tải lại trang.</p> : null}
+        </form> : <PermissionNotice message={permissionDeniedReason(workspace, PERMISSIONS.POST_GENERATE)} requiredPermission={PERMISSIONS.POST_GENERATE} />}
+      </Card>
+      </details>
+
+      <Card title="Duyệt nội dung" description="Kiểm tra nội dung trước, người có quyền duyệt đưa ra quyết định cuối cùng.">
         <div className="mb-4 flex flex-wrap items-center gap-3">
           <Button variant="secondary" onClick={() => runReview.mutate(current.version)} loading={runReview.isPending} disabled={!canEdit || postLocked} disabledReason={postLocked ? 'Bài đã lên lịch hoặc đã đăng.' : 'Bạn không có quyền sửa bài.'}>Chạy kiểm tra bản {current.version}</Button>
           {currentReview ? <StatusBadge label={currentReview.status === 'ready' ? 'Không có mục chặn' : 'Cần sửa trước khi duyệt'} tone={currentReview.status === 'ready' ? 'success' : 'danger'} /> : <span className="text-sm text-amber-800">Chưa có kiểm tra cho phiên bản hiện tại.</span>}

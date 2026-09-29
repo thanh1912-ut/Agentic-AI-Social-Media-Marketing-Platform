@@ -12,6 +12,7 @@ import {
   type Campaign,
 } from '@agentic/contracts';
 
+import { Icon } from '@/components/icon';
 import { useSession } from '@/components/session-gate';
 import {
   Card,
@@ -20,6 +21,7 @@ import {
   EmptyState,
   ErrorPanel,
   LoadingBlock,
+  PageHeader,
   StatusBadge,
 } from '@/components/ui';
 import { useCampaignPlanJob, useCampaigns, useCreateCampaign, usePlanCampaign } from '@/lib/hooks';
@@ -36,40 +38,24 @@ function dateOffset(days: number): string {
 function CampaignCard({ workspaceId, campaign }: { workspaceId: string; campaign: Campaign }) {
   const status = CAMPAIGN_STATUS_LABELS[campaign.status];
   return (
-    <Card
-      title={campaign.name}
-      description={`${formatDate(campaign.brief.start_date)} – ${formatDate(campaign.brief.end_date)}`}
-      actions={<StatusBadge label={status.label} tone={status.tone} />}
-      footer={
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <p className="text-xs text-slate-500">
-            {formatNumber(campaign.post_count)} bài · {formatNumber(campaign.approved_count)} đã duyệt ·{' '}
-            {formatNumber(campaign.published_count)} đã đăng
-          </p>
-          <Link
-            href={`/w/${workspaceId}/campaigns/${campaign.id}`}
-            className="text-sm font-medium text-slate-900 underline"
-          >
-            Mở chiến dịch
-          </Link>
+    <article className="rounded-2xl border border-slate-200 bg-white p-5 transition-colors hover:border-teal-300">
+      <div className="flex flex-wrap items-start gap-4">
+        <span className="flex size-11 shrink-0 items-center justify-center rounded-xl bg-teal-50 text-teal-800"><Icon name="campaign" size={20} /></span>
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <h2 className="font-semibold text-slate-900"><Link href={`/w/${workspaceId}/campaigns/${campaign.id}`} className="hover:text-teal-800">{campaign.name}</Link></h2>
+            <StatusBadge label={status.label} tone={status.tone} />
+          </div>
+          <p className="mt-1 text-xs text-slate-500">{formatDate(campaign.brief.start_date)} – {formatDate(campaign.brief.end_date)} · {CAMPAIGN_OBJECTIVE_LABELS[campaign.brief.objective]}</p>
+          <p className="mt-3 line-clamp-2 text-sm leading-6 text-slate-700">{campaign.brief.key_message}</p>
+          <p className="mt-1 text-xs text-slate-500">Khán giả: {campaign.brief.audience.join(' · ')}</p>
+          <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 pt-3">
+            <p className="text-xs text-slate-500">{formatNumber(campaign.post_count)} bài · {formatNumber(campaign.approved_count)} đã duyệt · {formatNumber(campaign.published_count)} đã đăng</p>
+            <Link href={`/w/${workspaceId}/campaigns/${campaign.id}`} className="inline-flex items-center gap-2 text-sm font-semibold text-teal-800">Mở chiến dịch <Icon name="arrow-right" size={16} /></Link>
+          </div>
         </div>
-      }
-    >
-      <dl className="space-y-2 text-sm">
-        <div>
-          <dt className="font-medium text-slate-600">Mục tiêu</dt>
-          <dd className="mt-0.5 text-slate-900">{CAMPAIGN_OBJECTIVE_LABELS[campaign.brief.objective]}</dd>
-        </div>
-        <div>
-          <dt className="font-medium text-slate-600">Thông điệp chính</dt>
-          <dd className="mt-0.5 text-slate-900">{campaign.brief.key_message}</dd>
-        </div>
-        <div>
-          <dt className="font-medium text-slate-600">Khán giả</dt>
-          <dd className="mt-0.5 text-slate-700">{campaign.brief.audience.join(' · ')}</dd>
-        </div>
-      </dl>
-    </Card>
+      </div>
+    </article>
   );
 }
 
@@ -163,17 +149,48 @@ export default function CampaignsPage() {
 
   return (
     <div className="space-y-6">
-      <header>
-        <h1 className="text-lg font-semibold text-slate-900">Chiến dịch và lịch nội dung</h1>
-        <p className="mt-1 text-sm text-slate-600">
-          Xem brief, theo dõi bài viết và mở từng bài để chỉnh sửa hoặc gửi duyệt.
-        </p>
-      </header>
+      <PageHeader
+        eyebrow="Kế hoạch nội dung"
+        title="Chiến dịch"
+        description="Từ ý tưởng đến bài đã duyệt. Quản lý brief, bản nháp và lịch nội dung ở một nơi."
+        actions={canCreate ? <a href="#create-campaign" className="inline-flex items-center gap-2 rounded-xl bg-teal-800 px-4 py-2.5 text-sm font-semibold text-white hover:bg-teal-900"><Icon name="plus" size={17} /> Tạo chiến dịch</a> : undefined}
+      />
 
       {mocksEnabled ? <DemoNotice /> : null}
 
+      <section aria-label="Danh sách chiến dịch" className="space-y-4">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <h2 className="text-base font-semibold text-slate-900">Chiến dịch của bạn</h2>
+          {campaigns.data ? <span className="text-xs text-slate-500">{formatNumber(campaigns.data.items.length)} chiến dịch đang hiển thị</span> : null}
+        </div>
+      {campaigns.isPending ? <LoadingBlock label="Đang tải danh sách chiến dịch…" /> : null}
+      {campaigns.isError ? (
+        <ErrorPanel
+          title="Không tải được chiến dịch"
+          message="Hệ thống chưa tải được danh sách chiến dịch. Bạn có thể thử lại mà không tạo thêm dữ liệu."
+          retryable
+          onRetry={() => void campaigns.refetch()}
+        />
+      ) : null}
+      {campaigns.data && campaigns.data.items.length === 0 ? (
+        <EmptyState
+          title="Chưa có chiến dịch nào"
+          description="Viết và áp dụng hồ sơ thương hiệu, rồi tạo chiến dịch đầu tiên bằng yêu cầu AI hoặc brief của bạn."
+        />
+      ) : null}
+      {campaigns.data && campaigns.data.items.length > 0 ? (
+        <div className="grid gap-3 xl:grid-cols-2">
+          {campaigns.data.items.map((campaign) => (
+            <CampaignCard key={campaign.id} workspaceId={workspaceId} campaign={campaign} />
+          ))}
+        </div>
+      ) : null}
+      </section>
+
+      {canCreate ? <div id="create-campaign" className="scroll-mt-24 border-t border-slate-200 pt-6"><h2 className="text-lg font-semibold text-slate-900">Bắt đầu một chiến dịch</h2><p className="mt-1 text-sm text-slate-600">Nhờ AI lên ý tưởng từ hồ sơ bạn viết, hoặc tự xây brief theo kế hoạch đã có.</p></div> : null}
+
       {canCreate ? (
-        <Card title="Đề xuất brief và 3 concept từ yêu cầu" description="DeepSeek đọc hồ sơ thương hiệu do Owner tự viết để lập bản đề xuất. Không tạo campaign hoặc đăng bài cho tới khi bạn chọn concept và xác nhận.">
+        <Card title="Lên ý tưởng cùng AI" description="Nhận brief và 3 hướng nội dung từ yêu cầu của bạn. Chỉ tạo chiến dịch sau khi bạn chọn và xác nhận.">
           <form className="space-y-3" onSubmit={requestPlan}>
             <label htmlFor="campaign-planning-prompt" className="block text-sm font-medium text-slate-700">Bạn muốn truyền thông điều gì?</label>
             <textarea id="campaign-planning-prompt" value={planningPrompt} onChange={(event) => setPlanningPrompt(event.target.value)} maxLength={4000} minLength={8} required rows={3} placeholder="Ví dụ: Lên nội dung giáo dục phụ huynh nhận biết tin nhắn giả mạo trường học, không dùng số liệu nếu chưa có nguồn." className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" />
@@ -188,15 +205,18 @@ export default function CampaignsPage() {
           {proposal ? <div className="mt-4 space-y-4 border-t border-slate-200 pt-4">
             <div><h2 className="font-semibold text-slate-900">{proposal.campaign_name}</h2><p className="mt-1 text-sm text-slate-600">{proposal.topic} · {proposal.objective} · {proposal.start_date}–{proposal.end_date}</p><p className="mt-2 text-sm text-slate-800">{proposal.key_message}</p><p className="mt-1 text-xs text-slate-600">Khán giả: {proposal.audience.join(' · ')} · Giọng: {proposal.tone}</p></div>
             {(proposal.assumptions ?? []).length ? <p className="rounded-lg bg-amber-50 p-3 text-sm text-amber-900">Giả định cần kiểm tra: {(proposal.assumptions ?? []).join(' · ')}</p> : null}
-            <fieldset className="grid gap-3 md:grid-cols-3"><legend className="mb-2 text-sm font-semibold text-slate-800">Chọn concept</legend>{proposal.concepts.map((concept) => <label key={concept.id} className={`cursor-pointer rounded-lg border p-3 ${selectedConceptId === concept.id ? 'border-sky-600 bg-sky-50' : 'border-slate-200'}`}><input className="mr-2" type="radio" name="campaign-concept" checked={selectedConceptId === concept.id} onChange={() => setSelectedConceptId(concept.id)} /><span className="font-medium">{concept.title}</span><p className="mt-2 text-sm">{concept.angle}</p><p className="mt-2 text-xs text-slate-600">Hook: {concept.hook}</p><p className="mt-1 text-xs text-slate-600">CTA: {concept.cta}</p><p className="mt-1 text-xs text-slate-600">#{(concept.hashtags ?? []).join(' #')}</p></label>)}</fieldset>
+            <fieldset className="grid gap-3 md:grid-cols-3"><legend className="mb-2 text-sm font-semibold text-slate-800">Chọn concept</legend>{proposal.concepts.map((concept) => <label key={concept.id} className={`cursor-pointer rounded-lg border p-3 ${selectedConceptId === concept.id ? 'border-teal-600 bg-teal-50' : 'border-slate-200'}`}><input className="mr-2" type="radio" name="campaign-concept" checked={selectedConceptId === concept.id} onChange={() => setSelectedConceptId(concept.id)} /><span className="font-medium">{concept.title}</span><p className="mt-2 text-sm">{concept.angle}</p><p className="mt-2 text-xs text-slate-600">Hook: {concept.hook}</p><p className="mt-1 text-xs text-slate-600">CTA: {concept.cta}</p><p className="mt-1 text-xs text-slate-600">#{(concept.hashtags ?? []).join(' #')}</p></label>)}</fieldset>
             <p className="text-xs text-slate-500">Đề xuất chưa được xác minh sự thật. Hãy kiểm tra mọi claim trước khi tạo bài hoặc duyệt.</p>
-            <Button onClick={acceptProposal} loading={createCampaign.isPending} disabled={!selectedConceptId}>Xác nhận concept và tạo campaign</Button>
+            {createCampaign.error ? <p role="alert" className="text-sm text-rose-700">{createCampaign.error instanceof Error ? createCampaign.error.message : 'Không tạo được chiến dịch. Kiểm tra đề xuất rồi thử lại.'}</p> : null}
+            <Button onClick={acceptProposal} loading={createCampaign.isPending} disabled={!selectedConceptId}>Xác nhận concept và tạo chiến dịch</Button>
           </div> : null}
         </Card>
       ) : null}
 
       {canCreate ? (
-        <Card title="Tạo campaign" description="Tạo brief trước. Việc sinh nội dung chỉ khả dụng sau khi hoàn tất các bước xác nhận dữ liệu AI.">
+        <details className="rounded-2xl border border-slate-200 bg-white">
+          <summary className="cursor-pointer px-5 py-4 font-semibold text-slate-900">Tự viết brief chiến dịch <span className="ml-2 text-sm font-normal text-slate-500">Dành cho khi bạn đã có kế hoạch</span></summary>
+          <div className="px-5 pb-5">
           <form className="grid gap-4 md:grid-cols-2" onSubmit={submit}>
             <div>
               <label htmlFor="campaign-name" className="block text-sm font-medium text-slate-700">Tên chiến dịch</label>
@@ -224,33 +244,11 @@ export default function CampaignsPage() {
               <label htmlFor="campaign-end" className="block text-sm font-medium text-slate-700">Ngày kết thúc</label>
               <input id="campaign-end" type="date" required min={startDate} value={endDate} onChange={(event) => setEndDate(event.target.value)} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" />
             </div>
-            {createCampaign.isError ? <p role="alert" className="md:col-span-2 text-sm text-rose-700">Không tạo được campaign. Kiểm tra brief hoặc thử lại sau.</p> : null}
-            <div className="md:col-span-2"><Button type="submit" loading={createCampaign.isPending} disabled={!name.trim() || !message.trim() || !audience.trim()}>Tạo campaign</Button></div>
+            {createCampaign.isError ? <p role="alert" className="md:col-span-2 text-sm text-rose-700">Không tạo được chiến dịch. Kiểm tra brief hoặc thử lại sau.</p> : null}
+            <div className="md:col-span-2"><Button type="submit" loading={createCampaign.isPending} disabled={!name.trim() || !message.trim() || !audience.trim()}>Tạo chiến dịch</Button></div>
           </form>
-        </Card>
-      ) : null}
-
-      {campaigns.isPending ? <LoadingBlock label="Đang tải danh sách chiến dịch…" /> : null}
-      {campaigns.isError ? (
-        <ErrorPanel
-          title="Không tải được chiến dịch"
-          message="Hệ thống chưa tải được danh sách chiến dịch. Bạn có thể thử lại mà không tạo thêm dữ liệu."
-          retryable
-          onRetry={() => void campaigns.refetch()}
-        />
-      ) : null}
-      {campaigns.data && campaigns.data.items.length === 0 ? (
-        <EmptyState
-          title="Chưa có chiến dịch nào"
-          description="Hoàn tất hồ sơ thương hiệu trước, sau đó tạo campaign đầu tiên từ brief đã xác nhận."
-        />
-      ) : null}
-      {campaigns.data && campaigns.data.items.length > 0 ? (
-        <div className="grid gap-4 lg:grid-cols-2">
-          {campaigns.data.items.map((campaign) => (
-            <CampaignCard key={campaign.id} workspaceId={workspaceId} campaign={campaign} />
-          ))}
-        </div>
+          </div>
+        </details>
       ) : null}
     </div>
   );

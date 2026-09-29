@@ -12,7 +12,6 @@ import { HttpResponse, http } from 'msw';
 
 import {
   APPROVAL_DECISIONS,
-  BRAND_FIELD_KEYS,
   DOCUMENT_ERROR_CODES,
   DOCUMENT_KINDS,
   DOCUMENT_STATUSES,
@@ -36,7 +35,7 @@ import {
   type User,
 } from '@agentic/contracts';
 
-import type { ApiDocument } from '@/lib/api/types';
+import type { ApiBrandProfile, ApiBrandProfileRevision, ApiDocument } from '@/lib/api/types';
 import type {
   ApiAnalyticsRecommendationRecord,
   ApiApplyRecommendationRequest,
@@ -67,6 +66,53 @@ import {
   demoWorkspaces,
   getUserById,
 } from './seed';
+
+const demoBrandProfileRevisions: Record<string, ApiBrandProfileRevision[]> = Object.fromEntries(
+  Object.entries(demoBrandProfiles).map(([workspaceId, profile]) => [
+    workspaceId,
+    [{
+      id: `brand_revision_legacy_${profile.id}`,
+      workspace_id: workspaceId,
+      version: profile.version,
+      created_at: profile.updated_at,
+      profile: structuredClone(profile) as unknown as ApiBrandProfile,
+      warnings: ['Hồ sơ legacy chỉ để tham khảo; Owner cần tự viết phiên bản đang áp dụng.'],
+    }],
+  ]),
+);
+
+type DemoBrandProfileState = {
+  profile: (typeof demoBrandProfiles)[string];
+  revisions: ApiBrandProfileRevision[];
+};
+
+function readDemoBrandProfileState(workspaceId: string): DemoBrandProfileState | null {
+  const initialProfile = demoBrandProfiles[workspaceId];
+  if (!initialProfile) return null;
+  try {
+    const raw = sessionStorage.getItem(`agentic_demo_brand_profile_${workspaceId}`);
+    if (raw) {
+      const saved = JSON.parse(raw) as Partial<DemoBrandProfileState>;
+      if (saved.profile && Array.isArray(saved.revisions)) {
+        return { profile: saved.profile as DemoBrandProfileState['profile'], revisions: saved.revisions };
+      }
+    }
+  } catch {
+    // Storage bị chặn thì fixture vẫn dùng được trong phiên trang hiện tại.
+  }
+  return {
+    profile: initialProfile,
+    revisions: demoBrandProfileRevisions[workspaceId] ?? [],
+  };
+}
+
+function persistDemoBrandProfileState(workspaceId: string, state: DemoBrandProfileState): void {
+  try {
+    sessionStorage.setItem(`agentic_demo_brand_profile_${workspaceId}`, JSON.stringify(state));
+  } catch {
+    // Chế độ demo tiếp tục hoạt động trong bộ nhớ nếu storage không khả dụng.
+  }
+}
 
 /**
  * Trạng thái phiên của bản demo.
@@ -651,101 +697,60 @@ export const handlers = [
   http.get('*/api/v1/workspaces/:workspaceId/brand-profile', ({ params }) => {
     const session = currentSession();
     if (!session) return unauthenticated();
-    const profile = demoBrandProfiles[params.workspaceId as string];
-    return profile ? HttpResponse.json(profile) : notFound('hồ sơ thương hiệu');
+    const state = readDemoBrandProfileState(params.workspaceId as string);
+    return state ? HttpResponse.json(state.profile) : notFound('hồ sơ thương hiệu');
+  }),
+
+  http.get('*/api/v1/workspaces/:workspaceId/brand-profile/revisions', ({ params }) => {
+    const session = currentSession();
+    if (!session) return unauthenticated();
+    const state = readDemoBrandProfileState(params.workspaceId as string);
+    return state ? HttpResponse.json(state.revisions) : notFound('lịch sử hồ sơ thương hiệu');
   }),
 
   http.patch('*/api/v1/workspaces/:workspaceId/brand-profile', async ({ params, request }) => {
     const session = currentSession();
     if (!session) return unauthenticated();
-
-    const profile = demoBrandProfiles[params.workspaceId as string];
-    if (!profile) return notFound('hồ sơ thương hiệu');
-
-    const body = (await request.json()) as {
-      version?: number;
-      fields?: Array<{ key: string; value: unknown }>;
-      confirm?: boolean;
-    };
-
-    /*
-     * Mô phỏng xung đột phiên bản: gửi lên version cũ hơn (hoặc bằng 0) sẽ nhận
-     * 409 để màn hình demo được luồng "tải bản mới" thay vì ghi đè im lặng.
-     */
-    if (typeof body.version !== 'number' || body.version < profile.version) {
-      return fail(
-        409,
-        ERROR_CODES.VERSION_CONFLICT,
-        'Hồ sơ thương hiệu vừa được người khác cập nhật. Bạn đang sửa một bản cũ.',
-        {
-          current_version: profile.version,
-          your_version: body.version ?? 0,
-        },
-      );
+    const workspaceId = params.workspaceId as string;
+    const state = readDemoBrandProfileState(workspaceId);
+    if (!state) return notFound('hồ sơ thương hiệu');
+    const profile = state.profile;
+    if (session.workspaces.find((workspace) => workspace.id === workspaceId)?.role !== 'owner') {
+      return fail(403, ERROR_CODES.FORBIDDEN, 'Chỉ Owner mới được lưu và áp dụng hồ sơ thương hiệu.');
     }
 
-    for (const change of body.fields ?? []) {
-      const existing = (profile as unknown as Record<string, { value?: unknown; state?: string }>)[
-        change.key
-      ];
-      if (existing) {
-        existing.value = change.value;
-        existing.state = 'edited';
-      }
+    const body = (await request.json()) as { version?: number; profile_text?: string | null };
+    if (typeof body.profile_text !== 'string' || !body.profile_text.trim() || body.profile_text.length > 20_000) {
+      return fail(422, ERROR_CODES.VALIDATION_ERROR, 'Nhập hồ sơ tối đa 20.000 ký tự rồi thử lại.');
+    }
+    if (body.version !== profile.version) {
+      return fail(409, ERROR_CODES.VERSION_CONFLICT, 'Hồ sơ thương hiệu vừa được cập nhật ở phiên khác. Tải bản mới nhất rồi áp dụng lại nội dung của bạn.', {
+        current_version: profile.version,
+        your_version: body.version ?? 0,
+      });
     }
 
+    profile.profile_text = body.profile_text.replace(/\r\n?/g, '\n');
+    profile.profile_mode = 'manual_text_v1';
     profile.version += 1;
     profile.updated_at = nowIso();
-    if (body.confirm === true) {
-      for (const key of Object.values(BRAND_FIELD_KEYS)) {
-        const field = profile[key];
-        if (field.value !== null && field.value !== undefined && field.value !== '') {
-          field.state = 'confirmed';
-        }
-      }
-      profile.confirmed_at = nowIso();
-      profile.confirmed_by = session.user.id;
-      profile.completeness = 1;
-    } else {
-      profile.confirmed_at = undefined;
-      profile.confirmed_by = undefined;
-    }
-
+    profile.applied_at = profile.updated_at;
+    profile.applied_by = session.user.id;
+    state.revisions.push({
+      id: `brand_revision_${profile.id}_${profile.version}`,
+      workspace_id: workspaceId,
+      version: profile.version,
+      created_at: profile.updated_at,
+      profile: structuredClone(profile) as unknown as ApiBrandProfile,
+      warnings: [],
+    });
+    persistDemoBrandProfileState(workspaceId, state);
     return HttpResponse.json(profile);
   }),
 
-  http.post('*/api/v1/workspaces/:workspaceId/brand-profile/confirm', async ({ params, request }) => {
-    const session = currentSession();
-    if (!session) return unauthenticated();
-
-    const profile = demoBrandProfiles[params.workspaceId as string];
-    if (!profile) return notFound('hồ sơ thương hiệu');
-
-    const body = (await request.json()) as { version?: number };
-    if (body.version !== profile.version) {
-      return fail(
-        409,
-        ERROR_CODES.VERSION_CONFLICT,
-        'Hồ sơ thương hiệu vừa được người khác cập nhật. Bạn đang xác nhận một bản cũ.',
-        { current_version: profile.version, your_version: body.version ?? 0 },
-      );
-    }
-
-    let confirmedFields = 0;
-    for (const key of Object.values(BRAND_FIELD_KEYS)) {
-      const field = profile[key];
-      if (field.value !== null && field.value !== undefined && field.value !== '') {
-        field.state = 'confirmed';
-        confirmedFields += 1;
-      }
-    }
-    profile.confirmed_at = nowIso();
-    profile.confirmed_by = session.user.id;
-    profile.completeness = confirmedFields / Object.values(BRAND_FIELD_KEYS).length;
-    profile.updated_at = nowIso();
-
-    return HttpResponse.json(profile);
-  }),
+  http.post('*/api/v1/workspaces/:workspaceId/brand-profile/confirm', () =>
+    fail(410, 'brand_profile_generation_removed', 'Hồ sơ theo trường AI không còn được xác nhận. Owner tự viết rồi bấm “Lưu và áp dụng”.'),
+  ),
 
   // ----- Job -----
   http.get('*/api/v1/jobs/:jobId', ({ params }) => {

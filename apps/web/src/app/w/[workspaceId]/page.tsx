@@ -20,6 +20,7 @@ import {
 } from '@agentic/contracts';
 
 import { useSession } from '@/components/session-gate';
+import { Icon } from '@/components/icon';
 import { ApiError } from '@/lib/api';
 import { useMocks } from '@/lib/api/config';
 import type { ApiDocument as DocumentUpload } from '@/lib/api/types';
@@ -32,11 +33,11 @@ import {
   EmptyState,
   ErrorPanel,
   LoadingBlock,
+  PageHeader,
   PermissionNotice,
   ProgressBar,
   StatCard,
   StatusBadge,
-  UnavailableNotice,
   type Tone,
 } from '@/components/ui';
 
@@ -195,27 +196,39 @@ export default function TrangTongQuan() {
   }
 
   if (!mocksEnabled) {
+    const liveDocuments = documents.data ?? null;
+    const completedDocuments = liveDocuments?.filter((doc) => doc.status === DOCUMENT_STATUSES.READY) ?? [];
+    const failedDocuments = liveDocuments?.filter((doc) => doc.status === DOCUMENT_STATUSES.FAILED) ?? [];
+    const recentDocuments = liveDocuments ? [...liveDocuments].sort((a, b) => b.uploaded_at.localeCompare(a.uploaded_at)).slice(0, 5) : [];
+    const manualProfile = brand.data?.profile_mode === 'manual_text_v1' && Boolean(brand.data.profile_text?.trim());
     return (
-      <div className="space-y-5">
-        <header>
-          <h1 className="text-lg font-semibold text-slate-900">Bắt đầu với {workspace.name}</h1>
-          <p className="mt-1 text-sm text-slate-600">
-            Tiến độ onboarding chưa có trong HTTP OpenAPI hiện hành. Các màn hình này không dùng dữ liệu demo khi kết nối API thật.
-          </p>
-        </header>
-        <UnavailableNotice
-          title="Chưa có endpoint onboarding trong API"
-          reason="OpenAPI hiện hành chưa khai báo endpoint đọc tiến độ onboarding, nên không thể hiển thị trạng thái tổng quan có nguồn từ máy chủ."
-          remedy="Bạn vẫn có thể tiếp tục ở luồng đã có contract: tải tài liệu lên và theo dõi tác vụ xử lý."
-          action={
-            <Link
-              className="text-sm font-medium text-slate-900 underline"
-              href={`/w/${workspaceId}/documents`}
-            >
-              Mở tài liệu
-            </Link>
-          }
-        />
+      <div className="space-y-7">
+        <PageHeader eyebrow="Không gian làm việc" title={`Chào mừng đến với ${workspace.name}`} description="Thương hiệu, tài liệu tham khảo và nội dung của bạn ở cùng một nơi. Chọn việc cần làm tiếp theo." />
+        <section aria-label="Bắt đầu từ đây" className="grid gap-4 lg:grid-cols-3">
+          <article className="ui-card rounded-2xl border border-slate-200 bg-white p-5">
+            <span className="flex size-10 items-center justify-center rounded-xl bg-teal-50 text-teal-800"><Icon name="brand" /></span>
+            <h2 className="mt-4 font-semibold text-slate-900">Hồ sơ thương hiệu</h2>
+            {brand.isPending ? <p className="mt-2 text-sm text-slate-500">Đang tải hồ sơ…</p> : brand.isError ? <p className="mt-2 text-sm text-rose-700">Chưa tải được hồ sơ. Hãy thử lại tại mục Hồ sơ thương hiệu.</p> : <><p className="mt-2 text-sm text-slate-600">{manualProfile ? 'Đang dùng hồ sơ bạn đã tự viết.' : 'Hãy tự giới thiệu thương hiệu để Content Agent nắm đúng thông tin.'}</p><p className="mt-3"><StatusBadge label={manualProfile ? 'Đã áp dụng' : 'Cần bạn nhập'} tone={manualProfile ? 'success' : 'warning'} /></p></>}
+            <Link href={`/w/${workspaceId}/brand`} className="mt-4 inline-flex items-center gap-2 text-sm font-semibold text-teal-800">{manualProfile ? 'Xem hồ sơ' : 'Viết hồ sơ'} <Icon name="arrow-right" size={16} /></Link>
+          </article>
+          <article className="ui-card rounded-2xl border border-slate-200 bg-white p-5">
+            <span className="flex size-10 items-center justify-center rounded-xl bg-teal-50 text-teal-800"><Icon name="document" /></span>
+            <h2 className="mt-4 font-semibold text-slate-900">Tài liệu tham khảo</h2>
+            {documents.isPending ? <p className="mt-2 text-sm text-slate-500">Đang tải danh sách…</p> : documents.isError ? <p className="mt-2 text-sm text-rose-700">Chưa tải được tài liệu. Bạn có thể thử lại tại mục Tài liệu.</p> : <p className="mt-2 text-sm text-slate-600">{liveDocuments?.length ? `${formatNumber(completedDocuments.length)} đã sẵn sàng · ${formatNumber(failedDocuments.length)} cần xem lại` : 'Tải bảng giá hoặc thông tin sản phẩm; bạn chọn nguồn dùng cho từng bài.'}</p>}
+            {liveDocuments ? <p className="mt-3 text-xs text-slate-500">{formatNumber(liveDocuments.length)} tài liệu trong workspace</p> : null}
+            <Link href={`/w/${workspaceId}/documents`} className="mt-4 inline-flex items-center gap-2 text-sm font-semibold text-teal-800">Mở tài liệu <Icon name="arrow-right" size={16} /></Link>
+          </article>
+          <article className="ui-card rounded-2xl border border-slate-200 bg-white p-5">
+            <span className="flex size-10 items-center justify-center rounded-xl bg-teal-50 text-teal-800"><Icon name="campaign" /></span>
+            <h2 className="mt-4 font-semibold text-slate-900">Tạo nội dung</h2>
+            <p className="mt-2 text-sm text-slate-600">Bắt đầu từ yêu cầu viết, chọn tài liệu nếu cần, rồi xem lại bản nháp trước khi duyệt.</p>
+            <Link href={`/w/${workspaceId}/campaigns`} className="mt-4 inline-flex items-center gap-2 text-sm font-semibold text-teal-800">Mở chiến dịch <Icon name="arrow-right" size={16} /></Link>
+          </article>
+        </section>
+        <Card title="Tài liệu mới thêm" description="Trạng thái đọc và lưu kiến thức được lấy trực tiếp từ workspace." actions={<Link href={`/w/${workspaceId}/documents`} className="text-sm font-semibold text-teal-800">Xem tất cả</Link>}>
+          {documents.isPending ? <LoadingBlock label="Đang tải tài liệu…" /> : documents.isError ? <SectionError title="Không tải được tài liệu" error={documents.error} onRetry={() => void documents.refetch()} /> : recentDocuments.length ? <ul className="divide-y divide-slate-100">{recentDocuments.map((doc) => { const meta = documentStatusMeta(doc.status); return <li key={doc.id} className="flex flex-wrap items-center justify-between gap-3 py-3 first:pt-0 last:pb-0"><span className="min-w-0 break-words text-sm font-medium text-slate-800">{doc.filename}</span><span className="flex items-center gap-3"><span className="text-xs text-slate-500">{formatRelative(doc.uploaded_at)}</span><StatusBadge label={meta.label} tone={meta.tone} /></span></li>; })}</ul> : <EmptyState title="Chưa có tài liệu" description="Thêm tài liệu tham khảo khi bạn muốn Content Agent sử dụng số liệu hoặc thông tin cụ thể." action={<Link href={`/w/${workspaceId}/documents`} className="font-semibold text-teal-800">Tải tài liệu lên</Link>} />}
+        </Card>
+        <nav aria-label="Lối tắt" className="flex flex-wrap gap-2"><Link href={`/w/${workspaceId}/publishing`} className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm font-medium text-slate-700 hover:border-teal-300"><Icon name="publish" size={17} /> Xuất bản</Link><Link href={`/w/${workspaceId}/fanpages`} className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm font-medium text-slate-700 hover:border-teal-300"><Icon name="globe" size={17} /> Fanpage & thị trường</Link><Link href={`/w/${workspaceId}/analytics`} className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm font-medium text-slate-700 hover:border-teal-300"><Icon name="chart" size={17} /> Hiệu quả</Link></nav>
       </div>
     );
   }
@@ -228,12 +241,7 @@ export default function TrangTongQuan() {
 
   return (
     <div className="space-y-6">
-      <header>
-        <h1 className="text-lg font-semibold text-slate-900">Tổng quan — {workspace.name}</h1>
-        <p className="mt-1 text-sm text-slate-600">
-          Tiến độ nhập thông tin doanh nghiệp và những việc đang chờ bạn xử lý.
-        </p>
-      </header>
+      <PageHeader eyebrow="Không gian làm việc" title={`Tổng quan — ${workspace.name}`} description="Tiến độ nhập thông tin doanh nghiệp và những việc đang chờ bạn xử lý." />
 
       {mounted && mocksEnabled ? <DemoNotice /> : null}
 
@@ -416,7 +424,7 @@ export default function TrangTongQuan() {
         ) : docs === null || docs.length === 0 ? (
           <EmptyState
             title="Chưa có tài liệu nào"
-            description="Doanh nghiệp chưa tải lên tài liệu nào. Hãy tải hồ sơ năng lực, bảng giá hoặc mô tả sản phẩm để hệ thống đọc và gợi ý thông tin thương hiệu."
+            description="Tải bảng giá hoặc mô tả sản phẩm để lưu làm tài liệu tham khảo. Hồ sơ thương hiệu do bạn tự viết và áp dụng riêng."
             action={
               <Link className="text-sm font-medium text-slate-900 underline" href={`/w/${workspaceId}/documents`}>
                 Mở trang tải lên

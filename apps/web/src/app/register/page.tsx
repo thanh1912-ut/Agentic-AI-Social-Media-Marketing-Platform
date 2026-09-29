@@ -8,7 +8,8 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { ApiError, api, useMocks } from '@/lib/api';
 import type { ApiRegisterRequest } from '@/lib/api/types';
 import { queryKeys } from '@/lib/query-keys';
-import { Button, Card, ErrorPanel } from '@/components/ui';
+import { Button, ErrorPanel } from '@/components/ui';
+import { AuthShell } from '@/components/auth-shell';
 
 export default function RegisterPage() {
   const router = useRouter();
@@ -78,14 +79,7 @@ export default function RegisterPage() {
   }
 
   return (
-    <div className="mx-auto flex min-h-[70vh] max-w-md flex-col justify-center px-4 py-10">
-      <h1 className="text-lg font-semibold text-slate-900">Tạo tài khoản</h1>
-      <p className="mt-1 text-sm text-slate-600">
-        Tạo workspace riêng và bắt đầu thiết lập thương hiệu. Bạn có thể tham gia workspace có sẵn qua lời mời.
-      </p>
-
-      <div className="mt-5">
-        <Card>
+    <AuthShell title="Tạo tài khoản" description="Bắt đầu với không gian riêng cho thương hiệu. Nếu đã được mời vào một nhóm, hãy dùng liên kết trong lời mời.">
           {mocksEnabled ? (
             <div role="status" className="space-y-3">
               <p className="text-sm text-slate-700">Đăng ký cần kết nối máy chủ thật. Bản demo chỉ dùng các tài khoản mẫu.</p>
@@ -202,13 +196,11 @@ export default function RegisterPage() {
               <Button type="submit" loading={register.isPending}>
                 {register.isPending ? 'Đang tạo tài khoản…' : 'Đăng ký'}
               </Button>
-              <p className="text-sm text-slate-600">
+              <p className="pt-2 text-center text-sm text-slate-600">
                 Đã có tài khoản? <Link href="/login" className="font-medium text-slate-900 underline">Đăng nhập</Link>
               </p>
             </form>
           )}
-        </Card>
-      </div>
-    </div>
+    </AuthShell>
   );
 }

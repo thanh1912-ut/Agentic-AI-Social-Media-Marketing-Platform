@@ -6,7 +6,8 @@ import { useSearchParams } from 'next/navigation';
 import { useMutation } from '@tanstack/react-query';
 
 import { ApiError, api } from '@/lib/api';
-import { Button, Card, ErrorPanel } from '@/components/ui';
+import { Button, ErrorPanel } from '@/components/ui';
+import { AuthShell } from '@/components/auth-shell';
 
 function ResetPasswordForm() {
   const searchParams = useSearchParams();
@@ -39,13 +40,7 @@ function ResetPasswordForm() {
   }
 
   return (
-    <div className="mx-auto flex min-h-[60vh] max-w-md flex-col justify-center px-4 py-10">
-      <h1 className="text-lg font-semibold text-slate-900">Đặt mật khẩu mới</h1>
-      <p className="mt-1 text-sm text-slate-600">
-        Chọn mật khẩu mới cho tài khoản của bạn. Liên kết chỉ dùng được một lần.
-      </p>
-      <div className="mt-5">
-        <Card>
+    <AuthShell title="Đặt mật khẩu mới" description="Chọn mật khẩu mới cho tài khoản của bạn. Liên kết này chỉ sử dụng được một lần.">
           {reset.isSuccess ? (
             <div role="status" className="space-y-3 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3">
               <h2 className="text-sm font-semibold text-emerald-900">Đã cập nhật mật khẩu</h2>
@@ -98,14 +93,12 @@ function ResetPasswordForm() {
               </Button>
             </form>
           )}
-        </Card>
-      </div>
       {!reset.isSuccess ? (
         <p className="mt-5 text-sm text-slate-600">
           <Link href="/forgot-password" className="font-medium text-slate-900 underline">Yêu cầu liên kết mới</Link>
         </p>
       ) : null}
-    </div>
+    </AuthShell>
   );
 }
 
