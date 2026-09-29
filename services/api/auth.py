@@ -9,12 +9,28 @@ from urllib.parse import quote
 
 from fastapi import APIRouter, BackgroundTasks, Depends, Request, Response
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from database.models import Brand, Company, Invitation, Membership, PasswordResetToken, RefreshSession, User, utcnow
+from database.models import (
+    Brand,
+    Company,
+    Invitation,
+    Membership,
+    PasswordResetToken,
+    RefreshSession,
+    User,
+    utcnow,
+)
 from .config import settings
 from .db import get_db
-from .dependencies import ACCESS_COOKIE, CSRF_COOKIE, REFRESH_COOKIE, require_csrf
+from .dependencies import (
+    ACCESS_COOKIE,
+    CSRF_COOKIE,
+    REFRESH_COOKIE,
+    optional_current_user,
+    require_csrf,
+)
 from .email import EmailDeliveryError, send_email
 from .errors import ApiProblem
 from .permissions import permissions_for
@@ -33,7 +49,14 @@ from .schemas import (
     UserOut,
     WorkspaceOut,
 )
-from .security import create_access_token, hash_password, is_expired, new_opaque_token, token_hash, verify_password
+from .security import (
+    create_access_token,
+    hash_password,
+    is_expired,
+    new_opaque_token,
+    token_hash,
+    verify_password,
+)
 
 
 router = APIRouter(prefix="/auth", tags=["auth"])
@@ -58,7 +81,9 @@ def _slugify(value: str) -> str:
     return slug
 
 
-async def _workspace_rows(db: AsyncSession, user_id: str) -> list[tuple[Company, Membership]]:
+async def _workspace_rows(
+    db: AsyncSession, user_id: str
+) -> list[tuple[Company, Membership]]:
     result = await db.execute(
         select(Company, Membership)
         .join(Membership, Membership.company_id == Company.id)
@@ -106,14 +131,38 @@ async def _issue_session(
         "domain": settings.cookie_domain,
         "path": "/",
     }
-    response.set_cookie(ACCESS_COOKIE, access_token, max_age=settings.access_token_expire_minutes * 60, **cookie_args)
-    response.set_cookie(REFRESH_COOKIE, refresh_token, max_age=settings.refresh_token_expire_days * 86400, **cookie_args)
-    response.set_cookie(CSRF_COOKIE, csrf_token, max_age=settings.refresh_token_expire_days * 86400, httponly=False, secure=settings.cookie_secure, samesite=settings.cookie_samesite, domain=settings.cookie_domain, path="/")
+    response.set_cookie(
+        ACCESS_COOKIE,
+        access_token,
+        max_age=settings.access_token_expire_minutes * 60,
+        **cookie_args,
+    )
+    response.set_cookie(
+        REFRESH_COOKIE,
+        refresh_token,
+        max_age=settings.refresh_token_expire_days * 86400,
+        **cookie_args,
+    )
+    response.set_cookie(
+        CSRF_COOKIE,
+        csrf_token,
+        max_age=settings.refresh_token_expire_days * 86400,
+        httponly=False,
+        secure=settings.cookie_secure,
+        samesite=settings.cookie_samesite,
+        domain=settings.cookie_domain,
+        path="/",
+    )
     return access_token, expires_at
 
 
-async def _session_response(db: AsyncSession, user: User, access_token: str, expires_at: object) -> LoginResponse:
-    workspaces = [_workspace_out(company, membership) for company, membership in await _workspace_rows(db, user.id)]
+async def _session_response(
+    db: AsyncSession, user: User, access_token: str, expires_at: object
+) -> LoginResponse:
+    workspaces = [
+        _workspace_out(company, membership)
+        for company, membership in await _workspace_rows(db, user.id)
+    ]
     return LoginResponse(
         user=UserOut.model_validate(user, from_attributes=True),
         workspaces=workspaces,
@@ -127,49 +176,100 @@ async def _session_response(db: AsyncSession, user: User, access_token: str, exp
     "/register",
     response_model=LoginResponse,
     status_code=201,
-    dependencies=[Depends(rate_limit("auth_register", max_requests=5, window_seconds=3600))],
+    dependencies=[
+        Depends(rate_limit("auth_register", max_requests=5, window_seconds=3600))
+    ],
 )
-async def register(payload: RegisterRequest, request: Request, response: Response, db: AsyncSession = Depends(get_db)):
+async def register(
+    payload: RegisterRequest,
+    request: Request,
+    response: Response,
+    db: AsyncSession = Depends(get_db),
+):
     email = str(payload.email).lower()
     if await db.scalar(select(User).where(User.email == email)):
         raise ApiProblem(409, "already_exists", "Email này đã được đăng ký.")
     slug = _slugify(payload.company_name)
     if await db.scalar(select(Company).where(Company.slug == slug)):
         slug = f"{slug}-{new_opaque_token()[:6].lower()}"
-    user = User(email=email, full_name=payload.full_name, password_hash=hash_password(payload.password))
+    user = User(
+        email=email,
+        full_name=payload.full_name,
+        password_hash=hash_password(payload.password),
+    )
     company = Company(name=payload.company_name, slug=slug, industry=payload.industry)
     db.add_all([user, company])
-    await db.flush()
-    db.add_all([Membership(company_id=company.id, user_id=user.id, role="owner"), Brand(company_id=company.id, profile={})])
-    access_token, expires_at = await _issue_session(response, db, user, request)
-    await db.commit()
+    try:
+        await db.flush()
+        db.add_all(
+            [
+                Membership(company_id=company.id, user_id=user.id, role="owner"),
+                Brand(company_id=company.id, profile={}),
+            ]
+        )
+        access_token, expires_at = await _issue_session(response, db, user, request)
+        await db.commit()
+    except IntegrityError:
+        await db.rollback()
+        existing = await db.scalar(select(User).where(User.email == email))
+        if existing is not None:
+            raise ApiProblem(409, "already_exists", "Email này đã được đăng ký.")
+        raise
     return await _session_response(db, user, access_token, expires_at)
 
 
 @router.post(
     "/login",
     response_model=LoginResponse,
-    dependencies=[Depends(rate_limit("auth_login", max_requests=15, window_seconds=900))],
+    dependencies=[
+        Depends(rate_limit("auth_login", max_requests=15, window_seconds=900))
+    ],
 )
-async def login(payload: LoginRequest, request: Request, response: Response, db: AsyncSession = Depends(get_db)):
+async def login(
+    payload: LoginRequest,
+    request: Request,
+    response: Response,
+    db: AsyncSession = Depends(get_db),
+):
     user = await db.scalar(select(User).where(User.email == str(payload.email).lower()))
-    if user is None or not user.is_active or not verify_password(payload.password, user.password_hash):
-        raise ApiProblem(401, "unauthenticated", "Email hoặc mật khẩu không đúng. Vui lòng kiểm tra lại.")
+    if (
+        user is None
+        or not user.is_active
+        or not verify_password(payload.password, user.password_hash)
+    ):
+        raise ApiProblem(
+            401,
+            "unauthenticated",
+            "Email hoặc mật khẩu không đúng. Vui lòng kiểm tra lại.",
+        )
     access_token, expires_at = await _issue_session(response, db, user, request)
     await db.commit()
     return await _session_response(db, user, access_token, expires_at)
 
 
-@router.post("/refresh", response_model=LoginResponse, dependencies=[Depends(require_csrf)])
-async def refresh(request: Request, response: Response, db: AsyncSession = Depends(get_db)):
+@router.post(
+    "/refresh", response_model=LoginResponse, dependencies=[Depends(require_csrf)]
+)
+async def refresh(
+    request: Request, response: Response, db: AsyncSession = Depends(get_db)
+):
     raw = request.cookies.get(REFRESH_COOKIE)
     if not raw:
-        raise ApiProblem(401, "session_expired", "Phiên làm việc đã hết hạn. Vui lòng đăng nhập lại.")
+        raise ApiProblem(
+            401, "session_expired", "Phiên làm việc đã hết hạn. Vui lòng đăng nhập lại."
+        )
     session = await db.scalar(
-        select(RefreshSession).where(RefreshSession.token_hash == token_hash(raw), RefreshSession.revoked_at.is_(None))
+        select(RefreshSession)
+        .where(
+            RefreshSession.token_hash == token_hash(raw),
+            RefreshSession.revoked_at.is_(None),
+        )
+        .with_for_update()
     )
     if session is None or is_expired(session.expires_at):
-        raise ApiProblem(401, "session_expired", "Phiên làm việc đã hết hạn. Vui lòng đăng nhập lại.")
+        raise ApiProblem(
+            401, "session_expired", "Phiên làm việc đã hết hạn. Vui lòng đăng nhập lại."
+        )
     user = await db.get(User, session.user_id)
     if user is None or not user.is_active:
         raise ApiProblem(401, "unauthenticated", "Tài khoản không còn hoạt động.")
@@ -180,10 +280,17 @@ async def refresh(request: Request, response: Response, db: AsyncSession = Depen
 
 
 @router.post("/logout", status_code=204, dependencies=[Depends(require_csrf)])
-async def logout(request: Request, response: Response, db: AsyncSession = Depends(get_db)):
+async def logout(
+    request: Request, response: Response, db: AsyncSession = Depends(get_db)
+):
     raw = request.cookies.get(REFRESH_COOKIE)
     if raw:
-        session = await db.scalar(select(RefreshSession).where(RefreshSession.token_hash == token_hash(raw), RefreshSession.revoked_at.is_(None)))
+        session = await db.scalar(
+            select(RefreshSession).where(
+                RefreshSession.token_hash == token_hash(raw),
+                RefreshSession.revoked_at.is_(None),
+            )
+        )
         if session:
             session.revoked_at = utcnow()
             await db.commit()
@@ -194,24 +301,35 @@ async def logout(request: Request, response: Response, db: AsyncSession = Depend
 @router.post(
     "/forgot-password",
     response_model=ForgotPasswordResponse,
-    dependencies=[Depends(rate_limit("password_forgot", max_requests=5, window_seconds=3600))],
+    dependencies=[
+        Depends(rate_limit("password_forgot", max_requests=5, window_seconds=3600))
+    ],
 )
 async def forgot_password(
     payload: ForgotPasswordRequest,
     background_tasks: BackgroundTasks,
     db: AsyncSession = Depends(get_db),
 ) -> ForgotPasswordResponse:
+    if not settings.email_delivery_configured:
+        raise ApiProblem(
+            503,
+            "password_reset_unavailable",
+            "Chức năng đặt lại mật khẩu chưa sẵn sàng vì máy chủ chưa cấu hình gửi email.",
+        )
     user = await db.scalar(select(User).where(User.email == str(payload.email).lower()))
     if user and user.is_active and settings.email_delivery_configured:
         raw = new_opaque_token()
         reset_token = PasswordResetToken(
             user_id=user.id,
             token_hash=token_hash(raw),
-            expires_at=utcnow() + timedelta(minutes=settings.password_reset_expire_minutes),
+            expires_at=utcnow()
+            + timedelta(minutes=settings.password_reset_expire_minutes),
         )
         db.add(reset_token)
         await db.commit()
-        reset_url = f"{settings.web_base_url}/reset-password?token={quote(raw, safe='')}"
+        reset_url = (
+            f"{settings.web_base_url}/reset-password?token={quote(raw, safe='')}"
+        )
         body = (
             "Bạn đã yêu cầu đặt lại mật khẩu cho tài khoản Agentic Marketing.\n\n"
             f"Mở liên kết này để chọn mật khẩu mới: {reset_url}\n\n"
@@ -231,15 +349,34 @@ async def forgot_password(
 @router.post(
     "/reset-password",
     response_model=ResetPasswordResponse,
-    dependencies=[Depends(rate_limit("password_reset", max_requests=10, window_seconds=3600))],
+    dependencies=[
+        Depends(rate_limit("password_reset", max_requests=10, window_seconds=3600))
+    ],
 )
-async def reset_password(payload: ResetPasswordRequest, db: AsyncSession = Depends(get_db)) -> ResetPasswordResponse:
-    reset = await db.scalar(select(PasswordResetToken).where(PasswordResetToken.token_hash == token_hash(payload.token), PasswordResetToken.used_at.is_(None)))
+async def reset_password(
+    payload: ResetPasswordRequest, db: AsyncSession = Depends(get_db)
+) -> ResetPasswordResponse:
+    reset = await db.scalar(
+        select(PasswordResetToken)
+        .where(
+            PasswordResetToken.token_hash == token_hash(payload.token),
+            PasswordResetToken.used_at.is_(None),
+        )
+        .with_for_update()
+    )
     if reset is None or is_expired(reset.expires_at):
-        raise ApiProblem(400, "invalid_reset_token", "Liên kết đặt lại mật khẩu không hợp lệ hoặc đã hết hạn.")
+        raise ApiProblem(
+            400,
+            "invalid_reset_token",
+            "Liên kết đặt lại mật khẩu không hợp lệ hoặc đã hết hạn.",
+        )
     user = await db.get(User, reset.user_id)
     if user is None:
-        raise ApiProblem(400, "invalid_reset_token", "Liên kết đặt lại mật khẩu không hợp lệ hoặc đã hết hạn.")
+        raise ApiProblem(
+            400,
+            "invalid_reset_token",
+            "Liên kết đặt lại mật khẩu không hợp lệ hoặc đã hết hạn.",
+        )
     user.password_hash = hash_password(payload.new_password)
     user.password_changed_at = utcnow()
     for pending_reset in (
@@ -251,7 +388,13 @@ async def reset_password(payload: ResetPasswordRequest, db: AsyncSession = Depen
         )
     ).all():
         pending_reset.used_at = utcnow()
-    sessions = (await db.scalars(select(RefreshSession).where(RefreshSession.user_id == user.id, RefreshSession.revoked_at.is_(None)))).all()
+    sessions = (
+        await db.scalars(
+            select(RefreshSession).where(
+                RefreshSession.user_id == user.id, RefreshSession.revoked_at.is_(None)
+            )
+        )
+    ).all()
     for session in sessions:
         session.revoked_at = utcnow()
     await db.commit()
@@ -259,10 +402,16 @@ async def reset_password(payload: ResetPasswordRequest, db: AsyncSession = Depen
 
 
 @router.get("/invitations/{token}", response_model=InvitationPreviewOut)
-async def preview_invitation(token: str, response: Response, db: AsyncSession = Depends(get_db)) -> InvitationPreviewOut:
+async def preview_invitation(
+    token: str, response: Response, db: AsyncSession = Depends(get_db)
+) -> InvitationPreviewOut:
     response.headers["Cache-Control"] = "no-store"
     response.headers["Referrer-Policy"] = "no-referrer"
-    invitation = await db.scalar(select(Invitation).where(Invitation.token_hash == token_hash(token), Invitation.accepted_at.is_(None)))
+    invitation = await db.scalar(
+        select(Invitation).where(
+            Invitation.token_hash == token_hash(token), Invitation.accepted_at.is_(None)
+        )
+    )
     if invitation is None or is_expired(invitation.expires_at):
         raise ApiProblem(404, "not_found", "Lời mời không tồn tại hoặc đã hết hạn.")
     company = await db.get(Company, invitation.company_id)
@@ -277,34 +426,93 @@ async def preview_invitation(token: str, response: Response, db: AsyncSession = 
 @router.post(
     "/invitations/{token}/accept",
     response_model=LoginResponse,
-    dependencies=[Depends(rate_limit("invitation_accept", max_requests=10, window_seconds=900))],
+    dependencies=[
+        Depends(rate_limit("invitation_accept", max_requests=10, window_seconds=900)),
+        Depends(require_csrf),
+    ],
 )
-async def accept_invitation(token: str, payload: AcceptInvitationRequest, request: Request, response: Response, db: AsyncSession = Depends(get_db)):
-    invitation = await db.scalar(select(Invitation).where(Invitation.token_hash == token_hash(token), Invitation.accepted_at.is_(None)))
+async def accept_invitation(
+    token: str,
+    payload: AcceptInvitationRequest,
+    request: Request,
+    response: Response,
+    db: AsyncSession = Depends(get_db),
+    authenticated_user: User | None = Depends(optional_current_user),
+):
+    invitation = await db.scalar(
+        select(Invitation)
+        .where(
+            Invitation.token_hash == token_hash(token), Invitation.accepted_at.is_(None)
+        )
+        .with_for_update()
+    )
     if invitation is None or is_expired(invitation.expires_at):
         raise ApiProblem(404, "not_found", "Lời mời không tồn tại hoặc đã hết hạn.")
     if str(payload.email).lower() != invitation.email:
-        raise ApiProblem(422, "validation_error", "Email phải trùng với email trong lời mời.", field_errors=[{"field": "email", "message": "Email không khớp lời mời."}])
+        raise ApiProblem(
+            422,
+            "validation_error",
+            "Email phải trùng với email trong lời mời.",
+            field_errors=[{"field": "email", "message": "Email không khớp lời mời."}],
+        )
     user = await db.scalar(select(User).where(User.email == invitation.email))
     if user is None:
+        if authenticated_user is not None:
+            raise ApiProblem(
+                403,
+                "invitation_account_mismatch",
+                "Hãy đăng xuất hoặc dùng đúng email được mời để nhận lời mời này.",
+            )
         if not payload.full_name or not payload.password:
             raise ApiProblem(
                 422,
                 "validation_error",
                 "Hãy nhập họ tên và tạo mật khẩu để tạo tài khoản mới.",
                 field_errors=[
-                    {"field": "full_name", "message": "Họ tên bắt buộc khi tạo tài khoản."},
-                    {"field": "password", "message": "Mật khẩu bắt buộc khi tạo tài khoản."},
+                    {
+                        "field": "full_name",
+                        "message": "Họ tên bắt buộc khi tạo tài khoản.",
+                    },
+                    {
+                        "field": "password",
+                        "message": "Mật khẩu bắt buộc khi tạo tài khoản.",
+                    },
                 ],
             )
-        user = User(email=invitation.email, full_name=payload.full_name, password_hash=hash_password(payload.password))
+        user = User(
+            email=invitation.email,
+            full_name=payload.full_name,
+            password_hash=hash_password(payload.password),
+        )
         db.add(user)
         await db.flush()
-    elif not user.is_active:
-        raise ApiProblem(403, "account_inactive", "Tài khoản này đang bị tạm khóa.")
-    existing = await db.scalar(select(Membership).where(Membership.company_id == invitation.company_id, Membership.user_id == user.id))
+    else:
+        if not user.is_active:
+            raise ApiProblem(403, "account_inactive", "Tài khoản này đang bị tạm khóa.")
+        if authenticated_user is None:
+            raise ApiProblem(
+                401,
+                "invitation_sign_in_required",
+                "Đăng nhập bằng email được mời rồi mở lại liên kết lời mời để tiếp tục.",
+            )
+        if authenticated_user.id != user.id:
+            raise ApiProblem(
+                403,
+                "invitation_account_mismatch",
+                "Hãy dùng đúng tài khoản có email được mời để nhận lời mời này.",
+            )
+    existing = await db.scalar(
+        select(Membership).where(
+            Membership.company_id == invitation.company_id,
+            Membership.user_id == user.id,
+        )
+    )
     if existing is None:
-        db.add(Membership(company_id=invitation.company_id, user_id=user.id, role=invitation.role))
+        db.add(
+            Membership(
+                company_id=invitation.company_id, user_id=user.id, role=invitation.role
+            )
+        )
     else:
         existing.is_active = True
         existing.role = invitation.role
@@ -314,9 +522,18 @@ async def accept_invitation(token: str, payload: AcceptInvitationRequest, reques
     return await _session_response(db, user, access_token, expires_at)
 
 
-async def make_session(db: AsyncSession, user: User, *, active_workspace_id: str | None = None) -> SessionResponse:
-    workspaces = [_workspace_out(company, membership) for company, membership in await _workspace_rows(db, user.id)]
-    active = active_workspace_id if any(workspace.id == active_workspace_id for workspace in workspaces) else (workspaces[0].id if workspaces else None)
+async def make_session(
+    db: AsyncSession, user: User, *, active_workspace_id: str | None = None
+) -> SessionResponse:
+    workspaces = [
+        _workspace_out(company, membership)
+        for company, membership in await _workspace_rows(db, user.id)
+    ]
+    active = (
+        active_workspace_id
+        if any(workspace.id == active_workspace_id for workspace in workspaces)
+        else (workspaces[0].id if workspaces else None)
+    )
     return SessionResponse(
         user=UserOut.model_validate(user, from_attributes=True),
         workspaces=workspaces,

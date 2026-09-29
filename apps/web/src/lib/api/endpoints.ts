@@ -74,6 +74,7 @@ import type {
   ApiMember,
   ApiResetPasswordRequest,
   ApiResetPasswordResponse,
+  ApiRegisterRequest,
   ApiSelectWorkspaceRequest,
   ApiSessionResponse,
   ApiUploadLimits,
@@ -112,6 +113,9 @@ export const authApi = {
 
   login: (body: ApiLoginRequest) =>
     apiRequest<ApiLoginResponse>(v1('/auth/login'), { method: 'POST', body }),
+
+  register: (body: ApiRegisterRequest) =>
+    apiRequest<ApiLoginResponse>(v1('/auth/register'), { method: 'POST', body }),
 
   logout: () => apiRequest<void>(v1('/auth/logout'), { method: 'POST' }),
 

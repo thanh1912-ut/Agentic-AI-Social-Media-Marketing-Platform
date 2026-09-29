@@ -94,7 +94,15 @@ export default function AcceptInvitationPage() {
                 </div>
               </dl>
               <p className="text-sm text-slate-600">
-                Nếu email này chưa có tài khoản, hãy nhập họ tên và tạo mật khẩu. Tài khoản hiện có có thể để trống hai trường này.
+                Nếu bạn chưa có tài khoản, hãy nhập họ tên và tạo mật khẩu. Nếu đã có tài khoản với email này, hãy đăng nhập trước khi xác nhận lời mời.
+              </p>
+              <p className="text-sm text-slate-600">
+                <Link
+                  href={`/login?returnTo=${encodeURIComponent(`/invite/${encodeURIComponent(token)}`)}`}
+                  className="font-medium text-slate-900 underline"
+                >
+                  Đã có tài khoản? Đăng nhập để nhận lời mời
+                </Link>
               </p>
               <div>
                 <label htmlFor="invite-full-name" className="block text-sm font-medium text-slate-700">Họ tên</label>

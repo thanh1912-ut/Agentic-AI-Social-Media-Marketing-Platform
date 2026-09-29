@@ -71,7 +71,14 @@ export function SessionGate({ children }: { children: ReactNode }) {
                 : 'Đăng nhập để vào khu vực làm việc của doanh nghiệp.'}
             </p>
             <div className="mt-5">
-              <Button onClick={() => window.location.assign('/login')}>Đăng nhập</Button>
+              <Button
+                onClick={() => {
+                  const returnTo = `${window.location.pathname}${window.location.search}${window.location.hash}`;
+                  window.location.assign(`/login?returnTo=${encodeURIComponent(returnTo)}`);
+                }}
+              >
+                Đăng nhập
+              </Button>
             </div>
           </div>
         </div>

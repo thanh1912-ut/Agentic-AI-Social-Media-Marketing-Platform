@@ -44,7 +44,9 @@ def account_client(tmp_path):
         asyncio.run(engine.dispose())
 
 
-def register_owner(client: TestClient, email: str = "owner@example.com") -> tuple[str, str]:
+def register_owner(
+    client: TestClient, email: str = "owner@example.com"
+) -> tuple[str, str]:
     response = client.post(
         "/api/v1/auth/register",
         json={
@@ -56,6 +58,112 @@ def register_owner(client: TestClient, email: str = "owner@example.com") -> tupl
     )
     assert response.status_code == 201, response.text
     return response.json()["active_workspace_id"], client.cookies["agentic_csrf"]
+
+
+def test_register_creates_owner_workspace_and_preserves_password_exactly(
+    account_client: TestClient,
+) -> None:
+    password = "  spaced-password-123  "
+    registered = account_client.post(
+        "/api/v1/auth/register",
+        json={
+            "email": "New.Owner@Example.com",
+            "password": password,
+            "full_name": "New Owner",
+            "company_name": "New Brand",
+        },
+    )
+    assert registered.status_code == 201, registered.text
+    assert registered.json()["user"]["email"] == "new.owner@example.com"
+    assert registered.json()["workspaces"][0]["role"] == "owner"
+    workspace_id = registered.json()["active_workspace_id"]
+    assert workspace_id
+    assert account_client.get("/api/v1/me").status_code == 200
+
+    duplicate = account_client.post(
+        "/api/v1/auth/register",
+        json={
+            "email": "new.owner@example.com",
+            "password": "another-password-123",
+            "full_name": "Another Owner",
+            "company_name": "Another Workspace",
+        },
+    )
+    assert duplicate.status_code == 409
+    assert len(account_client.get("/api/v1/workspaces").json()) == 1
+
+    logout = account_client.post(
+        "/api/v1/auth/logout",
+        headers={"X-CSRF-Token": account_client.cookies["agentic_csrf"]},
+    )
+    assert logout.status_code == 204
+    rejected_trimmed = account_client.post(
+        "/api/v1/auth/login",
+        json={"email": "NEW.OWNER@example.com", "password": password.strip()},
+    )
+    assert rejected_trimmed.status_code == 401
+    login = account_client.post(
+        "/api/v1/auth/login",
+        json={"email": "NEW.OWNER@example.com", "password": password},
+    )
+    assert login.status_code == 200, login.text
+    assert login.json()["active_workspace_id"] == workspace_id
+
+
+def test_existing_invitee_must_sign_in_as_invited_account(
+    account_client: TestClient,
+) -> None:
+    invited_workspace, _ = register_owner(account_client, "owner@example.com")
+    inviter_workspace, inviter_csrf = register_owner(
+        account_client, "inviter@example.com"
+    )
+    invitation = account_client.post(
+        f"/api/v1/workspaces/{inviter_workspace}/members",
+        json={"email": "owner@example.com", "role": "editor"},
+        headers={"X-CSRF-Token": inviter_csrf},
+    )
+    assert invitation.status_code == 201, invitation.text
+    token = urlsplit(invitation.json()["invite_url"]).path.rsplit("/", 1)[1]
+
+    account_client.cookies.clear()
+    unsigned = account_client.post(
+        f"/api/v1/auth/invitations/{token}/accept",
+        json={"email": "owner@example.com"},
+    )
+    assert unsigned.status_code == 401
+    assert unsigned.json()["error"]["code"] == "invitation_sign_in_required"
+
+    wrong_account = account_client.post(
+        "/api/v1/auth/login",
+        json={"email": "inviter@example.com", "password": "old-password-123"},
+    )
+    assert wrong_account.status_code == 200
+    rejected_wrong_account = account_client.post(
+        f"/api/v1/auth/invitations/{token}/accept",
+        json={"email": "owner@example.com"},
+        headers={"X-CSRF-Token": account_client.cookies["agentic_csrf"]},
+    )
+    assert rejected_wrong_account.status_code == 403
+    assert (
+        rejected_wrong_account.json()["error"]["code"] == "invitation_account_mismatch"
+    )
+
+    signed_in = account_client.post(
+        "/api/v1/auth/login",
+        json={"email": "owner@example.com", "password": "old-password-123"},
+    )
+    assert signed_in.status_code == 200
+    accepted = account_client.post(
+        f"/api/v1/auth/invitations/{token}/accept",
+        json={"email": "owner@example.com"},
+        headers={"X-CSRF-Token": account_client.cookies["agentic_csrf"]},
+    )
+    assert accepted.status_code == 200, accepted.text
+    workspaces = {
+        workspace["id"]: workspace for workspace in accepted.json()["workspaces"]
+    }
+    assert workspaces[invited_workspace]["role"] == "owner"
+    assert workspaces[inviter_workspace]["role"] == "editor"
 
 
 def test_password_reset_sends_one_time_link_and_revokes_refresh_sessions(
@@ -124,14 +232,20 @@ def test_password_reset_sends_one_time_link_and_revokes_refresh_sessions(
         json={"token": stale_token, "new_password": "stale-password-789"},
     )
     assert stale_reset.status_code == 400
-    assert account_client.post(
-        "/api/v1/auth/login",
-        json={"email": "owner@example.com", "password": "old-password-123"},
-    ).status_code == 401
-    assert account_client.post(
-        "/api/v1/auth/login",
-        json={"email": "owner@example.com", "password": "new-password-456"},
-    ).status_code == 200
+    assert (
+        account_client.post(
+            "/api/v1/auth/login",
+            json={"email": "owner@example.com", "password": "old-password-123"},
+        ).status_code
+        == 401
+    )
+    assert (
+        account_client.post(
+            "/api/v1/auth/login",
+            json={"email": "owner@example.com", "password": "new-password-456"},
+        ).status_code
+        == 200
+    )
 
 
 def test_forgot_password_is_neutral_without_smtp_and_does_not_claim_delivery(
@@ -146,7 +260,9 @@ def test_forgot_password_is_neutral_without_smtp_and_does_not_claim_delivery(
     monkeypatch.setattr(
         auth_module,
         "send_email",
-        lambda *_args: pytest.fail("SMTP must not be called when mail is not configured"),
+        lambda *_args: pytest.fail(
+            "SMTP must not be called when mail is not configured"
+        ),
     )
     register_owner(account_client)
 
@@ -156,10 +272,9 @@ def test_forgot_password_is_neutral_without_smtp_and_does_not_claim_delivery(
     unknown = account_client.post(
         "/api/v1/auth/forgot-password", json={"email": "missing@example.com"}
     )
-    assert known.status_code == unknown.status_code == 200
-    assert known.json() == unknown.json()
-    assert known.json()["accepted"] is True
-    assert "đã gửi" not in known.json()["message"].lower()
+    assert known.status_code == unknown.status_code == 503
+    assert known.json()["error"]["code"] == "password_reset_unavailable"
+    assert "smtp" not in known.text.lower()
 
 
 def test_smtp_failure_keeps_forgot_password_response_neutral(
@@ -211,7 +326,9 @@ def test_invitation_manual_fallback_resend_and_acceptance(
     monkeypatch.setattr(
         workspaces_module,
         "send_email",
-        lambda *_args: pytest.fail("SMTP must not be called when mail is not configured"),
+        lambda *_args: pytest.fail(
+            "SMTP must not be called when mail is not configured"
+        ),
     )
     headers = {"X-CSRF-Token": csrf_token}
     created = account_client.post(
@@ -222,7 +339,9 @@ def test_invitation_manual_fallback_resend_and_acceptance(
     assert created.status_code == 201, created.text
     created_body = created.json()
     assert created_body["outcome"] == "email_failed"
-    assert created_body["invite_url"].startswith("https://marketing.example.test/invite/")
+    assert created_body["invite_url"].startswith(
+        "https://marketing.example.test/invite/"
+    )
     old_token = urlsplit(created_body["invite_url"]).path.rsplit("/", 1)[1]
     member_id = created_body["member"]["id"]
     duplicate = account_client.post(

@@ -69,11 +69,12 @@ export default function TrangDangNhap() {
     mutationFn: (credentials: { email: string; password: string }) =>
       api.auth.login(credentials),
     onSuccess: async () => {
-      // Cổng phiên đọc lại `/me` rồi mới đi tiếp, nếu không trang gốc sẽ thấy
-      // trạng thái "chưa đăng nhập" còn sót trong bộ đệm.
-      await queryClient.invalidateQueries({ queryKey: queryKeys.me });
-      await queryClient.refetchQueries({ queryKey: queryKeys.me });
-      router.push('/');
+      const session = await api.auth.me();
+      // Do not reuse workspace data cached for the previous signed-in account.
+      queryClient.clear();
+      queryClient.setQueryData(queryKeys.me, session);
+      const returnTo = safeReturnPath(new URL(window.location.href).searchParams.get('returnTo'));
+      router.replace(returnTo ?? '/');
     },
   });
 
@@ -123,7 +124,7 @@ export default function TrangDangNhap() {
                 className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900"
               />
               <p id="login-email-hint" className="mt-1 text-xs text-slate-500">
-                Email bạn đã dùng khi được mời vào doanh nghiệp.
+                Email bạn đã đăng ký hoặc được mời vào doanh nghiệp.
               </p>
             </div>
 
@@ -182,6 +183,14 @@ export default function TrangDangNhap() {
                 Quên mật khẩu?
               </Link>
             </p>
+            {!mocksEnabled ? (
+              <p className="text-sm text-slate-600">
+                Chưa có tài khoản?{' '}
+                <Link href="/register" className="font-medium text-slate-900 underline">
+                  Đăng ký
+                </Link>
+              </p>
+            ) : null}
           </form>
         </Card>
       </div>
@@ -225,4 +234,12 @@ export default function TrangDangNhap() {
       ) : null}
     </div>
   );
+}
+
+function safeReturnPath(value: string | null): string | null {
+  if (!value || !value.startsWith('/') || value.startsWith('//') || value.includes('\\')) return null;
+  const parsed = new URL(value, window.location.origin);
+  if (parsed.origin !== window.location.origin) return null;
+  if (["/login", "/register", "/forgot-password", "/reset-password"].includes(parsed.pathname)) return null;
+  return `${parsed.pathname}${parsed.search}${parsed.hash}`;
 }

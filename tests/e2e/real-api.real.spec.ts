@@ -61,6 +61,38 @@ function onePageTextPdf(text: string): Buffer {
 }
 
 test.describe('real API acceptance — auth, documents, jobs and Brand Profile', () => {
+  test('self registration creates an owner workspace that survives logout and login', async ({ page }) => {
+    test.skip(
+      process.env.E2E_REAL_AUTH_TESTS !== '1',
+      'Set E2E_REAL_AUTH_TESTS=1 only against a disposable real API database.',
+    );
+    const suffix = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    const email = `signup-${suffix}@example.com`;
+    const password = `e2e-${suffix}-password`;
+
+    await page.goto('/register');
+    await page.getByLabel('Họ tên').fill('E2E Account Owner');
+    await page.getByLabel('Email', { exact: true }).fill(email);
+    await page.getByLabel('Tên thương hiệu / workspace').fill(`E2E Brand ${suffix}`);
+    await page.getByLabel('Mật khẩu', { exact: true }).fill(password);
+    await page.getByLabel('Nhập lại mật khẩu').fill(password);
+    await page.getByRole('button', { name: 'Đăng ký' }).click();
+    await expect(page).toHaveURL(/\/w\/[^/]+\/brand$/);
+    await expect(page.getByRole('button', { name: 'Đăng xuất' })).toBeVisible();
+
+    const registeredUrl = page.url();
+    await page.reload();
+    await expect(page.getByRole('button', { name: 'Đăng xuất' })).toBeVisible();
+    await page.getByRole('button', { name: 'Đăng xuất' }).click();
+    await expect(page).toHaveURL(/\/login$/);
+
+    await page.getByLabel('Email').fill(email);
+    await page.getByLabel('Mật khẩu').fill(password);
+    await page.getByRole('button', { name: 'Đăng nhập' }).click();
+    await expect(page.getByRole('button', { name: 'Đăng xuất' })).toBeVisible();
+    await expect(page).toHaveURL(new RegExp(`/w/${new URL(registeredUrl).pathname.split('/')[2]}/documents$`));
+  });
+
   test('removes a stale mock service worker before showing real-mode login', async ({ page }) => {
     await page.goto('/login');
     await page.evaluate(async () => {

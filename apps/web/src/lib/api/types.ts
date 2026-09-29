@@ -9,6 +9,7 @@ export type ApiWorkspace = Schemas['WorkspaceOut'];
 export type ApiSessionResponse = Schemas['SessionResponse'];
 export type ApiLoginRequest = Schemas['LoginRequest'];
 export type ApiLoginResponse = Schemas['LoginResponse'];
+export type ApiRegisterRequest = Schemas['RegisterRequest'];
 export type ApiForgotPasswordRequest = Schemas['ForgotPasswordRequest'];
 export type ApiForgotPasswordResponse = Schemas['ForgotPasswordResponse'];
 export type ApiAcceptInvitationRequest = Schemas['AcceptInvitationRequest'];

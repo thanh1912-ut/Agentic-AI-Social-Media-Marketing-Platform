@@ -35,11 +35,15 @@ async def current_user(
     if encoded is None:
         encoded = request.cookies.get(ACCESS_COOKIE)
     if not encoded:
-        raise ApiProblem(401, "unauthenticated", "Bạn chưa đăng nhập hoặc phiên làm việc đã hết hạn.")
+        raise ApiProblem(
+            401, "unauthenticated", "Bạn chưa đăng nhập hoặc phiên làm việc đã hết hạn."
+        )
     try:
         claims = decode_access_token(encoded)
     except jwt.PyJWTError:
-        raise ApiProblem(401, "session_expired", "Phiên làm việc đã hết hạn. Vui lòng đăng nhập lại.")
+        raise ApiProblem(
+            401, "session_expired", "Phiên làm việc đã hết hạn. Vui lòng đăng nhập lại."
+        )
     user = await db.get(User, str(claims["sub"]))
     if user is None or not user.is_active:
         raise ApiProblem(401, "unauthenticated", "Tài khoản không còn hoạt động.")
@@ -54,10 +58,50 @@ async def current_user(
         if changed_at.tzinfo is None:
             changed_at = changed_at.replace(tzinfo=timezone.utc)
         issued_at = claims.get("iat")
-        stale_password = not isinstance(issued_at, (int, float)) or issued_at < int(changed_at.timestamp())
+        stale_password = not isinstance(issued_at, (int, float)) or issued_at < int(
+            changed_at.timestamp()
+        )
     if stale_password:
-        raise ApiProblem(401, "session_expired", "Phiên làm việc đã hết hạn. Vui lòng đăng nhập lại.")
+        raise ApiProblem(
+            401, "session_expired", "Phiên làm việc đã hết hạn. Vui lòng đăng nhập lại."
+        )
     return user
+
+
+async def optional_current_user(
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    authorization: str | None = Header(default=None),
+) -> User | None:
+    """Return a valid session user when present, without authenticating anonymous requests."""
+    encoded = None
+    if authorization:
+        scheme, _, value = authorization.partition(" ")
+        if scheme.lower() == "bearer":
+            encoded = value
+    if encoded is None:
+        encoded = request.cookies.get(ACCESS_COOKIE)
+    if not encoded:
+        return None
+    try:
+        claims = decode_access_token(encoded)
+    except jwt.PyJWTError:
+        return None
+    user = await db.get(User, str(claims["sub"]))
+    if user is None or not user.is_active:
+        return None
+    issued_password_version = claims.get("password_version")
+    if issued_password_version is not None:
+        stale_password = issued_password_version != password_version(user)
+    else:
+        changed_at = user.password_changed_at
+        if changed_at.tzinfo is None:
+            changed_at = changed_at.replace(tzinfo=timezone.utc)
+        issued_at = claims.get("iat")
+        stale_password = not isinstance(issued_at, (int, float)) or issued_at < int(
+            changed_at.timestamp()
+        )
+    return None if stale_password else user
 
 
 async def membership_for(
@@ -92,7 +136,15 @@ def require_permission(permission: str):
                 "Bạn không có quyền thực hiện thao tác này.",
                 details={
                     "required_permission": permission,
-                    "required_role": "owner" if permission in {"member:invite", "brand:confirm", "connection:manage", "publish:create"} else None,
+                    "required_role": "owner"
+                    if permission
+                    in {
+                        "member:invite",
+                        "brand:confirm",
+                        "connection:manage",
+                        "publish:create",
+                    }
+                    else None,
                 },
             )
         return membership
@@ -112,4 +164,8 @@ async def require_csrf(request: Request) -> None:
         expected = request.cookies.get(CSRF_COOKIE)
         received = request.headers.get(CSRF_HEADER)
         if not expected or not received or expected != received:
-            raise ApiProblem(403, "csrf_failed", "Yêu cầu không hợp lệ. Hãy tải lại trang rồi thử lại.")
+            raise ApiProblem(
+                403,
+                "csrf_failed",
+                "Yêu cầu không hợp lệ. Hãy tải lại trang rồi thử lại.",
+            )
