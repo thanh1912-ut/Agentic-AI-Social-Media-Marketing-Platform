@@ -43,6 +43,7 @@ from services.api.meta_tokens import TokenEncryptionUnavailable, decrypt_page_to
 from services.api.storage import storage
 from services.research.web_crawler import CrawlError, crawl_public_site
 from services.research.facebook_cli_collector import ENGINE_VERSION, collect_public_facebook_page
+from services.research.privacy import raw_quarantine_expiry
 from services.research.website_entities import PARSER_VERSION
 from services.worker.ai_budget import (
     PricingUnavailable,
@@ -208,8 +209,10 @@ async def _persist_evidence(
         if raw_body:
             raw_hash = hashlib.sha256(raw_body).hexdigest()
             key = f"market-research/{company_id}/{source.id}/{evidence.id}/{observed_at.strftime('%Y%m%dT%H%M%S')}-{raw_hash[:12]}.bin"
-            await storage.put(key, raw_body)
-            expiry = observed_at + timedelta(days=30)
+            # Retention starts when this worker stores the payload, not at the
+            # source post's publish/observation time (which may be historical).
+            expiry = raw_quarantine_expiry(now)
+        raw_to_upload: tuple[str, bytes] | None = None
         if observation is None:
             observation = MarketObservation(
                 company_id=company_id, evidence_id=evidence.id, observed_at=observed_at,
@@ -218,6 +221,8 @@ async def _persist_evidence(
                 raw_sha256=raw_hash, raw_expires_at=expiry,
             )
             db.add(observation)
+            if key and raw_body:
+                raw_to_upload = (key, raw_body)
         else:
             if observation.evidence_version_id not in {None, version.id}:
                 raise CrawlError("observation_version_conflict", "Dữ liệu của cùng thời điểm đã có nội dung khác.")
@@ -264,6 +269,21 @@ async def _persist_evidence(
                 )
                 db.add(metric_snapshot)
         await db.commit()
+        if raw_to_upload:
+            # Commit the expiry pointer before writing the object. If the
+            # process dies or storage returns an ambiguous timeout, the
+            # scheduled purge still has the key and can delete it after 24h.
+            # A failed DB commit can therefore never leave an untracked raw
+            # object behind. Do not overwrite an existing observation's raw
+            # snapshot during replay.
+            try:
+                await storage.put(*raw_to_upload)
+            except Exception:
+                logger.warning(
+                    "Could not store quarantined raw research payload",
+                    extra={"company_id": company_id, "source_id": source.id,
+                           "evidence_id": evidence.id},
+                )
         return evidence.id
 
 

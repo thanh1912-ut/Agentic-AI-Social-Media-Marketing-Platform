@@ -184,3 +184,12 @@ Base đã kiểm tra: `codex/creative-studio-ui` @ `b769097bfdb3568889d974c6def9
 - PASS: Pricing-focused pytest `9 passed, 2 deselected` trên bản sao test cô lập trong `/private/tmp`; gồm micro-USD, region mismatch, ngày hết giá Gemini và từ chối reservation Gemini khi thiếu token bounds. Test database integration không chạy.
 - PARTIAL: Chỉ bảng định giá/helper được thêm. Gemini/Qwen chưa nối worker, chưa có provider key/model deployment đã xác minh và chưa thuộc thống kê chi phí pipeline.
 - NOT_RUN: Không gọi DeepSeek/Gemini/Qwen live hoặc gửi dữ liệu bình luận/media.
+
+### 2026-09-30 06:14–06:20 Asia/Ho_Chi_Minh — Giới hạn raw quarantine và giữ comment import
+
+- DONE: Research raw payload dùng helper `raw_quarantine_expiry`, expiry đặt tối đa 24 giờ từ lúc worker lưu metadata. DB ghi key/expiry trước object upload để purge scheduler còn biết key nếu storage trả timeout hoặc worker dừng.
+- DONE: Manual import không lưu comment text dựa trên regex che email/điện thoại; aggregate comment metric vẫn giữ, response báo `privacy_hold` và số lượng bình luận bỏ qua. Test API cập nhật theo hành vi này.
+- PASS: Unit test helper kiểm tra timestamp timezone-aware, đúng thời điểm hết hạn sau 24 giờ và comment text bị giữ lại trong khi count được giữ; Ruff và `git diff --check` đạt.
+- BLOCKED: Test API manual-import không thu thập được vì Python runtime hiện tại thiếu dependency `pgvector`; chưa kiểm thử PostgreSQL/object storage cho purge thật hoặc storage timeout.
+- PARTIAL: Chưa có retention 90 ngày cho nội dung chuẩn hóa, deletion ledger/propagation hoặc legal review.
+- NOT_RUN: Không chạy crawl live, không tạo/đọc dữ liệu Facebook hoặc website.

@@ -39,10 +39,11 @@ Không đưa token vào tài liệu, ticket, browser storage, query string hoặ
 - Page doanh nghiệp được thêm tự động khi workspace kích hoạt. Các nguồn khác: website công khai, Page Facebook công khai và Group Facebook công khai.
 - Bấm Crawl ngay cho nguồn hoặc nhóm nội bộ. Lịch nguồn có thể bật/tắt riêng; mở trang không tự chạy crawl.
 - Public Page chạy collector `facebook-cli` Tier 0 hiện có; không đăng nhập. Public Group chỉ có thể trả thông tin nhóm, không có thảo luận Tier 1. Không báo hoàn thành toàn bộ lịch sử.
-- Bình luận hiện ở trạng thái `privacy_hold`: chỉ số tổng hợp có thể lưu, nhưng text bình luận mới không tải/lưu/gửi cho agent. Media chưa có pipeline tải/phân tích.
+- Bình luận hiện ở trạng thái `privacy_hold`: chỉ số tổng hợp có thể lưu, nhưng text bình luận mới không tải/lưu/gửi cho agent. Endpoint nhập thủ công cũng bỏ qua comment text và trả `comments_withheld_count`; email/số điện thoại trong post text được che theo bộ lọc hiện có nhưng chưa đủ để xác nhận đã ẩn danh. Media chưa có pipeline tải/phân tích.
 - Campaign tạo từ hướng viết của báo cáo giữ `report_id`, evidence version, observation, content hash và metrics cụ thể. Worker dùng pin đó; nếu report không có pin hoặc source đã tắt/xóa thì dừng để người dùng chọn lại. Comment text không được đưa vào Content Agent.
 - Snapshot website được chọn cũng phải thuộc cùng report/tenant và source còn active; worker chuyển phần dữ liệu đã allowlist (không kèm URL ảnh ký tạm) vào Content Agent, rồi xác minh lại các pin trước khi lưu draft.
 - Lỗi nguồn mới không được xóa kết quả nguồn thành công trước đó.
+- Raw research payload nếu cần quarantine được gắn hạn xóa tối đa 24 giờ; scheduler xóa object đến hạn. Nội dung nghiên cứu chuẩn hóa 90 ngày, media 30 ngày và propagation khi có yêu cầu xóa vẫn chưa được triển khai đầy đủ; không coi raw TTL là cơ chế xóa dữ liệu cá nhân hoàn chỉnh.
 
 ## Adapter Qwen đang ở trạng thái fixture-only
 

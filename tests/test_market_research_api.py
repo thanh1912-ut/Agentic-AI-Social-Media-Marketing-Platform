@@ -344,7 +344,7 @@ def test_page_token_is_encrypted_and_same_page_can_reconnect(market_api, monkeyp
     assert meta_tokens.decrypt_page_token(stored_again.encrypted_token) == token + "-rotated"
 
 
-def test_manual_competitor_import_masks_private_contact_data(market_api) -> None:
+def test_manual_competitor_import_holds_comment_text_and_keeps_aggregate_counts(market_api) -> None:
     client, session_factory, _encryption_key = market_api
     workspace_id, headers = _owner(client, "market-owner@example.com")
     group_id = _create_group(client, workspace_id, headers)
@@ -380,6 +380,10 @@ def test_manual_competitor_import_masks_private_contact_data(market_api) -> None
     )
     assert imported.status_code == 201, imported.text
     assert imported.json()["imported"] == 1
+    assert imported.json()["comments_content_status"] == "privacy_hold"
+    assert imported.json()["comments_withheld_count"] == 2
+    assert "contact@example.com" not in imported.text
+    assert "0912345678" not in imported.text
 
     saved_posts = client.get(
         f"/api/v1/workspaces/{workspace_id}/market-research/sources/{source['id']}/posts",
@@ -400,7 +404,7 @@ def test_manual_competitor_import_masks_private_contact_data(market_api) -> None
     assert "0901234567" not in evidence.text
     assert "[đã ẩn email]" in evidence.text
     assert "[đã ẩn số điện thoại]" in evidence.text
-    assert all("contact@example.com" not in item and "0912345678" not in item for item in observation.comments_json)
+    assert observation.comments_json == []
     assert observation.metrics_json == {"reactions": 45, "comments": 7, "shares": 3, "views": 1000}
     assert version is not None
     assert version.text == evidence.text

@@ -27,6 +27,8 @@
 | Ngân sách API/UI | PASS theo API fixture và frontend lint/unit; browser real NOT_RUN | `GET .../market-research/ai-budget`; `test_research_ai_budget_is_workspace_scoped_and_reports_reserved_cost` |
 | Pin bằng chứng cho hướng viết | PASS (API + worker fixture) | `test_market_suggestion_draft_pins_report_observation_and_version`, `test_content_generation_job_persists_cited_draft_and_is_idempotent` |
 | Privacy retention/deletion | BLOCKED | Chưa có policy version, deletion ledger/propagation hoặc legal review; không tuyên bố tuân thủ đầy đủ |
+| Raw research quarantine TTL | PARTIAL | Helper giới hạn expiry 24h và worker ghi DB pointer trước object upload; unit test thời hạn đạt. Chưa có test PostgreSQL/object-storage cho scheduler purge hoặc timeout không xác định. |
+| Manual comment import privacy hold | PARTIAL | Endpoint bỏ lưu và không trả comment text, giữ aggregate metrics, trả `privacy_hold` và số lượng đã bỏ qua; integration assertion được cập nhật nhưng chưa chạy được do runtime pytest thiếu `pgvector`. |
 | PostgreSQL migration fresh/upgrade | PASS (test cluster tạm) | Fresh migration đạt `0022`; database riêng đã nâng `0021` → `0022`; legacy mapping của `0021` được kiểm tra trước đó |
 | PostgreSQL/Redis integration | PASS (test services tạm) | `tests/test_postgres_database_integration.py tests/test_ai_budget.py`: 16 passed; queue/cache TTL, fencing/claim, Celery dispatch và reservation race |
 | Budget pricing + no-provider fallback | PASS (unit) | 9 test; tiền micro-USD, upper bound một repair, worker không gọi provider khi deferred/uncertain |

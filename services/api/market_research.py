@@ -70,6 +70,7 @@ from .rate_limits import rate_limit
 from .schemas import AcceptedResponse
 from services.research.web_crawler import CrawlError, canonicalize_url
 from services.research.facebook_public_crawler import normalize_facebook_page_url
+from services.research.privacy import hold_comment_text
 
 
 router = APIRouter(prefix="/workspaces/{company_id}/market-research", tags=["market-research"])
@@ -1007,6 +1008,7 @@ async def import_source_observations(
         raise ApiProblem(409, "manual_import_not_allowed", "Nguồn web đang được thu thập tự động.")
     now = utcnow()
     created = 0
+    withheld_comments = 0
     for item in request.rows:
         try:
             canonical = canonicalize_url(item.url)
@@ -1044,7 +1046,11 @@ async def import_source_observations(
             if value is None or (type(value) in {int, float} and math.isfinite(value) and value >= 0)
         }
         observed = item.observed_at or now
-        comments = [_mask_private_text(comment) for comment in item.comments]
+        # Manual imports have no verified processing basis or complete
+        # privacy/deletion controls yet. Keep aggregate comment counts in
+        # metrics, but do not persist comment text based on regex masking.
+        comments, withheld_count = hold_comment_text(item.comments)
+        withheld_comments += withheld_count
         observation = await db.scalar(select(MarketObservation).where(
             MarketObservation.company_id == company_id, MarketObservation.evidence_id == evidence.id,
             MarketObservation.observed_at == observed,
@@ -1098,9 +1104,15 @@ async def import_source_observations(
     source.error_json = None
     db.add(AuditEvent(company_id=company_id, actor_user_id=user.id, action="market.source.import",
                       entity_type="research_source", entity_id=source.id,
-                      metadata_json={"rows": created, "comments_count": sum(len(item.comments) for item in request.rows)}))
+                      metadata_json={"rows": created, "comments_withheld_count": withheld_comments,
+                                     "comments_content_status": "privacy_hold"}))
     await db.commit()
-    return {"imported": created, "observed_at": now}
+    return {
+        "imported": created,
+        "observed_at": now,
+        "comments_content_status": "privacy_hold",
+        "comments_withheld_count": withheld_comments,
+    }
 
 
 @router.get("/reports", response_model=list[ResearchReportOut])
