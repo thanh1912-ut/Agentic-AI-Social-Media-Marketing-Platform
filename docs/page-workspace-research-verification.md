@@ -41,7 +41,9 @@ Không tuyên bố đã crawl hết Page/Group hoặc đạt chứng nhận phá
 ## Bằng chứng code trong lượt triển khai
 
 - Baseline branch/SHA: `codex/creative-studio-ui` @ `b769097bfdb3568889d974c6def95bb944559113`.
-- Branch hiện tại: `codex/page-workspaces-research`; test SHA và remote SHA sẽ ghi sau commit.
+- Implementation/test commit: `d2ad5dddf7ef4055a1941d69c32a67d5d93ecf4a` trên `codex/page-workspaces-research`.
+- Remote SHA được xác minh lúc `2026-09-30 01:38 Asia/Ho_Chi_Minh`: `origin/codex/page-workspaces-research` khớp `d2ad5dddf7ef4055a1941d69c32a67d5d93ecf4a`.
+- Việc ghi nhận SHA trong tài liệu là thay đổi tài liệu sau khi chạy kiểm thử; không làm thay đổi code đã kiểm thử.
 - Đã thêm migration `0021_page_workspace_identity`; migration thật chưa chạy.
 - OpenAPI được xuất vào `/private/tmp/page-workspaces-openapi.json` và frontend types sinh bằng `npm run gen:api`; stub pgvector chỉ dùng để import schema, không được tính là backend runtime/test.
 - `alembic upgrade head --sql` chưa chạy hết được vì migration cũ `0002_profile_knowledge` gọi schema inspector, không hỗ trợ Alembic offline SQL; không chạy migration lên database preview.

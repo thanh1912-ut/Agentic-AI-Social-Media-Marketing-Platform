@@ -53,6 +53,12 @@ Base đã kiểm tra: `codex/creative-studio-ui` @ `b769097bfdb3568889d974c6def9
 - BLOCKED: chạy test Docling thật do worker thiếu dependency/model runtime trong môi trường hiện tại.
 - Vận hành: đã báo người dùng rằng đầu ra chẩn đoán trước đó vô tình chứa chuỗi kết nối DB; giá trị không được lưu trong repo/docs. Xoay vòng credential DB trong cửa sổ vận hành an toàn trước khi rollout tiếp theo.
 
+### 2026-09-30 01:38 Asia/Ho_Chi_Minh — Commit và push
+
+- DONE: commit `d2ad5dddf7ef4055a1941d69c32a67d5d93ecf4a` được push lên `codex/page-workspaces-research`.
+- DONE: `git ls-remote` xác nhận SHA trên origin khớp commit vừa push.
+- NOT_RUN: chưa rollout frontend/backend lên preview; cần chạy migration và nghiệm thu PostgreSQL/Redis/browser trước khi thay dịch vụ đang dùng.
+
 ## Nhật ký
 
 ### 2026-09-30 — Baseline
