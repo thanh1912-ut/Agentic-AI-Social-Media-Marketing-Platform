@@ -131,7 +131,7 @@ Base đã kiểm tra: `codex/creative-studio-ui` @ `b769097bfdb3568889d974c6def9
 - DONE: Thêm Qwen structured text adapter dùng OpenAI-compatible JSON-object endpoint; model ID và HTTPS endpoint theo vùng phải được khai báo, không tự chọn region/model.
 - DONE: Adapter giới hạn đầu vào và validate output bằng Pydantic; comment summary chỉ nhận batch đã có privacy decision, không gửi author/profile hoặc decision ID tới model và kiểm tra citations thuộc đúng batch.
 - DONE: Qwen tắt repair call cho tới khi có reservation ledger; không có retry ẩn của SDK.
-- PASS: Qwen + Gemini + DeepSeek provider fixtures đạt 31 passed với `pytest --noconftest -p no:cacheprovider`; Ruff và diff check đạt.
+- PASS: Qwen + DeepSeek provider fixtures đạt 21 passed ở mốc này; Ruff đạt.
 - BLOCKED: Pytest thông thường không vào được fixtures vì môi trường hiện thiếu `pgvector`; Qwen factory integration cũng cần cài dependency `openai` theo manifest. Không lấy lượt fixture riêng làm bằng chứng integration.
 - PARTIAL: Chưa có QWEN key/region/model của deployment, chưa nối vào pipeline comment vì comment text vẫn `privacy_hold`, chưa tích hợp pricing/budget ledger chung.
 - NOT_RUN: Alibaba/Gemini live, media, comment analysis, provider budget end-to-end.
