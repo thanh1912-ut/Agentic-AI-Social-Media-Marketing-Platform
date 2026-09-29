@@ -17,7 +17,8 @@ Commit nền: `1f0e933acdb331410a7cb7ec0c2ecf6a652ad351` (`codex/docling-documen
 | OpenAPI và TypeScript | DONE | OpenAPI mới sinh lại; `scripts/export_openapi.py --check` đạt; frontend dùng `schema.d.ts` sinh tự động. |
 | Backend/frontend kiểm thử | DONE WITH LIMITATION | Frontend typecheck/test/lint/build đạt. Backend suite: 228 passed, 12 skipped; một test PDF không chạy được vì thiếu model artifacts Docling cục bộ. |
 | PostgreSQL/Redis thật, DeepSeek live và browser | NOT_RUN | Chưa cấu hình `POSTGRES_TEST_URL` trong môi trường test; không gọi provider hoặc dùng DB/preview cũ làm bằng chứng. |
-| Review và commit nhánh feature | DONE | Diff/staged diff và secret scan đã rà; commit `5f168a672f883fe64aa7be27fe20084d3be6256f` đã tạo. Push còn chờ xác minh remote. |
+| Review, commit và push nhánh feature | DONE | Diff/staged diff và secret scan đã rà; nhánh đã push, remote SHA `290d251752555efe65b3f41c59724a405ffa9c2e` đã khớp local. |
+| Mở preview giao diện | PARTIAL | Frontend real-mode/mocks-off chạy riêng ở `http://127.0.0.1:13103`; API `127.0.0.1:8000` không chạy nên phiên đăng nhập báo `network_error`, chưa thể test sau đăng nhập. |
 
 ## Nhật ký
 
@@ -26,6 +27,7 @@ Commit nền: `1f0e933acdb331410a7cb7ec0c2ecf6a652ad351` (`codex/docling-documen
 - 2026-09-29: Đồng bộ OpenAPI và type sinh; thêm trạng thái hồ sơ chưa áp dụng, lưu nguồn khi revise, cho phép sinh bài không đính kèm tài liệu; gỡ worker bridge AI tạo Brand Profile.
 - 2026-09-29: Backend tests liên quan, frontend typecheck/tests/lint/build và OpenAPI check chạy trong worktree feature; xem `manual-brand-context-verification.md` để biết kết quả cuối.
 - 2026-09-29: Commit triển khai `5f168a672f883fe64aa7be27fe20084d3be6256f`; staged diff sạch và chỉ gồm 36 file thuộc luồng này.
+- 2026-09-29: Push thành công; remote `codex/manual-brand-content-context` khớp `290d251752555efe65b3f41c59724a405ffa9c2e`. Preview frontend riêng ở cổng 13103 mở được; backend API không lắng nghe tại cổng 8000.
 
 ## Giới hạn hiện tại
 

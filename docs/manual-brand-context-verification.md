@@ -19,6 +19,7 @@ Yêu cầu là lưu prose thương hiệu do Owner tự viết, không dùng AI 
 | Backend suite đầy đủ | PARTIAL PASS | 228 passed, 12 skipped, 1 failed. Lỗi duy nhất là `test_pdf_text_has_page_locator`: runner báo thiếu model Docling; môi trường không có `DOCLING_ARTIFACTS_PATH` và manifest model `layout`/`tableformer`. |
 | Frontend typecheck / tests / lint | PASS | `npm run typecheck`, `npm test` (47 tests) và `npm run lint` đạt. |
 | Frontend production build | PASS | `npm run build` đạt trên nhánh feature. |
+| Feature UI preview, mocks tắt | PARTIAL PASS | Giao diện mở ở `http://127.0.0.1:13103`; kiểm tra session hiện `network_error` do API `127.0.0.1:8000` không chạy. Preview chỉ chứng minh frontend render, không chứng minh pipeline. |
 | PostgreSQL/Redis thật và tenant integration trên dịch vụ thật | NOT_RUN | Các test PostgreSQL tự skip vì `POSTGRES_TEST_URL` chưa cấu hình; không dùng DB/Redis preview khác thay thế. |
 | Browser UI → API → Redis/worker → PostgreSQL → reload | NOT_RUN | Chưa dựng preview/API/worker riêng cho feature; không dùng tab cũ làm bằng chứng. |
 | DeepSeek live | NOT_RUN | Không gửi dữ liệu ra provider trong lượt nghiệm thu này; lưu hồ sơ/ingestion không cần DeepSeek, content dùng model fixture. |
@@ -28,6 +29,7 @@ Yêu cầu là lưu prose thương hiệu do Owner tự viết, không dùng AI 
 
 - Nhánh: `codex/manual-brand-content-context`.
 - Commit triển khai: `5f168a672f883fe64aa7be27fe20084d3be6256f`.
+- Commit tài liệu bàn giao cuối: `290d251752555efe65b3f41c59724a405ffa9c2e`; SHA này đã xác minh trùng với remote branch.
 - Commit nền: `1f0e933acdb331410a7cb7ec0c2ecf6a652ad351`.
 - Runtime Python kiểm thử: `/private/tmp/docling-ingestion-venv/bin/python` (Python 3.14); test chạy từ `/private/tmp` để không ghi cache vào checkout.
 - Frontend dùng Node dependencies qua overlay tạm trong `/private/tmp`; overlay được gỡ trước khi commit.
