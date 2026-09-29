@@ -92,6 +92,7 @@ Base đã kiểm tra: `codex/creative-studio-ui` @ `b769097bfdb3568889d974c6def9
 - BLOCKED: Full suite phát hiện 11 test parser hiện có không khởi tạo được Docling subprocess trong virtualenv API hiện tại; lỗi độc lập với ledger và cần worker Docling runtime/model để nghiệm thu.
 - NOT_RUN: Không gọi DeepSeek/Gemini/Qwen live; không chạy crawl worker hoặc Meta live; không rollout preview.
 - PARTIAL: Hiện chỉ báo cáo Nghiên cứu tự động DeepSeek dùng ledger. Gemini/Qwen adapters, media/comment pipeline, ngân sách các tác vụ tự động khác và UI xem ngân sách chưa làm.
+- DONE: Commit ngân sách `2b3cb9283e9f512b9aa288ecf48af4437cde9a1f` đã push; SHA trên origin được đối chiếu khớp.
 
 ## Nhật ký
 
