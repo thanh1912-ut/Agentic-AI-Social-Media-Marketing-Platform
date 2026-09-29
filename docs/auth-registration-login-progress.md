@@ -53,6 +53,8 @@ Thời điểm cập nhật: 2026-09-29 10:18 UTC
 - [x] Một job campaign-plan dùng workspace/prose tổng hợp đã dispatch qua Redis/Celery và ghi kết quả vào PostgreSQL: `succeeded`, model `deepseek-flash`, ba concept, 1.129 input tokens, 4.431 output tokens, 19.995 ms. Workspace tổng hợp được xóa sau khi đọc kết quả.
 - [x] Xác nhận tải lại frontend vẫn vào workspace đã đăng nhập, không bị chuyển về login.
 - [x] 6 test runtime, Ruff check/format, Python compile và `git diff --check` đều đạt.
-- [ ] Review diff/secrets, commit và push feature branch; xác minh SHA remote.
+- [x] Review diff/secrets, commit `d282316`, push `codex/auth-registration-login` và xác minh SHA remote khớp.
 
 Lượt cài LaunchAgent đầu tiên gặp lỗi bootstrap thoáng qua sau khi thay API cũ. Installer được bổ sung retry có giới hạn và kiểm tra trạng thái thực; lượt cài lại thành công cho cả 5 service. Key vẫn chỉ nằm trong secret store, không được in ra.
+
+Runtime commit: `d282316c0eace5544572903659c19d1f2315995e`; branch remote đã xác nhận cùng SHA. Các dịch vụ preview đang chạy sau push.
