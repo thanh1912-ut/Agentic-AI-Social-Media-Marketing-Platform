@@ -131,7 +131,7 @@ Base đã kiểm tra: `codex/creative-studio-ui` @ `b769097bfdb3568889d974c6def9
 - DONE: Thêm Qwen structured text adapter dùng OpenAI-compatible JSON-object endpoint; model ID và HTTPS endpoint theo vùng phải được khai báo, không tự chọn region/model.
 - DONE: Adapter giới hạn đầu vào và validate output bằng Pydantic; comment summary chỉ nhận batch đã có privacy decision, không gửi author/profile hoặc decision ID tới model và kiểm tra citations thuộc đúng batch.
 - DONE: Qwen tắt repair call cho tới khi có reservation ledger; không có retry ẩn của SDK.
-- PASS: Qwen + Gemini + DeepSeek provider fixtures đạt 30 passed với `pytest --noconftest -p no:cacheprovider`; Ruff và diff check đạt.
+- PASS: Qwen + Gemini + DeepSeek provider fixtures đạt 31 passed với `pytest --noconftest -p no:cacheprovider`; Ruff và diff check đạt.
 - BLOCKED: Pytest thông thường không vào được fixtures vì môi trường hiện thiếu `pgvector`; Qwen factory integration cũng cần cài dependency `openai` theo manifest. Không lấy lượt fixture riêng làm bằng chứng integration.
 - PARTIAL: Chưa có QWEN key/region/model của deployment, chưa nối vào pipeline comment vì comment text vẫn `privacy_hold`, chưa tích hợp pricing/budget ledger chung.
 - NOT_RUN: Alibaba/Gemini live, media, comment analysis, provider budget end-to-end.
@@ -140,7 +140,8 @@ Base đã kiểm tra: `codex/creative-studio-ui` @ `b769097bfdb3568889d974c6def9
 
 - DONE: Thêm contract batch chỉ nhận excerpt đã sàng lọc, policy decision/version và evidence refs theo run; không có author/profile field.
 - DONE: Qwen summary phải trích refs có trong batch; không gửi ID/quyết định nội bộ provider và không tạo repair request khi chưa có budget reservation.
-- PASS: Provider fixtures Qwen/Gemini/DeepSeek đạt 30 passed; Ruff và diff check đạt.
+- DONE: Tắt đường `generate` tổng quát của Qwen; adapter chỉ nhận `summarize_screened_comments`.
+- PASS: Provider fixtures Qwen/Gemini/DeepSeek đạt 31 passed; Ruff và diff check đạt.
 - PARTIAL: Contract không phải bằng chứng căn cứ pháp lý; comment collection vẫn `privacy_hold`, adapter chưa được worker gọi.
 
 ### 2026-09-30 03:14 Asia/Ho_Chi_Minh — Gemini inline media adapter

@@ -3,19 +3,15 @@ from __future__ import annotations
 from types import SimpleNamespace
 
 import pytest
-from pydantic import BaseModel
 from pydantic import ValidationError
 
 from services.agents.providers.errors import ProviderConfigurationError, ProviderOutputError
 from services.agents.providers.qwen import (
     PrivacyApprovedCommentBatch,
+    QwenCommentAnalysis,
     QwenStructuredModel,
     configured_qwen_structured_model,
 )
-
-
-class Summary(BaseModel):
-    topics: list[str]
 
 
 def _completion(content: str, *, finish_reason: str = "stop"):
@@ -49,7 +45,10 @@ class FakeClient:
 
 
 def test_qwen_uses_explicit_regional_endpoint_json_mode_and_validates_output():
-    client = FakeClient([_completion('{"topics":["giá sản phẩm","bảo hành"]}')])
+    client = FakeClient([_completion(
+        '{"topics":[{"category":"question","topic":"giá sản phẩm","summary":"Cần biết giá.",'
+        '"evidence_refs":["comment_run1_01"]}],"limitations":[]}'
+    )])
     model = QwenStructuredModel(
         api_key="test-key",
         model="qwen-explicit-model",
@@ -57,17 +56,20 @@ def test_qwen_uses_explicit_regional_endpoint_json_mode_and_validates_output():
         client=client,
     )
 
-    result, metadata = model.generate(
-        system_prompt="Summarize only the supplied screened comments. JSON output.",
-        input_payload={"comments": ["Cần biết giá và chính sách bảo hành."]},
-        response_model=Summary,
-    )
+    batch = PrivacyApprovedCommentBatch.model_validate({
+        "privacy_status": "approved_for_provider",
+        "privacy_decision_id": "privacy-decision-01",
+        "policy_version": "comment-screening-v1",
+        "comments": [{"evidence_ref": "comment_run1_01", "text": "Cần biết giá và chính sách bảo hành."}],
+    })
+    result, metadata = model.summarize_screened_comments(batch=batch)
 
     request = client.chat.completions.calls[0]
     assert request["model"] == "qwen-explicit-model"
     assert request["response_format"] == {"type": "json_object"}
     assert "JSON" in request["messages"][0]["content"]
-    assert result.topics == ["giá sản phẩm", "bảo hành"]
+    assert "Cần biết giá và chính sách bảo hành" in request["messages"][1]["content"]
+    assert result.topics[0].topic == "giá sản phẩm"
     assert metadata.provider == "qwen"
     assert metadata.model == "qwen-test-model"
     assert metadata.input_tokens == 12 and metadata.output_tokens == 4
@@ -81,10 +83,14 @@ def test_qwen_does_not_make_unreserved_repair_request():
         client=client,
     )
 
+    batch = PrivacyApprovedCommentBatch.model_validate({
+        "privacy_status": "approved_for_provider",
+        "privacy_decision_id": "privacy-decision-01",
+        "policy_version": "comment-screening-v1",
+        "comments": [{"evidence_ref": "comment_run1_01", "text": "Cần hỏi về giá."}],
+    })
     with pytest.raises(ProviderOutputError, match="schema"):
-        model.generate(
-            system_prompt="Return JSON.", input_payload={"batch_id": "batch-1"}, response_model=Summary,
-        )
+        model.summarize_screened_comments(batch=batch)
     assert len(client.chat.completions.calls) == 1
     assert model.last_repair_attempts == 0
 
@@ -135,6 +141,16 @@ def test_qwen_comment_batch_requires_unique_run_scoped_refs_and_approved_status(
                 {"evidence_ref": "comment_run1_01", "text": "Cần bảo hành."},
             ],
         })
+
+
+def test_qwen_generic_generation_path_is_disabled():
+    model = QwenStructuredModel(
+        api_key="test-key", model="qwen-explicit-model",
+        base_url="https://workspace.ap-southeast-1.maas.aliyuncs.com/compatible-mode/v1",
+        client=FakeClient([]),
+    )
+    with pytest.raises(ProviderConfigurationError, match="privacy-approved batch"):
+        model.generate(system_prompt="ignored", input_payload={}, response_model=QwenCommentAnalysis)
 
 
 def test_qwen_rejects_model_citations_outside_the_supplied_comment_batch():
