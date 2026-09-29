@@ -12,10 +12,10 @@ Base đã kiểm tra: `codex/creative-studio-ui` @ `b769097bfdb3568889d974c6def9
 - [DONE] UI Nghiên cứu không hỏi tạo/chọn nhóm; backend giữ nhóm legacy nội bộ và facade workspace cho báo cáo.
 - [PARTIAL] Page sở hữu lưu bài và chỉ số mà Meta trả. Nội dung bình luận đang `privacy_hold`; chỉ số đếm bình luận vẫn có thể được lưu.
 - [PARTIAL] Public Facebook giữ collector Tier 0 hiện có. Nhóm chỉ báo `unsupported_tier0`; không có nội dung thảo luận.
-- [BLOCKED] Gemini/Qwen adapter, phân tích media, pricing validation và ledger $2/workspace/ngày chưa được triển khai.
+- [PARTIAL] Ledger ngân sách tự động PostgreSQL và mức trần $2/workspace/ngày đã được thêm cho báo cáo Nghiên cứu chạy DeepSeek. Gemini/Qwen, media và các call AI tự động khác chưa nối vào ledger.
 - [PARTIAL] Worker không gửi comment text cũ/mới cho agent. Chưa có pipeline nhận dạng/redact toàn diện, retention/deletion ledger hoặc quy trình pháp lý; không được coi là chứng nhận tuân thủ.
 - [DONE] Regenerate OpenAPI TypeScript từ OpenAPI hiện tại; frontend lint/typecheck/unit/build.
-- [PARTIAL] Test API/worker fixtures đạt; migration PostgreSQL, Redis/Celery thật, browser real mode và Meta live chưa chạy.
+- [PARTIAL] API/worker fixtures và PostgreSQL/Redis/Celery integration test đã chạy trên môi trường disposable; browser real mode, Meta/provider live và worker crawl chưa chạy.
 
 ## Bằng chứng ban đầu
 
@@ -38,7 +38,7 @@ Base đã kiểm tra: `codex/creative-studio-ui` @ `b769097bfdb3568889d974c6def9
 - DONE: API permissions và worker claims chặn tác vụ ghi/AI/research/publish nếu Page chưa active; scheduler bỏ qua workspace cần reconnect.
 - DONE: Research source có thể tạo không truyền group ID; Nghiên cứu tự chọn nhóm nội bộ cho dữ liệu legacy. UI gộp public Page đối thủ/tin tức và giải thích giới hạn Group Tier 0.
 - DONE: Không lấy text bình luận mới cho đến khi có điều kiện xử lý phù hợp; report bỏ qua comment text legacy, trả coverage `privacy_hold`.
-- TODO: Migration fresh/upgrade PostgreSQL thật, Redis worker/recovery, Playwright thật, Gemini/Qwen/budget ledger và media pipeline.
+- TODO: Playwright thật, Gemini/Qwen adapters, media pipeline, privacy/retention/deletion và mở rộng ledger cho mọi AI tự động.
 - BLOCKED: Không có căn cứ trong repo cho phép kết luận việc xử lý dữ liệu cá nhân đã đáp ứng đầy đủ luật; cần đánh giá tổ chức/pháp lý và triển khai retention/erasure trước khi mở comment/media processing.
 
 ### 2026-09-30 01:28 Asia/Ho_Chi_Minh — Kiểm thử và rà contract
@@ -78,6 +78,20 @@ Base đã kiểm tra: `codex/creative-studio-ui` @ `b769097bfdb3568889d974c6def9
 
 - DONE: commit `6bb99106d689444cfb1b2acc6e5ea467a8e553cc` gồm integration test PostgreSQL/Redis và cập nhật runbook/verification đã push.
 - DONE: SHA trên origin được xác minh khớp commit này.
+
+### 2026-09-30 02:21 Asia/Ho_Chi_Minh — Ledger ngân sách AI tự động
+
+- DONE: Thêm migration `0022_ai_usage_budget` với bộ đếm ngân sách ngày theo workspace và ledger idempotent; tiền lưu bằng integer micro-USD, có usage, model, pricing version, trạng thái uncertain và structured result để replay.
+- DONE: Reservation khóa hàng workspace trước khi kiểm tra `spent + reserved`, cap cứng 2.000.000 micro-USD/ngày theo Asia/Ho_Chi_Minh; không gọi nếu ngân sách thiếu hoặc model chưa có giá trong bảng.
+- DONE: Tích hợp báo cáo Nghiên cứu tự động với DeepSeek. Một research cycle chỉ có một request key; provider timeout/exception giữ reservation và không tự gửi lại. Kết quả thành công được lưu trong ledger để worker replay mà không gọi model lần hai.
+- DONE: Giá DeepSeek dùng mức peak/cache-miss đã ghi phiên bản; reservation tính trường hợp tối đa một lần repair. Provider/model chưa có giá đã xác minh bị từ chối trước khi gửi.
+- PASS: Unit pricing and worker guard `tests/test_ai_budget.py`: 9 passed, including no provider call for deferred/uncertain reservations.
+- PASS: PostgreSQL 18.3 migration fresh đến `0022`, cùng đường upgrade `0021` → `0022` trên database tạm riêng.
+- PASS: PostgreSQL/Redis integration `tests/test_postgres_database_integration.py tests/test_ai_budget.py`: 16 passed; gồm race 6 reservations chỉ cấp 2 request trong hạn mức 40.000 micro-USD, replay và settlement.
+- PASS: Regression không cần Docling runtime: 236 passed, 14 skipped, 1 deselected.
+- BLOCKED: Full suite phát hiện 11 test parser hiện có không khởi tạo được Docling subprocess trong virtualenv API hiện tại; lỗi độc lập với ledger và cần worker Docling runtime/model để nghiệm thu.
+- NOT_RUN: Không gọi DeepSeek/Gemini/Qwen live; không chạy crawl worker hoặc Meta live; không rollout preview.
+- PARTIAL: Hiện chỉ báo cáo Nghiên cứu tự động DeepSeek dùng ledger. Gemini/Qwen adapters, media/comment pipeline, ngân sách các tác vụ tự động khác và UI xem ngân sách chưa làm.
 
 ## Nhật ký
 

@@ -17,7 +17,15 @@ from sqlalchemy import or_, select, text
 from database.evidence_versions import ensure_evidence_version
 from database.job_fencing import active_job_fence, claim_job_fence, isolated_job_fence
 from database.models import (
-    AuditEvent, Company, CrawlHostThrottle, Job, JobEvent, JobStep, MarketEvidence, MarketEvidenceVersion,
+    AIUsageLedger,
+    AuditEvent,
+    Company,
+    CrawlHostThrottle,
+    Job,
+    JobEvent,
+    JobStep,
+    MarketEvidence,
+    MarketEvidenceVersion,
     MarketObservation,
     MarketReport, MarketReportEvidence, MarketReportWebSnapshot, MetaPageConnection, MetaPageGroup,
     MetaPageMetricSnapshot, MetaPagePost, MetaPostMetricSnapshot, ResearchCycle,
@@ -36,6 +44,14 @@ from services.api.storage import storage
 from services.research.web_crawler import CrawlError, crawl_public_site
 from services.research.facebook_cli_collector import ENGINE_VERSION, collect_public_facebook_page
 from services.research.website_entities import PARSER_VERSION
+from services.worker.ai_budget import (
+    PricingUnavailable,
+    mark_automatic_request_unknown,
+    release_unsubmitted_request,
+    reserve_automatic_request,
+    settle_automatic_request,
+)
+from services.agents.providers.errors import ProviderContextLimitError
 from .async_runtime import run_worker_coroutine
 from .celery_app import celery_app
 from .model_provider import AIConfigurationError, configured_structured_model
@@ -1064,6 +1080,8 @@ def _trim_evidence_ids(
 
 
 async def _make_report(
+    company_id: str,
+    cycle_id: str,
     group: MetaPageGroup,
     evidence_rows: list[dict[str, Any]],
     audience_rows: list[dict[str, Any]],
@@ -1102,6 +1120,41 @@ async def _make_report(
         "Giữ nguyên cờ xấp xỉ/cận dưới và nêu rõ các số này do website tự công bố; không quy đổi tiền hoặc suy doanh thu. "
         "Đề xuất tối đa 5 góc nội dung để con người xem xét; không tự đăng bài."
     )
+    request_key = f"research-report:{cycle_id}"
+    configured_model = str(getattr(model, "model_name", settings.llm_default_model))
+    try:
+        reservation = await reserve_automatic_request(
+            company_id=company_id, request_key=request_key, provider="deepseek",
+            model=configured_model, operation="market_research_report",
+        )
+    except PricingUnavailable:
+        return {
+            "headline": "Đã lưu dữ liệu, chưa thể tính chi phí AI",
+            "summary": "Model DeepSeek đang cấu hình chưa có giá đã xác minh; hệ thống chưa gửi dữ liệu sang nhà cung cấp.",
+            "trends": [], "suggestions": [], "analysis_status": "pricing_unavailable",
+        }, configured_model, "pricing_unavailable"
+    if reservation.status == "deferred_budget":
+        return {
+            "headline": "Đã lưu dữ liệu, phân tích đang chờ ngân sách",
+            "summary": "Ngân sách AI tự động 2 USD/workspace/ngày đã dùng hết hoặc không đủ cho yêu cầu này. Dữ liệu nghiên cứu vẫn được lưu.",
+            "trends": [], "suggestions": [], "analysis_status": "deferred_budget",
+        }, configured_model, "deferred_budget"
+    if reservation.status in {"cached", "cached_unknown"} and reservation.cached_result:
+        cached = reservation.cached_result
+        report = dict(cached.get("report") or {})
+        if reservation.status == "cached_unknown":
+            report["analysis_budget_status"] = "usage_unknown_reserved"
+        else:
+            report["analysis_budget_status"] = "settled_replayed"
+        return report, cached.get("model_name") or configured_model, "completed"
+    if reservation.status != "reserved":
+        return {
+            "headline": "Đã lưu dữ liệu, kết quả AI cần được đối soát",
+            "summary": "Lời gọi trước có thể đã được nhà cung cấp nhận. Để tránh gửi trùng và tính phí hai lần, hệ thống giữ reservation và không tự gọi lại.",
+            "trends": [], "suggestions": [], "analysis_status": "provider_outcome_unknown",
+            "analysis_budget_status": "reserved_for_reconciliation",
+        }, configured_model, "provider_outcome_unknown"
+
     try:
         parsed, metadata = await asyncio.to_thread(
             model.generate, system_prompt=prompt, input_payload=payload, response_model=MarketAnalysis,
@@ -1111,13 +1164,34 @@ async def _make_report(
         valid_snapshot_ids = {str(item["snapshot_id"]) for item in (web_snapshot_rows or [])}
         report = _trim_evidence_ids(report, valid_ids, valid_snapshot_ids)
         report["analysis_status"] = "completed"
-        return report, metadata.model if metadata else getattr(model, "model_name", None), "completed"
-    except Exception:
+        actual_model = metadata.model if metadata else configured_model
+        settlement = await settle_automatic_request(
+            company_id=company_id, reservation=reservation,
+            provider="deepseek", model=actual_model,
+            input_tokens=getattr(metadata, "input_tokens", None),
+            output_tokens=getattr(metadata, "output_tokens", None),
+            result_json={"report": report, "model_name": actual_model},
+        )
+        report["analysis_budget_status"] = settlement
+        return report, actual_model, "completed"
+    except ProviderContextLimitError:
+        await release_unsubmitted_request(company_id=company_id, reservation=reservation)
         return {
-            "headline": "Đã lưu dữ liệu nhưng chưa phân tích được bằng DeepSeek",
-            "summary": "Lượt gọi mô hình gặp lỗi. Dữ liệu đã được lưu; có thể chạy lại chu kỳ sau khi kiểm tra cấu hình AI.",
-            "trends": [], "suggestions": [], "analysis_status": "deepseek_failed",
-        }, getattr(model, "model_name", None), "deepseek_failed"
+            "headline": "Đã lưu dữ liệu nhưng yêu cầu vượt giới hạn đầu vào AI",
+            "summary": "Hệ thống chưa gửi yêu cầu tới DeepSeek. Thu hẹp dữ liệu hoặc cấu hình giới hạn phù hợp rồi thử lại ở chu kỳ mới.",
+            "trends": [], "suggestions": [], "analysis_status": "input_limit_exceeded",
+            "analysis_budget_status": "released_before_provider_call",
+        }, configured_model, "input_limit_exceeded"
+    except Exception:
+        await mark_automatic_request_unknown(
+            company_id=company_id, reservation=reservation, error_code="provider_call_outcome_unknown",
+        )
+        return {
+            "headline": "Đã lưu dữ liệu nhưng kết quả DeepSeek cần đối soát",
+            "summary": "Không xác định được nhà cung cấp đã nhận yêu cầu hay chưa. Reservation được giữ và hệ thống không tự gửi lại để tránh tính phí trùng.",
+            "trends": [], "suggestions": [], "analysis_status": "provider_outcome_unknown",
+            "analysis_budget_status": "reserved_for_reconciliation",
+        }, configured_model, "provider_outcome_unknown"
 
 
 async def _evidence_for_report(company_id: str, group_id: str) -> list[dict[str, Any]]:
@@ -1479,7 +1553,7 @@ async def _run(job_id: str) -> None:
         return
 
     report_json, model_name, analysis_status = await _make_report(
-        group_snapshot, evidence_rows, audience_rows, web_snapshot_rows,
+        company_id, cycle.id, group_snapshot, evidence_rows, audience_rows, web_snapshot_rows,
     )
     report_json["source_audience"] = audience_rows
     report_json["evidence_refs"] = [
@@ -1515,6 +1589,15 @@ async def _run(job_id: str) -> None:
         )
         db.add(report)
         await db.flush()
+        # The ledger keeps a recovery copy only until the durable report exists.
+        # Avoid retaining a second copy of research output after successful commit.
+        usage_row = await db.scalar(select(AIUsageLedger).where(
+            AIUsageLedger.company_id == company_id,
+            AIUsageLedger.request_key == f"research-report:{cycle.id}",
+            AIUsageLedger.result_json.is_not(None),
+        ).with_for_update())
+        if usage_row is not None:
+            usage_row.result_json = None
         db.add_all([
             MarketReportEvidence(
                 company_id=company_id, group_id=group_id, report_id=report.id,

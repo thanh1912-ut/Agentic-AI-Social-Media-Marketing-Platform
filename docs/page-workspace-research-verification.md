@@ -22,11 +22,14 @@
 | Public Group Tier 0 | UNSUPPORTED/PARTIAL | Status `unsupported_tier0`; Group discussions không được hỗ trợ ở Tier 0 |
 | Comment text / replies | PRIVACY_HOLD | Không tải comment text mới; report bỏ comment text legacy khỏi model context; aggregate count riêng |
 | Media download/analysis | NOT_IMPLEMENTED | Không có asset pipeline; Gemini chưa nối |
-| Qwen / Gemini / DeepSeek routing | NOT_IMPLEMENTED except existing DeepSeek | Không có adapter mới, model/cost validation hoặc fallback |
-| AI budget $2/workspace/day | NOT_IMPLEMENTED | Chưa có reservation/actual usage ledger; không cho rằng đã được giới hạn |
+| Qwen / Gemini / DeepSeek routing | PARTIAL | DeepSeek hiện có; Gemini/Qwen adapters và media/comment routing chưa nối; không tự fallback |
+| AI budget $2/workspace/day | PARTIAL | PostgreSQL reservation/ledger hiện bao phủ báo cáo Nghiên cứu DeepSeek tự động; chưa áp dụng chung cho các agent, Gemini/Qwen hoặc media |
 | Privacy retention/deletion | BLOCKED | Chưa có policy version, deletion ledger/propagation hoặc legal review; không tuyên bố tuân thủ đầy đủ |
-| PostgreSQL migration fresh/upgrade | PASS (test cluster tạm) | Fresh migration đạt `0021`; upgrade từ schema revision `0020` với trường hợp legacy một Page/nhiều Page/Page trùng/không có Page |
-| PostgreSQL/Redis integration | PASS (test services tạm) | `tests/test_postgres_database_integration.py`: 6 passed; queue/cache TTL; PostgreSQL fencing và cạnh tranh claim |
+| PostgreSQL migration fresh/upgrade | PASS (test cluster tạm) | Fresh migration đạt `0022`; database riêng đã nâng `0021` → `0022`; legacy mapping của `0021` được kiểm tra trước đó |
+| PostgreSQL/Redis integration | PASS (test services tạm) | `tests/test_postgres_database_integration.py tests/test_ai_budget.py`: 16 passed; queue/cache TTL, fencing/claim, Celery dispatch và reservation race |
+| Budget pricing + no-provider fallback | PASS (unit) | 9 test; tiền micro-USD, upper bound một repair, worker không gọi provider khi deferred/uncertain |
+| DeepSeek live billing and replay | NOT_RUN | Không gọi live provider; reservation/settlement dùng usage fixture trên PostgreSQL thật |
+| Full Python suite with Docling | FAIL / ENVIRONMENT BLOCKED | 11 parser tests không khởi tạo được Docling subprocess trong API venv hiện tại; không liên quan ledger |
 | Celery dispatch | PASS (integration test, không chạy crawl worker) | Production dispatcher đưa đúng synthetic job ID vào Redis queue `agent`; test dọn message và bản ghi synthetic; worker xử lý end-to-end NOT_RUN |
 | Browser reload | NOT_RUN | Chưa chạy pipeline thật từ UI đến worker rồi reload trong commit hiện tại |
 | Facebook avatar URL | PASS (HTTP fixture) | `test_verify_page_uses_bearer_header_and_returns_verified_identity` kiểm tra Meta CDN, giữ chữ ký CDN cần thiết và loại API token; test host ngoài bị loại |
@@ -49,6 +52,10 @@ Không tuyên bố đã crawl hết Page/Group hoặc đạt chứng nhận phá
 - Đã thêm migration `0021_page_workspace_identity`. Fresh migration chạy trên PostgreSQL 18.3 test cluster tạm, từ database mới đến `0021`.
 - Upgrade migration được thử trên database riêng ở `0020`. Vì migration `0001` của checkout mới tạo metadata hiện tại, test đã gỡ riêng ba cột/index mới để mô phỏng schema cũ, seed dữ liệu synthetic và áp dụng `0021`: workspace một Page được map với `needs_reconnect`; workspace nhiều Page, Page trùng giữa workspace và không Page giữ `page_id=NULL`/`connection_required`.
 - PostgreSQL/Redis integration chạy trên test services tạm ở loopback: `tests/test_postgres_database_integration.py` đạt 6 passed. Test production Celery dispatcher đưa đúng job ID synthetic vào Redis `agent` queue; message và bản ghi test được dọn sau kiểm tra. Không chạy worker xử lý research để tránh crawl hoặc gọi provider.
+- Migration `0022_ai_usage_budget` được thêm sau head thực tế. Fresh migration trên PostgreSQL 18.3 test cluster đạt `0022`; database thứ hai đã nâng từ `0021` lên `0022`.
+- AI budget test chạy với PostgreSQL/Redis isolation: tổng `tests/test_postgres_database_integration.py tests/test_ai_budget.py` đạt 16 passed. Sáu reservations đồng thời chỉ hai lượt được cấp trong budget 40.000 micro-USD; cùng request key không mở reservation/call khác; settlement ghi chi phí tính từ fixture token usage.
+- Regression hiện tại bỏ qua Docling tests cần runtime riêng: `pytest tests --ignore=tests/test_ingestion_parsers.py -k 'not test_parser_returns_locators_and_rejects_scan_pdf'` đạt 236 passed, 14 skipped, 1 deselected. Full `pytest tests` có 11 lỗi vì Docling subprocess không khởi tạo trong API venv; Docling chưa được nghiệm thu.
+- Giá DeepSeek pin cho budget là peak/cache-miss theo [bảng giá chính thức](https://api-docs.deepseek.com/quick_start/pricing/); model ngoài bảng không được gọi. Smoke provider live chưa chạy.
 - OpenAPI được xuất vào `/private/tmp/page-workspaces-openapi.json` và frontend types sinh bằng `npm run gen:api`; stub pgvector chỉ dùng để import schema, không được tính là backend runtime/test.
 - `alembic upgrade head --sql` vẫn không hỗ trợ do migration cũ `0002_profile_knowledge` gọi schema inspector; online fresh/upgrade trên PostgreSQL test thật đã đạt. Không chạy migration lên database preview.
 - Từng phát sinh đầu ra có URL kết nối DB trong một lượt rà cấu hình. Không lặp lại hoặc commit thông tin đó; cần xoay mật khẩu sau khi có cửa sổ vận hành an toàn.

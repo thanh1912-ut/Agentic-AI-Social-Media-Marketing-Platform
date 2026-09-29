@@ -1,0 +1,259 @@
+"""PostgreSQL-backed, idempotent budget reservations for automated AI calls."""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+from datetime import date, datetime, timezone
+from decimal import Decimal, ROUND_CEILING
+from zoneinfo import ZoneInfo
+
+from sqlalchemy import select
+from sqlalchemy.dialects.postgresql import insert as pg_insert
+
+from database.models import AIUsageBudgetDay, AIUsageLedger, Company, new_id
+from services.api.config import settings
+from services.api.db import SessionLocal
+
+
+VN_TZ = ZoneInfo("Asia/Ho_Chi_Minh")
+PRICE_TABLE_VERSION = "provider-public-pricing-2026-09-30-v1"
+MAX_AUTO_DAILY_BUDGET_MICRO_USD = 2_000_000
+
+
+@dataclass(frozen=True)
+class ProviderPrice:
+    input_usd_per_million_tokens: Decimal
+    output_usd_per_million_tokens: Decimal
+    basis: str
+
+
+@dataclass(frozen=True)
+class Reservation:
+    status: str
+    request_key: str
+    ledger_id: str | None = None
+    reserved_micro_usd: int = 0
+    cached_result: dict | None = None
+
+
+class PricingUnavailable(ValueError):
+    pass
+
+
+def price_for(provider: str, model: str) -> ProviderPrice:
+    """Prices are peak/cache-miss rates; unknown IDs fail closed."""
+
+    if provider != "deepseek":
+        raise PricingUnavailable("pricing_unavailable")
+    prices = {
+        "deepseek-flash": ProviderPrice(Decimal("0.30"), Decimal("1.20"), "peak_cache_miss"),
+        "deepseek-v4-pro": ProviderPrice(Decimal("1.32"), Decimal("3.96"), "peak_cache_miss"),
+    }
+    try:
+        return prices[model]
+    except KeyError as error:
+        raise PricingUnavailable("pricing_unavailable") from error
+
+
+def cost_micro_usd(price: ProviderPrice, input_tokens: int, output_tokens: int) -> int:
+    if input_tokens < 0 or output_tokens < 0:
+        raise ValueError("token counts must be non-negative")
+    value = (
+        Decimal(input_tokens) * price.input_usd_per_million_tokens
+        + Decimal(output_tokens) * price.output_usd_per_million_tokens
+    )
+    return int(value.to_integral_value(rounding=ROUND_CEILING))
+
+
+def reserve_upper_bound_micro_usd(price: ProviderPrice, *, max_input_chars: int, max_output_tokens: int) -> int:
+    """Bound both initial + one repair call using UTF-8 bytes as token upper bound.
+
+    The adapter permits at most 2*max_input_chars in its first structured
+    request and one repair that adds at most 12k characters plus bounded
+    instructions. A Unicode code point occupies at most four UTF-8 bytes.
+    """
+
+    total_chars = (4 * max_input_chars) + 13_000
+    input_tokens = (4 * total_chars) + 2_000  # message framing allowance
+    output_tokens = 2 * max_output_tokens
+    return cost_micro_usd(price, input_tokens, output_tokens)
+
+
+def _budget_date(now: datetime | None = None) -> date:
+    return (now or datetime.now(timezone.utc)).astimezone(VN_TZ).date()
+
+
+async def reserve_automatic_request(
+    *, company_id: str, request_key: str, provider: str, model: str, operation: str,
+) -> Reservation:
+    price = price_for(provider, model)
+    amount = reserve_upper_bound_micro_usd(
+        price, max_input_chars=settings.llm_max_input_chars, max_output_tokens=settings.llm_max_tokens,
+    )
+    budget_date = _budget_date()
+    daily_limit = min(settings.auto_ai_daily_budget_micro_usd, MAX_AUTO_DAILY_BUDGET_MICRO_USD)
+    async with SessionLocal() as db:
+        company = await db.scalar(select(Company.id).where(Company.id == company_id).with_for_update())
+        if company is None:
+            return Reservation("workspace_missing", request_key)
+
+        existing = await db.scalar(select(AIUsageLedger).where(
+            AIUsageLedger.company_id == company_id,
+            AIUsageLedger.request_key == request_key,
+        ).with_for_update())
+        if existing is not None:
+            if existing.status in {"succeeded", "overrun"} and existing.result_json is not None:
+                return Reservation("cached", request_key, existing.id, existing.reserved_micro_usd, existing.result_json)
+            if existing.status == "unknown" and existing.result_json is not None:
+                return Reservation("cached_unknown", request_key, existing.id, existing.reserved_micro_usd, existing.result_json)
+            if existing.status != "released":
+                return Reservation("uncertain", request_key, existing.id, existing.reserved_micro_usd)
+
+        await db.execute(pg_insert(AIUsageBudgetDay).values(
+            company_id=company_id,
+            budget_date=budget_date,
+            limit_micro_usd=daily_limit,
+            reserved_micro_usd=0,
+            spent_micro_usd=0,
+            updated_at=datetime.now(timezone.utc),
+        ).on_conflict_do_nothing(index_elements=["company_id", "budget_date"]))
+        day = await db.scalar(select(AIUsageBudgetDay).where(
+            AIUsageBudgetDay.company_id == company_id,
+            AIUsageBudgetDay.budget_date == budget_date,
+        ).with_for_update())
+        assert day is not None
+        # A runtime lowering applies immediately; raising a limit does not
+        # retroactively increase today's allowance.
+        day.limit_micro_usd = min(day.limit_micro_usd, daily_limit)
+        if day.spent_micro_usd + day.reserved_micro_usd + amount > day.limit_micro_usd:
+            await db.commit()
+            return Reservation("deferred_budget", request_key)
+
+        if existing is None:
+            existing = AIUsageLedger(
+                id=new_id(), company_id=company_id, request_key=request_key,
+                provider=provider, model=model, operation=operation,
+                budget_class="automatic", budget_date=budget_date,
+                pricing_version=PRICE_TABLE_VERSION, cost_basis=price.basis,
+                reserved_micro_usd=amount, status="reserved",
+            )
+            db.add(existing)
+        else:
+            existing.provider = provider
+            existing.model = model
+            existing.operation = operation
+            existing.budget_date = budget_date
+            existing.pricing_version = PRICE_TABLE_VERSION
+            existing.cost_basis = price.basis
+            existing.reserved_micro_usd = amount
+            existing.actual_micro_usd = None
+            existing.input_tokens = None
+            existing.output_tokens = None
+            existing.result_json = None
+            existing.unknown_at = None
+            existing.error_code = None
+            existing.status = "reserved"
+        day.reserved_micro_usd += amount
+        day.updated_at = datetime.now(timezone.utc)
+        await db.commit()
+        return Reservation("reserved", request_key, existing.id, amount)
+
+
+async def settle_automatic_request(
+    *, company_id: str, reservation: Reservation, provider: str, model: str,
+    input_tokens: int | None, output_tokens: int | None, result_json: dict,
+) -> str:
+    """Settle verified usage and preserve the structured result for replay."""
+
+    if not reservation.ledger_id:
+        return "missing"
+    try:
+        price = price_for(provider, model)
+    except PricingUnavailable:
+        await mark_automatic_request_unknown(
+            company_id=company_id, reservation=reservation, error_code="pricing_unavailable_for_actual_model",
+            result_json=result_json,
+        )
+        return "unknown"
+    if input_tokens is None or output_tokens is None or input_tokens <= 0 or output_tokens < 0:
+        await mark_automatic_request_unknown(
+            company_id=company_id, reservation=reservation, error_code="provider_usage_missing",
+            result_json=result_json,
+        )
+        return "unknown"
+    actual = cost_micro_usd(price, input_tokens, output_tokens)
+    async with SessionLocal() as db:
+        row = await db.scalar(select(AIUsageLedger).where(
+            AIUsageLedger.id == reservation.ledger_id,
+            AIUsageLedger.company_id == company_id,
+        ).with_for_update())
+        if row is None or row.status != "reserved":
+            return "missing"
+        day = await db.scalar(select(AIUsageBudgetDay).where(
+            AIUsageBudgetDay.company_id == company_id,
+            AIUsageBudgetDay.budget_date == row.budget_date,
+        ).with_for_update())
+        if day is None:
+            row.status = "unknown"
+            row.error_code = "budget_day_missing"
+            row.unknown_at = datetime.now(timezone.utc)
+            await db.commit()
+            return "unknown"
+        day.reserved_micro_usd = max(0, day.reserved_micro_usd - row.reserved_micro_usd)
+        day.spent_micro_usd += actual
+        day.updated_at = datetime.now(timezone.utc)
+        row.actual_micro_usd = actual
+        row.input_tokens = input_tokens
+        row.output_tokens = output_tokens
+        row.result_json = result_json
+        row.status = "succeeded" if actual <= row.reserved_micro_usd else "overrun"
+        row.error_code = "reservation_underestimated" if actual > row.reserved_micro_usd else None
+        await db.commit()
+        return row.status
+
+
+async def mark_automatic_request_unknown(
+    *, company_id: str, reservation: Reservation, error_code: str,
+    result_json: dict | None = None,
+) -> None:
+    """Keep the reservation when provider acceptance/charge is uncertain."""
+
+    if not reservation.ledger_id:
+        return
+    async with SessionLocal() as db:
+        row = await db.scalar(select(AIUsageLedger).where(
+            AIUsageLedger.id == reservation.ledger_id,
+            AIUsageLedger.company_id == company_id,
+        ).with_for_update())
+        if row is not None and row.status == "reserved":
+            row.status = "unknown"
+            row.unknown_at = datetime.now(timezone.utc)
+            row.error_code = error_code[:80]
+            if result_json is not None:
+                row.result_json = result_json
+            await db.commit()
+
+
+async def release_unsubmitted_request(*, company_id: str, reservation: Reservation) -> None:
+    """Release only when the adapter proves no provider request was sent."""
+
+    if not reservation.ledger_id:
+        return
+    async with SessionLocal() as db:
+        row = await db.scalar(select(AIUsageLedger).where(
+            AIUsageLedger.id == reservation.ledger_id,
+            AIUsageLedger.company_id == company_id,
+        ).with_for_update())
+        if row is None or row.status != "reserved":
+            return
+        day = await db.scalar(select(AIUsageBudgetDay).where(
+            AIUsageBudgetDay.company_id == company_id,
+            AIUsageBudgetDay.budget_date == row.budget_date,
+        ).with_for_update())
+        if day is not None:
+            day.reserved_micro_usd = max(0, day.reserved_micro_usd - row.reserved_micro_usd)
+            day.updated_at = datetime.now(timezone.utc)
+        row.status = "released"
+        row.reserved_micro_usd = 0
+        row.error_code = None
+        await db.commit()

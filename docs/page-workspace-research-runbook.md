@@ -54,8 +54,8 @@ Không bật xử lý comment/media từ cờ thủ công. Trước khi mở cá
 
 ## Phần chưa sẵn sàng
 
-- Gemini và Qwen chưa có adapter/model ID được xác minh; DeepSeek vẫn là adapter hiện có. Không tự fallback giữa provider.
-- Không có ledger chi phí chung; hạn mức 2 USD/ngày chưa được thực thi.
+- Gemini và Qwen chưa có adapter/model ID được xác minh; DeepSeek hiện là adapter cho báo cáo Nghiên cứu. Không tự fallback giữa provider.
+- Ledger hiện áp dụng cho báo cáo Nghiên cứu DeepSeek tự động; chưa bao phủ Gemini/Qwen, media hoặc mọi call AI tự động khác. UI ngân sách chưa có.
 - Chưa tải hay gửi ảnh/video đến provider; không tuyên bố media analysis đã chạy.
 - Không có full comment pagination/replies hoặc database checkpoint mới. Coverage là `privacy_hold`/Tier 0 partial.
 - Không tự nhận hệ thống tuân thủ đầy đủ Luật 91/2025/QH15 hoặc Nghị định 356/2025/NĐ-CP.
@@ -65,16 +65,27 @@ Không bật xử lý comment/media từ cờ thủ công. Trước khi mở cá
 - Backend API: dùng lệnh service/test đã cấu hình của checkout, không bật `AUTO_CREATE_SCHEMA` hay inline jobs để nghiệm thu.
 - Migration phải chạy `alembic upgrade head` trên database test riêng trước rollout; không chạy rollback phá lịch sử.
 - Đừng thay API/workers đang phục vụ preview. Drain worker cũ trước khi thay backend và giữ snapshot/rollback tương thích Page gate.
-- Cấu hình key dạng placeholder trong secret store: `DEEPSEEK_API_KEY=<secret>`, `GEMINI_API_KEY=<secret>`, `QWEN_API_KEY=<secret>`; hiện chỉ DeepSeek adapter cũ tồn tại, còn Gemini/Qwen chưa được nối.
+- Cấu hình key dạng placeholder trong secret store: `DEEPSEEK_API_KEY=<secret>`, `GEMINI_API_KEY=<secret>`, `QWEN_API_KEY=<secret>`; hiện chỉ adapter DeepSeek đang được dùng.
+
+### Ngân sách AI tự động hiện có
+
+- Mặc định `AUTO_AI_DAILY_BUDGET_MICRO_USD=2000000` (2 USD/workspace/ngày Việt Nam); cấu hình thấp hơn được phép, cao hơn cap sản phẩm bị từ chối khi nạp settings.
+- Ledger nằm trong `ai_usage_budget_days` và `ai_usage_ledger`. Mỗi research cycle có idempotency key; worker không gọi lại khi kết quả đã lưu hoặc kết quả provider trước chưa rõ.
+- Structured report chỉ được giữ trong ledger như recovery copy cho tới khi `MarketReport` commit; cùng transaction đó xóa bản sao ledger.
+- Reservation dùng giá peak/cache-miss và tính upper bound cho đầu vào cùng một lần repair. Phiên bảng giá là `provider-public-pricing-2026-09-30-v1`; cần review và bump version trước khi đổi model hoặc giá upstream.
+- Hiện chỉ có giá đã khai báo cho `deepseek-flash` và `deepseek-v4-pro`; model khác trả `pricing_unavailable` và không được gửi. Giá tham khảo từ [bảng giá DeepSeek chính thức](https://api-docs.deepseek.com/quick_start/pricing/). Đây là bảng giá đã ghi nhận, không phải đảm bảo giá nhà cung cấp không đổi.
+- Nếu usage thiếu hoặc không xác định được model trả về, ledger giữ reservation ở `unknown`; không tự nhả ngân sách hay gọi lặp. Đối soát hiện chưa có giao diện.
+- Đây chưa phải cap chung cho mọi agent: chỉ báo cáo nghiên cứu tự động đã nối; tác vụ người dùng, Gemini, Qwen và media chưa thuộc ledger.
 
 ### PostgreSQL/Redis test cách ly của lần xác minh này
 
-Các lần test integration dùng cluster tạm dưới `/private/tmp/agentic-page-workspaces-it-20260930`, chỉ bind loopback; không dùng database/queue của preview. PostgreSQL nghe cổng `15433`; Redis queue `26379` và cache `26380`. Redis test không bật persistence và không chạy worker.
+Các lần test integration dùng cluster tạm dưới `/private/tmp/agentic-page-workspaces-it-20260930`, chỉ bind loopback; không dùng database/queue của preview. PostgreSQL nghe cổng `15433`; cluster riêng cho đường upgrade `0021 → 0022` nghe cổng `15543`; Redis queue `26379` và cache `26380`. Redis test không bật persistence và không chạy worker. Các tiến trình này đã được dừng sau kiểm thử.
 
 Khi không còn cần chạy integration trong phiên làm việc, dừng đúng các tiến trình test bằng:
 
 ```bash
 /opt/homebrew/bin/pg_ctl -D /private/tmp/agentic-page-workspaces-it-20260930/pgdata -m fast -w stop
+/opt/homebrew/bin/pg_ctl -D /private/tmp/agentic-page-workspaces-it-20260930/pgdata-budget -m fast -w stop
 /opt/homebrew/bin/redis-cli -h 127.0.0.1 -p 26379 shutdown
 /opt/homebrew/bin/redis-cli -h 127.0.0.1 -p 26380 shutdown
 ```

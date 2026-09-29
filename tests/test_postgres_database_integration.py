@@ -15,7 +15,7 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from redis.asyncio import Redis
 
 from database.job_fencing import JobLeaseLost, _current_job_fence
-from database.models import Base, Company, Job, User
+from database.models import AIUsageBudgetDay, AIUsageLedger, Base, Company, Job, User
 from services.api import job_service
 from services.api.db import FencedAsyncSession
 from services.worker import research_tasks
@@ -34,7 +34,7 @@ def test_postgres_migrations_constraints_vector_and_job_fencing() -> None:
                 revision = await connection.exec_driver_sql(
                     "SELECT version_num FROM alembic_version ORDER BY version_num LIMIT 1"
                 )
-                assert revision.scalar_one() == "0021_page_workspace_identity"
+                assert revision.scalar_one() == "0022_ai_usage_budget"
                 extension = await connection.exec_driver_sql(
                     "SELECT extversion FROM pg_extension WHERE extname='vector'"
                 )
@@ -78,7 +78,7 @@ def test_postgres_migrations_constraints_vector_and_job_fencing() -> None:
                     assert set(inspector.get_table_names()).issuperset({
                         "post_content_reviews", "scheduled_meta_publications",
                         "mailguard_integrations", "mailguard_tracking_references",
-                        "mailguard_conversion_events",
+                        "mailguard_conversion_events", "ai_usage_budget_days", "ai_usage_ledger",
                     })
                     review_fks = inspector.get_foreign_keys("post_content_reviews")
                     assert any(fk["name"] == "fk_post_content_review_version_tenant" for fk in review_fks)
@@ -145,6 +145,94 @@ def test_postgres_migrations_constraints_vector_and_job_fencing() -> None:
                 assert current is not None
                 assert current.title == "keep the replacement worker value"
                 assert current.claim_token == "current-claim"
+        finally:
+            await engine.dispose()
+
+    asyncio.run(run())
+
+
+def test_ai_budget_reservations_are_atomic_and_idempotent(monkeypatch: pytest.MonkeyPatch) -> None:
+    from types import SimpleNamespace
+
+    from services.worker import ai_budget
+
+    async def run() -> None:
+        assert POSTGRES_TEST_URL
+        engine = create_async_engine(POSTGRES_TEST_URL)
+        sessions = async_sessionmaker(engine, expire_on_commit=False)
+        monkeypatch.setattr(ai_budget, "SessionLocal", sessions)
+        monkeypatch.setattr(ai_budget, "settings", SimpleNamespace(
+            llm_max_input_chars=100,
+            llm_max_tokens=100,
+            auto_ai_daily_budget_micro_usd=40_000,
+        ))
+        try:
+            async with sessions() as db:
+                company = Company(name="Budget race", slug=f"budget-{uuid.uuid4().hex[:16]}")
+                db.add(company)
+                await db.commit()
+                company_id = company.id
+
+            reservations = await asyncio.gather(*(
+                ai_budget.reserve_automatic_request(
+                    company_id=company_id,
+                    request_key=f"race:{index}",
+                    provider="deepseek",
+                    model="deepseek-flash",
+                    operation="test_automatic_analysis",
+                )
+                for index in range(6)
+            ))
+            accepted = [item for item in reservations if item.status == "reserved"]
+            deferred = [item for item in reservations if item.status == "deferred_budget"]
+            assert len(accepted) == 2
+            assert len(deferred) == 4
+            amount = accepted[0].reserved_micro_usd
+            assert amount * 2 <= 40_000
+
+            replay = await ai_budget.reserve_automatic_request(
+                company_id=company_id,
+                request_key=accepted[0].request_key,
+                provider="deepseek",
+                model="deepseek-flash",
+                operation="test_automatic_analysis",
+            )
+            assert replay.status == "uncertain"
+            assert replay.ledger_id == accepted[0].ledger_id
+
+            settled = await ai_budget.settle_automatic_request(
+                company_id=company_id,
+                reservation=accepted[0],
+                provider="deepseek",
+                model="deepseek-flash",
+                input_tokens=100,
+                output_tokens=10,
+                result_json={"report": {"headline": "fixture"}, "model_name": "deepseek-flash"},
+            )
+            assert settled == "succeeded"
+            cached = await ai_budget.reserve_automatic_request(
+                company_id=company_id,
+                request_key=accepted[0].request_key,
+                provider="deepseek",
+                model="deepseek-flash",
+                operation="test_automatic_analysis",
+            )
+            assert cached.status == "cached"
+            assert cached.cached_result == {
+                "report": {"headline": "fixture"}, "model_name": "deepseek-flash",
+            }
+
+            async with sessions() as db:
+                day = (await db.scalars(select(AIUsageBudgetDay).where(
+                    AIUsageBudgetDay.company_id == company_id,
+                ))).one()
+                assert day.reserved_micro_usd == amount
+                assert day.spent_micro_usd == 42
+                rows = (await db.scalars(select(AIUsageLedger).where(
+                    AIUsageLedger.company_id == company_id,
+                ))).all()
+                assert len(rows) == 2
+                assert sum(row.reserved_micro_usd for row in rows) <= 40_000
         finally:
             await engine.dispose()
 

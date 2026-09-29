@@ -7,13 +7,14 @@ only a delivery mechanism for work that has already been committed here.
 from __future__ import annotations
 
 import uuid
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from decimal import Decimal
 from typing import Any
 
 from sqlalchemy import (
     Boolean,
     CheckConstraint,
+    Date,
     DateTime,
     ForeignKey,
     ForeignKeyConstraint,
@@ -322,6 +323,58 @@ class AuditEvent(Base, IdMixin):
     metadata_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict, nullable=False)
     request_id: Mapped[str | None] = mapped_column(String(64))
     at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
+
+
+class AIUsageBudgetDay(Base):
+    """Per-workspace automatic-AI budget counters for one Vietnam calendar day."""
+
+    __tablename__ = "ai_usage_budget_days"
+    __table_args__ = (
+        CheckConstraint("limit_micro_usd >= 0", name="ck_ai_budget_day_limit_nonnegative"),
+        CheckConstraint("reserved_micro_usd >= 0", name="ck_ai_budget_day_reserved_nonnegative"),
+        CheckConstraint("spent_micro_usd >= 0", name="ck_ai_budget_day_spent_nonnegative"),
+    )
+
+    company_id: Mapped[str] = mapped_column(
+        ForeignKey("companies.id", ondelete="CASCADE"), primary_key=True
+    )
+    budget_date: Mapped[date] = mapped_column(Date, primary_key=True)
+    limit_micro_usd: Mapped[int] = mapped_column(Integer, nullable=False)
+    reserved_micro_usd: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    spent_micro_usd: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow, nullable=False)
+
+
+class AIUsageLedger(Base, IdMixin, TimestampMixin):
+    """One idempotent row per provider request/reservation; money is micro-USD."""
+
+    __tablename__ = "ai_usage_ledger"
+    __table_args__ = (
+        UniqueConstraint("company_id", "request_key", name="uq_ai_usage_company_request"),
+        CheckConstraint("reserved_micro_usd >= 0", name="ck_ai_usage_reserved_nonnegative"),
+        CheckConstraint("actual_micro_usd IS NULL OR actual_micro_usd >= 0", name="ck_ai_usage_actual_nonnegative"),
+        CheckConstraint("input_tokens IS NULL OR input_tokens >= 0", name="ck_ai_usage_input_nonnegative"),
+        CheckConstraint("output_tokens IS NULL OR output_tokens >= 0", name="ck_ai_usage_output_nonnegative"),
+        Index("ix_ai_usage_company_date_status", "company_id", "budget_date", "status"),
+    )
+
+    company_id: Mapped[str] = mapped_column(ForeignKey("companies.id", ondelete="CASCADE"), nullable=False)
+    request_key: Mapped[str] = mapped_column(String(220), nullable=False)
+    provider: Mapped[str] = mapped_column(String(32), nullable=False)
+    model: Mapped[str] = mapped_column(String(160), nullable=False)
+    operation: Mapped[str] = mapped_column(String(80), nullable=False)
+    budget_class: Mapped[str] = mapped_column(String(24), nullable=False)
+    budget_date: Mapped[date] = mapped_column(Date, nullable=False)
+    pricing_version: Mapped[str] = mapped_column(String(100), nullable=False)
+    cost_basis: Mapped[str] = mapped_column(String(80), nullable=False)
+    reserved_micro_usd: Mapped[int] = mapped_column(Integer, nullable=False)
+    actual_micro_usd: Mapped[int | None] = mapped_column(Integer)
+    input_tokens: Mapped[int | None] = mapped_column(Integer)
+    output_tokens: Mapped[int | None] = mapped_column(Integer)
+    status: Mapped[str] = mapped_column(String(24), nullable=False)
+    result_json: Mapped[dict[str, Any] | None] = mapped_column(JSON)
+    unknown_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    error_code: Mapped[str | None] = mapped_column(String(80))
 
 
 class Campaign(Base, IdMixin, TimestampMixin):

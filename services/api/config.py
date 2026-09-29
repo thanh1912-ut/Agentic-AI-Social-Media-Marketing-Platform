@@ -86,6 +86,7 @@ class Settings:
     llm_default_model: str = os.getenv("LLM_DEFAULT_MODEL", "deepseek-flash").strip()
     llm_max_tokens: int = int(os.getenv("DEEPSEEK_MAX_TOKENS", "8192"))
     llm_max_input_chars: int = int(os.getenv("LLM_MAX_INPUT_CHARS", "24000"))
+    auto_ai_daily_budget_micro_usd: int = int(os.getenv("AUTO_AI_DAILY_BUDGET_MICRO_USD", "2000000"))
     embedding_provider: str = os.getenv("EMBEDDING_PROVIDER", "none").strip().casefold()
     embedding_data_flow_approved: bool = _bool("EMBEDDING_DATA_FLOW_APPROVED", False)
     embedding_api_key: str = field(default_factory=lambda: os.getenv("EMBEDDING_API_KEY", ""), repr=False)
@@ -241,6 +242,8 @@ if (
     raise ValueError("Relevance thresholds must be between 0 and 1")
 if settings.llm_max_tokens < 1 or settings.llm_max_input_chars < 1 or settings.ai_request_timeout_seconds < 1:
     raise ValueError("LLM token, input, and request-timeout limits must be positive")
+if not 0 <= settings.auto_ai_daily_budget_micro_usd <= 2_000_000:
+    raise ValueError("AUTO_AI_DAILY_BUDGET_MICRO_USD must be between 0 and the product cap of 2,000,000 micro-USD")
 if not 1 <= settings.market_crawl_max_pages <= 25:
     raise ValueError("MARKET_CRAWL_MAX_PAGES must be between 1 and 25")
 if not settings.llm_default_model:
