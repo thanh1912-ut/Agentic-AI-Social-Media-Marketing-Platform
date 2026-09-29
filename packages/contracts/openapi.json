@@ -1286,11 +1286,79 @@
       "CampaignMarketEvidenceReference": {
         "additionalProperties": false,
         "properties": {
+          "content_hash": {
+            "anyOf": [
+              {
+                "maxLength": 64,
+                "minLength": 64,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Content Hash"
+          },
+          "evidence_version_id": {
+            "anyOf": [
+              {
+                "maxLength": 64,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Evidence Version Id"
+          },
           "id": {
             "maxLength": 64,
             "minLength": 1,
             "title": "Id",
             "type": "string"
+          },
+          "metrics": {
+            "additionalProperties": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "title": "Metrics",
+            "type": "object"
+          },
+          "observation_id": {
+            "anyOf": [
+              {
+                "maxLength": 64,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Observation Id"
+          },
+          "observed_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Observed At"
           },
           "published_at": {
             "anyOf": [
@@ -1353,6 +1421,14 @@
             "const": "external_unverified",
             "title": "Trust Level",
             "type": "string"
+          },
+          "web_snapshot_ids": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 10,
+            "title": "Web Snapshot Ids",
+            "type": "array"
           }
         },
         "required": [
@@ -1398,6 +1474,14 @@
             "minLength": 1,
             "title": "Title",
             "type": "string"
+          },
+          "web_snapshot_ids": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 10,
+            "title": "Web Snapshot Ids",
+            "type": "array"
           }
         },
         "required": [

@@ -18,6 +18,7 @@ class CampaignMarketResearchSuggestion(StrictModel):
     hook: str = Field(min_length=1, max_length=500)
     format: str = Field(min_length=1, max_length=40)
     evidence_ids: list[str] = Field(default_factory=list, max_length=10)
+    web_snapshot_ids: list[str] = Field(default_factory=list, max_length=10)
 
 
 class CampaignMarketEvidenceReference(StrictModel):
@@ -25,6 +26,11 @@ class CampaignMarketEvidenceReference(StrictModel):
     title: str = Field(default="", max_length=1000)
     url: str = Field(min_length=1, max_length=2048)
     published_at: str | None = None
+    evidence_version_id: str | None = Field(default=None, min_length=1, max_length=64)
+    observation_id: str | None = Field(default=None, min_length=1, max_length=64)
+    content_hash: str | None = Field(default=None, min_length=64, max_length=64)
+    observed_at: datetime | None = None
+    metrics: dict[str, int | float | None] = Field(default_factory=dict)
 
 
 class CampaignMarketResearchContext(StrictModel):
@@ -32,6 +38,7 @@ class CampaignMarketResearchContext(StrictModel):
     group_id: str = Field(min_length=1, max_length=64)
     suggestion: CampaignMarketResearchSuggestion
     evidence: list[CampaignMarketEvidenceReference] = Field(default_factory=list, max_length=10)
+    web_snapshot_ids: list[str] = Field(default_factory=list, max_length=10)
     trust_level: Literal["external_unverified"]
 
 

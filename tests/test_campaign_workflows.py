@@ -27,12 +27,20 @@ from database.models import (
     MailGuardConversionEvent,
     MailGuardIntegration,
     MarketEvidence,
+    MarketEvidenceVersion,
     MarketObservation,
+    MarketReport,
+    MarketReportEvidence,
+    MarketReportWebSnapshot,
     MediaAsset,
     MetaPageGroup,
     KnowledgeChunk,
     PostVersion,
     ResearchSource,
+    ResearchCycle,
+    WebCrawlRun,
+    WebEntity,
+    WebEntitySnapshot,
     new_id,
 )
 from packages.contracts import GeneratedPost, SourceReference
@@ -630,6 +638,14 @@ def test_content_generation_job_persists_cited_draft_and_is_idempotent(workflow_
     market_group_id = new_id()
     market_source_id = new_id()
     market_evidence_id = new_id()
+    market_report_id = new_id()
+    evidence_version_id = new_id()
+    observation_id = new_id()
+    web_snapshot_id = new_id()
+    web_entity_id = new_id()
+    web_run_id = new_id()
+    web_cycle_id = new_id()
+    web_job_id = new_id()
 
     async def seed_source():
         async with session_factory() as db:
@@ -652,21 +668,126 @@ def test_content_generation_job_persists_cited_draft_and_is_idempotent(workflow_
             db.add(MarketEvidence(
                 id=market_evidence_id, company_id=workspace_id, group_id=market_group_id,
                 source_id=market_source_id, canonical_url="https://www.facebook.com/rival/posts/42",
-                title="Bữa tối cuối tuần", published_at=now,
-                text="Món ăn gia đình trong video ngắn, nhiều người hỏi khẩu phần.",
-                content_hash="c" * 64, trust_level="external_unverified",
+                title="Nội dung mới nhất không thuộc báo cáo cũ", published_at=now,
+                text="LATEST MUTATED EVIDENCE MUST NOT REACH THE MODEL",
+                content_hash="d" * 64, trust_level="external_unverified",
                 first_seen_at=now, last_seen_at=now,
             ))
+            version_observed_at = now - timedelta(hours=3)
+            db.add(MarketEvidenceVersion(
+                id=evidence_version_id,
+                company_id=workspace_id,
+                evidence_id=market_evidence_id,
+                content_hash="c" * 64,
+                parser_version="fixture-parser-v1",
+                title="Bữa tối cuối tuần",
+                text="Món ăn gia đình trong video ngắn, nhiều người hỏi khẩu phần.",
+                published_at=now - timedelta(days=1),
+                captured_at=version_observed_at,
+            ))
             db.add(MarketObservation(
-                company_id=workspace_id, evidence_id=market_evidence_id, observed_at=now,
+                id=observation_id,
+                company_id=workspace_id, evidence_id=market_evidence_id,
+                evidence_version_id=evidence_version_id, observed_at=version_observed_at,
                 metrics_json={"reactions": 45, "comments": 8, "shares": 5, "interactions": 58,
                               "views": 2400, "followers": 18000},
                 comments_json=["Món nhìn ngon, liên hệ hello@example.com hoặc 0901234567"],
             ))
+            latest_version_id = new_id()
+            latest_observed_at = now - timedelta(hours=1)
+            db.add(MarketEvidenceVersion(
+                id=latest_version_id,
+                company_id=workspace_id,
+                evidence_id=market_evidence_id,
+                content_hash="d" * 64,
+                parser_version="fixture-parser-v1",
+                title="Nội dung mới nhất không thuộc báo cáo cũ",
+                text="LATEST MUTATED EVIDENCE MUST NOT REACH THE MODEL",
+                published_at=now,
+                captured_at=latest_observed_at,
+            ))
+            db.add(MarketObservation(
+                company_id=workspace_id,
+                evidence_id=market_evidence_id,
+                evidence_version_id=latest_version_id,
+                observed_at=latest_observed_at,
+                metrics_json={"reactions": 999, "comments": 99, "shares": 50, "interactions": 1148},
+                comments_json=["private-comment@example.com 0912345678"],
+            ))
+            db.add(MarketReport(
+                id=market_report_id,
+                company_id=workspace_id,
+                group_id=market_group_id,
+                window_start=version_observed_at,
+                window_end=now,
+                report_json={
+                    "analysis_status": "completed",
+                    "suggestions": [{
+                        "title": "Bữa tối cuối tuần", "angle": "Gợi ý món cho gia đình",
+                        "hook": "Bữa tối cuối tuần có gì ngon?", "format": "text",
+                        "evidence_ids": [market_evidence_id],
+                    }],
+                    "evidence_refs": [{
+                        "id": market_evidence_id,
+                        "title": "Bữa tối cuối tuần",
+                        "url": "https://www.facebook.com/rival/posts/42",
+                        "published_at": (now - timedelta(days=1)).isoformat(),
+                        "observed_at": version_observed_at.isoformat(),
+                        "evidence_version_id": evidence_version_id,
+                        "observation_id": observation_id,
+                        "content_hash": "c" * 64,
+                        "metrics": {"reactions": 45, "comments": 8, "shares": 5,
+                                    "interactions": 58, "views": 2400, "followers": 18000},
+                    }],
+                },
+                evidence_ids_json=[market_evidence_id],
+                coverage_json={"ai_status": "completed"},
+                model_name="fixture-model",
+            ))
+            db.add(MarketReportEvidence(
+                company_id=workspace_id,
+                group_id=market_group_id,
+                report_id=market_report_id,
+                observation_id=observation_id,
+                evidence_id=market_evidence_id,
+                evidence_version_id=evidence_version_id,
+            ))
+            db.add(Job(
+                id=web_job_id, company_id=workspace_id, created_by=owner["user"]["id"],
+                kind="research_source_run", title="Fixture website source run", status="succeeded",
+            ))
+            db.add(ResearchCycle(
+                id=web_cycle_id, company_id=workspace_id, group_id=market_group_id,
+                job_id=web_job_id, cycle_key="fixture-web-cycle", status="succeeded",
+            ))
+            db.add(WebCrawlRun(
+                id=web_run_id, company_id=workspace_id, group_id=market_group_id,
+                source_id=market_source_id, cycle_id=web_cycle_id, job_id=web_job_id,
+                status="succeeded", page_limit=10,
+            ))
+            db.add(WebEntity(
+                id=web_entity_id, company_id=workspace_id, group_id=market_group_id,
+                source_id=market_source_id, kind="product", identity_key="https://example.test/item",
+                title="Sản phẩm công khai", canonical_url="https://example.test/item",
+            ))
+            db.add(WebEntitySnapshot(
+                id=web_snapshot_id, company_id=workspace_id, entity_id=web_entity_id,
+                run_id=web_run_id, evidence_id=market_evidence_id, observation_id=observation_id,
+                evidence_version_id=evidence_version_id, observed_at=version_observed_at,
+                content_hash="e" * 64, parser_version="fixture-parser-v1",
+                data_json={
+                    "title": "Sản phẩm công khai", "description": "Mô tả đã ghim trong website.",
+                    "offers": [{"price": "12.50", "currency": "USD", "price_kind": "exact"}],
+                    "image_urls": ["https://example.test/private-signed-url?secret=must-not-leak"],
+                },
+            ))
+            db.add(MarketReportWebSnapshot(
+                company_id=workspace_id, report_id=market_report_id, snapshot_id=web_snapshot_id,
+            ))
             campaign.brief_json = {
                 **campaign.brief_json,
                     "market_research_context": {
-                        "report_id": "market-report-1", "group_id": market_group_id,
+                        "report_id": market_report_id, "group_id": market_group_id,
                         "suggestion": {
                             "title": "Bữa tối cuối tuần", "angle": "Gợi ý món cho gia đình",
                             "hook": "Bữa tối cuối tuần có gì ngon?", "format": "text",
@@ -675,8 +796,15 @@ def test_content_generation_job_persists_cited_draft_and_is_idempotent(workflow_
                         "evidence": [{
                             "id": market_evidence_id, "title": "Bữa tối cuối tuần",
                             "url": "https://www.facebook.com/rival/posts/42",
-                            "published_at": now.isoformat(),
+                            "published_at": (now - timedelta(days=1)).isoformat(),
+                            "evidence_version_id": evidence_version_id,
+                            "observation_id": observation_id,
+                            "content_hash": "c" * 64,
+                            "observed_at": version_observed_at.isoformat(),
+                            "metrics": {"reactions": 45, "comments": 8, "shares": 5,
+                                        "interactions": 58, "views": 2400, "followers": 18000},
                         }],
+                        "web_snapshot_ids": [web_snapshot_id],
                     "trust_level": "external_unverified",
                 },
             }
@@ -751,7 +879,7 @@ def test_content_generation_job_persists_cited_draft_and_is_idempotent(workflow_
     }
     assert {
         item["document_id"] for item in fixed_model.last_input_payload["sources"]
-        if item.get("document_id") and item.get("source_kind") != "market_research"
+        if item.get("document_id") and item.get("source_kind") not in {"market_research", "website_research"}
     } == {document_id}
     assert fixed_model.last_input_payload["content_requirements"]["strategy_summary"] == "Tập trung món cơm gà, bữa cơm ấm áp cho gia đình."
     assert fixed_model.last_input_payload["content_requirements"]["slot_topic"] == "Món cơm gà cho bữa tối cuối tuần"
@@ -763,10 +891,24 @@ def test_content_generation_job_persists_cited_draft_and_is_idempotent(workflow_
     )
     assert market_source["source_id"] == f"market:{market_evidence_id}"
     assert "2400" in market_source["text"] and "58" in market_source["text"]
-    assert "example.com" not in market_source["text"] and "0901234567" not in market_source["text"]
-    assert fixed_model.last_input_payload["content_requirements"]["market_research_source_ids"] == [
-        f"market:{market_evidence_id}"
-    ]
+    assert "Món ăn gia đình trong video ngắn" in market_source["text"]
+    assert "LATEST MUTATED EVIDENCE MUST NOT REACH THE MODEL" not in market_source["text"]
+    assert "999" not in market_source["text"]
+    assert "hello@example.com" not in model_payload and "0901234567" not in model_payload
+    assert "private-comment@example.com" not in model_payload and "0912345678" not in model_payload
+    assert market_source["source_version"] == evidence_version_id
+    assert market_source["source_hash"] == "c" * 64
+    web_source = next(item for item in fixed_model.last_input_payload["sources"]
+                      if item.get("source_kind") == "website_research")
+    assert web_source["source_id"] == f"web-snapshot:{web_snapshot_id}"
+    assert web_source["source_version"] == evidence_version_id
+    assert web_source["source_hash"] == "e" * 64
+    assert "Mô tả đã ghim trong website" in web_source["text"]
+    assert "12.50" in web_source["text"] and "USD" in web_source["text"]
+    assert "private-signed-url" not in model_payload and "must-not-leak" not in model_payload
+    assert set(fixed_model.last_input_payload["content_requirements"]["market_research_source_ids"]) == {
+        f"market:{market_evidence_id}", f"web-snapshot:{web_snapshot_id}"
+    }
 
     async def check_saved_draft():
         async with session_factory() as db:
@@ -864,7 +1006,7 @@ def test_content_generation_job_persists_cited_draft_and_is_idempotent(workflow_
     assert revised_post.current_json["document_selection"]["document_ids"] == [document_id]
     assert {
         item["document_id"] for item in fixed_model.last_input_payload["sources"]
-        if item.get("document_id") and item.get("source_kind") != "market_research"
+        if item.get("document_id") and item.get("source_kind") not in {"market_research", "website_research"}
     } == {document_id}
     assert fixed_model.last_system_prompt == CONTENT_REVISE_SYSTEM_PROMPT
     assert fixed_model.last_input_payload["content_requirements"]["existing_post"]["caption"] == posts[0].current_json["caption"]
@@ -932,7 +1074,7 @@ def test_content_generation_job_persists_cited_draft_and_is_idempotent(workflow_
     assert no_document_job.result["selected_document_ids"] == []
     assert no_document_model.last_input_payload["owner_authored_brand_profile"]["profile_text"].startswith("Bên mình bán cơm gà")
     assert not any(
-        item.get("document_id") and item.get("source_kind") != "market_research"
+        item.get("document_id") and item.get("source_kind") not in {"market_research", "website_research"}
         for item in no_document_model.last_input_payload["sources"]
     )
 

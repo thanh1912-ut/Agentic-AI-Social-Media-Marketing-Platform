@@ -105,6 +105,27 @@ Base đã kiểm tra: `codex/creative-studio-ui` @ `b769097bfdb3568889d974c6def9
 - FAIL (contract mismatch): Typecheck toàn app lỗi ở nhiều màn hình do `@agentic/contracts` không export các kiểu/field frontend đã dùng (`CampaignContentSlot`, `content_plan`, `document_ids`, `MediaAsset`, ...). Typecheck không nêu lỗi mới trong trang Nghiên cứu; toàn app chưa thể xác nhận PASS.
 - NOT_RUN: production build, browser thật, provider live, migration/runtime rollout. Không thay preview hoặc cấu hình key/provider.
 
+### 2026-09-30 02:50 Asia/Ho_Chi_Minh — Ghim bằng chứng khi chọn hướng viết
+
+- DONE: Campaign tạo từ báo cáo giữ chính xác `report_id`, `evidence_version_id`, `observation_id`, content hash, thời điểm quan sát và metrics; snapshot website chỉ được nhận nếu đã gắn với report đó.
+- DONE: Worker dùng version/observation được ghim và kiểm tra tenant, report cùng source còn active. Nếu report cũ thiếu pin hoặc nguồn đã mất/tắt, job dừng với `market_research_context_stale`, không thay bằng dữ liệu mới nhất.
+- DONE: Bỏ comment text khỏi Content Agent context. Mask email/số điện thoại không còn được coi là đủ để cho phép gửi bình luận; trạng thái vẫn `privacy_hold`.
+- PASS: `tests/test_campaign_workflows.py -k content_generation_job_persists_cited_draft_and_is_idempotent` xác nhận báo cáo cũ vẫn dùng text/metrics cũ dù evidence hiện tại đã đổi, và comment PII không đi vào model input.
+- PASS: `tests/test_market_research_api.py` đạt 10 passed, gồm endpoint ghim IDs/metrics vào campaign draft; `tests/test_ai_budget.py` đạt 9 passed.
+- PASS: OpenAPI cập nhật cho evidence version/observation; TypeScript declaration sinh bằng `openapi-typescript 7.13.0`.
+- NOT_RUN: PostgreSQL migration/browser real/provider live; không dùng website hoặc Facebook live.
+
+### 2026-09-30 03:00 Asia/Ho_Chi_Minh — Nối snapshot website tới Content Agent
+
+- DONE: Campaign worker lấy đúng `web_snapshot_ids` đã ghim vào báo cáo; tenant, báo cáo, nhóm nguồn và trạng thái nguồn phải khớp.
+- DONE: Nội dung website gửi model chỉ gồm các trường được cho phép, tối đa 10 offer; URL ảnh/tài nguyên có thể chứa chữ ký không đi vào input.
+- DONE: Worker đọc lại cả nguồn bài và snapshot website trước khi lưu draft; nếu nguồn đã bị tắt/xóa hoặc pin đổi thì dừng với `market_research_context_stale`.
+- PASS: Test worker dùng website snapshot cố định, giá USD, xác nhận signed image URL bị loại khỏi model input; report bài cũ tiếp tục dùng version/observation đã ghim.
+- PASS: Ruff và `git diff --check` trên các file Python thay đổi.
+- PASS: `tests/test_campaign_workflows.py tests/test_market_research_api.py tests/test_ai_budget.py` đạt 30 passed; Ruff và `scripts/export_openapi.py --check` cũng đạt.
+- IN_PROGRESS: Review staged diff và push incremental commit.
+- NOT_RUN: Provider live, media analysis, browser real, preview rollout; chưa nối Gemini/Qwen.
+
 ## Nhật ký
 
 ### 2026-09-30 — Baseline

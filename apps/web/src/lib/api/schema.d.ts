@@ -2132,8 +2132,20 @@ export interface components {
         };
         /** CampaignMarketEvidenceReference */
         readonly CampaignMarketEvidenceReference: {
+            /** Content Hash */
+            readonly content_hash?: string | null;
+            /** Evidence Version Id */
+            readonly evidence_version_id?: string | null;
             /** Id */
             readonly id: string;
+            /** Metrics */
+            readonly metrics?: {
+                readonly [key: string]: number | null;
+            };
+            /** Observation Id */
+            readonly observation_id?: string | null;
+            /** Observed At */
+            readonly observed_at?: string | null;
             /** Published At */
             readonly published_at?: string | null;
             /**
@@ -2158,6 +2170,8 @@ export interface components {
              * @constant
              */
             readonly trust_level: "external_unverified";
+            /** Web Snapshot Ids */
+            readonly web_snapshot_ids?: readonly string[];
         };
         /** CampaignMarketResearchSuggestion */
         readonly CampaignMarketResearchSuggestion: {
@@ -2171,6 +2185,8 @@ export interface components {
             readonly hook: string;
             /** Title */
             readonly title: string;
+            /** Web Snapshot Ids */
+            readonly web_snapshot_ids?: readonly string[];
         };
         /** CampaignOut */
         readonly CampaignOut: {

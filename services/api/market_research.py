@@ -29,6 +29,7 @@ from database.models import (
     MarketEvidence,
     MarketEvidenceVersion,
     MarketReportEvidence,
+    MarketReportWebSnapshot,
     MarketObservation,
     MarketReport,
     MetaPageConnection,
@@ -1243,23 +1244,91 @@ async def create_draft_from_report(
     ))
     if report is None:
         raise ApiProblem(404, "not_found", "Không tìm thấy báo cáo thị trường.")
-    suggestions = report.report_json.get("suggestions", [])
+    report_json = report.report_json if isinstance(report.report_json, dict) else {}
+    suggestions = report_json.get("suggestions", [])
     if request.suggestion_index >= len(suggestions):
         raise ApiProblem(422, "suggestion_not_found", "Không tìm thấy đề xuất đã chọn trong báo cáo.")
     suggestion = suggestions[request.suggestion_index]
     if not isinstance(suggestion, dict):
         raise ApiProblem(422, "suggestion_invalid", "Đề xuất trong báo cáo không đúng định dạng.")
+    raw_ids = suggestion.get("evidence_ids", [])
+    if not isinstance(raw_ids, list) or any(not isinstance(item, str) for item in raw_ids):
+        raise ApiProblem(422, "suggestion_invalid", "Danh sách nguồn trong đề xuất không đúng định dạng.")
     valid_ids = set(report.evidence_ids_json or [])
-    selected_ids = [item for item in suggestion.get("evidence_ids", []) if item in valid_ids]
-    evidence_rows = (await db.scalars(select(MarketEvidence).where(
-        MarketEvidence.company_id == company_id, MarketEvidence.group_id == report.group_id,
-        MarketEvidence.id.in_(selected_ids or ["__none__"]),
-    ))).all()
-    sources = [
-        {"id": item.id, "title": item.title, "url": item.canonical_url,
-         "published_at": item.published_at.isoformat() if item.published_at else None}
-        for item in evidence_rows
-    ]
+    selected_ids = list(dict.fromkeys(raw_ids))
+    if any(item not in valid_ids for item in selected_ids):
+        raise ApiProblem(409, "report_evidence_unavailable", "Báo cáo tham chiếu nguồn không còn thuộc phiên phân tích này.")
+
+    report_refs = report_json.get("evidence_refs", [])
+    refs_by_id = {
+        item.get("id"): item for item in report_refs
+        if isinstance(item, dict) and isinstance(item.get("id"), str)
+    } if isinstance(report_refs, list) else {}
+    if any(
+        not isinstance(refs_by_id.get(evidence_id), dict)
+        or not isinstance(refs_by_id[evidence_id].get("evidence_version_id"), str)
+        or not isinstance(refs_by_id[evidence_id].get("observation_id"), str)
+        for evidence_id in selected_ids
+    ):
+        raise ApiProblem(409, "report_evidence_unavailable", "Báo cáo này chưa có phiên bản nguồn cố định. Hãy tạo báo cáo nghiên cứu mới.")
+
+    pinned_rows = (await db.execute(
+        select(MarketReportEvidence, MarketEvidence, MarketEvidenceVersion, MarketObservation)
+        .join(MarketEvidence, (MarketEvidence.company_id == MarketReportEvidence.company_id)
+              & (MarketEvidence.group_id == MarketReportEvidence.group_id)
+              & (MarketEvidence.id == MarketReportEvidence.evidence_id))
+        .join(MarketEvidenceVersion, (MarketEvidenceVersion.company_id == MarketReportEvidence.company_id)
+              & (MarketEvidenceVersion.evidence_id == MarketReportEvidence.evidence_id)
+              & (MarketEvidenceVersion.id == MarketReportEvidence.evidence_version_id))
+        .join(MarketObservation, (MarketObservation.company_id == MarketReportEvidence.company_id)
+              & (MarketObservation.evidence_id == MarketReportEvidence.evidence_id)
+              & (MarketObservation.id == MarketReportEvidence.observation_id)
+              & (MarketObservation.evidence_version_id == MarketReportEvidence.evidence_version_id))
+        .where(
+            MarketReportEvidence.company_id == company_id,
+            MarketReportEvidence.group_id == report.group_id,
+            MarketReportEvidence.report_id == report.id,
+            MarketReportEvidence.evidence_id.in_(selected_ids or ["__none__"]),
+        )
+    )).all()
+    rows_by_pin = {
+        (evidence.id, version.id, observation.id): (evidence, version, observation)
+        for _link, evidence, version, observation in pinned_rows
+    }
+    sources = []
+    for evidence_id in selected_ids:
+        reference = refs_by_id[evidence_id]
+        pin = (evidence_id, reference["evidence_version_id"], reference["observation_id"])
+        row = rows_by_pin.get(pin)
+        if row is None:
+            raise ApiProblem(409, "report_evidence_unavailable", "Một nguồn hoặc snapshot của báo cáo không còn khả dụng.")
+        evidence, version, observation = row
+        sources.append({
+            "id": evidence.id,
+            "title": version.title,
+            "url": evidence.canonical_url,
+            "published_at": version.published_at.isoformat() if version.published_at else None,
+            "evidence_version_id": version.id,
+            "observation_id": observation.id,
+            "content_hash": version.content_hash,
+            "observed_at": observation.observed_at.isoformat(),
+            "metrics": observation.metrics_json if isinstance(observation.metrics_json, dict) else {},
+        })
+
+    raw_web_ids = suggestion.get("web_snapshot_ids", [])
+    if not isinstance(raw_web_ids, list) or any(not isinstance(item, str) for item in raw_web_ids):
+        raise ApiProblem(422, "suggestion_invalid", "Danh sách snapshot website trong đề xuất không đúng định dạng.")
+    selected_web_ids = list(dict.fromkeys(raw_web_ids))
+    if len(selected_ids) + len(selected_web_ids) > 10:
+        raise ApiProblem(422, "suggestion_invalid", "Hướng viết có quá 10 nguồn; hãy chọn hướng có phạm vi hẹp hơn.")
+    if selected_web_ids:
+        linked_web_ids = set((await db.scalars(select(MarketReportWebSnapshot.snapshot_id).where(
+            MarketReportWebSnapshot.company_id == company_id,
+            MarketReportWebSnapshot.report_id == report.id,
+            MarketReportWebSnapshot.snapshot_id.in_(selected_web_ids),
+        ))).all())
+        if linked_web_ids != set(selected_web_ids):
+            raise ApiProblem(409, "report_snapshot_unavailable", "Một snapshot website trong đề xuất không còn thuộc báo cáo này.")
     group = await _tenant_group(db, company_id, report.group_id)
     today = utcnow().date()
     slot_date = today + timedelta(days=1)
@@ -1289,7 +1358,8 @@ async def create_draft_from_report(
         "end_date": (today + timedelta(days=14)).isoformat(),
         "market_research_context": {
             "report_id": report.id, "group_id": group.id, "suggestion": suggestion,
-            "evidence": sources, "trust_level": "external_unverified",
+            "evidence": sources, "web_snapshot_ids": selected_web_ids,
+            "trust_level": "external_unverified",
         },
     }
     campaign = Campaign(
@@ -1309,7 +1379,10 @@ async def create_draft_from_report(
     db.add(AuditEvent(company_id=company_id, actor_user_id=user.id, action="market.suggestion.create_draft",
                       entity_type="campaign", entity_id=campaign.id,
                       metadata_json={"report_id": report.id, "suggestion_index": request.suggestion_index,
-                                     "evidence_ids": selected_ids, "group_id": group.id}))
+                                     "evidence_ids": selected_ids,
+                                     "evidence_version_ids": [item["evidence_version_id"] for item in sources],
+                                     "observation_ids": [item["observation_id"] for item in sources],
+                                     "web_snapshot_ids": selected_web_ids, "group_id": group.id}))
     await db.commit()
     return {
         "campaign_id": campaign.id, "group_id": campaign.group_id, "report_id": report.id,

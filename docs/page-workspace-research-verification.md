@@ -25,6 +25,7 @@
 | Qwen / Gemini / DeepSeek routing | PARTIAL | DeepSeek hiện có; Gemini/Qwen adapters và media/comment routing chưa nối; không tự fallback |
 | AI budget $2/workspace/day | PARTIAL | PostgreSQL reservation/ledger hiện bao phủ báo cáo Nghiên cứu DeepSeek tự động; chưa áp dụng chung cho các agent, Gemini/Qwen hoặc media |
 | Ngân sách API/UI | PASS theo API fixture và frontend lint/unit; browser real NOT_RUN | `GET .../market-research/ai-budget`; `test_research_ai_budget_is_workspace_scoped_and_reports_reserved_cost` |
+| Pin bằng chứng cho hướng viết | PASS (API + worker fixture) | `test_market_suggestion_draft_pins_report_observation_and_version`, `test_content_generation_job_persists_cited_draft_and_is_idempotent` |
 | Privacy retention/deletion | BLOCKED | Chưa có policy version, deletion ledger/propagation hoặc legal review; không tuyên bố tuân thủ đầy đủ |
 | PostgreSQL migration fresh/upgrade | PASS (test cluster tạm) | Fresh migration đạt `0022`; database riêng đã nâng `0021` → `0022`; legacy mapping của `0021` được kiểm tra trước đó |
 | PostgreSQL/Redis integration | PASS (test services tạm) | `tests/test_postgres_database_integration.py tests/test_ai_budget.py`: 16 passed; queue/cache TTL, fencing/claim, Celery dispatch và reservation race |
@@ -61,6 +62,8 @@ Không tuyên bố đã crawl hết Page/Group hoặc đạt chứng nhận phá
 - OpenAPI được xuất vào `/private/tmp/page-workspaces-openapi.json` và frontend types sinh bằng `npm run gen:api`; stub pgvector chỉ dùng để import schema, không được tính là backend runtime/test.
 - Cập nhật ngân sách API/UI trong lượt tiếp: endpoint trả số dư ngày `Asia/Ho_Chi_Minh`, fixture seed ledger/report và xác nhận workspace totals; frontend hiển thị số liệu USD, trạng thái pending và reset time. OpenAPI export/`--check` đạt; dùng `openapi-typescript 7.13.0` sinh declarations.
 - Frontend lint PASS và unit tests 50 passed. Typecheck hiện FAIL do `@agentic/contracts` draft không đồng bộ với interface backend/frontend hiện dùng ở nhiều route. Lỗi chưa được sửa trong lượt này để tránh mở rộng ngoài phần ngân sách; production build và browser real NOT_RUN.
+- Report-to-draft fixture có evidence mới hơn với text/metrics khác; campaign giữ pin của report cũ, worker chỉ dùng version/observation đó. Website snapshot được truy xuất đúng theo report link, nội dung được allowlist và signed image URL bị loại; worker kiểm tra lại source/pins trước khi lưu. Comment text không gửi cho model. Nếu pin mất/source inactive, worker từ chối context thay vì query latest.
+- Latest focused backend checks: `tests/test_campaign_workflows.py` 11 passed, `tests/test_market_research_api.py` 10 passed, `tests/test_ai_budget.py` 9 passed. Đây là SQLite API/worker fixtures, không thay cho PostgreSQL/Redis end-to-end.
 - `alembic upgrade head --sql` vẫn không hỗ trợ do migration cũ `0002_profile_knowledge` gọi schema inspector; online fresh/upgrade trên PostgreSQL test thật đã đạt. Không chạy migration lên database preview.
 - Từng phát sinh đầu ra có URL kết nối DB trong một lượt rà cấu hình. Không lặp lại hoặc commit thông tin đó; cần xoay mật khẩu sau khi có cửa sổ vận hành an toàn.
 

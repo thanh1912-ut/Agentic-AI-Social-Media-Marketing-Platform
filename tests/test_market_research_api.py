@@ -14,7 +14,7 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from sqlalchemy.pool import StaticPool
 
 from database.models import (
-    AIUsageBudgetDay, AIUsageLedger, Base, Job, MarketEvidence, MarketEvidenceVersion, MarketObservation, MetaPageConnection,
+    AIUsageBudgetDay, AIUsageLedger, Base, Campaign, Job, MarketEvidence, MarketEvidenceVersion, MarketObservation, MetaPageConnection,
     MarketReport, MarketReportEvidence, MetaPageGroup, ResearchCycle, ResearchSource, new_id,
 )
 from services.api import market_research as market_research_routes
@@ -174,6 +174,132 @@ def test_research_ai_budget_is_workspace_scoped_and_reports_reserved_cost(market
     assert populated_payload["available_micro_usd"] == 1_625_000
     assert populated_payload["unsettled_requests"] == 1
     assert populated_payload["pending_reports"] == 1
+
+
+def test_market_suggestion_draft_pins_report_observation_and_version(market_api) -> None:
+    client, session_factory, _encryption_key = market_api
+    workspace_id, headers = _owner(client, "pinned-report-owner@example.com")
+    group_id = _create_group(client, workspace_id, headers)
+    source_response = client.post(
+        f"/api/v1/workspaces/{workspace_id}/market-research/sources",
+        headers=headers,
+        json={
+            "group_id": group_id,
+            "source_type": "competitor_facebook_page",
+            "name": "Nguồn tham khảo",
+            "url": "https://www.facebook.com/reference-page",
+            "competitor_name": "Nguồn tham khảo",
+        },
+    )
+    assert source_response.status_code == 201, source_response.text
+    source_id = source_response.json()["id"]
+    now = datetime.now(timezone.utc)
+    report_id, evidence_id, version_id, observation_id = (new_id() for _ in range(4))
+
+    async def seed_report() -> None:
+        async with session_factory() as db:
+            db.add(MarketEvidence(
+                id=evidence_id,
+                company_id=workspace_id,
+                group_id=group_id,
+                source_id=source_id,
+                canonical_url="https://www.facebook.com/reference-page/posts/123",
+                title="Bài hiện tại đã đổi",
+                text="Bản thân bài hiện tại không được thay report cũ.",
+                content_hash="b" * 64,
+                trust_level="external_unverified",
+                first_seen_at=now,
+                last_seen_at=now,
+            ))
+            db.add(MarketEvidenceVersion(
+                id=version_id,
+                company_id=workspace_id,
+                evidence_id=evidence_id,
+                content_hash="a" * 64,
+                parser_version="fixture-parser-v1",
+                title="Tiêu đề tại thời điểm báo cáo",
+                text="Nội dung đã được dùng cho báo cáo nghiên cứu.",
+                published_at=now,
+                captured_at=now,
+            ))
+            db.add(MarketObservation(
+                id=observation_id,
+                company_id=workspace_id,
+                evidence_id=evidence_id,
+                evidence_version_id=version_id,
+                observed_at=now,
+                metrics_json={"reactions": 14, "shares": 3},
+                comments_json=["Không được tự đưa bình luận vào campaign context"],
+            ))
+            db.add(MarketReport(
+                id=report_id,
+                company_id=workspace_id,
+                group_id=group_id,
+                window_start=now,
+                window_end=now,
+                report_json={
+                    "analysis_status": "completed",
+                    "suggestions": [{
+                        "title": "Hướng nội dung đã chọn",
+                        "angle": "Giải thích câu hỏi phổ biến",
+                        "hook": "Bạn thường băn khoăn điều gì?",
+                        "format": "text",
+                        "evidence_ids": [evidence_id],
+                    }],
+                    "evidence_refs": [{
+                        "id": evidence_id,
+                        "title": "Tiêu đề tại thời điểm báo cáo",
+                        "url": "https://www.facebook.com/reference-page/posts/123",
+                        "published_at": now.isoformat(),
+                        "observed_at": now.isoformat(),
+                        "evidence_version_id": version_id,
+                        "observation_id": observation_id,
+                        "content_hash": "a" * 64,
+                        "metrics": {"reactions": 14, "shares": 3},
+                    }],
+                },
+                evidence_ids_json=[evidence_id],
+                coverage_json={"ai_status": "completed"},
+                model_name="fixture-model",
+            ))
+            db.add(MarketReportEvidence(
+                company_id=workspace_id,
+                group_id=group_id,
+                report_id=report_id,
+                observation_id=observation_id,
+                evidence_id=evidence_id,
+                evidence_version_id=version_id,
+            ))
+            await db.commit()
+
+    asyncio.run(seed_report())
+    created = client.post(
+        f"/api/v1/workspaces/{workspace_id}/market-research/reports/{report_id}/draft",
+        headers=headers,
+        json={"suggestion_index": 0},
+    )
+    assert created.status_code == 201, created.text
+    campaign_id = created.json()["campaign_id"]
+
+    async def read_brief() -> dict:
+        async with session_factory() as db:
+            campaign = await db.get(Campaign, campaign_id)
+            assert campaign is not None
+            return campaign.brief_json
+
+    market_context = asyncio.run(read_brief())["market_research_context"]
+    assert market_context["report_id"] == report_id
+    assert market_context["evidence"] == [{
+        "id": evidence_id,
+        "title": "Tiêu đề tại thời điểm báo cáo",
+        "url": "https://www.facebook.com/reference-page/posts/123",
+        "published_at": now.replace(tzinfo=None).isoformat(),
+        "evidence_version_id": version_id,
+        "observation_id": observation_id,
+        "content_hash": "a" * 64,
+        "observed_at": now.replace(tzinfo=None).isoformat(),
+        "metrics": {"reactions": 14, "shares": 3},
+    }]
 
 
 def test_page_token_is_encrypted_and_same_page_can_reconnect(market_api, monkeypatch) -> None:
