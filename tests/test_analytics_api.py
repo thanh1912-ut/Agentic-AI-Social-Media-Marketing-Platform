@@ -13,6 +13,7 @@ from sqlalchemy.pool import StaticPool
 from database.models import Base
 from services.api.db import get_db
 from services.api.main import app
+from tests.helpers.page_workspace import activate_test_page, attach_workspace_to_session
 
 
 @pytest.fixture
@@ -50,7 +51,7 @@ def _register(client: TestClient, email: str) -> dict:
         "company_name": "Metrics workspace",
     })
     assert response.status_code == 201, response.text
-    return response.json()
+    return attach_workspace_to_session(response.json(), activate_test_page(client))
 
 
 def _campaign_body() -> dict:

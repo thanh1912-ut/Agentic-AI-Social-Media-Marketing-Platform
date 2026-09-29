@@ -1,1 +1,1 @@
-"""Tests for the pilot foundations."""
+"""Application test suite."""

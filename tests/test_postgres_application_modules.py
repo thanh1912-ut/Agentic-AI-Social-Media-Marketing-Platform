@@ -35,6 +35,7 @@ from services.api import market_research as market_routes
 from services.api import meta_tokens
 from services.api.db import SessionLocal, engine
 from services.api.main import app
+from tests.helpers.page_workspace import activate_test_page
 from services.api.meta_client import MetaPage
 from services.worker import tasks
 from services.worker.model_provider import AIConfigurationError
@@ -147,7 +148,7 @@ def test_postgres_api_persists_existing_product_modules(monkeypatch: pytest.Monk
             "company_name": f"Integration workspace {uuid.uuid4().hex[:8]}",
         })
         assert registered.status_code == 201, registered.text
-        workspace_id = registered.json()["active_workspace_id"]
+        workspace_id = activate_test_page(client)["id"]
         headers = {"X-CSRF-Token": client.cookies["agentic_csrf"]}
 
         profile = client.get(f"/api/v1/workspaces/{workspace_id}/brand-profile")

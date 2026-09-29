@@ -36,7 +36,7 @@ async function chooseWorkspace(page: Page, id: string): Promise<boolean> {
 
 
 test.describe('real API acceptance — auth, documents, jobs and Brand Profile', () => {
-  test('self registration, document-only ingestion, manual profile, logout and login persist', async ({ page }) => {
+  test('self registration creates only an account; logout and login return to Page activation', async ({ page }) => {
     test.skip(
       process.env.E2E_REAL_AUTH_TESTS !== '1',
       'Set E2E_REAL_AUTH_TESTS=1 only against a disposable real API database.',
@@ -48,15 +48,18 @@ test.describe('real API acceptance — auth, documents, jobs and Brand Profile',
     await page.goto('/register');
     await page.getByLabel('Họ tên').fill('E2E Account Owner');
     await page.getByLabel('Email', { exact: true }).fill(email);
-    await page.getByLabel('Tên thương hiệu / workspace').fill(`E2E Brand ${suffix}`);
     await page.getByLabel('Mật khẩu', { exact: true }).fill(password);
     await page.getByLabel('Nhập lại mật khẩu').fill(password);
     await page.getByRole('button', { name: 'Đăng ký' }).click();
-    await expect(page).toHaveURL(/\/w\/[^/]+\/brand$/);
+    await expect(page).toHaveURL('/');
+    await expect(page.getByRole('heading', { name: 'Chọn doanh nghiệp để bắt đầu' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Thêm Fanpage doanh nghiệp' })).toBeVisible();
+    await expect(page.getByLabel('Page ID')).toBeVisible();
+    await expect(page.getByLabel('Page Access Token')).toBeVisible();
     await expect(page.getByRole('button', { name: 'Đăng xuất' })).toBeVisible();
 
-    const registeredUrl = page.url();
     await page.reload();
+    await expect(page.getByRole('heading', { name: 'Chọn doanh nghiệp để bắt đầu' })).toBeVisible();
     await expect(page.getByRole('button', { name: 'Đăng xuất' })).toBeVisible();
     await page.getByRole('button', { name: 'Đăng xuất' }).click();
     await expect(page).toHaveURL(/\/login$/);
@@ -65,57 +68,9 @@ test.describe('real API acceptance — auth, documents, jobs and Brand Profile',
     await page.getByLabel('Mật khẩu').fill(password);
     await page.getByRole('button', { name: 'Đăng nhập' }).click();
     await expect(page.getByRole('button', { name: 'Đăng xuất' })).toBeVisible();
-    const workspaceId = new URL(registeredUrl).pathname.split('/')[2];
-    await expect(page).toHaveURL(new RegExp(`/w/${workspaceId}/documents$`));
-
-    const profileWrites: string[] = [];
-    page.on('request', (request) => {
-      const requestUrl = new URL(request.url());
-      if (requestUrl.pathname === `/api/v1/workspaces/${workspaceId}/brand-profile` && request.method() !== 'GET') {
-        profileWrites.push(request.method());
-      }
-    });
-
-    await page.goto(`/w/${encodeURIComponent(workspaceId)}/documents`);
-    const runId = Date.now();
-    const textName = `studio-notes-${runId}.txt`;
-    const csvName = `studio-metrics-${runId}.csv`;
-    await page.locator('#document-files').setInputFiles([
-      { name: textName, mimeType: 'text/plain', buffer: Buffer.from('Thương hiệu mẫu. Nội dung ngắn để kiểm tra Docling.') },
-      { name: csvName, mimeType: 'text/csv', buffer: Buffer.from('metric,value\norders,12\nreturns,1\n') },
-    ]);
-    await expect(page).toHaveURL(/\/jobs\//, { timeout: 30_000 });
-    await expect(page.getByText('Đã hoàn tất', { exact: true }).first()).toBeVisible({ timeout: 90_000 });
-    await page.reload();
-    await expect(page.getByText('Đã hoàn tất', { exact: true }).first()).toBeVisible({ timeout: 30_000 });
-    await page.goto(`/w/${encodeURIComponent(workspaceId)}/documents`);
-    await expect(page.getByText(textName)).toBeVisible();
-    await expect(page.getByText(csvName)).toBeVisible();
-    await expect(page.getByText('Đã đọc xong nội dung').first()).toBeVisible();
-    await expect(page.getByText('Sẵn sàng truy xuất').first()).toBeVisible();
-    await expect(page.getByText(/Đã tạo\/cập nhật Brand Profile/)).toHaveCount(0);
-    expect(profileWrites).toEqual([]);
-
-    await page.goto(`/w/${encodeURIComponent(workspaceId)}/brand`);
-    const profile = page.getByLabel('Giới thiệu thương hiệu cho AI');
-    await expect(profile).toHaveValue('');
-    const profileText = 'Thương hiệu test do người dùng tự viết. Giọng văn gần gũi, rõ ràng.';
-    await profile.fill(profileText);
-    await page.getByRole('button', { name: 'Lưu và áp dụng' }).click();
-    await expect(page.getByText(/Đã lưu và áp dụng hồ sơ/)).toBeVisible();
-    await page.reload();
-    await expect(page.getByLabel('Giới thiệu thương hiệu cho AI')).toHaveValue(profileText);
-    expect(profileWrites).toEqual(['PATCH']);
-
-    await page.getByRole('button', { name: 'Đăng xuất' }).click();
-    await expect(page).toHaveURL(/\/login$/);
-    await page.getByLabel('Email').fill(email);
-    await page.getByLabel('Mật khẩu').fill(password);
-    await page.getByRole('button', { name: 'Đăng nhập' }).click();
-    await expect(page.getByRole('button', { name: 'Đăng xuất' })).toBeVisible();
-    await expect(page).toHaveURL(new RegExp(`/w/${workspaceId}/documents$`));
-    await page.goto(`/w/${encodeURIComponent(workspaceId)}/brand`);
-    await expect(page.getByLabel('Giới thiệu thương hiệu cho AI')).toHaveValue(profileText);
+    await expect(page).toHaveURL('/');
+    await expect(page.getByRole('heading', { name: 'Chọn doanh nghiệp để bắt đầu' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Thêm Fanpage doanh nghiệp' })).toBeVisible();
   });
 
   test('removes a stale mock service worker before showing real-mode login', async ({ page }) => {

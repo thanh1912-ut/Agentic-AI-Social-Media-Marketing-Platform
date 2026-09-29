@@ -13,6 +13,7 @@ from database.models import Base
 from services.api.db import get_db
 from services.api.main import app
 from services.ingestion.parsers import parse_document
+from tests.helpers.page_workspace import activate_test_page
 
 
 @pytest.fixture
@@ -53,7 +54,7 @@ def test_auth_and_tenant_isolation(api_client: TestClient) -> None:
         },
     )
     assert first.status_code == 201
-    workspace_id = first.json()["active_workspace_id"]
+    workspace_id = activate_test_page(api_client)["id"]
 
     second = TestClient(app)
     with second:
@@ -67,6 +68,8 @@ def test_auth_and_tenant_isolation(api_client: TestClient) -> None:
             },
         )
         assert second_response.status_code == 201
+        second_workspace_id = activate_test_page(second)["id"]
+        assert second_workspace_id != workspace_id
         response = second.get(f"/api/v1/workspaces/{workspace_id}/documents")
 
     assert response.status_code == 404

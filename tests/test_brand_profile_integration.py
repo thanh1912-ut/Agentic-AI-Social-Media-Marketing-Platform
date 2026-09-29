@@ -16,6 +16,7 @@ from packages.contracts import BrandFact, BrandProfile, SourceReference
 from services.agents.brand_agent import BrandAgent
 from services.api.db import get_db
 from services.api.main import app
+from tests.helpers.page_workspace import activate_test_page
 from services.worker import tasks
 
 
@@ -121,7 +122,8 @@ def _register(client: TestClient, email: str, company_name: str) -> tuple[str, d
         },
     )
     assert response.status_code == 201, response.text
-    return response.json()["active_workspace_id"], {"X-CSRF-Token": client.cookies["agentic_csrf"]}
+    workspace = activate_test_page(client)
+    return workspace["id"], {"X-CSRF-Token": client.cookies["agentic_csrf"]}
 
 
 def _upload(client: TestClient, workspace_id: str, csrf: dict[str, str], files):
@@ -130,6 +132,20 @@ def _upload(client: TestClient, workspace_id: str, csrf: dict[str, str], files):
         headers={**csrf, "Idempotency-Key": f"upload-{workspace_id}-{len(files)}"},
         files=[("files", (name, content, "text/plain")) for name, content in files],
     )
+
+
+def _install_fixture_text_parser(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Keep ingestion workflow tests independent of the optional Docling runtime."""
+    from services.ingestion.parsers import ParsedDocument, ParsedTextBlock
+
+    def parse_fixture(path: Path, *, kind: str, mime_type: str, filename: str) -> ParsedDocument:
+        text = path.read_text(encoding="utf-8")
+        return ParsedDocument(
+            text_blocks=[ParsedTextBlock(text=text, locator="fixture:line=1")] if text else [],
+            metadata={"fixture_parser": True, "kind": kind, "mime_type": mime_type, "filename": filename},
+        )
+
+    monkeypatch.setattr(tasks, "parse_document", parse_fixture)
 
 
 @pytest.mark.fixture_integration
@@ -516,6 +532,7 @@ def test_upload_worker_profile_revision_confirm_and_tenant_isolation(api_env):
 @pytest.mark.fixture_integration
 def test_manual_profile_is_unchanged_by_document_ingestion(api_env, monkeypatch):
     client, sessions = api_env
+    _install_fixture_text_parser(monkeypatch)
     workspace_id, csrf = _register(client, "manual-profile-owner@example.com", "Bếp Mộc")
     monkeypatch.setattr(
         "services.worker.model_provider.configured_structured_model",
@@ -605,6 +622,7 @@ def test_manual_profile_is_unchanged_by_document_ingestion(api_env, monkeypatch)
 @pytest.mark.fixture_integration
 def test_missing_deepseek_configuration_keeps_ingestion_ready_and_skips_profile(api_env, monkeypatch):
     client, _sessions = api_env
+    _install_fixture_text_parser(monkeypatch)
     workspace_id, csrf = _register(client, "missing-deepseek@example.com", "No LLM Co")
     uploaded = _upload(
         client,
@@ -682,8 +700,9 @@ def test_expired_worker_lease_is_requeued(api_env, monkeypatch):
 
 
 @pytest.mark.fixture_integration
-def test_batch_with_one_bad_file_is_not_reported_as_success(api_env):
+def test_batch_with_one_bad_file_is_not_reported_as_success(api_env, monkeypatch):
     client, _sessions = api_env
+    _install_fixture_text_parser(monkeypatch)
     workspace_id, csrf = _register(client, "batch-owner@example.com", "Batch Co")
     uploaded = _upload(
         client,

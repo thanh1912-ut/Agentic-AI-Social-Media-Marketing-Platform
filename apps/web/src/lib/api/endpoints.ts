@@ -146,6 +146,14 @@ export const authApi = {
 // ---------------------------------------------------------------------------
 
 export const workspaceApi = {
+  createFromPage: (body: { page_id: string; page_access_token: string }) =>
+    apiRequest<ApiWorkspace>(v1('/workspaces/from-page'), { method: 'POST', body }),
+
+  reconnectPage: (workspaceId: string, body: { page_id: string; page_access_token: string }) =>
+    apiRequest<ApiWorkspace>(v1(`/workspaces/${encodeURIComponent(workspaceId)}/page-connection`), {
+      method: 'PATCH', body,
+    }),
+
   list: () => apiRequest<readonly ApiWorkspace[]>(v1('/workspaces')),
 
   get: (workspaceId: string) =>

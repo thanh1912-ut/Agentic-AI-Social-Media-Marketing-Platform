@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import asyncio
+from itertools import count
 import re
+from types import SimpleNamespace
 from dataclasses import replace
 from urllib.parse import parse_qs, urlsplit
 
@@ -20,8 +22,11 @@ from services.api.email import EmailDeliveryError
 from services.api.main import app
 
 
+_TEST_PAGE_IDS = count(1001)
+
+
 @pytest.fixture
-def account_client(tmp_path):
+def account_client(tmp_path, monkeypatch: pytest.MonkeyPatch):
     database_path = tmp_path / "account-lifecycle.sqlite"
     engine = create_async_engine(f"sqlite+aiosqlite:///{database_path}")
     session_factory = async_sessionmaker(engine, expire_on_commit=False)
@@ -36,11 +41,33 @@ def account_client(tmp_path):
 
     asyncio.run(create_schema())
     app.dependency_overrides[get_db] = override_db
+    app.state.test_session_factory = session_factory
+
+    class FakeMetaClient:
+        def __init__(self, page_id, _token, _version):
+            self.page_id = page_id
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *_args):
+            return False
+
+        async def verify_page(self):
+            from services.api.meta_client import MetaPage
+            return MetaPage(id=self.page_id, name=f"Test Page {self.page_id}", picture_url=None)
+
+        async def list_page_posts(self, **_kwargs):
+            return SimpleNamespace(posts=[], next_cursor=None)
+
+    monkeypatch.setattr(workspaces_module, "MetaGraphClient", FakeMetaClient)
+    monkeypatch.setattr(workspaces_module, "encrypt_page_token", lambda token: f"test-encrypted:{len(token)}")
     try:
         with TestClient(app) as client:
             yield client
     finally:
         app.dependency_overrides.pop(get_db, None)
+        del app.state.test_session_factory
         asyncio.run(engine.dispose())
 
 
@@ -57,10 +84,17 @@ def register_owner(
         },
     )
     assert response.status_code == 201, response.text
-    return response.json()["active_workspace_id"], client.cookies["agentic_csrf"]
+    page_id = str(next(_TEST_PAGE_IDS))
+    connected = client.post(
+        "/api/v1/workspaces/from-page",
+        json={"page_id": page_id, "page_access_token": "test-page-token-value-12345"},
+        headers={"X-CSRF-Token": client.cookies["agentic_csrf"]},
+    )
+    assert connected.status_code == 201, connected.text
+    return connected.json()["id"], client.cookies["agentic_csrf"]
 
 
-def test_register_creates_owner_workspace_and_preserves_password_exactly(
+def test_register_creates_user_only_and_preserves_password_exactly(
     account_client: TestClient,
 ) -> None:
     password = "  spaced-password-123  "
@@ -75,9 +109,9 @@ def test_register_creates_owner_workspace_and_preserves_password_exactly(
     )
     assert registered.status_code == 201, registered.text
     assert registered.json()["user"]["email"] == "new.owner@example.com"
-    assert registered.json()["workspaces"][0]["role"] == "owner"
-    workspace_id = registered.json()["active_workspace_id"]
-    assert workspace_id
+    assert registered.json()["workspaces"] == []
+    assert registered.json()["active_workspace_id"] is None
+    assert account_client.get("/api/v1/workspaces").json() == []
     assert account_client.get("/api/v1/me").status_code == 200
 
     duplicate = account_client.post(
@@ -90,7 +124,7 @@ def test_register_creates_owner_workspace_and_preserves_password_exactly(
         },
     )
     assert duplicate.status_code == 409
-    assert len(account_client.get("/api/v1/workspaces").json()) == 1
+    assert account_client.get("/api/v1/workspaces").json() == []
 
     logout = account_client.post(
         "/api/v1/auth/logout",
@@ -107,7 +141,74 @@ def test_register_creates_owner_workspace_and_preserves_password_exactly(
         json={"email": "NEW.OWNER@example.com", "password": password},
     )
     assert login.status_code == 200, login.text
-    assert login.json()["active_workspace_id"] == workspace_id
+    assert login.json()["active_workspace_id"] is None
+
+
+def test_page_activation_owns_workspace_and_token_does_not_grant_membership(
+    account_client: TestClient,
+) -> None:
+    first = account_client.post("/api/v1/auth/register", json={
+        "email": "page-owner@example.com", "password": "safe-password-123",
+        "full_name": "Page Owner",
+    })
+    assert first.status_code == 201
+    page_id = "881234567890"
+    activated = account_client.post(
+        "/api/v1/workspaces/from-page",
+        json={"page_id": page_id, "page_access_token": "test-page-token-value-12345"},
+        headers={"X-CSRF-Token": account_client.cookies["agentic_csrf"]},
+    )
+    assert activated.status_code == 201, activated.text
+    workspace = activated.json()
+    assert workspace["name"] == f"Test Page {page_id}"
+    assert workspace["page_id"] == page_id
+    assert workspace["page_connection_state"] == "active"
+    assert workspace["role"] == "owner"
+    assert account_client.get("/api/v1/workspaces").json()[0]["id"] == workspace["id"]
+
+    account_client.cookies.clear()
+    second = account_client.post("/api/v1/auth/register", json={
+        "email": "second-page-user@example.com", "password": "safe-password-456",
+        "full_name": "Second User",
+    })
+    assert second.status_code == 201
+    conflict = account_client.post(
+        "/api/v1/workspaces/from-page",
+        json={"page_id": page_id, "page_access_token": "test-page-token-value-12345"},
+        headers={"X-CSRF-Token": account_client.cookies["agentic_csrf"]},
+    )
+    assert conflict.status_code == 409
+    assert conflict.json()["error"]["code"] == "page_already_connected"
+    assert account_client.get("/api/v1/workspaces").json() == []
+
+
+def test_legacy_workspace_requires_page_before_agentic_writes(account_client: TestClient) -> None:
+    from database.models import Brand, Company, Membership, new_id
+
+    registered = account_client.post("/api/v1/auth/register", json={
+        "email": "legacy-workspace-owner@example.com",
+        "password": "safe-password-789",
+        "full_name": "Legacy Owner",
+    })
+    assert registered.status_code == 201
+    user_id = registered.json()["user"]["id"]
+    company_id = new_id()
+
+    async def create_legacy_workspace():
+        async with account_client.app.state.test_session_factory() as db:
+            db.add(Company(id=company_id, name="Legacy workspace", slug=f"legacy-{company_id[:8]}"))
+            db.add(Membership(company_id=company_id, user_id=user_id, role="owner", is_active=True))
+            db.add(Brand(company_id=company_id, profile={}, version=1))
+            await db.commit()
+
+    asyncio.run(create_legacy_workspace())
+    response = account_client.patch(
+        f"/api/v1/workspaces/{company_id}/brand-profile",
+        headers={"X-CSRF-Token": account_client.cookies["agentic_csrf"]},
+        json={"version": 1, "profile_text": "Không được ghi trước khi Page hợp lệ."},
+    )
+    assert response.status_code == 409
+    assert response.json()["error"]["code"] == "page_connection_required"
 
 
 def test_existing_invitee_must_sign_in_as_invited_account(
@@ -405,7 +506,7 @@ def test_invitation_manual_fallback_resend_and_acceptance(
         assert preview.status_code == 200
         assert preview.headers["cache-control"] == "no-store"
         assert preview.headers["referrer-policy"] == "no-referrer"
-        assert preview.json()["workspace_name"] == "Owner Workspace"
+        assert preview.json()["workspace_name"].startswith("Test Page ")
         assert preview.json()["role"] == "viewer"
 
         accepted = invitee.post(

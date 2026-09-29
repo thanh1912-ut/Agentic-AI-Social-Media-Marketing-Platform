@@ -68,7 +68,7 @@ from services.research.facebook_public_crawler import normalize_facebook_page_ur
 
 
 router = APIRouter(prefix="/workspaces/{company_id}/market-research", tags=["market-research"])
-MAX_ACTIVE_PAGES = 5
+MAX_ACTIVE_PAGES = 1
 MAX_SOURCES_PER_WORKSPACE = 20
 EMAIL_RE = re.compile(r"\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b", re.IGNORECASE)
 PHONE_RE = re.compile(r"(?<!\w)(?:\+?\d[\d ().-]{7,}\d)(?!\w)")
@@ -116,6 +116,28 @@ async def _tenant_group(db: AsyncSession, company_id: str, group_id: str, *, loc
     if row is None:
         raise ApiProblem(404, "not_found", "Không tìm thấy nhóm Fanpage.")
     return row
+
+
+async def _default_research_group(db: AsyncSession, company_id: str) -> MetaPageGroup:
+    group = await db.scalar(select(MetaPageGroup).where(
+        MetaPageGroup.company_id == company_id,
+        MetaPageGroup.active.is_(True),
+        MetaPageGroup.name == "Nghiên cứu",
+    ).order_by(MetaPageGroup.created_at).limit(1))
+    if group is None:
+        group = await db.scalar(select(MetaPageGroup).where(
+            MetaPageGroup.company_id == company_id,
+            MetaPageGroup.active.is_(True),
+        ).order_by(MetaPageGroup.created_at).limit(1))
+    if group is None:
+        group = MetaPageGroup(
+            id=new_id(), company_id=company_id, name="Nghiên cứu",
+            industry="Chưa xác định", region="Chưa xác định", locale="vi-VN",
+            keywords_json=[], active=True,
+        )
+        db.add(group)
+        await db.flush()
+    return group
 
 
 async def _group_counts(db: AsyncSession, company_id: str, group_id: str) -> tuple[int, int]:
@@ -409,13 +431,13 @@ async def crawl_competitor_source_now(
 ):
     source = await db.scalar(select(ResearchSource).where(
         ResearchSource.company_id == company_id, ResearchSource.id == source_id,
-        ResearchSource.source_type == "competitor_facebook_page", ResearchSource.active.is_(True),
+        ResearchSource.active.is_(True),
     ).with_for_update())
     if source is None:
-        raise ApiProblem(404, "not_found", "Không tìm thấy Fanpage đối thủ.")
-    if source.collection_mode == "manual":
+        raise ApiProblem(404, "not_found", "Không tìm thấy nguồn nghiên cứu.")
+    if source.source_type == "competitor_facebook_page" and source.collection_mode == "manual":
         raise ApiProblem(409, "manual_collection_selected", "Nguồn đang ở chế độ nhập thủ công; hãy chọn public_web hoặc meta_api.")
-    if source.collection_mode == "meta_api" and not getattr(settings, "meta_public_content_access_token", ""):
+    if source.source_type == "competitor_facebook_page" and source.collection_mode == "meta_api" and not getattr(settings, "meta_public_content_access_token", ""):
         raise ApiProblem(409, "meta_public_access_unconfigured", "Meta App chưa cấu hình quyền Page Public Content Access.")
     group = await _tenant_group(db, company_id, source.group_id, lock=True)
     pending = (await db.scalars(select(ResearchCycle).where(
@@ -432,7 +454,7 @@ async def crawl_competitor_source_now(
     cycle_key = f"source-manual:{source.id}:{now.strftime('%Y%m%dT%H%M%S%f')}"
     job = Job(
         id=new_id(), company_id=company_id, created_by=user.id, kind="market_research",
-        title=f"Thu thập Fanpage đối thủ: {source.name}", status="queued", progress=0,
+        title=f"Thu thập nghiên cứu: {source.name}", status="queued", progress=0,
         result={"group_id": group.id, "source_ids": [source.id]},
         idempotency_key=f"market-source:{source.id}:{cycle_key}",
     )
@@ -640,6 +662,17 @@ async def connect_page(
     except (MetaGraphReadError, ValueError):
         raise ApiProblem(502, "meta_verification_failed", "Không xác minh được Fanpage với Meta Graph API.", retryable=True) from None
 
+    company = await db.scalar(select(Company).where(Company.id == company_id).with_for_update())
+    if company is None:
+        raise ApiProblem(404, "not_found", "Không tìm thấy doanh nghiệp.")
+    if company.page_id and company.page_id != page.id:
+        raise ApiProblem(409, "workspace_page_change_not_allowed", "Workspace này đã đại diện cho một Fanpage khác. Hãy tạo workspace riêng cho Page mới.")
+    other_company = await db.scalar(select(Company.id).where(
+        Company.page_id == page.id, Company.id != company_id,
+    ))
+    if other_company:
+        raise ApiProblem(409, "page_already_connected", "Fanpage này đã được kết nối với workspace khác.")
+
     async with db.begin_nested():
         await db.scalar(select(Company.id).where(Company.id == company_id).with_for_update())
         await db.execute(select(MetaPageGroup.id).where(MetaPageGroup.id == group_id).with_for_update())
@@ -680,7 +713,32 @@ async def connect_page(
             row.status = "verified"
             row.last_error_code = None
             row.verified_at = utcnow()
-            row.active = True
+        row.active = True
+        company.page_id = page.id
+        company.name = page.name[:200]
+        company.page_avatar_url = page.picture_url
+        company.page_connection_state = "active"
+        other_connections = (await db.scalars(select(MetaPageConnection).where(
+            MetaPageConnection.company_id == company_id,
+            MetaPageConnection.id != row.id,
+            MetaPageConnection.active.is_(True),
+        ).with_for_update())).all()
+        for secondary in other_connections:
+            secondary.active = False
+            secondary.status = "needs_reconnect"
+            secondary.last_error_code = "workspace_primary_page_changed"
+            secondary.metrics_schedule_enabled = False
+            secondary.next_metrics_sync_at = None
+            secondary_sources = (await db.scalars(select(ResearchSource).where(
+                ResearchSource.company_id == company_id,
+                ResearchSource.connection_id == secondary.id,
+                ResearchSource.active.is_(True),
+            ))).all()
+            for secondary_source in secondary_sources:
+                secondary_source.active = False
+                secondary_source.schedule_enabled = False
+                secondary_source.next_due_at = None
+                secondary_source.status = "disabled"
         sync_state = await db.scalar(select(MetaSyncState).where(
             MetaSyncState.company_id == company_id, MetaSyncState.page_id == page.id,
         ).with_for_update())
@@ -692,6 +750,27 @@ async def connect_page(
             sync_state.page_name = page.name
             sync_state.verified_at = utcnow()
             sync_state.updated_at = utcnow()
+        owned_source = await db.scalar(select(ResearchSource).where(
+            ResearchSource.company_id == company_id,
+            ResearchSource.connection_id == row.id,
+            ResearchSource.source_type == "owned_facebook_page",
+        ).with_for_update())
+        page_url = f"https://www.facebook.com/{page.id}"
+        if owned_source is None:
+            db.add(ResearchSource(
+                id=new_id(), company_id=company_id, group_id=group_id, connection_id=row.id,
+                source_type="owned_facebook_page", name=page.name[:200], url=page_url,
+                normalized_url=page_url, status="active", active=True, crawl_mode="legacy",
+                crawl_page_limit=1000, render_mode="http_only", resource_hosts_json=[],
+                collection_mode="meta_api", collection_post_limit=100, collection_status="not_started",
+                schedule_enabled=False, next_due_at=None, created_by=user.id,
+            ))
+        else:
+            owned_source.name = page.name[:200]
+            owned_source.group_id = group_id
+            owned_source.url = owned_source.normalized_url = page_url
+            owned_source.active = True
+            owned_source.status = "active"
         db.add(AuditEvent(company_id=company_id, actor_user_id=user.id, action="market.page.connect",
                           entity_type="meta_page_connection", entity_id=row.id,
                           metadata_json={"page_id": row.page_id, "group_id": group_id, "token_fingerprint": row.token_fingerprint[:12]}))
@@ -711,10 +790,25 @@ async def disconnect_page(
     ).with_for_update())
     if row is None:
         raise ApiProblem(404, "not_found", "Không tìm thấy Fanpage đang kết nối.")
+    if row.page_id != await db.scalar(select(Company.page_id).where(Company.id == company_id)):
+        raise ApiProblem(409, "workspace_primary_page_required", "Page nhận diện workspace không thể ngắt tại đây; hãy thay token ở cài đặt doanh nghiệp.")
     row.active = False
     row.status = "needs_reconnect"
     row.encrypted_token = ""
     row.last_error_code = "disconnected_by_user"
+    company = await db.get(Company, company_id)
+    if company:
+        company.page_connection_state = "needs_reconnect"
+    row.metrics_schedule_enabled = False
+    row.next_metrics_sync_at = None
+    owned_sources = (await db.scalars(select(ResearchSource).where(
+        ResearchSource.company_id == company_id,
+        ResearchSource.connection_id == row.id,
+        ResearchSource.active.is_(True),
+    ))).all()
+    for source in owned_sources:
+        source.schedule_enabled = False
+        source.next_due_at = None
     sync_state = await db.scalar(select(MetaSyncState).where(
         MetaSyncState.company_id == company_id, MetaSyncState.page_id == row.page_id,
     ).with_for_update())
@@ -749,7 +843,11 @@ async def create_source(
     user: User = Depends(current_user), membership=Depends(require_permission("market:manage")),
     db: AsyncSession = Depends(get_db),
 ):
-    group = await _tenant_group(db, company_id, request.group_id, lock=True)
+    group = (
+        await _tenant_group(db, company_id, request.group_id, lock=True)
+        if request.group_id
+        else await _default_research_group(db, company_id)
+    )
     source_count = int(await db.scalar(select(func.count(ResearchSource.id)).where(
         ResearchSource.company_id == company_id, ResearchSource.active.is_(True),
     )) or 0)
@@ -997,6 +1095,23 @@ async def import_source_observations(
                       metadata_json={"rows": created, "comments_count": sum(len(item.comments) for item in request.rows)}))
     await db.commit()
     return {"imported": created, "observed_at": now}
+
+
+@router.get("/reports", response_model=list[ResearchReportOut])
+async def list_workspace_reports(
+    company_id: str, request: Request,
+    user: User = Depends(current_user), db: AsyncSession = Depends(get_db),
+):
+    """Workspace-level report facade; legacy storage remains group-scoped."""
+    await membership_for(company_id, user, db)
+    group_ids = (await db.scalars(select(MetaPageGroup.id).where(
+        MetaPageGroup.company_id == company_id,
+    ).order_by(MetaPageGroup.created_at))).all()
+    reports: list[ResearchReportOut] = []
+    for group_id in group_ids:
+        reports.extend(await list_reports(company_id, group_id, request, user, db))
+    reports.sort(key=lambda report: report.created_at, reverse=True)
+    return reports[:100]
 
 
 @router.get("/groups/{group_id}/reports", response_model=list[ResearchReportOut])

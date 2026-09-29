@@ -22,7 +22,7 @@ const NAV_GROUPS: { label: string; items: { href: string; label: string; icon: I
   { label: 'Nội dung & tăng trưởng', items: [
     { href: '/campaigns', label: 'Chiến dịch', icon: 'campaign' },
     { href: '/publishing', label: 'Xuất bản', icon: 'publish' },
-    { href: '/fanpages', label: 'Fanpage & thị trường', icon: 'globe' },
+    { href: '/research', label: 'Nghiên cứu', icon: 'globe' },
     { href: '/analytics', label: 'Hiệu quả & đề xuất', icon: 'chart' },
   ] },
 ];

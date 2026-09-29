@@ -68,6 +68,11 @@ class Company(Base, IdMixin, TimestampMixin):
     name: Mapped[str] = mapped_column(String(200), nullable=False)
     slug: Mapped[str] = mapped_column(String(120), nullable=False, unique=True, index=True)
     industry: Mapped[str | None] = mapped_column(String(120))
+    # The verified Page is the workspace identity and activation gate.
+    # Legacy multi-Page workspaces stay unbound until an Owner migrates them.
+    page_id: Mapped[str | None] = mapped_column(String(100), unique=True, index=True)
+    page_avatar_url: Mapped[str | None] = mapped_column(String(2048))
+    page_connection_state: Mapped[str] = mapped_column(String(32), default="connection_required", nullable=False)
 
 
 class Membership(Base, IdMixin, TimestampMixin):

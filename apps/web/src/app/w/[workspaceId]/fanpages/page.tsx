@@ -1,7 +1,8 @@
 'use client';
 
 import Link from 'next/link';
-import { useParams, useRouter } from 'next/navigation';
+import Image from 'next/image';
+import { useParams, usePathname, useRouter } from 'next/navigation';
 import { useCallback, useEffect, useState, type FormEvent } from 'react';
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
@@ -15,7 +16,7 @@ import { UrlTabs, useUrlTab } from '@/components/url-tabs';
 import { formatDateTime } from '@/lib/format';
 
 const MARKET_TABS = ['pages', 'sources', 'reports'] as const;
-const MARKET_TAB_LABELS = { pages: 'Fanpage', sources: 'Nguồn theo dõi', reports: 'Báo cáo' } as const;
+const MARKET_TAB_LABELS = { pages: 'Doanh nghiệp', sources: 'Thu thập', reports: 'Phân tích & hướng viết' } as const;
 const MARKET_HASHES = {
   '#fanpage-connections': 'pages',
   '#market-sources': 'sources',
@@ -26,8 +27,8 @@ const MARKET_HASHES = {
 const SOURCE_LABELS: Record<ResearchSourceType, string> = {
   website: 'Website công khai',
   owned_facebook_page: 'Fanpage của workspace',
-  competitor_facebook_page: 'Fanpage đối thủ',
-  facebook_group: 'Nhóm Facebook',
+  competitor_facebook_page: 'Fanpage công khai · đối thủ hoặc tin tức',
+  facebook_group: 'Nhóm Facebook công khai · Tier 0 chỉ hỗ trợ thông tin nhóm',
 };
 
 const MARKET_METRIC_LABELS: Record<string, string> = {
@@ -62,6 +63,7 @@ function formatMetricChanges(metrics: Record<string, number | null> | undefined)
 const SOURCE_STATUS: Record<string, { label: string; tone: 'neutral' | 'info' | 'success' | 'warning' | 'danger' }> = {
   active: { label: 'Tự động thu thập', tone: 'success' },
   manual_import_only: { label: 'Cần nhập dữ liệu thủ công', tone: 'info' },
+  unsupported_tier0: { label: 'Tier 0 không đọc nội dung nhóm', tone: 'warning' },
   needs_access: { label: 'Cần kết nối lại / thiếu quyền', tone: 'warning' },
   error: { label: 'Lỗi khi thu thập', tone: 'danger' },
   disabled: { label: 'Đã tắt', tone: 'neutral' },
@@ -95,6 +97,7 @@ function readableError(error: unknown, fallback: string): string {
 
 export default function FanpagesMarketResearchPage() {
   const params = useParams<{ workspaceId?: string }>();
+  const pathname = usePathname();
   const workspaceId = params?.workspaceId ?? '';
   const [marketTab, setMarketTab] = useUrlTab('tab', 'pages', MARKET_TABS, MARKET_HASHES);
   const router = useRouter();
@@ -103,28 +106,7 @@ export default function FanpagesMarketResearchPage() {
   const mocksOn = useMocks();
   const workspace = workspaces.find((item) => item.id === workspaceId) ?? null;
   const canManageMarket = Boolean(workspace?.permissions.includes('market:manage'));
-  const canConnectPage = Boolean(workspace?.permissions.includes('connection:manage'));
-
-  const [selectedGroupId, setSelectedGroupId] = useState('');
-  const [groupFormOpen, setGroupFormOpen] = useState(false);
-  const [pageId, setPageId] = useState('');
-  const [pageToken, setPageToken] = useState('');
-  const [pageError, setPageError] = useState<string | null>(null);
-  const [pageSaved, setPageSaved] = useState<string | null>(null);
-  const [pageBusy, setPageBusy] = useState(false);
   const [sourceType, setSourceType] = useState<ResearchSourceType>('website');
-  const [manualSourceId, setManualSourceId] = useState('');
-  const [manualPostUrl, setManualPostUrl] = useState('');
-  const [manualTitle, setManualTitle] = useState('');
-  const [manualText, setManualText] = useState('');
-  const [manualReactions, setManualReactions] = useState('');
-  const [manualCommentsCount, setManualCommentsCount] = useState('');
-  const [manualShares, setManualShares] = useState('');
-  const [manualViews, setManualViews] = useState('');
-  const [manualFollowers, setManualFollowers] = useState('');
-  const [manualCommentText, setManualCommentText] = useState('');
-  const [manualResult, setManualResult] = useState<string | null>(null);
-  const [pageNotice, setPageNotice] = useState<string | null>(null);
   const [lastCrawlJob, setLastCrawlJob] = useState<{ jobId: string; groupId: string } | null>(null);
   const [lastSourceCrawl, setLastSourceCrawl] = useState<{ jobId: string; sourceId: string } | null>(null);
   const [expandedCompetitorId, setExpandedCompetitorId] = useState('');
@@ -132,32 +114,34 @@ export default function FanpagesMarketResearchPage() {
   const [draftError, setDraftError] = useState<string | null>(null);
   const [webKind, setWebKind] = useState('product');
 
+  useEffect(() => {
+    if (!pathname.endsWith('/fanpages')) return;
+    router.replace(`${pathname.slice(0, -'/fanpages'.length)}/research${window.location.search}${window.location.hash}`);
+  }, [pathname, router]);
+
   const groupsQuery = useQuery({
     queryKey: marketResearchKeys.groups(workspaceId),
     queryFn: () => marketResearchApi.groups(workspaceId),
     enabled: workspaceId !== '',
   });
   const groups = groupsQuery.data ?? [];
-  const selectedGroup = groups.find((group) => group.id === selectedGroupId) ?? groups[0] ?? null;
+  const selectedGroup = groups.find((group) => group.name === 'Nghiên cứu') ?? groups[0] ?? null;
   const activeGroupId = selectedGroup?.id ?? '';
-  useEffect(() => {
-    if (activeGroupId && selectedGroupId !== activeGroupId) setSelectedGroupId(activeGroupId);
-  }, [activeGroupId, selectedGroupId]);
 
   const pagesQuery = useQuery({
-    queryKey: marketResearchKeys.pages(workspaceId, activeGroupId),
-    queryFn: () => marketResearchApi.pages(workspaceId, activeGroupId),
-    enabled: workspaceId !== '' && activeGroupId !== '',
+    queryKey: marketResearchKeys.pages(workspaceId, 'all'),
+    queryFn: () => marketResearchApi.allPages(workspaceId),
+    enabled: workspaceId !== '',
   });
   const sourcesQuery = useQuery({
-    queryKey: marketResearchKeys.sources(workspaceId, activeGroupId),
-    queryFn: () => marketResearchApi.sources(workspaceId, activeGroupId),
-    enabled: workspaceId !== '' && activeGroupId !== '',
+    queryKey: marketResearchKeys.sources(workspaceId),
+    queryFn: () => marketResearchApi.sources(workspaceId),
+    enabled: workspaceId !== '',
   });
   const reportsQuery = useQuery({
-    queryKey: marketResearchKeys.reports(workspaceId, activeGroupId),
-    queryFn: () => marketResearchApi.reports(workspaceId, activeGroupId),
-    enabled: workspaceId !== '' && activeGroupId !== '',
+    queryKey: marketResearchKeys.reports(workspaceId, 'all'),
+    queryFn: () => marketResearchApi.allReports(workspaceId),
+    enabled: workspaceId !== '',
     refetchInterval: (query) => query.state.fetchStatus === 'fetching' ? false : 15_000,
   });
   const webItemsQuery = useQuery({
@@ -193,29 +177,15 @@ export default function FanpagesMarketResearchPage() {
   const refreshGroupData = useCallback(async (groupId = activeGroupId) => {
     await Promise.all([
       queryClient.invalidateQueries({ queryKey: marketResearchKeys.groups(workspaceId) }),
-      queryClient.invalidateQueries({ queryKey: marketResearchKeys.pages(workspaceId, groupId) }),
-      queryClient.invalidateQueries({ queryKey: marketResearchKeys.sources(workspaceId, groupId) }),
-      queryClient.invalidateQueries({ queryKey: marketResearchKeys.reports(workspaceId, groupId) }),
+      queryClient.invalidateQueries({ queryKey: marketResearchKeys.pages(workspaceId, 'all') }),
+      queryClient.invalidateQueries({ queryKey: marketResearchKeys.sources(workspaceId) }),
+      queryClient.invalidateQueries({ queryKey: marketResearchKeys.reports(workspaceId, 'all') }),
       queryClient.invalidateQueries({ queryKey: marketResearchKeys.webItems(workspaceId, groupId, 'product') }),
       queryClient.invalidateQueries({ queryKey: marketResearchKeys.webItems(workspaceId, groupId, 'article') }),
       queryClient.invalidateQueries({ queryKey: marketResearchKeys.webItems(workspaceId, groupId, 'business_info') }),
     ]);
   }, [activeGroupId, queryClient, workspaceId]);
 
-  const createGroup = useMutation({
-    mutationFn: (form: FormData) => marketResearchApi.createGroup(workspaceId, {
-      name: String(form.get('name') ?? ''),
-      industry: String(form.get('industry') ?? ''),
-      region: String(form.get('region') ?? ''),
-      locale: String(form.get('locale') ?? 'vi-VN'),
-      keywords: String(form.get('keywords') ?? '').split(',').map((item) => item.trim()).filter(Boolean).slice(0, 30),
-    }),
-    onSuccess: async (group) => {
-      setSelectedGroupId(group.id);
-      setGroupFormOpen(false);
-      await refreshGroupData();
-    },
-  });
   const createSource = useMutation({
     mutationFn: (form: FormData) => marketResearchApi.createSource(workspaceId, {
       group_id: activeGroupId,
@@ -249,13 +219,6 @@ export default function FanpagesMarketResearchPage() {
       await queryClient.invalidateQueries({ queryKey: marketResearchKeys.competitorRuns(workspaceId, variables.sourceId) });
     },
   });
-  const disconnectPage = useMutation({
-    mutationFn: (connectionId: string) => marketResearchApi.disconnectPage(workspaceId, connectionId),
-    onSuccess: async () => {
-      setPageNotice('Đã ngắt kết nối Fanpage. Token đã bị xoá khỏi cấu hình đang hoạt động.');
-      await refreshGroupData();
-    },
-  });
   const crawlNow = useMutation({
     mutationFn: (groupId: string) => marketResearchApi.crawlNow(workspaceId, groupId),
     onMutate: () => setLastCrawlJob(null),
@@ -274,38 +237,6 @@ export default function FanpagesMarketResearchPage() {
         queryClient.invalidateQueries({ queryKey: marketResearchKeys.competitorPosts(workspaceId, sourceId) }),
         queryClient.invalidateQueries({ queryKey: marketResearchKeys.competitorRuns(workspaceId, sourceId) }),
       ]);
-    },
-  });
-  const importManual = useMutation({
-    mutationFn: () => {
-      const metric = (value: string) => value.trim() === '' ? null : Number(value);
-      const comments = manualCommentText.split('\n').map((value) => value.trim()).filter(Boolean);
-      return marketResearchApi.importObservations(workspaceId, manualSourceId, [{
-        url: manualPostUrl,
-        title: manualTitle,
-        text: manualText,
-        metrics: {
-          reactions: metric(manualReactions),
-          comments: metric(manualCommentsCount),
-          shares: metric(manualShares),
-          views: metric(manualViews),
-          followers: metric(manualFollowers),
-        },
-        comments,
-      }]);
-    },
-    onSuccess: async (result) => {
-      setManualResult('Đã nhập ' + result.imported + ' bài. Nội dung bình luận đã được ẩn email và số điện thoại.');
-      setManualPostUrl('');
-      setManualTitle('');
-      setManualText('');
-      setManualCommentText('');
-      setManualReactions('');
-      setManualCommentsCount('');
-      setManualShares('');
-      setManualViews('');
-      setManualFollowers('');
-      await refreshGroupData();
     },
   });
   const createDraft = useMutation({
@@ -336,36 +267,6 @@ export default function FanpagesMarketResearchPage() {
     });
   }, [queryClient, refreshGroupData, sourceJobQuery.data, lastSourceCrawl?.sourceId, workspaceId]);
 
-  async function submitPageConnection(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    setPageError(null);
-    setPageSaved(null);
-    setPageBusy(true);
-    const submittedToken = pageToken;
-    setPageToken('');
-    try {
-      const page = await marketResearchApi.connectPage(workspaceId, activeGroupId, {
-        page_id: pageId.trim(),
-        page_access_token: submittedToken,
-      });
-      setPageId('');
-      setPageSaved('Đã xác minh ' + (page.page_name || 'Fanpage') + ' (' + page.page_id + '). Token được mã hoá trong backend.');
-      await refreshGroupData();
-    } catch (error) {
-      setPageError(readableError(error, 'Không xác minh hoặc lưu được Fanpage.'));
-    } finally {
-      setPageToken('');
-      setPageBusy(false);
-    }
-  }
-
-  function submitGroup(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    const form = new FormData(event.currentTarget);
-    createGroup.mutate(form);
-    event.currentTarget.reset();
-  }
-
   function submitSource(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     createSource.mutate(new FormData(event.currentTarget));
@@ -382,7 +283,7 @@ export default function FanpagesMarketResearchPage() {
     );
   }
 
-  if (groupsQuery.isLoading) return <LoadingBlock label="Đang tải nhóm Fanpage và nguồn nghiên cứu…" />;
+  if (groupsQuery.isLoading) return <LoadingBlock label="Đang tải dữ liệu nghiên cứu…" />;
   if (groupsQuery.isError) {
     return <ErrorPanel message={readableError(groupsQuery.error, 'Không tải được cấu hình thị trường.')} code={groupsQuery.error instanceof ApiError ? groupsQuery.error.code : undefined} retryable onRetry={() => void groupsQuery.refetch()} />;
   }
@@ -390,13 +291,12 @@ export default function FanpagesMarketResearchPage() {
   return (
     <div className="space-y-6">
       <PageHeader
-        eyebrow="Kết nối & nghiên cứu"
-        title="Fanpage & thị trường"
-        description="Kết nối Fanpage, theo dõi đối thủ và tìm góc nhìn mới cho nội dung."
+        eyebrow="Doanh nghiệp & thị trường"
+        title="Nghiên cứu"
+        description="Thu thập nguồn, xem bằng chứng và chọn hướng nội dung cho doanh nghiệp."
         actions={activeGroupId && canManageMarket ? <Button loading={crawlNow.isPending} onClick={() => crawlNow.mutate(activeGroupId)}><Icon name="globe" size={17} /> Crawl ngay</Button> : undefined}
       />
 
-      {pageNotice ? <p role="status" className="rounded-lg border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-900">{pageNotice}</p> : null}
       {lastCrawlJob?.groupId === activeGroupId ? (
         <p role="status" className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900">
           {mocksOn ? 'Bản demo chỉ mô phỏng job, chưa crawl website thật. ' : 'Đã đưa yêu cầu crawl vào hàng đợi. '}
@@ -411,44 +311,7 @@ export default function FanpagesMarketResearchPage() {
         </div>
       ) : null}
 
-      <Card variant="panel"
-        title="Nhóm Fanpage và thị trường"
-        description="Chọn thị trường cần theo dõi. Mỗi workspace hỗ trợ tối đa 5 Fanpage và 20 nguồn."
-        actions={canManageMarket ? <Button variant="secondary" onClick={() => setGroupFormOpen((value) => !value)}>{groupFormOpen ? 'Đóng' : 'Tạo nhóm'}</Button> : null}
-      >
-        {groups.length === 0 ? (
-          <EmptyState title="Chưa có nhóm" description="Tạo nhóm để kết nối Fanpage và lưu vùng thị trường cần theo dõi." />
-        ) : (
-          <div className="space-y-3">
-            <label className="block max-w-xl text-sm font-medium text-slate-700">
-              Nhóm đang xem
-              <select className="mt-1 block w-full rounded-lg border border-slate-300 bg-white px-3 py-2" value={activeGroupId} onChange={(event) => setSelectedGroupId(event.currentTarget.value)}>
-                {groups.map((group) => <option key={group.id} value={group.id}>{group.name} · {group.industry} · {group.region}</option>)}
-              </select>
-            </label>
-            {selectedGroup ? (
-              <div className="flex flex-wrap gap-2 text-sm text-slate-600">
-                <Badge>{selectedGroup.page_count} Fanpage trong nhóm</Badge>
-                <Badge>{selectedGroup.source_count} nguồn trong nhóm</Badge>
-                <span>Ngôn ngữ: {selectedGroup.locale}</span>
-                <span>Lượt gần nhất: {selectedGroup.last_cycle_at ? formatDateTime(selectedGroup.last_cycle_at) : 'chưa có'}</span>
-                <span>Lượt kế tiếp: {selectedGroup.next_due_at ? formatDateTime(selectedGroup.next_due_at) : 'chưa lên lịch'}</span>
-              </div>
-            ) : null}
-          </div>
-        )}
-        {groupFormOpen && canManageMarket ? (
-          <form className="mt-5 grid gap-3 border-t border-slate-200 pt-4 sm:grid-cols-2" onSubmit={submitGroup}>
-            <label className="text-sm text-slate-700">Tên nhóm<input name="name" required maxLength={160} placeholder="Ví dụ: Mỹ phẩm miền Nam" className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2" /></label>
-            <label className="text-sm text-slate-700">Ngành<input name="industry" required maxLength={160} placeholder="Mỹ phẩm, F&B…" className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2" /></label>
-            <label className="text-sm text-slate-700">Khu vực<input name="region" required maxLength={160} placeholder="TP. Hồ Chí Minh, Việt Nam…" className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2" /></label>
-            <label className="text-sm text-slate-700">Mã ngôn ngữ<input name="locale" defaultValue="vi-VN" required maxLength={24} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2" /></label>
-            <label className="text-sm text-slate-700 sm:col-span-2">Từ khoá thị trường, phân cách bằng dấu phẩy<input name="keywords" maxLength={1000} placeholder="kem chống nắng, chăm sóc da, mùa hè" className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2" /></label>
-            <div className="sm:col-span-2"><Button type="submit" loading={createGroup.isPending}>Lưu nhóm</Button></div>
-            {createGroup.error ? <p role="alert" className="text-sm text-rose-800 sm:col-span-2">{readableError(createGroup.error, 'Không tạo được nhóm.')}</p> : null}
-          </form>
-        ) : null}
-      </Card>
+      {selectedGroup ? <p className="text-sm text-slate-500">Nguồn nghiên cứu được lưu trong không gian doanh nghiệp. Bạn không cần tạo hay chọn nhóm để thu thập.</p> : <EmptyState title="Chưa có cấu hình nghiên cứu" description="Kết nối Fanpage doanh nghiệp để khởi tạo không gian nghiên cứu." />}
 
       {activeGroupId ? (
         <>
@@ -456,41 +319,14 @@ export default function FanpagesMarketResearchPage() {
             active={marketTab} onChange={setMarketTab} idPrefix="market" />
           {marketTab === "pages" ? (
         <div id="market-panel" role="tabpanel" aria-labelledby="market-tab-pages" className="route-tab-panel">
-<section id="fanpage-connections" className="scroll-mt-24">
-          <Card
-            title="Kết nối Fanpage của bạn"
-            description="Kết nối một lần để đăng bài và đọc số liệu. Token được mã hóa và không hiển thị lại."
-          >
-            {!canConnectPage ? <PermissionNotice message="Chỉ chủ workspace được thêm hoặc ngắt kết nối Fanpage." requiredPermission="connection:manage" /> : null}
-            {canConnectPage ? (
-              <form className="grid gap-4 rounded-xl bg-slate-50/70 p-4 sm:grid-cols-2" onSubmit={(event) => void submitPageConnection(event)}>
-                <label className="text-sm text-slate-700">Page ID<input value={pageId} onChange={(event) => setPageId(event.currentTarget.value)} required inputMode="numeric" pattern="[0-9]{1,32}" className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2" placeholder="ID số của Fanpage" /></label>
-                <label className="text-sm text-slate-700">Page Access Token<input type="password" value={pageToken} onChange={(event) => setPageToken(event.currentTarget.value)} required minLength={20} maxLength={4096} autoComplete="off" spellCheck={false} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2" placeholder="Dán token vào đây, không gửi trong chat" /></label>
-                <p className="text-xs text-slate-500 sm:col-span-2">Backend xác minh ID/token bằng Meta Graph API trước khi lưu. Token cần quyền đọc bài của Page. Việc đăng bài vẫn cần duyệt nội dung theo luồng hiện có.</p>
-                <div className="sm:col-span-2"><Button type="submit" loading={pageBusy} disabled={!pageId || !pageToken} disabledReason="Nhập Page ID và Page Access Token trước khi kết nối.">Xác minh và lưu Fanpage</Button></div>
-                {pageError ? <p role="alert" className="text-sm text-rose-800 sm:col-span-2">{pageError}</p> : null}
-                {pageSaved ? <p role="status" className="text-sm text-emerald-800 sm:col-span-2">{pageSaved}</p> : null}
-              </form>
-            ) : null}
-            <div className="mt-4 space-y-2">
-              {pagesQuery.isLoading ? <p className="text-sm text-slate-500">Đang tải Fanpage…</p> : null}
-              {pages.map((page) => (
-                <div key={page.id} className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-slate-200 px-3 py-3">
-                  <div>
-                    <p className="font-medium text-slate-900">{page.page_name || 'Fanpage'} <span className="font-normal text-slate-500">· {page.page_id}</span></p>
-                    <p className="text-xs text-slate-500">{page.verified_at ? 'Xác minh ' + formatDateTime(page.verified_at) : 'Chưa xác minh'}{page.last_error_code ? ' · ' + page.last_error_code : ''}</p>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <StatusBadge label={page.status === 'verified' ? 'Đã xác minh' : 'Cần kết nối lại'} tone={page.status === 'verified' ? 'success' : 'warning'} />
-                    {canConnectPage ? <Button size="sm" variant="danger" loading={disconnectPage.isPending} onClick={() => disconnectPage.mutate(page.id)}>Ngắt</Button> : null}
-                  </div>
-                </div>
-              ))}
-              {!pagesQuery.isLoading && pages.length === 0 ? <p className="text-sm text-slate-500">Chưa kết nối Fanpage nào trong nhóm này.</p> : null}
-            </div>
+          <Card title="Fanpage doanh nghiệp" description="Page đã xác minh là danh tính của không gian làm việc. Quản lý kết nối và thay token trong cài đặt doanh nghiệp.">
+            {workspace.page_id ? <div className="flex items-center gap-4">
+                  {workspace.page_avatar_url ? <Image src={workspace.page_avatar_url} alt="" width={56} height={56} unoptimized referrerPolicy="no-referrer" className="h-14 w-14 rounded-full object-cover" /> : <span className="grid h-14 w-14 place-items-center rounded-full bg-slate-100 text-xl font-semibold">{workspace.name.slice(0, 1).toUpperCase()}</span>}
+              <div><p className="font-semibold text-slate-950">{workspace.name}</p><p className="mt-1 text-sm text-slate-600">Page ID {workspace.page_id} · {workspace.page_connection_state === 'active' ? 'Đã xác minh' : 'Cần kết nối lại'}</p></div>
+            </div> : <EmptyState title="Fanpage chưa được xác minh" description="Owner cần kết nối Page trong lúc kích hoạt doanh nghiệp trước khi dùng các tác vụ Agentic." />}
+            <div className="mt-4">{pagesQuery.isLoading ? <LoadingBlock label="Đang tải trạng thái kết nối…" /> : pagesQuery.error ? <ErrorPanel message={readableError(pagesQuery.error, 'Không tải được trạng thái Page.')} retryable onRetry={() => void pagesQuery.refetch()} /> : pages.map((page) => <p key={page.id} className="text-sm text-slate-600">Kết nối Meta: {page.status === 'verified' ? 'đã xác minh' : 'cần kết nối lại'} · kiểm tra {page.verified_at ? formatDateTime(page.verified_at) : 'chưa có'}</p>)}</div>
+            <Link href={`/w/${workspaceId}/settings`} className="mt-5 inline-flex text-sm font-medium text-pink-800 underline underline-offset-4">Mở cài đặt doanh nghiệp</Link>
           </Card>
-
-          </section>
         </div>
       ) : null}
           {marketTab === "sources" ? (
@@ -502,14 +338,11 @@ export default function FanpagesMarketResearchPage() {
           >
             {canManageMarket ? (
               <form className="grid gap-4 rounded-xl bg-slate-50/70 p-4 sm:grid-cols-2" onSubmit={submitSource}>
-                <label className="text-sm text-slate-700">Loại nguồn<select value={sourceType} onChange={(event) => setSourceType(event.currentTarget.value as ResearchSourceType)} className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2">{Object.entries(SOURCE_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
+                <label className="text-sm text-slate-700">Loại nguồn<select value={sourceType} onChange={(event) => setSourceType(event.currentTarget.value as ResearchSourceType)} className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2">{Object.entries(SOURCE_LABELS).filter(([value]) => value !== 'owned_facebook_page').map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
                 <label className="text-sm text-slate-700">Tên nguồn<input name="name" required maxLength={200} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2" placeholder="Tên website/Page/nhóm" /></label>
                 <label className="text-sm text-slate-700 sm:col-span-2">Link website hoặc Facebook<input name="url" required type="url" maxLength={2048} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2" placeholder="https://…" /></label>
                 {sourceType === 'competitor_facebook_page' ? <p className="text-xs text-slate-500 sm:col-span-2">Nguồn mới dùng facebook-cli Tier 0, không cần Page Access Token và không đăng nhập Facebook. Facebook có thể trả ít bài, yêu cầu đăng nhập hoặc từ chối truy cập; giao diện sẽ giữ đúng trạng thái đó.</p> : null}
-                {sourceType === 'facebook_group' ? <p className="text-xs text-slate-500 sm:col-span-2">Link nhóm được lưu để tái sử dụng. Meta đã gỡ Groups API nên hệ thống không tự đọc bài trong nhóm; hãy nhập nội dung và số liệu mà bạn được phép sử dụng.</p> : null}
-                {sourceType === 'owned_facebook_page' ? (
-                  <label className="text-sm text-slate-700 sm:col-span-2">Fanpage đã kết nối<select name="connection_id" required className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2"><option value="">Chọn Fanpage</option>{pages.filter((page) => page.status === 'verified').map((page) => <option key={page.id} value={page.id}>{page.page_name} · {page.page_id}</option>)}</select></label>
-                ) : null}
+                {sourceType === 'facebook_group' ? <p className="text-xs text-amber-800 sm:col-span-2">facebook-cli Tier 0 chỉ có thể trả một phần thông tin công khai của nhóm; không tham gia nhóm và không đọc được thảo luận. Kết quả sẽ được ghi là một phần hoặc không hỗ trợ nếu thiếu bài.</p> : null}
                 {sourceType === 'competitor_facebook_page' ? <label className="text-sm text-slate-700 sm:col-span-2">Tên đối thủ<input name="competitor_name" maxLength={200} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2" /></label> : null}
                 <div className="sm:col-span-2"><Button type="submit" loading={createSource.isPending} disabled={!canManageMarket} disabledReason="Vai trò của bạn chưa có quyền quản lý nguồn nghiên cứu.">Lưu link nguồn</Button></div>
                 {createSource.error ? <p role="alert" className="text-sm text-rose-800 sm:col-span-2">{readableError(createSource.error, 'Không lưu được nguồn.')}</p> : null}
@@ -532,6 +365,7 @@ export default function FanpagesMarketResearchPage() {
                         {source.error?.message ? <p className="mt-1 text-xs text-rose-800">{source.error.message}</p> : null}
                       </div>
                       <div className="flex flex-wrap items-center gap-2">
+                        {!isCompetitor && canManageMarket ? <Button size="sm" variant="secondary" loading={crawlCompetitorNow.isPending && crawlCompetitorNow.variables === source.id} onClick={() => crawlCompetitorNow.mutate(source.id)}>Crawl ngay</Button> : null}
                         {isCompetitor && canManageMarket ? (
                           <>
                             <label className="sr-only" htmlFor={'collector-' + source.id}>Phương thức thu thập</label>
@@ -547,17 +381,16 @@ export default function FanpagesMarketResearchPage() {
                         ) : null}
                         {source.source_type === 'website' && canManageMarket && (source.crawl_mode ?? 'legacy') === 'legacy' ? <Button size="sm" variant="secondary" loading={updateCrawlSettings.isPending} onClick={() => updateCrawlSettings.mutate({ sourceId: source.id, settings: { crawl_mode: 'site_catalog', crawl_page_limit: 1000, render_mode: 'http_only', resource_hosts: [], schedule_enabled: true } })}>Bật sản phẩm & bài viết</Button> : null}
                         {source.source_type === 'website' && canManageMarket && source.crawl_mode === 'site_catalog' ? <Button size="sm" variant="secondary" loading={updateCrawlSettings.isPending} onClick={() => updateCrawlSettings.mutate({ sourceId: source.id, settings: { crawl_mode: 'site_catalog', crawl_page_limit: source.crawl_page_limit ?? 1000, render_mode: 'http_only', resource_hosts: source.resource_hosts ?? [], schedule_enabled: !(source.schedule_enabled ?? true) } })}>{source.schedule_enabled === false ? 'Bật lịch' : 'Tắt lịch'}</Button> : null}
-                        {source.source_type !== 'website' && canManageMarket ? <Button size="sm" variant="ghost" onClick={() => { setManualSourceId(source.id); setManualResult(null); }}>Nhập dữ liệu</Button> : null}
                         {canManageMarket ? <Button size="sm" variant="ghost" loading={deleteSource.isPending} onClick={() => deleteSource.mutate(source.id)}>Xoá link</Button> : null}
                       </div>
                     </div>
-                    {isCompetitor && lastSourceCrawl?.sourceId === source.id ? (
+                    {lastSourceCrawl?.sourceId === source.id ? (
                       <p role="status" className="mt-3 rounded-md bg-sky-50 px-3 py-2 text-xs text-sky-900">
                         Job {sourceJobQuery.data?.status ?? 'queued'} · <Link className="font-medium underline" href={'/w/' + workspaceId + '/jobs/' + lastSourceCrawl.jobId}>Theo dõi tiến độ</Link>
                         {sourceJobQuery.data?.result?.analysis_status === 'not_run_no_new_evidence' ? ' · không có bằng chứng mới nên AI chưa chạy' : ''}
                       </p>
                     ) : null}
-                    {isCompetitor && crawlCompetitorNow.error ? <p role="alert" className="mt-2 text-xs text-rose-800">{readableError(crawlCompetitorNow.error, 'Không tạo được lượt crawl.')}</p> : null}
+                    {lastSourceCrawl?.sourceId === source.id && crawlCompetitorNow.error ? <p role="alert" className="mt-2 text-xs text-rose-800">{readableError(crawlCompetitorNow.error, 'Không tạo được lượt crawl.')}</p> : null}
                     {isCompetitor && updateCollectionSettings.error ? <p role="alert" className="mt-2 text-xs text-rose-800">{readableError(updateCollectionSettings.error, 'Không cập nhật được cấu hình thu thập.')}</p> : null}
                     {isCompetitor && expandedCompetitorId === source.id ? (
                       <div className="mt-4 space-y-4 border-t border-slate-200 pt-4">
@@ -600,23 +433,6 @@ export default function FanpagesMarketResearchPage() {
               {sources.length === 0 ? <EmptyState title="Chưa lưu link nào" description="Thêm website, Fanpage của bạn hoặc link đối thủ/nhóm Facebook để bắt đầu." /> : null}
               {updateCrawlSettings.error ? <p role="alert" className="text-sm text-rose-800">{readableError(updateCrawlSettings.error, 'Không cập nhật được cấu hình website.')}</p> : null}
             </div>
-            {manualSourceId ? (
-              <form className="mt-5 grid gap-3 rounded-lg border border-sky-200 bg-sky-50 p-4 sm:grid-cols-2" onSubmit={(event) => { event.preventDefault(); importManual.mutate(); }}>
-                <div className="sm:col-span-2"><h3 className="font-medium text-slate-900">Nhập dữ liệu bài viết</h3><p className="mt-1 text-xs text-slate-600">Chỉ nhập số liệu bạn được phép sử dụng. Tên người bình luận không có trường riêng; email và số điện thoại trong bình luận sẽ được ẩn trước khi lưu.</p></div>
-                <label className="text-sm text-slate-700 sm:col-span-2">Link bài viết<input type="url" required value={manualPostUrl} onChange={(event) => setManualPostUrl(event.currentTarget.value)} className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2" /></label>
-                <label className="text-sm text-slate-700 sm:col-span-2">Tiêu đề<input value={manualTitle} onChange={(event) => setManualTitle(event.currentTarget.value)} className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2" /></label>
-                <label className="text-sm text-slate-700 sm:col-span-2">Nội dung bài viết<textarea required maxLength={12000} rows={4} value={manualText} onChange={(event) => setManualText(event.currentTarget.value)} className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2" /></label>
-                <label className="text-sm text-slate-700">Lượt thích / cảm xúc<input inputMode="numeric" type="number" min="0" value={manualReactions} onChange={(event) => setManualReactions(event.currentTarget.value)} className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2" /></label>
-                <label className="text-sm text-slate-700">Số bình luận<input inputMode="numeric" type="number" min="0" value={manualCommentsCount} onChange={(event) => setManualCommentsCount(event.currentTarget.value)} className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2" /></label>
-                <label className="text-sm text-slate-700">Lượt chia sẻ<input inputMode="numeric" type="number" min="0" value={manualShares} onChange={(event) => setManualShares(event.currentTarget.value)} className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2" /></label>
-                <label className="text-sm text-slate-700">Lượt xem<input inputMode="numeric" type="number" min="0" value={manualViews} onChange={(event) => setManualViews(event.currentTarget.value)} className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2" /></label>
-                <label className="text-sm text-slate-700">Người theo dõi Page<input inputMode="numeric" type="number" min="0" value={manualFollowers} onChange={(event) => setManualFollowers(event.currentTarget.value)} className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2" /></label>
-                <label className="text-sm text-slate-700 sm:col-span-2">Nội dung bình luận (mỗi dòng một bình luận)<textarea rows={3} value={manualCommentText} onChange={(event) => setManualCommentText(event.currentTarget.value)} className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2" /></label>
-                <div className="flex gap-2 sm:col-span-2"><Button type="submit" loading={importManual.isPending} disabled={!manualText || !manualPostUrl} disabledReason="Nhập link và nội dung bài viết.">Lưu dữ liệu</Button><Button variant="secondary" onClick={() => setManualSourceId('')}>Đóng</Button></div>
-                {manualResult ? <p role="status" className="text-sm text-emerald-800 sm:col-span-2">{manualResult}</p> : null}
-                {importManual.error ? <p role="alert" className="text-sm text-rose-800 sm:col-span-2">{readableError(importManual.error, 'Không nhập được dữ liệu.')}</p> : null}
-              </form>
-            ) : null}
           </Card>
 
           </section>

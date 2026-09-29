@@ -62,7 +62,7 @@ class PageConnectionOut(StrictModel):
 
 
 class ResearchSourceCreate(StrictModel):
-    group_id: str
+    group_id: str | None = None
     source_type: Literal["website", "owned_facebook_page", "competitor_facebook_page", "facebook_group"]
     name: str = Field(min_length=1, max_length=200)
     url: str = Field(min_length=8, max_length=2048)

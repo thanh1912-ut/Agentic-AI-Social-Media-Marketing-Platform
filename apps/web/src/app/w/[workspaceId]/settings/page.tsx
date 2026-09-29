@@ -18,7 +18,7 @@ import {
 } from '@agentic/contracts';
 
 import { useSession } from '@/components/session-gate';
-import { ApiError, api, metaApi, metaQueryKeys } from '@/lib/api';
+import { ApiError, api, metaApi, metaQueryKeys, workspaceApi } from '@/lib/api';
 import type { ApiInviteMemberRequest, ApiInviteMemberResponse, ApiMember as Member } from '@/lib/api/types';
 import { formatDate, formatDateTime, formatDeadline, formatNumber } from '@/lib/format';
 import { useMembers } from '@/lib/hooks';
@@ -74,6 +74,8 @@ export default function TrangCaiDat() {
   const [inviteEmail, setInviteEmail] = useState('');
   const [inviteRole, setInviteRole] = useState<ApiInviteMemberRequest['role']>('editor');
   const [inviteResult, setInviteResult] = useState<ApiInviteMemberResponse | null>(null);
+  const [pageId, setPageId] = useState('');
+  const [pageToken, setPageToken] = useState('');
 
   const workspace = workspaces.find((item) => item.id === workspaceId) ?? null;
   const activeId = workspace ? workspaceId : '';
@@ -101,6 +103,21 @@ export default function TrangCaiDat() {
       await refreshMembers();
     },
   });
+  const reconnectPageMutation = useMutation({
+    mutationFn: () => workspaceApi.reconnectPage(activeId, {
+      page_id: pageId.trim(),
+      page_access_token: pageToken,
+    }),
+    onSuccess: async (result) => {
+      setPageToken('');
+      queryClient.clear();
+      const refreshed = await api.auth.me();
+      queryClient.setQueryData(queryKeys.me, refreshed);
+      queryClient.setQueryData(queryKeys.workspaces, refreshed.workspaces);
+      queryClient.setQueryData(queryKeys.workspace(activeId), result);
+      await metaConnectionQuery.refetch();
+    },
+  });
 
   if (!workspace) {
     return (
@@ -117,6 +134,7 @@ export default function TrangCaiDat() {
   const loadError = membersQuery.error instanceof ApiError ? membersQuery.error : null;
   const members = membersQuery.data ?? null;
   const canInvite = hasPermission(workspace, ACTION_REQUIREMENTS.inviteMember);
+  const canManageConnection = hasPermission(workspace, ACTION_REQUIREMENTS.manageConnection);
   const inviteDeniedReason = permissionDeniedReason(workspace, ACTION_REQUIREMENTS.inviteMember);
   const connection = metaConnectionQuery.data;
   const connectionStatus = connection ? META_STATUS[connection.status] : null;
@@ -413,7 +431,7 @@ export default function TrangCaiDat() {
         )}
       </Card>
 
-      <Card title="Kết nối Facebook" description="Xem trạng thái Page. Thêm Page ID và Page Access Token trong Fanpage & thị trường.">
+      <Card title="Fanpage doanh nghiệp" description="Fanpage là danh tính của workspace này. Kết nối lại bằng token thuộc đúng Page; dữ liệu doanh nghiệp sẽ được giữ nguyên.">
         {metaConnectionQuery.isPending ? (
           <LoadingBlock label="Đang kiểm tra trạng thái Fanpage…" />
         ) : metaConnectionQuery.isError ? (
@@ -439,19 +457,41 @@ export default function TrangCaiDat() {
                 </FieldRow>
               </dl>
             ) : null}
+            {workspace.page_connection_state !== 'active' ? (
+              canManageConnection ? (
+                <form onSubmit={(event) => { event.preventDefault(); reconnectPageMutation.mutate(); }} className="space-y-3 rounded-xl border border-slate-200 bg-slate-50 p-4">
+                  <p className="text-sm text-slate-700">Nhập token mới để xác minh lại Fanpage đã gắn với workspace. Không thể đổi Page tại đây; Page khác cần workspace riêng.</p>
+                  <div>
+                    <label htmlFor="reconnect-page-id" className="block text-sm font-medium text-slate-800">Page ID</label>
+                    <input id="reconnect-page-id" required inputMode="numeric" pattern="[0-9]{1,32}" value={pageId || workspace.page_id || ''} onChange={(event) => setPageId(event.target.value)} className="mt-1 block w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-base" />
+                  </div>
+                  <div>
+                    <label htmlFor="reconnect-page-token" className="block text-sm font-medium text-slate-800">Page Access Token mới</label>
+                    <textarea id="reconnect-page-token" required minLength={20} maxLength={4096} rows={3} value={pageToken} onChange={(event) => setPageToken(event.target.value)} autoComplete="off" spellCheck={false} className="mt-1 block w-full resize-y rounded-lg border border-slate-300 bg-white px-3 py-2.5 font-mono text-sm" />
+                  </div>
+                  <p className="text-xs text-slate-500">Token chỉ được gửi tới backend qua kết nối bảo vệ và không được lưu trong trình duyệt.</p>
+                  {reconnectPageMutation.error instanceof ApiError ? (
+                    <ErrorPanel title="Không kết nối lại được Fanpage" message={reconnectPageMutation.error.message} code={reconnectPageMutation.error.code} requestId={reconnectPageMutation.error.requestId} retryable={reconnectPageMutation.error.retryable} onRetry={() => reconnectPageMutation.mutate()} />
+                  ) : null}
+                  <Button type="submit" loading={reconnectPageMutation.isPending}>{reconnectPageMutation.isPending ? 'Đang xác minh…' : 'Xác minh lại Fanpage'}</Button>
+                </form>
+              ) : (
+                <PermissionNotice message="Chỉ Owner mới có thể thay Page Access Token. Hãy liên hệ Owner; dữ liệu cũ vẫn có thể xem." />
+              )
+            ) : null}
             {connection.status === 'unconfigured' ? (
               <UnavailableNotice
                 title="Chưa cấu hình Fanpage"
                 reason="Workspace chưa có Fanpage đã kết nối."
-                remedy="Chủ workspace có thể thêm Page ID và Page Access Token trong trang Fanpage & thị trường."
+                remedy="Chủ workspace có thể xác minh Fanpage tại màn hình chọn doanh nghiệp."
               />
             ) : null}
             <div className="flex flex-wrap items-center gap-2">
               <Button variant="secondary" onClick={() => void metaConnectionQuery.refetch()} loading={metaConnectionQuery.isFetching}>
                 Tải lại trạng thái
               </Button>
-              <Link href={'/w/' + workspaceId + '/fanpages'} className="inline-flex items-center rounded-lg border border-slate-300 px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50">
-                Quản lý Fanpage
+              <Link href={'/w/' + workspaceId + '/research'} className="inline-flex items-center rounded-lg border border-slate-300 px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50">
+                Mở Nghiên cứu
               </Link>
             </div>
           </div>

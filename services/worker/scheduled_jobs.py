@@ -5,7 +5,7 @@ from datetime import datetime, timedelta, timezone
 from sqlalchemy import and_, or_, select
 
 from database.models import (
-    CampaignPost, Job, JobStep, MarketObservation, Membership, MetaPageConnection,
+    CampaignPost, Company, Job, JobStep, MarketObservation, Membership, MetaPageConnection,
     MetaPageGroup, MetaPublication, MetaSyncState, ResearchCycle, ResearchSource,
     ScheduledMetaPublication, new_id,
 )
@@ -28,6 +28,12 @@ async def _enqueue_due_research(db, now: datetime) -> int:
     )).all()
     enqueued = 0
     for group in groups:
+        company = await db.scalar(select(Company).where(Company.id == group.company_id))
+        if company is None or company.page_connection_state != "active" or not company.page_id:
+            # Keep each source's schedule intent/checkpoint, but stop polling a
+            # due group every minute while its Owner must reconnect the Page.
+            group.next_due_at = None
+            continue
         due_sources = (await db.scalars(select(ResearchSource).where(
             ResearchSource.company_id == group.company_id,
             ResearchSource.group_id == group.id,
@@ -109,6 +115,29 @@ async def _enqueue_due_meta_publications(db, now: datetime) -> int:
                 job.finished_at = now
                 job.error = {"code": "schedule_context_changed", "message": "Bản đã duyệt hoặc Fanpage đã thay đổi; lịch không được gửi.", "retryable": False}
             continue
+        company = await db.scalar(select(Company).where(Company.id == schedule.company_id).with_for_update())
+        if company is None or company.page_connection_state != "active" or company.page_id != schedule.page_id:
+            schedule.status = "failed"
+            schedule.active_key = None
+            schedule.updated_at = now
+            job.status = "failed"
+            job.progress = 100
+            job.finished_at = now
+            job.error = {
+                "code": "page_needs_reconnect",
+                "message": "Fanpage cần được kết nối lại. Lịch này chưa được gửi; hãy kiểm tra và lên lịch mới sau khi kết nối.",
+                "retryable": False,
+            }
+            if post.status == "scheduled" and post.current_version == schedule.post_version:
+                post.status = "approved"
+                post.publish_mode = None
+                post.scheduled_at = None
+                post.updated_at = now
+            for step in (await db.scalars(select(JobStep).where(JobStep.job_id == job.id))).all():
+                step.status, step.progress, step.finished_at = "failed", 100, now
+                step.error = job.error
+                step.message = job.error["message"]
+            continue
         if now - schedule.scheduled_at > timedelta(minutes=15):
             schedule.status = "missed"
             schedule.active_key = None
@@ -160,7 +189,10 @@ async def _enqueue_due_meta_publications(db, now: datetime) -> int:
 async def _enqueue_due_meta_metrics(db, now: datetime) -> int:
     connections = (await db.scalars(
         select(MetaPageConnection)
+        .join(Company, Company.id == MetaPageConnection.company_id)
         .where(
+            Company.page_id == MetaPageConnection.page_id,
+            Company.page_connection_state == "active",
             MetaPageConnection.active.is_(True), MetaPageConnection.status == "verified",
             MetaPageConnection.verified_at.is_not(None),
             MetaPageConnection.metrics_schedule_enabled.is_(True),

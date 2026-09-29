@@ -9,8 +9,8 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from database.models import (
-    AuditEvent, CampaignPost, Job, JobStep, MediaAsset, MetaPageConnection, MetaPagePost,
-    MetaPageMetricSnapshot, MetaPostMetricSnapshot, MetaPublication, MetaSyncState,
+    AuditEvent, CampaignPost, Company, Job, JobStep, MediaAsset, MetaPageConnection, MetaPagePost,
+    MetaPageGroup, MetaPageMetricSnapshot, MetaPostMetricSnapshot, MetaPublication, MetaSyncState,
     PostApproval, PostContentReview, PostMetricSnapshot, PostVersion,
     ScheduledMetaPublication, new_id, utcnow,
 )
@@ -52,6 +52,10 @@ async def _claim(job_id: str, kind: str) -> bool:
         job = await db.scalar(select(Job).where(Job.id == job_id, Job.kind == kind).with_for_update())
         if job is None or job.status != "queued":
             return False
+        from .page_gate import block_job_without_active_page
+        if await block_job_without_active_page(db, job):
+            await db.commit()
+            return False
         job.status = "running"
         job.started_at = utcnow()
         job.lease_until = utcnow() + timedelta(minutes=settings.job_lease_minutes)
@@ -67,6 +71,9 @@ async def _claim(job_id: str, kind: str) -> bool:
 
 
 async def _publish_preflight(db: AsyncSession, row: MetaPublication) -> tuple[str, bytes | None, str | None, str]:
+    company = await db.scalar(select(Company).where(Company.id == row.company_id).with_for_update())
+    if company is None or company.page_connection_state != "active" or company.page_id != row.page_id:
+        raise ValueError("page_connection_changed")
     if row.connection_id:
         connection = await db.scalar(select(MetaPageConnection).where(
             MetaPageConnection.company_id == row.company_id, MetaPageConnection.id == row.connection_id,
@@ -184,6 +191,9 @@ async def _finish_publish(job_id: str, status: str, *, external_post_id: str | N
                           metadata_json={"page_id": row.page_id, "post_id": row.post_id,
                                          "external_post_id": external_post_id}))
         if status == "needs_reconnect":
+            company = await db.scalar(select(Company).where(Company.id == row.company_id).with_for_update())
+            if company is not None and company.page_id == row.page_id:
+                company.page_connection_state = "needs_reconnect"
             connection = await db.scalar(select(MetaPageConnection).where(
                 MetaPageConnection.company_id == row.company_id, MetaPageConnection.id == row.connection_id,
             ).with_for_update()) if row.connection_id else None
@@ -191,6 +201,9 @@ async def _finish_publish(job_id: str, status: str, *, external_post_id: str | N
                 connection.status = "needs_reconnect"
                 connection.last_error_code = error_code or "token_invalid"
                 connection.verified_at = None
+                group = await db.get(MetaPageGroup, connection.group_id)
+                if group is not None:
+                    group.next_due_at = None
             state = await db.scalar(select(MetaSyncState).where(
                 MetaSyncState.company_id == row.company_id, MetaSyncState.page_id == row.page_id
             ))
@@ -351,6 +364,12 @@ async def _run_sync(job_id: str) -> None:
         job_result = job.result or {}
         page_id = str(job_result.get("page_id") or "")
         connection_id = job_result.get("connection_id")
+        company = await db.scalar(select(Company).where(Company.id == job.company_id).with_for_update())
+        if company is None or company.page_connection_state != "active" or company.page_id != page_id:
+            await _finish_job(db, job, succeeded=False,
+                              error=_safe_error("page_needs_reconnect", "Fanpage cần được kết nối lại trước khi đồng bộ."))
+            await db.commit()
+            return
         page_token = ""
         if connection_id:
             connection = await db.scalar(select(MetaPageConnection).where(
@@ -423,6 +442,19 @@ async def _run_sync(job_id: str) -> None:
                 refreshed = await _sync_published_metrics(db, job, client, page_id)
         except MetaGraphTokenExpired:
             state.verified_at = None
+            company = await db.scalar(select(Company).where(Company.id == job.company_id).with_for_update())
+            if company is not None and company.page_id == page_id:
+                company.page_connection_state = "needs_reconnect"
+            connection = await db.scalar(select(MetaPageConnection).where(
+                MetaPageConnection.company_id == job.company_id,
+                MetaPageConnection.id == connection_id,
+                MetaPageConnection.page_id == page_id,
+            ).with_for_update()) if connection_id else None
+            if connection is not None:
+                connection.status = "needs_reconnect"
+                connection.last_error_code = "token_expired"
+                connection.verified_at = None
+                connection.next_metrics_sync_at = None
             error = _safe_error("meta_token_invalid", "Token Fanpage không còn hợp lệ; hãy cấu hình lại trên backend.")
         except (MetaGraphRejected, MetaGraphReadError, ValueError):
             error = _safe_error("meta_sync_failed", "Không đọc được bài và số liệu Fanpage từ Meta.")

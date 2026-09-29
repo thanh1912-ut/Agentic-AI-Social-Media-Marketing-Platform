@@ -331,6 +331,13 @@ async def content_generation_task_async(
             await db.rollback()
             return
         job = await db.get(Job, job_id)
+        if job is None:
+            await db.rollback()
+            return
+        from .page_gate import block_job_without_active_page
+        if await block_job_without_active_page(db, job):
+            await db.commit()
+            return
         payload = dict(job.result or {}) if job else {}
         company_id = job.company_id if job else ""
         created_by = job.created_by if job else ""

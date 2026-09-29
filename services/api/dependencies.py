@@ -9,7 +9,7 @@ from fastapi import Depends, Header, Request
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from database.models import Membership, User
+from database.models import Company, Membership, User
 from .db import get_db
 from .errors import ApiProblem
 from .permissions import has_permission
@@ -20,6 +20,12 @@ ACCESS_COOKIE = "agentic_access"
 REFRESH_COOKIE = "agentic_refresh"
 CSRF_COOKIE = "agentic_csrf"
 CSRF_HEADER = "X-CSRF-Token"
+PAGE_GATED_PERMISSIONS = frozenset({
+    "brand:edit", "brand:confirm", "document:upload", "campaign:create",
+    "campaign:edit", "post:edit", "post:generate", "post:approve",
+    "post:reject", "export:create", "market:manage", "publish:create",
+    "metric:import", "recommendation:apply",
+})
 
 
 async def current_user(
@@ -147,6 +153,18 @@ def require_permission(permission: str):
                     else None,
                 },
             )
+        if permission in PAGE_GATED_PERMISSIONS:
+            company = await db.get(Company, company_id)
+            if company is None:
+                raise ApiProblem(404, "not_found", "Không tìm thấy doanh nghiệp.")
+            if company.page_connection_state != "active" or not company.page_id:
+                code = "page_connection_required" if not company.page_id else "page_needs_reconnect"
+                message = (
+                    "Owner cần kết nối Fanpage doanh nghiệp trước khi dùng các tác vụ Agentic."
+                    if code == "page_connection_required"
+                    else "Fanpage cần được kết nối lại trước khi tiếp tục các tác vụ Agentic."
+                )
+                raise ApiProblem(409, code, message, details={"workspace_id": company_id})
         return membership
 
     return dependency

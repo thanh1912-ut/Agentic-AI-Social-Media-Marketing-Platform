@@ -13,7 +13,6 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from database.models import (
-    Brand,
     Company,
     Invitation,
     Membership,
@@ -102,6 +101,9 @@ def _workspace_out(company: Company, membership: Membership) -> WorkspaceOut:
         role=membership.role,
         permissions=permissions_for(membership.role),
         created_at=company.created_at,
+        page_id=company.page_id,
+        page_avatar_url=company.page_avatar_url,
+        page_connection_state=company.page_connection_state,
     )
 
 
@@ -189,24 +191,14 @@ async def register(
     email = str(payload.email).lower()
     if await db.scalar(select(User).where(User.email == email)):
         raise ApiProblem(409, "already_exists", "Email này đã được đăng ký.")
-    slug = _slugify(payload.company_name)
-    if await db.scalar(select(Company).where(Company.slug == slug)):
-        slug = f"{slug}-{new_opaque_token()[:6].lower()}"
     user = User(
         email=email,
         full_name=payload.full_name,
         password_hash=hash_password(payload.password),
     )
-    company = Company(name=payload.company_name, slug=slug, industry=payload.industry)
-    db.add_all([user, company])
+    db.add(user)
     try:
         await db.flush()
-        db.add_all(
-            [
-                Membership(company_id=company.id, user_id=user.id, role="owner"),
-                Brand(company_id=company.id, profile={}),
-            ]
-        )
         access_token, expires_at = await _issue_session(response, db, user, request)
         await db.commit()
     except IntegrityError:

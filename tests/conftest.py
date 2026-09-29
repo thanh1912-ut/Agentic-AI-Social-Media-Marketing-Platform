@@ -1,8 +1,39 @@
 from datetime import datetime, timezone
+from itertools import count
+from types import SimpleNamespace
 
 import pytest
 
 from packages.contracts import NormalizedDocument, TableBlock, TextBlock
+
+
+@pytest.fixture(autouse=True)
+def fake_page_activation_for_tests(monkeypatch):
+    """Keep unit/integration tests isolated from Meta while exercising activation."""
+    from services.api import workspaces as workspaces_module
+    from services.api.meta_client import MetaPage
+
+    next_page_id = count(8_000_000_000)
+
+    class FakeMetaGraphClient:
+        def __init__(self, page_id, _token, _version):
+            self.page_id = page_id
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *_args):
+            return False
+
+        async def verify_page(self):
+            return MetaPage(id=self.page_id, name=f"Test Page {self.page_id}", picture_url=None)
+
+        async def list_page_posts(self, **_kwargs):
+            return SimpleNamespace(posts=[], next_cursor=None)
+
+    monkeypatch.setattr(workspaces_module, "MetaGraphClient", FakeMetaGraphClient)
+    monkeypatch.setattr(workspaces_module, "encrypt_page_token", lambda token: f"test-ciphertext:{len(token)}")
+    monkeypatch.setattr(workspaces_module, "_next_test_page_id", lambda: str(next(next_page_id)), raising=False)
 
 
 @pytest.fixture

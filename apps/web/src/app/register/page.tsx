@@ -17,7 +17,6 @@ export default function RegisterPage() {
   const mocksEnabled = useMocks();
   const [fullName, setFullName] = useState('');
   const [email, setEmail] = useState('');
-  const [companyName, setCompanyName] = useState('');
   const [password, setPassword] = useState('');
   const [confirmation, setConfirmation] = useState('');
   const [passwordVisible, setPasswordVisible] = useState(false);
@@ -27,18 +26,13 @@ export default function RegisterPage() {
 
   const register = useMutation({
     mutationFn: (body: ApiRegisterRequest) => api.auth.register(body),
-    onSuccess: async (created) => {
+    onSuccess: async () => {
       setAccountCreated(true);
       try {
         const session = await api.auth.me();
         queryClient.clear();
         queryClient.setQueryData(queryKeys.me, session);
-        const workspaceId = session.active_workspace_id ?? created.active_workspace_id;
-        if (!workspaceId) {
-          router.replace('/');
-          return;
-        }
-        router.replace(`/w/${workspaceId}/brand`);
+        router.replace('/');
       } catch {
         setSessionError('Tài khoản đã tạo nhưng chưa xác nhận được phiên đăng nhập. Hãy đăng nhập bằng email và mật khẩu vừa tạo.');
       }
@@ -49,7 +43,7 @@ export default function RegisterPage() {
 
   function startRegistration() {
     if (register.isPending) return;
-    if (!fullName.trim() || !email.trim() || !companyName.trim() || password.length < 8 || password.length > 200) {
+    if (!fullName.trim() || !email.trim() || password.length < 8 || password.length > 200) {
       setValidationError('Hãy điền đủ thông tin và dùng mật khẩu từ 8 đến 200 ký tự.');
       return;
     }
@@ -67,7 +61,6 @@ export default function RegisterPage() {
       email: email.trim(),
       password,
       full_name: fullName.trim(),
-      company_name: companyName.trim(),
     };
     register.mutate(body);
   }
@@ -79,7 +72,7 @@ export default function RegisterPage() {
   }
 
   return (
-    <AuthShell title="Tạo tài khoản" description="Bắt đầu với không gian riêng cho thương hiệu. Nếu đã được mời vào một nhóm, hãy dùng liên kết trong lời mời.">
+    <AuthShell title="Tạo tài khoản" description="Tạo tài khoản trước. Sau đó bạn sẽ kết nối Fanpage doanh nghiệp để mở không gian làm việc riêng.">
           {mocksEnabled ? (
             <div role="status" className="space-y-3">
               <p className="text-sm text-slate-700">Đăng ký cần kết nối máy chủ thật. Bản demo chỉ dùng các tài khoản mẫu.</p>
@@ -118,19 +111,6 @@ export default function RegisterPage() {
                   maxLength={320}
                   value={email}
                   onChange={(event) => setEmail(event.target.value)}
-                  className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900"
-                />
-              </div>
-              <div>
-                <label htmlFor="register-company" className="block text-sm font-medium text-slate-700">Tên thương hiệu / workspace</label>
-                <input
-                  id="register-company"
-                  name="company_name"
-                  autoComplete="organization"
-                  required
-                  maxLength={200}
-                  value={companyName}
-                  onChange={(event) => setCompanyName(event.target.value)}
                   className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900"
                 />
               </div>

@@ -45,6 +45,7 @@ from services.api import job_service
 from services.api import jobs as job_routes
 from services.api.db import get_db
 from services.api.main import app
+from tests.helpers.page_workspace import activate_test_page, attach_workspace_to_session
 from services.api.storage import LocalObjectStorage
 from services.agents.content_agent import ContentAgent
 from services.worker import content_tasks
@@ -195,7 +196,7 @@ def _register(client: TestClient, email: str) -> dict:
         "company_name": f"Company {email}",
     })
     assert response.status_code == 201, response.text
-    return response.json()
+    return attach_workspace_to_session(response.json(), activate_test_page(client))
 
 
 def _review_post(client: TestClient, post_url: str, version: int, headers: dict[str, str]) -> dict:

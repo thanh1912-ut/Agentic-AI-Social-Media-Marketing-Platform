@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Annotated, Any, Literal
 
-from pydantic import BaseModel, ConfigDict, EmailStr, Field, StringConstraints
+from pydantic import BaseModel, ConfigDict, EmailStr, Field, StringConstraints, field_validator
 
 
 class StrictSchema(BaseModel):
@@ -36,7 +36,8 @@ class RegisterRequest(StrictSchema):
         str, StringConstraints(min_length=8, max_length=200, strip_whitespace=False)
     ]
     full_name: str = Field(min_length=1, max_length=200)
-    company_name: str = Field(min_length=1, max_length=200)
+    # Deprecated compatibility field; registering only creates a user.
+    company_name: str | None = Field(default=None, min_length=1, max_length=200)
     industry: str | None = Field(default=None, max_length=120)
 
 
@@ -100,6 +101,9 @@ class WorkspaceOut(StrictSchema):
     role: Literal["owner", "editor", "viewer"]
     permissions: list[str]
     created_at: datetime
+    page_id: str | None = None
+    page_avatar_url: str | None = None
+    page_connection_state: Literal["connection_required", "active", "needs_reconnect"] = "connection_required"
 
 
 class LoginResponse(StrictSchema):
@@ -119,6 +123,20 @@ class SessionResponse(StrictSchema):
 
 class SelectWorkspaceRequest(StrictSchema):
     workspace_id: str
+
+
+class PageWorkspaceCreate(StrictSchema):
+    page_id: Annotated[str, StringConstraints(pattern=r"^[0-9]{1,32}$", strip_whitespace=False)]
+    page_access_token: Annotated[
+        str, StringConstraints(min_length=20, max_length=4096, strip_whitespace=False)
+    ]
+
+    @field_validator("page_access_token")
+    @classmethod
+    def validate_token_controls(cls, value: str) -> str:
+        if any(ord(char) < 32 or ord(char) == 127 for char in value):
+            raise ValueError("invalid Page token")
+        return value
 
 
 class InviteMemberRequest(StrictSchema):

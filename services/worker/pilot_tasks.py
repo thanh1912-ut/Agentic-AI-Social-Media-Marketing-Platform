@@ -78,6 +78,13 @@ async def campaign_plan_task_async(job_id: str, *, model: Any | None = None) -> 
             await db.rollback()
             return
         job = await db.get(Job, job_id)
+        if job is None:
+            await db.rollback()
+            return
+        from .page_gate import block_job_without_active_page
+        if await block_job_without_active_page(db, job):
+            await db.commit()
+            return
         payload = dict(job.result or {}) if job else {}
         company_id = job.company_id if job else ""
         await _job_event(db, job, "progress", "Đã nhận yêu cầu lập kế hoạch chiến dịch.", 5)

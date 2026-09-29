@@ -7,7 +7,6 @@ import hashlib
 import json
 import logging
 import math
-import re
 from contextlib import suppress
 from datetime import datetime, timedelta, timezone
 from typing import Any
@@ -18,7 +17,7 @@ from sqlalchemy import or_, select, text
 from database.evidence_versions import ensure_evidence_version
 from database.job_fencing import active_job_fence, claim_job_fence, isolated_job_fence
 from database.models import (
-    AuditEvent, CrawlHostThrottle, Job, JobEvent, JobStep, MarketEvidence, MarketEvidenceVersion,
+    AuditEvent, Company, CrawlHostThrottle, Job, JobEvent, JobStep, MarketEvidence, MarketEvidenceVersion,
     MarketObservation,
     MarketReport, MarketReportEvidence, MarketReportWebSnapshot, MetaPageConnection, MetaPageGroup,
     MetaPageMetricSnapshot, MetaPagePost, MetaPostMetricSnapshot, ResearchCycle,
@@ -45,17 +44,10 @@ from .model_provider import AIConfigurationError, configured_structured_model
 logger = logging.getLogger(__name__)
 
 
-EMAIL_RE = re.compile(r"\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b", re.IGNORECASE)
-PHONE_RE = re.compile(r"(?<!\w)(?:\+?\d[\d ().-]{7,}\d)(?!\w)")
 REPORT_METRIC_KEYS = ("reactions", "comments", "shares", "interactions", "views")
 REPORT_DELTA_KEYS = ("reactions", "comments", "shares", "interactions", "views")
 MAX_REPORT_EVIDENCE = 40
 MAX_REPORT_WEB_SNAPSHOTS = 50
-
-
-def _sanitize_comment(value: str) -> str:
-    no_email = EMAIL_RE.sub("[đã ẩn email]", value)
-    return PHONE_RE.sub("[đã ẩn số điện thoại]", no_email)[:4000]
 
 
 def _safe_market_metrics(value: object) -> dict[str, int | float]:
@@ -122,6 +114,10 @@ async def _claim(job_id: str) -> bool:
     async with SessionLocal() as db:
         job = await db.scalar(select(Job).where(Job.id == job_id, Job.kind == "market_research").with_for_update())
         if job is None or job.status != "queued":
+            return False
+        from .page_gate import block_job_without_active_page
+        if await block_job_without_active_page(db, job):
+            await db.commit()
             return False
         job.status = "running"
         job.started_at = utcnow()
@@ -536,7 +532,10 @@ async def _collect_page(company_id: str, group_id: str, source: ResearchSource, 
     stored = 0
     posts_seen = 0
     cursor = None
-    comments_content_available = True
+    # Comment text can identify private individuals. Until the workspace has
+    # an approved purpose/retention/erasure configuration and a reviewed
+    # pseudonymization pipeline, collect only Meta's aggregate count.
+    comments_content_status = "privacy_hold"
     page_followers: int | None = None
     views_available = True
     views_observed = False
@@ -585,16 +584,6 @@ async def _collect_page(company_id: str, group_id: str, source: ResearchSource, 
                         if value is not None:
                             metric_counts[key] = metric_counts.get(key, 0) + 1
                     comments: list[str] = []
-                    if posts_seen <= 25:
-                        try:
-                            comments = [
-                                _sanitize_comment(comment)
-                                for comment in await client.list_post_comments(post.external_post_id, limit=50)
-                            ]
-                        except MetaGraphTokenExpired:
-                            raise
-                        except (MetaGraphRejected, MetaGraphReadError):
-                            comments_content_available = False
                     await _persist_evidence(
                         company_id=company_id, group_id=group_id, source=source, url=post_url,
                         title=(post.message or "")[:1000],
@@ -616,7 +605,16 @@ async def _collect_page(company_id: str, group_id: str, source: ResearchSource, 
                 connection.status = "needs_reconnect"
                 connection.last_error_code = "token_expired"
                 connection.verified_at = None
-                await db.commit()
+                connection.next_metrics_sync_at = None
+            company = await db.scalar(select(Company).where(Company.id == company_id).with_for_update())
+            if company is not None and company.page_id == page_id:
+                company.page_connection_state = "needs_reconnect"
+            group = await db.scalar(select(MetaPageGroup).where(
+                MetaPageGroup.company_id == company_id, MetaPageGroup.id == group_id,
+            ).with_for_update())
+            if group is not None:
+                group.next_due_at = None
+            await db.commit()
         raise CrawlError("page_token_expired", "Meta cho biết token đã hết hạn hoặc bị thu hồi.") from error
     except MetaGraphRejected as error:
         raise CrawlError("page_permission_missing", "Meta từ chối đọc bài Fanpage với quyền token hiện tại.") from error
@@ -625,7 +623,7 @@ async def _collect_page(company_id: str, group_id: str, source: ResearchSource, 
         "items_seen": posts_seen, "items_saved": stored,
         **_metric_coverage(metric_counts, stored),
         "views_observed": views_observed,
-        "comments_content": "partially_collected" if comments_content_available else "permission_or_read_unavailable",
+        "comments_content": comments_content_status,
     }
 
 
@@ -1001,7 +999,9 @@ async def _collect_competitor_page_via_meta(
 
     stored = 0
     posts_seen = 0
-    comments_content_available = True
+    # Public visibility and an API credential are not enough to establish the
+    # processing basis for commenters' personal data. Keep text in privacy hold.
+    comments_content_status = "privacy_hold"
     metric_counts: dict[str, int] = {}
     try:
         async with MetaGraphClient("1", token, settings.meta_graph_version) as resolver:
@@ -1023,16 +1023,6 @@ async def _collect_competitor_page_via_meta(
                         if value is not None:
                             metric_counts[key] = metric_counts.get(key, 0) + 1
                     comments: list[str] = []
-                    if posts_seen <= 25:
-                        try:
-                            comments = [
-                                _sanitize_comment(comment)
-                                for comment in await client.list_post_comments(post.external_post_id, limit=50)
-                            ]
-                        except MetaGraphTokenExpired:
-                            raise
-                        except (MetaGraphRejected, MetaGraphReadError):
-                            comments_content_available = False
                     await _persist_evidence(
                         company_id=company_id, group_id=group_id, source=source, url=post_url,
                         title=(post.message or "")[:1000],
@@ -1056,7 +1046,7 @@ async def _collect_competitor_page_via_meta(
     return stored, {
         "items_seen": posts_seen, "items_saved": stored, "page_name": page.name,
         **_metric_coverage(metric_counts, stored),
-        "comments_content": "partially_collected" if comments_content_available else "permission_or_read_unavailable",
+        "comments_content": comments_content_status,
     }
 
 
@@ -1176,7 +1166,6 @@ async def _evidence_for_report(company_id: str, group_id: str) -> list[dict[str,
                 for key in REPORT_DELTA_KEYS
                 if key in metrics and key in previous_metrics
             }
-            comments = observation.comments_json if observation and isinstance(observation.comments_json, list) else []
             output.append({
                 "id": row.id, "url": row.canonical_url, "title": version.title,
                 "evidence_version_id": version.id, "observation_id": observation.id,
@@ -1185,7 +1174,9 @@ async def _evidence_for_report(company_id: str, group_id: str) -> list[dict[str,
                 "text": version.text[:1200], "metrics": metrics, "metric_delta": metric_delta,
                 "observed_at": observation.observed_at.isoformat() if observation else None,
                 "previous_observed_at": previous.observed_at.isoformat() if previous else None,
-                "comments": [_sanitize_comment(value)[:300] for value in comments if isinstance(value, str)][:3],
+                # Do not expose legacy or new commenter text to agents until
+                # the workspace privacy-processing requirements are met.
+                "comments": [], "comments_content_status": "privacy_hold",
                 "trust_level": row.trust_level,
             })
         return output
@@ -1311,8 +1302,8 @@ async def _run(job_id: str) -> None:
                 await db.commit()
             try:
                 if source_type == "facebook_group":
-                    outcome = {"status": "manual_import_only", "items_saved": 0,
-                               "message": "Nguồn Facebook chưa có quyền API phù hợp; có thể nhập dữ liệu thủ công."}
+                    outcome = {"status": "unsupported_tier0", "items_saved": 0,
+                               "message": "facebook-cli Tier 0 không đọc thảo luận nhóm; hệ thống không đăng nhập hoặc tham gia nhóm."}
                 elif source_type == "competitor_facebook_page" and source.collection_mode == "manual":
                     outcome = {"status": "manual_import_only", "items_saved": 0,
                                "message": "Nguồn đang ở chế độ nhập thủ công."}
@@ -1335,9 +1326,14 @@ async def _run(job_id: str) -> None:
                     outcome = {**details}
                 else:
                     raise CrawlError("source_type_unsupported", "Loại nguồn này chưa được hỗ trợ.")
-                source.status = "active" if source_type in {
+                if source_type == "facebook_group":
+                    source.status = outcome.get("status", "unsupported_tier0")
+                elif source_type in {
                     "website", "owned_facebook_page", "competitor_facebook_page",
-                } else "manual_import_only"
+                }:
+                    source.status = "active"
+                else:
+                    source.status = "manual_import_only"
                 source.last_crawled_at = utcnow()
                 source.error_json = None
                 if source_type == "competitor_facebook_page":
@@ -1441,7 +1437,7 @@ async def _run(job_id: str) -> None:
                 return
             statuses = [str(item.get("status", "")) for item in source_results if isinstance(item, dict)]
             cycle.status = "blocked" if statuses and all(
-                status in {"blocked", "failed", "manual_import_only"} for status in statuses
+                status in {"blocked", "failed", "manual_import_only", "unsupported_tier0"} for status in statuses
             ) else "completed_no_data"
             cycle.source_results_json = source_results
             cycle.completed_at = finished_at

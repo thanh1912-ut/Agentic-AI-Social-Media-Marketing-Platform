@@ -306,6 +306,8 @@ export const marketResearchApi = {
     }),
   reports: (workspaceId: string, groupId: string) =>
     apiRequest<MarketReport[]>(path(workspaceId) + '/groups/' + encodeURIComponent(groupId) + '/reports'),
+  allReports: (workspaceId: string) =>
+    apiRequest<MarketReport[]>(path(workspaceId) + '/reports'),
   webItems: (workspaceId: string, groupId: string, kind: string) =>
     apiRequest<WebItemsPage>(path(workspaceId) + '/groups/' + encodeURIComponent(groupId) + '/web-items', {
       query: { kind, limit: 100 },

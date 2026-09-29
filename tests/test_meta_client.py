@@ -31,9 +31,12 @@ def test_verify_page_uses_bearer_header_and_returns_verified_identity() -> None:
         assert request.url.host == "graph.facebook.com"
         assert SECRET not in str(request.url)
         assert request.headers["Authorization"] == f"Bearer {SECRET}"
-        assert request.url.path == "/v26.0/123"
-        assert request.url.params["fields"] == "id,name"
-        return httpx.Response(200, json={"id": "123", "name": " Trang của tôi "})
+        assert request.url.path == "/v26.0/me"
+        assert request.url.params["fields"] == "id,name,picture"
+        return httpx.Response(200, json={
+            "id": "123", "name": " Trang của tôi ",
+            "picture": {"data": {"url": "https://platform-lookaside.fbsbx.com/profile/photo.jpg?oh=signature&access_token=must-not-leak"}},
+        })
 
     async def exercise():
         async with MetaGraphClient("123", SECRET, transport=httpx.MockTransport(handler)) as client:
@@ -41,6 +44,22 @@ def test_verify_page_uses_bearer_header_and_returns_verified_identity() -> None:
 
     page = _run(exercise())
     assert (page.id, page.name) == ("123", "Trang của tôi")
+    assert page.picture_url == "https://platform-lookaside.fbsbx.com/profile/photo.jpg?oh=signature"
+
+
+def test_verify_page_discards_untrusted_avatar_hosts() -> None:
+    async def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json={
+            "id": "123", "name": "Trang của tôi",
+            "picture": {"data": {"url": "https://attacker.example/avatar.png"}},
+        })
+
+    async def exercise():
+        async with MetaGraphClient("123", SECRET, transport=httpx.MockTransport(handler)) as client:
+            return await client.verify_page()
+
+    page = _run(exercise())
+    assert page.picture_url is None
 
 
 @pytest.mark.parametrize(("url", "expected"), [

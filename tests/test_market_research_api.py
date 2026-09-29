@@ -22,6 +22,7 @@ from services.api import meta_tokens
 from services.api.db import get_db
 from services.api.meta_client import MetaPagePost, MetaPagePostsPage, MetaPublicPage
 from services.api.main import app
+from tests.helpers.page_workspace import activate_test_page
 from services.api.meta_client import MetaPage
 from services.worker import research_tasks, scheduled_jobs
 
@@ -86,7 +87,8 @@ def _owner(client: TestClient, email: str) -> tuple[str, dict[str, str]]:
         "company_name": "Market workspace",
     })
     assert response.status_code == 201, response.text
-    return response.json()["active_workspace_id"], {
+    workspace = activate_test_page(client)
+    return workspace["id"], {
         "X-CSRF-Token": client.cookies["agentic_csrf"],
     }
 
@@ -109,23 +111,19 @@ def _create_group(client: TestClient, workspace_id: str, headers: dict[str, str]
 
 def test_page_token_is_encrypted_and_same_page_can_reconnect(market_api, monkeypatch) -> None:
     client, session_factory, encryption_key = market_api
-    monkeypatch.setattr(market_research_routes, "MetaGraphClient", FakeMetaGraphClient)
+    from services.api import workspaces as workspaces_routes
+
+    monkeypatch.setattr(workspaces_routes, "MetaGraphClient", FakeMetaGraphClient)
+    monkeypatch.setattr(workspaces_routes, "encrypt_page_token", meta_tokens.encrypt_page_token)
     workspace_id, headers = _owner(client, "page-owner@example.com")
-    group_id = _create_group(client, workspace_id, headers)
-    token = "opaque-page-token-with-entropy-12345"
-    url = f"/api/v1/workspaces/{workspace_id}/market-research/groups/{group_id}/pages"
-    body = {"page_id": "123456789", "page_access_token": token}
-
-    connected = client.post(url, headers=headers, json=body)
-    assert connected.status_code == 201, connected.text
-    connection_id = connected.json()["id"]
-    assert "page_access_token" not in connected.json()
-    assert "encrypted_token" not in connected.json()
-
-    pages = client.get(url)
+    page_id = client.get(f"/api/v1/workspaces/{workspace_id}").json()["page_id"]
+    token = "test-page-access-token-12345"
+    pages_url = f"/api/v1/workspaces/{workspace_id}/market-research/pages"
+    pages = client.get(pages_url)
     assert pages.status_code == 200
     assert pages.json()[0]["status"] == "verified"
     assert "encrypted_token" not in pages.json()[0]
+    connection_id = pages.json()[0]["id"]
 
     async def read_connection():
         async with session_factory() as db:
@@ -135,14 +133,13 @@ def test_page_token_is_encrypted_and_same_page_can_reconnect(market_api, monkeyp
     assert stored.encrypted_token != token
     assert meta_tokens.decrypt_page_token(stored.encrypted_token) == token
 
-    disconnected = client.delete(
-        f"/api/v1/workspaces/{workspace_id}/market-research/pages/{connection_id}",
+    reconnected = client.patch(
+        f"/api/v1/workspaces/{workspace_id}/page-connection",
         headers=headers,
+        json={"page_id": page_id, "page_access_token": token + "-rotated"},
     )
-    assert disconnected.status_code == 204
-    reconnected = client.post(url, headers=headers, json={**body, "page_access_token": token + "-rotated"})
-    assert reconnected.status_code == 201, reconnected.text
-    assert reconnected.json()["id"] == connection_id
+    assert reconnected.status_code == 200, reconnected.text
+    assert reconnected.json()["id"] == workspace_id
 
     async def read_reconnected():
         async with session_factory() as db:
@@ -384,6 +381,7 @@ def test_competitor_page_uses_approved_public_api_token_when_configured(market_a
     assert saved == 1
     assert details["metrics_available"] == ["reactions", "comments", "shares", "interactions"]
     assert details["metrics_unavailable"] == ["views"]
+    assert details["comments_content"] == "privacy_hold"
 
     async def read_observation():
         async with session_factory() as db:
@@ -397,7 +395,7 @@ def test_competitor_page_uses_approved_public_api_token_when_configured(market_a
         "reactions": 17, "comments": 4, "shares": 2, "interactions": 23,
         "views": None,
     }
-    assert observation.comments_json == ["Liên hệ [đã ẩn email]"]
+    assert observation.comments_json == []
 
     async def read_source_audience():
         from database.models import ResearchSourceMetricSnapshot
@@ -414,35 +412,45 @@ def test_competitor_page_uses_approved_public_api_token_when_configured(market_a
 
 def test_owned_page_collection_saves_views_and_followers_when_meta_returns_them(market_api, monkeypatch) -> None:
     client, session_factory, _encryption_key = market_api
+    from services.api import workspaces as workspaces_routes
+
+    monkeypatch.setattr(workspaces_routes, "encrypt_page_token", meta_tokens.encrypt_page_token)
     monkeypatch.setattr(market_research_routes, "MetaGraphClient", FakeMetaGraphClient)
     monkeypatch.setattr(research_tasks, "SessionLocal", session_factory)
     monkeypatch.setattr(research_tasks, "settings", SimpleNamespace(meta_graph_version="v26.0"))
     workspace_id, headers = _owner(client, "owned-page-owner@example.com")
-    group_id = _create_group(client, workspace_id, headers)
+    page_id = client.get(f"/api/v1/workspaces/{workspace_id}").json()["page_id"]
     token = "opaque-owned-page-token-with-entropy-12345"
-    connected = client.post(
-        f"/api/v1/workspaces/{workspace_id}/market-research/groups/{group_id}/pages",
+    connected = client.patch(
+        f"/api/v1/workspaces/{workspace_id}/page-connection",
         headers=headers,
-        json={"page_id": "123456789", "page_access_token": token},
+        json={"page_id": page_id, "page_access_token": token},
     )
-    assert connected.status_code == 201, connected.text
-    connection_id = connected.json()["id"]
-    created = client.post(
-        f"/api/v1/workspaces/{workspace_id}/market-research/sources",
-        headers=headers,
-        json={
-            "group_id": group_id, "source_type": "owned_facebook_page", "name": "Fanpage của tôi",
-            "url": "https://www.facebook.com/123456789", "connection_id": connection_id,
-        },
-    )
-    assert created.status_code == 201, created.text
-    source_id = created.json()["id"]
+    assert connected.status_code == 200, connected.text
+    connection = client.get(f"/api/v1/workspaces/{workspace_id}/market-research/pages").json()[0]
+    connection_id = connection["id"]
+    group_id = connection["group_id"]
+
+    async def find_owned_source_id():
+        async with session_factory() as db:
+            source = await db.scalar(select(ResearchSource).where(
+                ResearchSource.company_id == workspace_id,
+                ResearchSource.connection_id == connection_id,
+                ResearchSource.source_type == "owned_facebook_page",
+            ))
+            assert source is not None
+            return source.id
+
+    source_id = asyncio.run(find_owned_source_id())
+
+    expected_page_id = page_id
 
     class FakeOwnedGraphClient:
-        def __init__(self, page_id: str, page_token: str, graph_version: str):
-            assert page_id == "123456789"
+        def __init__(self, actual_page_id: str, page_token: str, graph_version: str):
+            assert actual_page_id == expected_page_id
             assert page_token == token
             assert graph_version == "v26.0"
+            self.page_id = actual_page_id
 
         async def __aenter__(self):
             return self
@@ -456,17 +464,17 @@ def test_owned_page_collection_saves_views_and_followers_when_meta_returns_them(
         async def list_page_posts(self, limit: int = 100, after: str | None = None):
             assert limit == 100 and after is None
             return MetaPagePostsPage((MetaPagePost(
-                external_post_id="123456789_42", message="Bài viết mới", created_time=None,
-                permalink_url="https://www.facebook.com/123456789/posts/42",
+                external_post_id=f"{self.page_id}_42", message="Bài viết mới", created_time=None,
+                permalink_url=f"https://www.facebook.com/{self.page_id}/posts/42",
                 reactions=22, comments=5, shares=3,
             ),), None)
 
         async def read_post_media_views(self, external_post_id: str):
-            assert external_post_id == "123456789_42"
+            assert external_post_id == f"{page_id}_42"
             return 7654
 
         async def list_post_comments(self, external_post_id: str, limit: int = 50):
-            assert external_post_id == "123456789_42" and limit == 50
+            assert external_post_id == f"{page_id}_42" and limit == 50
             return ("Bài này hữu ích",)
 
     monkeypatch.setattr(research_tasks, "MetaGraphClient", FakeOwnedGraphClient)
@@ -483,6 +491,7 @@ def test_owned_page_collection_saves_views_and_followers_when_meta_returns_them(
     assert saved == 1
     assert details["metrics_available"] == ["reactions", "comments", "shares", "interactions", "views"]
     assert details["metrics_unavailable"] == []
+    assert details["comments_content"] == "privacy_hold"
 
     async def read_observation():
         async with session_factory() as db:
@@ -495,7 +504,7 @@ def test_owned_page_collection_saves_views_and_followers_when_meta_returns_them(
         "reactions": 22, "comments": 5, "shares": 3, "interactions": 30,
         "views": 7654,
     }
-    assert observation.comments_json == ["Bài này hữu ích"]
+    assert observation.comments_json == []
 
     async def read_page_and_post_history():
         from database.models import MetaPageMetricSnapshot, MetaPagePost, MetaPostMetricSnapshot
@@ -506,7 +515,7 @@ def test_owned_page_collection_saves_views_and_followers_when_meta_returns_them(
             ))
             page_post = await db.scalar(select(MetaPagePost).where(
                 MetaPagePost.company_id == workspace_id,
-                MetaPagePost.external_post_id == "123456789_42",
+                MetaPagePost.external_post_id == f"{page_id}_42",
             ))
             post_snapshot = await db.scalar(select(MetaPostMetricSnapshot).where(
                 MetaPostMetricSnapshot.meta_page_post_id == page_post.id,
@@ -578,7 +587,8 @@ def test_owned_page_collection_saves_views_and_followers_when_meta_returns_them(
     assert report_evidence[0]["metric_delta"] == {
         "reactions": 12, "comments": 2, "shares": 1, "interactions": 15, "views": 654,
     }
-    assert report_evidence[0]["comments"] == ["Bài này hữu ích"]
+    assert report_evidence[0]["comments"] == []
+    assert report_evidence[0]["comments_content_status"] == "privacy_hold"
 
 
 def test_due_market_research_enqueues_one_durable_cycle(market_api) -> None:

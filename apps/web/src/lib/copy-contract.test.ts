@@ -10,7 +10,7 @@
  */
 
 import { readFileSync, readdirSync, statSync } from 'node:fs';
-import { join, relative } from 'node:path';
+import { dirname, join, relative, resolve } from 'node:path';
 
 import { describe, expect, it } from 'vitest';
 
@@ -29,6 +29,23 @@ function walk(directory: string): string[] {
 
 function read(path: string): string {
   return readFileSync(path, 'utf8');
+}
+
+function readPage(path: string): string {
+  const content = read(path);
+  const reexport = content.match(/^export\s*\{\s*default\s*\}\s*from\s*['"](.+)['"];?\s*$/m);
+  if (!reexport) return content;
+  const specifier = reexport[1];
+  if (!specifier) return content;
+  const target = resolve(dirname(path), specifier);
+  const resolved = [target, `${target}.tsx`, join(target, 'page.tsx')].find((candidate) => {
+    try {
+      return statSync(candidate).isFile();
+    } catch {
+      return false;
+    }
+  });
+  return resolved ? readPage(resolved) : content;
 }
 
 const allSourceFiles = walk(SRC).filter(
@@ -137,7 +154,7 @@ describe('mọi màn hình phải có đủ trạng thái', () => {
   it.each(dataPageFiles.map((path) => [relative(SRC, path), path] as const))(
     '%s có trạng thái đang tải và lỗi',
     (_name, path) => {
-      const content = read(path);
+      const content = readPage(path);
       const relativePath = relative(SRC, path);
 
       const hasLoading =
@@ -177,7 +194,7 @@ describe('mọi màn hình phải có đủ trạng thái', () => {
   it.each(collectionPages.map((path) => [relative(SRC, path), path] as const))(
     '%s (màn hình danh sách) có trạng thái rỗng',
     (_name, path) => {
-      const content = read(path);
+      const content = readPage(path);
       expect(content.includes('EmptyState'), 'thiếu trạng thái rỗng').toBe(true);
     },
   );

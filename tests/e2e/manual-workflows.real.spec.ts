@@ -12,23 +12,15 @@ async function login(page: Page, email: string, password: string): Promise<void>
   await expect(page.getByRole('button', { name: 'Đăng xuất' })).toBeVisible();
 }
 
-test('real mode: campaign → manual post → media → approval → export → metrics', async ({ page, request }) => {
+test('real mode: campaign → manual post → media → approval → export → metrics', async ({ page }) => {
+  const email = process.env.E2E_REAL_EMAIL ?? '';
+  const password = process.env.E2E_REAL_PASSWORD ?? '';
+  const workspaceId = process.env.E2E_REAL_WORKSPACE_ID ?? '';
+  test.skip(
+    email === '' || password === '' || workspaceId === '',
+    'Set E2E_REAL_EMAIL, E2E_REAL_PASSWORD and a disposable E2E_REAL_WORKSPACE_ID with an active Page connection.',
+  );
   const runId = `${Date.now()}-${Math.floor(Math.random() * 1_000_000)}`;
-  const email = `pilot-${runId}@example.com`;
-  const password = `Pilot-${runId}-safe-pass`;
-  const registration = await request.post(`${apiOrigin}/api/v1/auth/register`, {
-    data: {
-      email,
-      password,
-      full_name: 'Pilot Owner',
-      company_name: `Pilot Workspace ${runId}`,
-    },
-  });
-  const registrationBody = await registration.text();
-  expect(registration.status(), registrationBody).toBe(201);
-  const session = JSON.parse(registrationBody) as { active_workspace_id: string };
-  expect(session.active_workspace_id).toBeTruthy();
-  const workspaceId = session.active_workspace_id;
   const campaignName = `Pilot campaign ${runId}`;
 
   await login(page, email, password);

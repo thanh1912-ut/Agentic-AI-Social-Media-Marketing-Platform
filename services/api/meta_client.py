@@ -9,7 +9,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 from datetime import datetime
-from urllib.parse import quote, parse_qs, urlsplit
+from urllib.parse import quote, parse_qs, parse_qsl, urlencode, urlsplit, urlunsplit
 
 import httpx
 
@@ -24,6 +24,7 @@ _IMAGE_MIME_TYPES = frozenset({"image/jpeg", "image/png"})
 class MetaPage:
     id: str
     name: str
+    picture_url: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -260,16 +261,44 @@ class MetaGraphClient:
         return payload
 
     async def verify_page(self) -> MetaPage:
+        # A Page token's /me identity must match the user-supplied Page ID.
+        # Reading /{page_id} alone can return public metadata with an unrelated token.
         payload = await self._request(
             "GET",
-            f"/{self.graph_version}/{self.page_id}",
+            f"/{self.graph_version}/me",
             publishing=False,
-            params={"fields": "id,name"},
+            params={"fields": "id,name,picture"},
         )
         page_id, name = payload.get("id"), payload.get("name")
         if page_id != self.page_id or not isinstance(name, str) or not name.strip():
-            raise MetaGraphReadError("Meta Graph returned an invalid Page identity.")
-        return MetaPage(id=page_id, name=name.strip())
+            raise MetaGraphRejected(403)
+        picture = payload.get("picture")
+        picture_data = picture.get("data") if isinstance(picture, dict) else None
+        picture_url = picture_data.get("url") if isinstance(picture_data, dict) else None
+        if not isinstance(picture_url, str):
+            picture_url = None
+        else:
+            try:
+                parsed = urlsplit(picture_url)
+                host = (parsed.hostname or "").casefold().rstrip(".")
+                allowed_host = (
+                    host == "fbcdn.net" or host.endswith(".fbcdn.net")
+                    or host == "fbsbx.com" or host.endswith(".fbsbx.com")
+                )
+                if parsed.scheme != "https" or not allowed_host or parsed.username or parsed.password:
+                    picture_url = None
+                else:
+                    # Keep CDN signature parameters that make the avatar readable,
+                    # but never expose API credentials through the workspace DTO.
+                    forbidden_query_keys = {"access_token", "oauth_token", "token", "appsecret_proof"}
+                    safe_query = urlencode([
+                        (key, value) for key, value in parse_qsl(parsed.query, keep_blank_values=True)
+                        if key.casefold() not in forbidden_query_keys
+                    ])
+                    picture_url = urlunsplit((parsed.scheme, parsed.netloc, parsed.path, safe_query, ""))[:2048]
+            except ValueError:
+                picture_url = None
+        return MetaPage(id=page_id, name=name.strip(), picture_url=picture_url)
 
     async def resolve_public_page(self, reference: str) -> MetaPublicPage:
         """Resolve a public Page with an app/user token approved for Page public access."""
