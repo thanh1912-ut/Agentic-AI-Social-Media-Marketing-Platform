@@ -546,3 +546,21 @@ Base đã kiểm tra: `codex/creative-studio-ui` @ `b769097bfdb3568889d974c6def9
 - PASS: PostgreSQL 18.3 disposable: `test_postgres_concurrent_page_activation_creates_one_workspace` — `1 passed`; hai request được đồng bộ sau cùng truy vấn “Page đã tồn tại” để buộc tranh chấp unique constraint. Kết quả một `201`, một `409 page_already_connected`, một Company/Page và đúng một Owner membership.
 - PASS: Chạy chung `test_postgres_api_persists_existing_product_modules` và race test — `2 passed`; regression SQLite Page-owner và reconnect — `2 passed`; Ruff, `py_compile`, `git diff --check`.
 - DONE: Cụm PostgreSQL test riêng port `15559` đã dừng. Không có Meta live request hoặc dịch vụ preview bị thay đổi.
+
+### 2026-09-30 20:19 Asia/Ho_Chi_Minh — Kiểm chứng Page gate tại worker claim trên PostgreSQL
+
+- DONE: Thêm regression test chạy `research_tasks._claim` trên PostgreSQL thật cho cả `connection_required` và `needs_reconnect`.
+- PASS: Khi Page chưa được kết nối hoặc cần kết nối lại, claim trả `False`; durable job thành `failed` với mã lỗi tương ứng, không tăng attempts, không đặt claim/lease hoặc started_at; ResearchCycle, bước thu thập và JobEvent phản ánh lỗi.
+- PASS: Toàn `tests/test_postgres_database_integration.py` — `11 passed, 3 skipped` trên PostgreSQL 18.3 disposable; ba Redis integration bị skip vì không cấu hình URL Redis test.
+- PASS: Ruff, `py_compile` và `git diff --check`.
+- DONE: PostgreSQL disposable cổng `15559` đã dừng. Không gọi crawler, Meta, DeepSeek, Gemini hoặc Qwen; không tác động preview.
+- LIMITATION: Đây kiểm tra worker claim của market research và helper Page gate, không thay thế test Redis/Celery hoặc xác minh riêng mọi loại job, scheduler, browser UI và provider live.
+
+### 2026-09-30 20:23 Asia/Ho_Chi_Minh — Kiểm chứng scheduler không tạo lượt nghiên cứu khi Page cần reconnect
+
+- DONE: Thêm PostgreSQL integration cho due research source khi workspace `needs_reconnect`, có group/source/member đã đến hạn.
+- PASS: Scheduler không tạo Job hoặc ResearchCycle, trả số job `0`, tắt due time tổng hợp ở group nhưng giữ due time/lịch riêng của source để có thể khôi phục sau reconnect.
+- PASS: Toàn `tests/test_postgres_database_integration.py` — `12 passed, 3 skipped` trên PostgreSQL 18.3 disposable; Redis-specific tests vẫn skip vì URL test chưa cấu hình.
+- PASS: Ruff, `py_compile`, `git diff --check`.
+- DONE: Cụm test cổng `15559` đã dừng. Không gọi mạng ngoài, Meta, AI hoặc preview.
+- LIMITATION: Đây là scheduler function trực tiếp trên PostgreSQL, chưa chạy Celery Beat/Redis hoặc UI để quan sát reconnect → lịch được phục hồi.

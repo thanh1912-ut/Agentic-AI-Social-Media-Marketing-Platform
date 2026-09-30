@@ -16,14 +16,15 @@ from redis.asyncio import Redis
 
 from database.job_fencing import JobLeaseLost, _current_job_fence
 from database.models import (
-    AIUsageBudgetDay, AIUsageLedger, Base, Company, Job, MarketObservation,
-    MarketEvidence, MarketEvidenceVersion, MetaPageGroup, ResearchCycle, ResearchSource,
+    AIUsageBudgetDay, AIUsageLedger, Base, Company, Job, JobEvent, JobStep, MarketObservation,
+    MarketEvidence, MarketEvidenceVersion, Membership, MetaPageGroup, ResearchCycle, ResearchSource,
     ResearchSourceErasure, ResearchSourceErasureObject, User, new_id, utcnow,
 )
 from services.api import db as api_db
 from services.api import job_service
 from services.api.db import FencedAsyncSession
 from services.worker import research_erasure_tasks, research_tasks
+from services.worker import scheduled_jobs
 
 
 POSTGRES_TEST_URL = os.getenv("POSTGRES_TEST_URL")
@@ -855,6 +856,193 @@ def test_postgres_competing_workers_only_claim_a_research_job_once(monkeypatch: 
                 assert claimed.status == "running"
                 assert claimed.attempts == 1
                 assert claimed.claim_token
+        finally:
+            await engine.dispose()
+
+    asyncio.run(run())
+
+
+@pytest.mark.parametrize(
+    ("connection_state", "has_page_id", "expected_error_code"),
+    [
+        ("needs_reconnect", True, "page_needs_reconnect"),
+        ("connection_required", False, "page_connection_required"),
+    ],
+)
+def test_postgres_research_worker_blocks_queued_job_without_active_page(
+    monkeypatch: pytest.MonkeyPatch,
+    connection_state: str,
+    has_page_id: bool,
+    expected_error_code: str,
+) -> None:
+    """A stale queued job must stop before any collector or model work starts."""
+    async def run() -> None:
+        assert POSTGRES_TEST_URL
+        engine = create_async_engine(POSTGRES_TEST_URL)
+        sessions = async_sessionmaker(engine, expire_on_commit=False)
+        monkeypatch.setattr(research_tasks, "SessionLocal", sessions)
+        try:
+            async with sessions() as db:
+                company = Company(
+                    name="Disconnected Page gate",
+                    slug=f"page-gate-{uuid.uuid4().hex[:16]}",
+                    page_id=f"test-{uuid.uuid4().hex[:20]}" if has_page_id else None,
+                    page_connection_state=connection_state,
+                )
+                user = User(
+                    email=f"page-gate-{uuid.uuid4().hex}@example.invalid",
+                    full_name="Page gate test",
+                    password_hash="test-only-not-a-login",
+                )
+                db.add_all([company, user])
+                await db.flush()
+                group = MetaPageGroup(
+                    company_id=company.id,
+                    name="Internal research group",
+                    industry="Unknown",
+                    region="Unknown",
+                    locale="vi-VN",
+                    keywords_json=[],
+                    active=True,
+                )
+                db.add(group)
+                await db.flush()
+                job = Job(
+                    company_id=company.id,
+                    created_by=user.id,
+                    kind="market_research",
+                    title="must not run after Page disconnect",
+                    status="queued",
+                    progress=0,
+                    result={"group_id": group.id},
+                    idempotency_key=f"page-gate:{uuid.uuid4().hex}",
+                )
+                db.add(job)
+                await db.flush()
+                cycle = ResearchCycle(
+                    company_id=company.id,
+                    group_id=group.id,
+                    job_id=job.id,
+                    cycle_key=f"page-gate:{uuid.uuid4().hex}",
+                    status="queued",
+                    source_results_json=[],
+                )
+                step = JobStep(
+                    job_id=job.id,
+                    step_key="collect_sources",
+                    label="Collect sources",
+                    status="pending",
+                )
+                db.add_all([cycle, step])
+                await db.commit()
+                job_id = job.id
+                company_id = company.id
+
+            assert await research_tasks._claim(job_id) is False
+            async with sessions() as db:
+                blocked = await db.get(Job, job_id)
+                assert blocked is not None
+                assert blocked.status == "failed"
+                assert blocked.error is not None
+                assert blocked.error["code"] == expected_error_code
+                assert blocked.error["retryable"] is False
+                assert "Fanpage" in blocked.error["message"]
+                assert blocked.attempts == 0
+                assert blocked.started_at is None
+                assert blocked.claim_token is None
+                assert blocked.lease_until is None
+                cycle = await db.scalar(select(ResearchCycle).where(ResearchCycle.job_id == job_id))
+                assert cycle is not None and cycle.status == "failed"
+                step = await db.scalar(select(JobStep).where(JobStep.job_id == job_id))
+                assert step is not None and step.status == "failed"
+                event = await db.scalar(select(JobEvent).where(JobEvent.job_id == job_id))
+                assert event is not None and event.event_type == "error"
+                await db.delete(await db.get(Company, company_id))
+                await db.delete(await db.get(User, blocked.created_by))
+                await db.commit()
+        finally:
+            await engine.dispose()
+
+    asyncio.run(run())
+
+
+def test_postgres_research_scheduler_does_not_enqueue_when_page_needs_reconnect(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def run() -> None:
+        assert POSTGRES_TEST_URL
+        engine = create_async_engine(POSTGRES_TEST_URL)
+        sessions = async_sessionmaker(engine, expire_on_commit=False)
+        monkeypatch.setattr(scheduled_jobs, "SessionLocal", sessions)
+        try:
+            now = datetime.now(timezone.utc)
+            async with sessions() as db:
+                company = Company(
+                    name="Research scheduler Page gate",
+                    slug=f"research-gate-{uuid.uuid4().hex[:16]}",
+                    page_id=f"test-{uuid.uuid4().hex[:20]}",
+                    page_connection_state="needs_reconnect",
+                )
+                user = User(
+                    email=f"research-gate-{uuid.uuid4().hex}@example.invalid",
+                    full_name="Research scheduler test",
+                    password_hash="test-only-not-a-login",
+                )
+                db.add_all([company, user])
+                await db.flush()
+                db.add(Membership(
+                    company_id=company.id, user_id=user.id, role="owner", is_active=True,
+                ))
+                group = MetaPageGroup(
+                    company_id=company.id,
+                    name="Scheduled research",
+                    industry="Unknown",
+                    region="Unknown",
+                    locale="vi-VN",
+                    keywords_json=[],
+                    next_due_at=now - timedelta(seconds=1),
+                    active=True,
+                )
+                db.add(group)
+                await db.flush()
+                source = ResearchSource(
+                    company_id=company.id,
+                    group_id=group.id,
+                    source_type="website",
+                    name="Scheduled website",
+                    url="https://example.invalid/",
+                    normalized_url="https://example.invalid/",
+                    status="active",
+                    active=True,
+                    schedule_enabled=True,
+                    next_due_at=now - timedelta(seconds=1),
+                    created_by=user.id,
+                )
+                db.add(source)
+                await db.commit()
+                company_id = company.id
+                user_id = user.id
+                group_id = group.id
+                source_id = source.id
+
+            async with sessions() as db:
+                assert await scheduled_jobs._enqueue_due_research(db, now) == 0
+                await db.commit()
+            async with sessions() as db:
+                group = await db.get(MetaPageGroup, group_id)
+                source = await db.get(ResearchSource, source_id)
+                jobs = (await db.scalars(select(Job).where(Job.company_id == company_id))).all()
+                cycles = (await db.scalars(
+                    select(ResearchCycle).where(ResearchCycle.company_id == company_id)
+                )).all()
+                assert group is not None and group.next_due_at is None
+                assert source is not None and source.next_due_at is not None
+                assert source.next_due_at <= now
+                assert jobs == []
+                assert cycles == []
+                await db.delete(await db.get(Company, company_id))
+                await db.delete(await db.get(User, user_id))
+                await db.commit()
         finally:
             await engine.dispose()
 

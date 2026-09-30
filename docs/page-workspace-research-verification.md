@@ -417,6 +417,17 @@ Commit triển khai: `0d95d9b5704ee6fa37f31ae237d522795a08a304` trên `codex/pag
 | Redis | SKIPPED | Ba test Redis trong module bị skip vì `REDIS_QUEUE_TEST_URL`/`REDIS_URL` chưa được cấu hình cho disposable suite này. |
 | Dịch vụ test | DONE | PostgreSQL test cluster riêng ở loopback port `15559` đã dừng. Không thay database/Redis preview. |
 
+## Page gate trong worker claim và scheduler — 2026-09-30 20:23 Asia/Ho_Chi_Minh
+
+| Kiểm tra | Trạng thái | Bằng chứng và giới hạn |
+|---|---|---|
+| Workspace chưa kết nối Page | PASS (PostgreSQL worker integration) | Hai trường hợp của `test_postgres_research_worker_blocks_queued_job_without_active_page` xác nhận claim dừng, job/cycle/step/event lưu mã lỗi tương ứng, không tăng attempts hoặc cấp lease. |
+| Page cần kết nối lại | PASS (PostgreSQL worker integration) | Cùng test với trạng thái `needs_reconnect` xác nhận mã `page_needs_reconnect` và không claim job cũ. |
+| Scheduler khi Page cần reconnect | PASS (PostgreSQL scheduler integration) | `test_postgres_research_scheduler_does_not_enqueue_when_page_needs_reconnect` xác nhận scheduler không tạo job/cycle, trả `0`; group due bị dừng trong khi due time của source giữ lại. |
+| PostgreSQL integration regression | PASS | `tests/test_postgres_database_integration.py` — `12 passed, 3 skipped` sau migration head `0026` trên PostgreSQL 18.3 disposable. Ba bài cần Redis test được skip do URL Redis không cấu hình. |
+| Hạn mức thử | PASS | Ruff, `py_compile`, `git diff --check`; cụm test port `15559` đã dừng. Không gọi Meta hoặc provider AI. |
+| Worker kind khác, Redis/Celery Beat, reconnect → phục hồi lịch qua UI | NOT_RUN | Lượt này gọi market-research claim và scheduler function trực tiếp trên PostgreSQL; không chạy Redis/Celery Beat hoặc browser. |
+
 ## Page token không tự cấp membership — PostgreSQL API — 2026-09-30 20:05 Asia/Ho_Chi_Minh
 
 | Kiểm tra | Trạng thái | Bằng chứng và giới hạn |
