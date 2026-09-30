@@ -52,8 +52,8 @@
 | Public Group Tier 0 | PARTIAL | Đọc metadata nhóm public; không đọc GroupFeed/thảo luận; coverage `tier0_group_shell_only`, 0 posts/evidence |
 | Comment text / replies | PRIVACY_HOLD | Không tải comment text mới; report bỏ comment text legacy khỏi model context; aggregate count riêng |
 | Media download/analysis | NOT_IMPLEMENTED | Có Gemini inline adapter fixture; chưa có asset pipeline hoặc worker routing |
-| Qwen / Gemini / DeepSeek routing | PARTIAL | DeepSeek giữ luồng hiện có; Qwen text JSON-mode và Gemini inline media adapters có fixture nhưng chưa nối comment/media pipeline hoặc unified budget; không tự fallback |
-| AI budget $2/workspace/day | PARTIAL | PostgreSQL reservation/ledger hiện bao phủ báo cáo Nghiên cứu DeepSeek tự động; chưa áp dụng chung cho các agent, Gemini/Qwen hoặc media |
+| Qwen / Gemini / DeepSeek routing | PARTIAL | DeepSeek giữ luồng hiện có; Qwen text JSON-mode và Gemini inline media adapters có fixture nhưng chưa nối comment/media pipeline; không tự fallback |
+| AI budget $2/workspace/day | PARTIAL | PostgreSQL reservation/ledger dùng chung provider đã được kiểm tra trên dữ liệu tổng hợp; worker vẫn chỉ route DeepSeek research report, chưa gọi Gemini/Qwen hoặc media |
 | Ngân sách API/UI | PASS theo API fixture và frontend lint/unit; browser real NOT_RUN | `GET .../market-research/ai-budget`; `test_research_ai_budget_is_workspace_scoped_and_reports_reserved_cost` |
 | Pin bằng chứng cho hướng viết | PASS (API + worker fixture) | `test_market_suggestion_draft_pins_report_observation_and_version`, `test_content_generation_job_persists_cited_draft_and_is_idempotent` |
 | Privacy policy record | PARTIAL; chỉ là cấu hình do Owner ghi nhận | Bảng revision bất biến và Owner-only API/UI lưu mục đích, tham chiếu căn cứ, version và thời hạn dự kiến. Không xác minh tính hợp lệ của căn cứ; comments `privacy_hold`, retention `not_enforced`; chưa có deletion ledger/propagation hoặc legal review |
@@ -154,7 +154,7 @@ Lần chạy đầu phát hiện thêm assertion cũ tìm heading “Đăng nh�
 | Giá Gemini exact model | PASS (unit; suite cô lập `9 passed, 2 deselected`) | `gemini-3.8-flash` Standard: $0.75 input/$3.75 output mỗi 1M token; bảng tự từ chối từ 2027-01-01 cho tới khi rate được review lại. |
 | Giá Qwen theo region | PASS (unit; suite cô lập `9 passed, 2 deselected`) | `qwen3.8-27b` Singapore International: $0.50 input/$3 output mỗi 1M token; thiếu/sai region fail closed. Tính theo list price, không trừ free quota. |
 | Reservation token bound | PASS (unit; suite cô lập `9 passed, 2 deselected`) | Helper yêu cầu explicit input/output token bounds cho Gemini/Qwen; không dùng số ký tự làm đại diện cho token media. Test được chạy từ bản sao trong `/private/tmp` để tránh `tests/conftest.py` import `pgvector` thiếu ở runtime hiện tại. |
-| Gemini/Qwen worker routing và unified ledger | NOT_RUN | Chưa có callsite trong worker; hiện ledger pipeline chỉ bao phủ DeepSeek Research report. |
+| Gemini/Qwen worker routing | NOT_RUN | Chưa có callsite worker an toàn cho comments/media; reservation/ledger chung đã được kiểm chứng riêng trong mục “Ngân sách chung ba provider” ở cuối báo cáo. |
 | Provider credentials/live usage | NOT_RUN | Không gọi dịch vụ live, không đọc hay yêu cầu secret trong lượt này. |
 
 Giá lấy từ [Google Gemini model update](https://ai.google.dev/gemini-api/docs/latest-model), [Google Gemini pricing](https://ai.google.dev/gemini-api/docs/pricing), [Alibaba Model Studio pricing](https://www.alibabacloud.com/help/en/model-studio/model-pricing) và [Qwen3.8-27B model page](https://docs.modelstudio.console.alibabacloud.com/en/model-studio/qwen3-8-27b). Đây là snapshot giá theo ngày kiểm tra; không phải giá đảm bảo về sau.
@@ -406,3 +406,13 @@ Commit triển khai: `0d95d9b5704ee6fa37f31ae237d522795a08a304` trên `codex/pag
 | Privacy, Research API và AI budget | PASS (fixtures) | `tests/test_research_privacy.py tests/test_market_research_api.py tests/test_ai_budget.py` đạt **47 passed**. |
 | Phạm vi chưa chạy | NOT_RUN | Docling parser runtime, một số PostgreSQL integration cần `POSTGRES_TEST_URL`, Redis/Celery source-run, browser thật, Meta, DeepSeek, Gemini và Qwen live. PostgreSQL persistence guard riêng đã PASS ở mục trước. |
 | Kết luận | PARTIAL | Đây không phải nghiệm thu account/Page → Research → provider → UI. Bình luận/media vẫn bị giữ và chưa có khẳng định tuân thủ pháp lý. |
+
+## Ngân sách chung ba provider — 2026-09-30 19:55 Asia/Ho_Chi_Minh
+
+| Kiểm tra | Trạng thái | Bằng chứng và giới hạn |
+|---|---|---|
+| Cùng hạn mức workspace/ngày | PASS (PostgreSQL 18.3 disposable) | Migration fresh đến `0026`; toàn bộ `tests/test_postgres_database_integration.py` — `9 passed, 3 skipped`. Test mới `test_automatic_ai_budget_is_shared_across_deepseek_gemini_and_qwen` xác nhận hai provider đầu ghi reservation vào chung ngày/company; yêu cầu thứ ba bị `deferred_budget`, tổng reservation không vượt cap. |
+| Unit pricing/reservation | PASS | `tests/test_ai_budget.py` — `14 passed`; model ID/region chưa được duyệt, pricing hết hạn và thiếu explicit token bound tiếp tục fail closed. |
+| Provider call | NOT_RUN | Không gọi DeepSeek/Gemini/Qwen; payload chỉ synthetic. Đây là kiểm tra database reservation, chưa chứng minh Gemini/Qwen có callsite worker. |
+| Redis | SKIPPED | Ba test Redis trong module bị skip vì `REDIS_QUEUE_TEST_URL`/`REDIS_URL` chưa được cấu hình cho disposable suite này. |
+| Dịch vụ test | DONE | PostgreSQL test cluster riêng ở loopback port `15559` đã dừng. Không thay database/Redis preview. |

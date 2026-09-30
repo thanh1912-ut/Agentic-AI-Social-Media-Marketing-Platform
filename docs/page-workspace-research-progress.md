@@ -524,3 +524,11 @@ Base đã kiểm tra: `codex/creative-studio-ui` @ `b769097bfdb3568889d974c6def9
 - PASS: Bộ tập trung `tests/test_research_privacy.py tests/test_market_research_api.py tests/test_ai_budget.py` — **47 passed**.
 - LIMITATION: Các lượt này dùng fixture; không phải kiểm thử PostgreSQL/Redis/browser/Meta/provider live. Một số test parser và integration được bỏ/skip do runtime hoặc service test không cấu hình.
 - IN_PROGRESS: Chưa mở Qwen/Gemini cho comments/media. Tiếp tục giữ dữ liệu ở `privacy_hold` cho tới khi có điều kiện xử lý, retention và quyền xóa được xác định đủ rõ.
+
+### 2026-09-30 19:53 Asia/Ho_Chi_Minh — Kiểm chứng ngân sách chung ba provider trên PostgreSQL
+
+- DONE: Bổ sung integration test chứng minh DeepSeek, Gemini và Qwen dự trữ từ cùng hạn mức `ai_usage_budget_days` theo workspace/ngày. Test dùng company và nội dung tổng hợp, không gọi provider.
+- PASS: PostgreSQL 18.3 disposable, migration fresh tới `0026`; `test_automatic_ai_budget_is_shared_across_deepseek_gemini_and_qwen` — `1 passed`. DeepSeek và Gemini đặt trước được ghi thành hai ledger rows; reservation Qwen tiếp theo trả `deferred_budget` khi tổng sẽ vượt cap. Kiểm tra tổng reserved vẫn không vượt limit.
+- PASS: `tests/test_ai_budget.py` — `14 passed`; Ruff, `py_compile` dùng cache ở `/private/tmp`, `git diff --check`.
+- LIMITATION: Đây chỉ chứng minh reservation/ledger dùng chung khi caller cung cấp model, region và token bounds đã kiểm tra. Worker chưa gọi Gemini/Qwen; comment/media tiếp tục `privacy_hold`; không có provider live request.
+- PASS: Sau khi sandbox chặn loopback ở lượt đầu, chạy lại toàn `tests/test_postgres_database_integration.py` khi được cấp quyền tới đúng cụm disposable — `9 passed, 3 skipped` (`POSTGRES_TEST_URL` thật; các test Redis bị skip vì Redis test URLs không cấu hình). Cụm PostgreSQL 18.3 port `15559` đã dừng sau test.

@@ -531,6 +531,101 @@ def test_ai_budget_reservations_are_atomic_and_idempotent(monkeypatch: pytest.Mo
     asyncio.run(run())
 
 
+def test_automatic_ai_budget_is_shared_across_deepseek_gemini_and_qwen(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Provider-specific reservations compete for the same workspace/day cap."""
+    from types import SimpleNamespace
+
+    from services.worker import ai_budget
+    from services.worker.ai_budget import price_for, reserve_token_bound_micro_usd
+
+    async def run() -> None:
+        assert POSTGRES_TEST_URL
+        engine = create_async_engine(POSTGRES_TEST_URL)
+        sessions = async_sessionmaker(engine, expire_on_commit=False)
+        monkeypatch.setattr(api_db, "SessionLocal", sessions)
+        monkeypatch.setattr(ai_budget, "settings", SimpleNamespace(
+            llm_max_input_chars=100,
+            llm_max_tokens=100,
+            auto_ai_daily_budget_micro_usd=100_000,
+        ))
+        company_id: str | None = None
+        try:
+            async with sessions() as db:
+                company = Company(name="Shared provider budget", slug=f"shared-budget-{uuid.uuid4().hex[:16]}")
+                db.add(company)
+                await db.commit()
+                company_id = company.id
+
+            deepseek = await ai_budget.reserve_automatic_request(
+                company_id=company_id,
+                request_key="shared:deepseek",
+                provider="deepseek",
+                model="deepseek-flash",
+                operation="synthetic_research_summary",
+            )
+            gemini = await ai_budget.reserve_automatic_request(
+                company_id=company_id,
+                request_key="shared:gemini",
+                provider="gemini",
+                model="gemini-3.8-flash",
+                operation="synthetic_media_analysis",
+                max_input_tokens=100_000,
+                max_output_tokens=1,
+            )
+            qwen = await ai_budget.reserve_automatic_request(
+                company_id=company_id,
+                request_key="shared:qwen",
+                provider="qwen",
+                model="qwen3.8-27b",
+                operation="synthetic_comment_summary",
+                region="singapore",
+                max_input_tokens=100_000,
+                max_output_tokens=1,
+            )
+
+            assert deepseek.status == "reserved"
+            assert gemini.status == "reserved"
+            assert qwen.status == "deferred_budget"
+            qwen_bound = reserve_token_bound_micro_usd(
+                price_for("qwen", "qwen3.8-27b", region="singapore"),
+                max_input_tokens=100_000,
+                max_output_tokens=1,
+            )
+            assert gemini.reserved_micro_usd < 100_000
+            assert qwen_bound < 100_000
+            assert deepseek.reserved_micro_usd + gemini.reserved_micro_usd <= 100_000
+            assert deepseek.reserved_micro_usd + gemini.reserved_micro_usd + qwen_bound > 100_000
+
+            async with sessions() as db:
+                day = (await db.scalars(select(AIUsageBudgetDay).where(
+                    AIUsageBudgetDay.company_id == company_id,
+                ))).one()
+                rows = (await db.scalars(select(AIUsageLedger).where(
+                    AIUsageLedger.company_id == company_id,
+                ).order_by(AIUsageLedger.provider))).all()
+                assert day.limit_micro_usd == 100_000
+                assert day.reserved_micro_usd == deepseek.reserved_micro_usd + gemini.reserved_micro_usd
+                assert day.spent_micro_usd == 0
+                assert day.reserved_micro_usd <= day.limit_micro_usd
+                assert {(row.provider, row.model) for row in rows} == {
+                    ("deepseek", "deepseek-flash"),
+                    ("gemini", "gemini-3.8-flash"),
+                }
+                assert all(row.budget_class == "automatic" for row in rows)
+        finally:
+            if company_id is not None:
+                async with sessions() as db:
+                    await db.execute(delete(AIUsageLedger).where(AIUsageLedger.company_id == company_id))
+                    await db.execute(delete(AIUsageBudgetDay).where(AIUsageBudgetDay.company_id == company_id))
+                    await db.execute(delete(Company).where(Company.id == company_id))
+                    await db.commit()
+            await engine.dispose()
+
+    asyncio.run(run())
+
+
 def test_raw_research_object_has_committed_24_hour_expiry_before_storage_put(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
