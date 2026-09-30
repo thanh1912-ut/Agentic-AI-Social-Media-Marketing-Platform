@@ -75,6 +75,12 @@ launchctl bootout "gui/$(id -u)/com.agentic-marketing.auth-preview-worker"
 launchctl bootstrap "gui/$(id -u)" "$HOME/Library/LaunchAgents/com.agentic-marketing.auth-preview-worker.plist"
 ```
 
+Launchd có thể từ chối bootstrap ngay khi tiến trình cũ vừa bootout; đợi unload
+hoàn tất rồi thử lại bootstrap đúng label/plist, không chạy lại installer toàn bộ
+hoặc purge queue. Kiểm tra readiness và registry sau restart, không xem bootstrap
+thành công là API đã ready. Launcher dùng `auth-preview-agent@%h` (default,agent)
+và `auth-preview-ingestion@%h` (ingestion), tránh trộn phản hồi control inspect.
+
 Maintenance backup database/storage gần nhất trước migration0028:
 `/Users/lethanh/.local/share/agentic-marketing/backups/page-comment-quarantine-maintenance-20260930T184019Z`.
 Restore riêng đã kiểm tra checksum, counts61 bảng lịch sử và hash3 storage files sau upgrade0028.
@@ -191,6 +197,10 @@ profile link/avatar hoặc raw response. ID bài/cursor/parent là dữ liệu h
 Rerun cùng observation giữ checkpoint đầu; lượt mới tạo root riêng, không sửa provenance lịch sử.
 
 `MetaGraphClient.list_comments_page` hỗ trợ root và reply edge bằng cursor, limit1..100.
+Transport đọc stream tối đa2 MiB cả wire và sau giải nén gzip/deflate có bound;
+encoding khác bị từ chối. Deadline toàn request30 giây, read timeout15 giây,
+không redirect hoặc proxy môi trường. Publish response lỗi/quá lớn vẫn unknown
+để đối soát trước khi gửi lại; không tự coi timeout là chưa đăng thành công.
 Không follow URL next, không yêu cầu author/media/comment attachment. Private/hidden record bị loại.
 Text trả cho caller tối đa20.000 ký tự kèm truncated flag; đây là dữ liệu chưa screening,
 không được serialize/persist/gửi AI trực tiếp. `pagination_exhausted` chỉ là edge đã hết cursor,
@@ -275,7 +285,7 @@ Không bật xử lý comment/media từ cờ thủ công. Trước khi mở cá
 - Ledger ghi tác vụ Gemini tự động cho research và tương tác cho planning/generate/revise/review. Lời gọi tương tác dùng `budget_class=interactive`, không trừ hạn mức tự động2 USD/ngày. Media/comment production chưa route. Trang Nghiên cứu đọc hạn mức tự động qua `GET .../market-research/ai-budget`; tổng chi phí tương tác chưa có màn hình tổng hợp.
 - Chưa tải hay gửi ảnh/video đến provider; không tuyên bố media analysis đã chạy.
 - Comment/reply traversal, receipts và encrypted versions đã có; live processing chưa mở, review/normalized content/provider workflow chưa có. Coverage tiếp tục `privacy_hold`/Tier0 partial; không coi hết cursor là lấy hết Facebook.
-- Control inspect hiện cảnh báo workers trùng nodename; task registry đã thấy implementation mới nhưng cần đặt tên riêng cho worker default/agent và ingestion để tránh trộn phản hồi vận hành.
+- Tên worker riêng đã được triển khai/kiểm tra; task registry và queue routes đọc được từ đúng hai node. Khi thay launcher, kiểm tra cả ingestion/default,agent sau khi drain và restart.
 - Không tự nhận hệ thống tuân thủ đầy đủ Luật 91/2025/QH15 hoặc Nghị định 356/2025/NĐ-CP.
 
 ### Cấu hình Gemini/Qwen trước quyết định thay provider — lịch sử

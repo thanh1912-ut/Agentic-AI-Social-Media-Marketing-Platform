@@ -4,6 +4,15 @@ Ngày bắt đầu: 2026-09-30 (Asia/Ho_Chi_Minh)
 Nhánh: `codex/page-workspaces-research`
 Base đã kiểm tra: `codex/creative-studio-ui` @ `b769097bfdb3568889d974c6def95bb944559113`
 
+## 2026-10-01 02:18 — Giới hạn response Meta và tên worker riêng
+
+- DONE: Code `96a88b29af6c2844936e9830faa567c0eb52cb8b` sửa transport Meta và launcher, không đổi HTTP schema/migration/frontend. Response Graph đọc stream tối đa2 MiB cả wire và sau giải nén; gzip/deflate giải nén có bound, encoding khác bị từ chối. Giữ không redirect/proxy môi trường; deadline toàn request30 giây và read timeout15 giây.
+- DONE: 408/5xx/redirect đóng response không đọc body; 4xx vẫn là rejection có mã sạch. Publish timeout/response quá lớn/JSON lỗi vẫn outcome_unknown, không trở thành retry gửi bài. JSON quá sâu, compressed response hỏng và stream gián đoạn không log payload/token.
+- DONE: Default/agent và ingestion chạy với hai nodename riêng. Control inspect sau restart nhận đúng hai worker và đúng queue, không còn cảnh báo duplicate nodename ở lượt kiểm tra này.
+- PASS: Backend source cuối405 passed/32 skipped/1 deselected,21 dependency warnings; vẫn loại Docling parser module và một scan-PDF runtime test. Ruff, Python3.11 compile, OpenAPI unchanged và whitespace đạt. PostgreSQL/Redis25 tests của commit `3bfd1b8` là kết quả bước trước, không ghi như lượt chạy mới của commit này.
+- FIXED/OPS: Lần bootstrap ngay sau bootout bị launchd từ chối đăng ký lại; cả bốn label đã được khôi phục bằng bootstrap sau khi hoàn tất unload. API/web readiness, queue routes, task registry, Page active/lịch tắt và key presence kiểm tra lại đạt. Không đổi database/storage/secret hoặc dừng hạ tầng test/chung.
+- NOT_RUN: Không có Meta/provider live call mới, không bật comment decision/lịch hoặc publish. Workflow assessment/review, media, erasure và Gemini analysis vẫn cần hoàn thiện; goal tổng thể còn active.
+
 ## 2026-10-01 01:47 — Worker bình luận/replies và vùng xử lý mã hóa
 
 - DONE: Code `3bfd1b8fcb6aab7ac6abb0b05fcaaea960803a6e` bổ sung migration `0028_comment_quarantine`, ba bảng decision/version/receipt và worker `research_comments`. Thay đổi thuộc backend/database/tests; frontend/HTTP schema/agent prompt không đổi.

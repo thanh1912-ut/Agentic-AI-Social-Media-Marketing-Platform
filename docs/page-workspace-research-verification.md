@@ -1,5 +1,21 @@
 # Kiểm chứng Page workspace và Nghiên cứu
 
+## Kết quả mới nhất — 2026-10-01 02:18 Asia/Ho_Chi_Minh
+
+Code kiểm thử/deploy: `96a88b29af6c2844936e9830faa567c0eb52cb8b`; schema0028 và frontend release trước giữ nguyên.
+
+| Kiểm tra | Trạng thái | Bằng chứng và giới hạn |
+|---|---|---|
+| Graph stream limits | PASS fixture transport | Stream không có/falsified Content-Length dừng ở2 MiB; gzip/deflate nhỏ không được nở quá bound; stream được đóng khi lỗi. Response đúng ngưỡng vẫn đọc được. Không gọi Meta thật. |
+| Graph timeout/rejection | PASS fixture transport | Deadline toàn stream30s; redirect/408/5xx không đọc body hoặc follow. Publish lỗi vẫn unknown; 4xx vẫn explicit rejection. Không lộ giá trị tổng hợp dùng làm token test. |
+| Worker runtime | PASS local real Redis | Inspect nhận đúng hai nodename và queue default,agent/ingestion; task research_comments registered. Không gửi job test/crawl mới vào preview. |
+| Backend regression | PASS có giới hạn |405 passed/32 skipped/1 deselected,21 warnings. Docling/parser runtime và provider opt-in không được ghi PASS. PG/Redis25 tests ở commit3bfd là kết quả trước, không chạy lại trong slice transport này. |
+| Quality | PASS | Ruff paths đã đổi, compile bằng Python3.11, OpenAPI unchanged check và whitespace. Không thay frontend hoặc generated contracts. |
+| Rollout | PASS sau recovery | Bootstrap đầu bị launchd từ chối khi label chưa đăng ký lại được; sau unload đã bootstrap thành công cả bốn label. API/web ready, Page active, owned schedule tắt, Gemini/key token còn cấu hình. Database head vẫn0028, không migration/dữ liệu mới. |
+| Live collection/analysis | NOT_RUN | Không gọi Meta/Gemini, không gửi Facebook publish. Page connection persistence đạt; comment review/media/Gemini live vẫn chưa đạt theo báo cáo dưới. |
+
+Lỗi test đầu của fixture đúng ngưỡng do chiều dài envelope JSON tính thiếu một byte; sửa fixture tính theo len(prefix/suffix), giữ assertion ngưỡng. Source cuối đã chạy toàn bộ regression nêu trên.
+
 ## Kết quả mới nhất — 2026-10-01 01:47 Asia/Ho_Chi_Minh
 
 Code kiểm thử/deploy: `3bfd1b8fcb6aab7ac6abb0b05fcaaea960803a6e`.
