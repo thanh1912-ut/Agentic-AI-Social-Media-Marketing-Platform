@@ -682,6 +682,7 @@ async def _reserve_facebook_request_slot() -> None:
 
 async def _open_competitor_run(
     company_id: str, group_id: str, source: ResearchSource, cycle_id: str, job_id: str,
+    *, privacy_policy_snapshot: dict[str, Any] | None = None,
 ) -> str:
     async with SessionLocal() as db:
         run = await db.scalar(select(WebCrawlRun).where(
@@ -690,10 +691,9 @@ async def _open_competitor_run(
             WebCrawlRun.cycle_id == cycle_id,
         ).with_for_update())
         if run is None:
-            privacy_policy = await db.scalar(select(ResearchPrivacyPolicyRevision).where(
-                ResearchPrivacyPolicyRevision.company_id == company_id,
-                ResearchPrivacyPolicyRevision.source_id == source.id,
-            ).order_by(ResearchPrivacyPolicyRevision.revision_no.desc()).limit(1))
+            privacy_policy_snapshot = privacy_policy_snapshot or await _latest_privacy_policy_snapshot(
+                db, company_id, source.id,
+            )
             run = WebCrawlRun(
                 company_id=company_id, group_id=group_id, source_id=source.id,
                 cycle_id=cycle_id, job_id=job_id, status="running",
@@ -702,14 +702,12 @@ async def _open_competitor_run(
                              "engine_version": ENGINE_VERSION, "access_tier": 0,
                              "parser_version": "facebook-cli-adapter-v1",
                              "window_days": 90, "request_budget": 20,
-                             "privacy_policy_revision_id": privacy_policy.id if privacy_policy else None,
-                             "privacy_policy_revision_no": privacy_policy.revision_no if privacy_policy else None,
-                             "privacy_policy_version": privacy_policy.policy_version if privacy_policy else None,
-                             "privacy_policy_requested_retention_days": (
-                                 privacy_policy.requested_retention_days if privacy_policy else None
-                             ),
-                             "retention_enforcement_status": "not_enforced",
-                             "comments_content_status": "privacy_hold"},
+                             "privacy_policy_revision_id": privacy_policy_snapshot["revision_id"],
+                             "privacy_policy_revision_no": privacy_policy_snapshot["revision_no"],
+                             "privacy_policy_version": privacy_policy_snapshot["version"],
+                             "privacy_policy_requested_retention_days": privacy_policy_snapshot["requested_retention_days"],
+                             "retention_enforcement_status": privacy_policy_snapshot["retention_enforcement_status"],
+                             "comments_content_status": privacy_policy_snapshot["comments_content_status"]},
                 counters_json={"items_seen": 0, "items_saved": 0, "pages_requested": 0},
                 started_at=utcnow(),
             )
@@ -719,6 +717,38 @@ async def _open_competitor_run(
         run.started_at = run.started_at or utcnow()
         await db.commit()
         return run.id
+
+
+def _policy_snapshot(row: ResearchPrivacyPolicyRevision | None) -> dict[str, Any]:
+    """Keep only policy identity in a run snapshot; never copy basis prose."""
+    return {
+        "configured": row is not None,
+        "revision_id": row.id if row else None,
+        "revision_no": row.revision_no if row else None,
+        "version": row.policy_version if row else None,
+        "requested_retention_days": row.requested_retention_days if row else None,
+        "retention_enforcement_status": "not_enforced",
+        "comments_content_status": "privacy_hold",
+    }
+
+
+async def _latest_privacy_policy_snapshot(db, company_id: str, source_id: str) -> dict[str, Any]:
+    row = await db.scalar(select(ResearchPrivacyPolicyRevision).where(
+        ResearchPrivacyPolicyRevision.company_id == company_id,
+        ResearchPrivacyPolicyRevision.source_id == source_id,
+    ).order_by(ResearchPrivacyPolicyRevision.revision_no.desc()).limit(1))
+    return _policy_snapshot(row)
+
+
+def _checkpointed_research_source_ids(source_results: list[dict[str, Any]]) -> set[str]:
+    """Only re-run source results explicitly marked retryable after recovery."""
+    return {
+        source_id for item in source_results
+        if isinstance(item, dict)
+        and isinstance((source_id := item.get("source_id")), str)
+        and source_id
+        and item.get("retryable") is not True
+    }
 
 
 FACEBOOK_CLI_LOCK_KEY = 0x4642434C49
@@ -814,9 +844,12 @@ async def _finish_competitor_run(
 
 async def _collect_public_competitor_page(
     company_id: str, group_id: str, source: ResearchSource, observed_at: datetime,
-    *, cycle_id: str, job_id: str,
+    *, cycle_id: str, job_id: str, privacy_policy_snapshot: dict[str, Any] | None = None,
 ) -> tuple[int, dict[str, Any]]:
-    run_id = await _open_competitor_run(company_id, group_id, source, cycle_id, job_id)
+    run_id = await _open_competitor_run(
+        company_id, group_id, source, cycle_id, job_id,
+        privacy_policy_snapshot=privacy_policy_snapshot,
+    )
     runner_path = getattr(settings, "facebook_cli_runner_path", "")
     if not runner_path:
         await _finish_competitor_run(
@@ -979,6 +1012,7 @@ def _facebook_post_published_at(value: object, fallback: datetime) -> datetime |
 async def _collect_competitor_page(
     company_id: str, group_id: str, source: ResearchSource, observed_at: datetime,
     *, cycle_id: str | None = None, job_id: str | None = None,
+    privacy_policy_snapshot: dict[str, Any] | None = None,
 ) -> tuple[int, dict[str, Any]]:
     mode = source.collection_mode
     if mode == "public_web":
@@ -986,12 +1020,16 @@ async def _collect_competitor_page(
             raise CrawlError("collection_context_missing", "Thiếu mã lượt thu thập bền vững.")
         return await _collect_public_competitor_page(
             company_id, group_id, source, observed_at, cycle_id=cycle_id, job_id=job_id,
+            privacy_policy_snapshot=privacy_policy_snapshot,
         )
     if mode == "manual":
         raise CrawlError("manual_collection_selected", "Nguồn đang chọn nhập thủ công.")
     run_id = None
     if cycle_id and job_id:
-        run_id = await _open_competitor_run(company_id, group_id, source, cycle_id, job_id)
+        run_id = await _open_competitor_run(
+            company_id, group_id, source, cycle_id, job_id,
+            privacy_policy_snapshot=privacy_policy_snapshot,
+        )
     if mode in {"legacy", "meta_api"}:
         token = getattr(settings, "meta_public_content_access_token", "")
         if not token:
@@ -1389,10 +1427,14 @@ async def _run(job_id: str) -> None:
             id=group.id, company_id=group.company_id, name=group.name, industry=group.industry,
             region=group.region, locale=group.locale, keywords_json=group.keywords_json,
         )
+        saved_results = cycle.source_results_json if isinstance(cycle.source_results_json, list) else []
+        source_results = [dict(item) for item in saved_results if isinstance(item, dict)]
+        checkpointed_source_ids = _checkpointed_research_source_ids(source_results)
     observed_at = utcnow()
 
-    source_results: list[dict[str, Any]] = []
     for position, source_id in enumerate(source_snapshot, start=1):
+        if source_id in checkpointed_source_ids:
+            continue
         async with SessionLocal() as db:
             source = await db.scalar(select(ResearchSource).where(
                 ResearchSource.company_id == company_id, ResearchSource.id == source_id,
@@ -1400,12 +1442,18 @@ async def _run(job_id: str) -> None:
             if source is None:
                 continue
             source_type = source.source_type
+            privacy_policy_snapshot = (
+                await _latest_privacy_policy_snapshot(db, company_id, source.id)
+                if source_type in {"owned_facebook_page", "competitor_facebook_page", "facebook_group"}
+                else None
+            )
             if source_type == "competitor_facebook_page":
                 source.last_collection_attempt_at = utcnow()
                 source.collection_last_method = (
                     "facebook-cli" if source.collection_mode == "public_web" else source.collection_mode
                 )
-                await db.commit()
+            # Do not keep a database transaction open while collectors make network calls.
+            await db.commit()
             try:
                 if source_type == "facebook_group":
                     outcome = {"status": "unsupported_tier0", "items_saved": 0,
@@ -1428,6 +1476,7 @@ async def _run(job_id: str) -> None:
                     _count, details = await _collect_competitor_page(
                         company_id, group_id, source, observed_at,
                         cycle_id=cycle.id, job_id=job_id,
+                        privacy_policy_snapshot=privacy_policy_snapshot,
                     )
                     outcome = {**details}
                 else:
@@ -1466,7 +1515,8 @@ async def _run(job_id: str) -> None:
                     "login_required", "access_denied", "challenge", "challenge_required",
                 }
                 outcome = {"status": "blocked" if is_public_block else "failed",
-                           "code": error.code, "message": str(error), "items_saved": 0}
+                           "code": error.code, "message": str(error), "items_saved": 0,
+                           "retryable": error.retryable}
                 if source_type == "competitor_facebook_page":
                     source.collection_status = error.code
                     source.collection_last_method = (
@@ -1502,14 +1552,30 @@ async def _run(job_id: str) -> None:
                     },
                 )
                 outcome = {"status": "failed", "code": "source_processing_failed",
-                           "message": "Không xử lý được nguồn này trong chu kỳ hiện tại.", "items_saved": 0}
+                           "message": "Không xử lý được nguồn này trong chu kỳ hiện tại.",
+                           "items_saved": 0, "retryable": False}
                 source.status = "error"
                 if source_type == "competitor_facebook_page":
                     source.collection_status = "source_processing_failed"
                     source.next_due_at = None
                 source.error_json = {"code": "source_processing_failed", "message": outcome["message"]}
-            source_results.append({"source_id": source.id, **outcome})
+            if privacy_policy_snapshot is not None:
+                outcome["privacy_policy_snapshot"] = privacy_policy_snapshot
+            source_results = [
+                item for item in source_results
+                if item.get("source_id") != source.id
+            ]
+            source_result = {"source_id": source.id, **outcome}
+            source_results.append(source_result)
+            cycle = await db.scalar(select(ResearchCycle).where(
+                ResearchCycle.company_id == company_id,
+                ResearchCycle.job_id == job_id,
+            ).with_for_update())
+            if cycle is not None:
+                cycle.source_results_json = list(source_results)
             await db.commit()
+            if not source_result.get("retryable"):
+                checkpointed_source_ids.add(source.id)
         async with SessionLocal() as db:
             job = await db.get(Job, job_id)
             if job:

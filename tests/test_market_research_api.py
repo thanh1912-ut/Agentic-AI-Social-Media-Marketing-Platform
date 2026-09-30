@@ -497,7 +497,7 @@ def test_public_facebook_collection_requires_built_runner(market_api, monkeypatc
     ))
     finished: list[dict[str, object]] = []
 
-    async def open_run(*_args):
+    async def open_run(*_args, **_kwargs):
         return "run-1"
 
     async def finish_run(_company_id, _run_id, **kwargs):
@@ -1034,6 +1034,127 @@ def test_collection_run_pins_privacy_policy_revision_without_enabling_processing
     assert captured["privacy_policy_requested_retention_days"] == 90
     assert captured["retention_enforcement_status"] == "not_enforced"
     assert captured["comments_content_status"] == "privacy_hold"
+
+
+def test_research_source_checkpoint_retries_only_retryable_outcomes() -> None:
+    checkpointed = research_tasks._checkpointed_research_source_ids([
+        {"source_id": "done", "status": "collected"},
+        {"source_id": "blocked", "status": "blocked", "retryable": False},
+        {"source_id": "retry", "status": "failed", "retryable": True},
+        {"status": "failed"},
+        None,
+    ])
+
+    assert checkpointed == {"done", "blocked"}
+
+
+def test_research_policy_snapshot_is_explicitly_not_enforced() -> None:
+    configured = research_tasks._policy_snapshot(SimpleNamespace(
+        id="policy-revision-1",
+        revision_no=1,
+        policy_version="policy-v1",
+        requested_retention_days=90,
+    ))
+    missing = research_tasks._policy_snapshot(None)
+
+    assert configured == {
+        "configured": True,
+        "revision_id": "policy-revision-1",
+        "revision_no": 1,
+        "version": "policy-v1",
+        "requested_retention_days": 90,
+        "retention_enforcement_status": "not_enforced",
+        "comments_content_status": "privacy_hold",
+    }
+    assert missing["configured"] is False
+    assert missing["revision_id"] is None
+    assert missing["retention_enforcement_status"] == "not_enforced"
+
+
+def test_research_cycle_persists_source_checkpoint_for_worker_recovery(market_api, monkeypatch) -> None:
+    async def no_redis_dispatch(_job_id: str) -> bool:
+        return False
+
+    monkeypatch.setattr(market_research_routes, "dispatch_research_job", no_redis_dispatch)
+    client, session_factory, _encryption_key = market_api
+    workspace_id, headers = _owner(client, "research-checkpoint@example.com")
+    group_id = _create_group(client, workspace_id, headers)
+    source_ids = []
+    for source_name in ("First checkpoint fixture", "Second checkpoint fixture"):
+        source_response = client.post(
+            f"/api/v1/workspaces/{workspace_id}/market-research/sources",
+            headers=headers,
+            json={
+                "group_id": group_id,
+                "source_type": "website",
+                "name": source_name,
+                "url": f"https://example.test/{source_name.split()[0].lower()}",
+            },
+        )
+        assert source_response.status_code == 201, source_response.text
+        source_ids.append(source_response.json()["id"])
+
+    accepted = client.post(
+        f"/api/v1/workspaces/{workspace_id}/market-research/groups/{group_id}/crawl",
+        headers=headers,
+    )
+    assert accepted.status_code == 202, accepted.text
+    job_id = accepted.json()["job_id"]
+    collector_calls: list[str] = []
+    interrupted_source_attempts = 0
+
+    async def collect_once(_company_id, _group_id, source, _observed_at, **_kwargs):
+        nonlocal interrupted_source_attempts
+        collector_calls.append(source.id)
+        if source.id == source_ids[1] and interrupted_source_attempts == 0:
+            interrupted_source_attempts += 1
+            raise asyncio.CancelledError()
+        return 0, {"items_saved": 0, "pages_visited": 1}
+
+    monkeypatch.setattr(research_tasks, "SessionLocal", session_factory)
+    monkeypatch.setattr(research_tasks, "_collect_website", collect_once)
+
+    async def start_job():
+        async with session_factory() as db:
+            job = await db.get(Job, job_id)
+            assert job is not None
+            job.status = "running"
+            await db.commit()
+        await research_tasks._run(job_id)
+
+    with pytest.raises(asyncio.CancelledError):
+        asyncio.run(start_job())
+
+    async def read_interrupted_checkpoint():
+        async with session_factory() as db:
+            job = await db.get(Job, job_id)
+            cycle = await db.scalar(select(ResearchCycle).where(ResearchCycle.job_id == job_id))
+            assert job is not None and cycle is not None
+            return job.status, list(cycle.source_results_json)
+
+    interrupted_status, first_checkpoint = asyncio.run(read_interrupted_checkpoint())
+    assert interrupted_status == "running"
+    assert collector_calls == source_ids
+    assert first_checkpoint == [{
+        "source_id": source_ids[0],
+        "status": "collected",
+        "items_saved": 0,
+        "pages_visited": 1,
+    }]
+
+    asyncio.run(research_tasks._run(job_id))
+
+    async def read_recovered_cycle():
+        async with session_factory() as db:
+            job = await db.get(Job, job_id)
+            cycle = await db.scalar(select(ResearchCycle).where(ResearchCycle.job_id == job_id))
+            assert job is not None and cycle is not None
+            return job.status, list(cycle.source_results_json)
+
+    recovered_status, recovered_checkpoint = asyncio.run(read_recovered_cycle())
+    assert recovered_status == "succeeded"
+    assert collector_calls == [source_ids[0], source_ids[1], source_ids[1]]
+    assert [item["source_id"] for item in recovered_checkpoint] == source_ids
 
 
 def test_source_privacy_policy_write_requires_owner(market_api) -> None:

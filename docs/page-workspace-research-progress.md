@@ -225,6 +225,16 @@ Base đã kiểm tra: `codex/creative-studio-ui` @ `b769097bfdb3568889d974c6def9
 - PASS: Frontend production build sau khi đổi trạng thái và nhãn capability đạt trong managed worktree riêng.
 - NOT_RUN: Không thử đăng thật hoặc kiểm tra live Meta; chưa có Page do Owner xác nhận để xuất bản.
 
+### 2026-09-30 — Lưu checkpoint nguồn nghiên cứu theo chu kỳ
+
+- DONE: Worker nạp các kết quả nguồn đã commit trong `research_cycles.source_results_json` khi phục hồi cùng job; nguồn đã hoàn tất được bỏ qua, lỗi retryable chưa được checkpoint thành hoàn tất.
+- DONE: Sau mỗi nguồn, worker commit kết quả và trạng thái cùng nhau; không giữ transaction mở trong lúc gọi collector mạng.
+- DONE: Ghim policy snapshot vào kết quả nguồn Facebook (Page công ty, Page công khai, Group) và chuyển cùng snapshot đó tới `WebCrawlRun`, tránh lệch revision nếu policy đổi khi worker đang chạy.
+- PASS: SQLite API/worker fixture mô phỏng worker bị hủy sau nguồn thứ nhất; khi chạy lại, nguồn thứ nhất không bị gọi lại, nguồn dở được tiếp tục và chu kỳ lưu cả hai kết quả.
+- PASS: `tests/test_market_research_api.py tests/test_research_privacy.py` đạt 20 passed; Ruff và `git diff --check` đạt.
+- LIMIT: Đây là checkpoint cấp nguồn trong một research cycle, chưa phải cursor bền cho từng post/comment/reply. Worker hiện chưa tiếp tục phân trang comment hoặc thu thập media.
+- NOT_RUN: PostgreSQL/Redis recovery thật, live crawl, provider live và browser real chưa chạy trong lát cắt này.
+
 ### 2026-09-30 10:02 Asia/Ho_Chi_Minh — PostgreSQL/Redis integration và raw retention
 
 - PASS: Tạo PostgreSQL 18.3 riêng trong `/private/tmp`, hai Redis riêng trên loopback; chạy migration từ database rỗng tới `0022_ai_usage_budget`.

@@ -110,3 +110,9 @@ Khi không còn cần chạy integration trong phiên làm việc, dừng đúng
 ```
 
 Không dùng các lệnh này nếu đã tái sử dụng các cổng cho tiến trình khác; xác minh tiến trình/cổng trước khi dừng.
+
+### Phục hồi chu kỳ nghiên cứu
+
+- Kết quả từng nguồn trong `research_cycles.source_results_json` được commit sau khi xử lý xong nguồn. Nếu job vẫn ở trạng thái đang chạy khi worker bị gián đoạn, lần nhận lại bỏ qua nguồn đã checkpoint; nguồn đang dở hoặc có kết quả retryable được thử lại.
+- Đây mới là checkpoint cấp nguồn. Crawl theo cursor từng post/comment/reply, resume phân trang và media chưa được triển khai; xem `page-workspace-research-verification.md` trước khi hứa coverage.
+- Lượt Facebook công khai ghi policy revision được quan sát khi bắt đầu nguồn, cùng `comments_content_status=privacy_hold` và `retention_enforcement_status=not_enforced`. Snapshot là provenance, không phải bằng chứng có căn cứ xử lý hoặc xóa dữ liệu tự động.

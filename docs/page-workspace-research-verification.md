@@ -130,3 +130,15 @@ Giá lấy từ [Google Gemini model update](https://ai.google.dev/gemini-api/do
 | Frontend quality | PASS | Typecheck, ESLint, Vitest: 50 passed; `next build` trong worktree riêng đạt. |
 | Python lint / whitespace | PASS | Ruff trên file Python đã sửa và `git diff --check`. |
 | Database migration / live source run / UI reload | NOT_RUN | Không có migration trong lát cắt này; không chạy Facebook live hoặc pipeline worker thật. |
+
+## Checkpoint research source recovery — 2026-09-30
+
+| Kiểm tra | Trạng thái | Bằng chứng và giới hạn |
+|---|---|---|
+| Kết quả nguồn được commit vào research cycle | PASS (SQLite worker fixture) | Worker ghi `source_results_json` ngay sau mỗi nguồn, cùng transaction cập nhật trạng thái nguồn. |
+| Worker bị hủy rồi chạy lại | PASS (SQLite worker fixture) | Test hủy worker sau khi nguồn thứ nhất đã commit. Lần chạy lại bỏ qua nguồn thứ nhất, tiếp tục nguồn thứ hai và kết thúc với hai kết quả. |
+| Retryable result | PASS (unit fixture) | Kết quả đánh dấu `retryable=true` không được tính là checkpoint hoàn tất; các kết quả khác được giữ để tránh thu thập lại. |
+| Policy snapshot | PASS (fixture) | Cùng revision snapshot gắn vào kết quả nguồn và WebCrawlRun; ghi rõ `privacy_hold` và `not_enforced`. |
+| Backend focused | PASS | `tests/test_market_research_api.py tests/test_research_privacy.py`: 20 passed; Ruff và `git diff --check` đạt. |
+| PostgreSQL/Redis recovery thật | NOT_RUN | Test phục hồi này dùng SQLite fixture; không chứng minh Redis dispatch hoặc PostgreSQL lease recovery. |
+| Post/comment cursors, media, public Group discussions | NOT_RUN | Chưa có checkpoint cấp post/comment/reply, xử lý media hoặc quyền Tier 0 để đọc thảo luận nhóm. |
