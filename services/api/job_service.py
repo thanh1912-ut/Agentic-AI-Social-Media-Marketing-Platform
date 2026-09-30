@@ -178,6 +178,20 @@ async def dispatch_research_source_erasure_job(job_id: str) -> bool:
         return False
 
 
+async def dispatch_research_comments_job(job_id: str) -> bool:
+    """Deliver a committed comment batch; never create processing decisions."""
+    if settings.inline_jobs:
+        from services.worker.research_comments import research_comments_task_async
+        await research_comments_task_async(job_id)
+        return True
+    try:
+        from services.worker.celery_app import celery_app
+        celery_app.send_task("services.worker.research_comments.research_comments_task", args=[job_id], queue="agent")
+        return True
+    except Exception:
+        return False
+
+
 async def _record_dispatch(db: AsyncSession, job_id: str, sent: bool) -> None:
     job = await db.get(Job, job_id)
     if job is None:
@@ -206,6 +220,7 @@ async def dispatch_queued_jobs(db: AsyncSession) -> int:
     meta_dispatch: list[tuple[str, str]] = []
     research_dispatch: list[str] = []
     erasure_dispatch: list[str] = []
+    comment_dispatch: list[str] = []
     for job in jobs:
         if job.kind in {"content_generation", "content_revise"} and job.result and job.result.get("campaign_id"):
             if job.attempts >= settings.max_job_attempts:
@@ -273,6 +288,16 @@ async def dispatch_queued_jobs(db: AsyncSession) -> int:
         elif job.kind == "research_source_erasure":
             job.lease_until = now + timedelta(minutes=settings.job_lease_minutes)
             erasure_dispatch.append(job.id)
+        elif job.kind == "research_comments":
+            if job.attempts >= settings.max_job_attempts:
+                job.status = "failed"
+                job.finished_at = now
+                job.lease_until = None
+                job.error = {"code": "comment_retry_limit", "message": "Lô bình luận đã hết số lần thử tự động.",
+                             "retryable": False}
+                continue
+            job.lease_until = now + timedelta(minutes=settings.job_lease_minutes)
+            comment_dispatch.append(job.id)
 
     # Persist the lease before queue delivery. If Redis is unavailable, the
     # scheduler can safely retry after expiry without losing the DB job.
@@ -300,6 +325,10 @@ async def dispatch_queued_jobs(db: AsyncSession) -> int:
         count += int(sent)
     for job_id in erasure_dispatch:
         sent = await dispatch_research_source_erasure_job(job_id)
+        await _record_dispatch(db, job_id, sent)
+        count += int(sent)
+    for job_id in comment_dispatch:
+        sent = await dispatch_research_comments_job(job_id)
         await _record_dispatch(db, job_id, sent)
         count += int(sent)
     return count

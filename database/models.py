@@ -836,6 +836,7 @@ class ResearchPrivacyPolicyRevision(Base, IdMixin):
     __tablename__ = "research_privacy_policy_revisions"
     __table_args__ = (
         UniqueConstraint("company_id", "source_id", "revision_no", name="uq_research_privacy_policy_revision"),
+        UniqueConstraint("company_id", "source_id", "id", name="uq_research_privacy_policy_tenant_id"),
         ForeignKeyConstraint(
             ["company_id", "source_id"],
             ["research_sources.company_id", "research_sources.id"],
@@ -1045,6 +1046,128 @@ class ResearchCommentCheckpoint(Base, IdMixin, TimestampMixin):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, server_default=func.now(), nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow,
                                              server_default=func.now(), nullable=False)
+
+
+class ResearchCommentProcessingDecision(Base, IdMixin):
+    """Operator-recorded assessment for local quarantine, never commenter consent.
+
+    Policy notes alone do not create this decision. It grants no permission to
+    send commenter content to a provider or to expose unreviewed plaintext.
+    """
+
+    __tablename__ = "research_comment_processing_decisions"
+    __table_args__ = (
+        UniqueConstraint("company_id", "source_id", "id", name="uq_comment_decision_tenant_source_id"),
+        ForeignKeyConstraint(
+            ["company_id", "source_id", "policy_revision_id"],
+            ["research_privacy_policy_revisions.company_id", "research_privacy_policy_revisions.source_id",
+             "research_privacy_policy_revisions.id"],
+            name="fk_comment_decision_policy_tenant", ondelete="CASCADE",
+        ),
+        CheckConstraint("status IN ('pending','active','revoked')", name="ck_comment_decision_status"),
+        CheckConstraint("scope = 'local_comment_quarantine_v1'", name="ck_comment_decision_scope"),
+        CheckConstraint("valid_until > created_at", name="ck_comment_decision_validity"),
+        Index("ix_comment_decision_source_status", "company_id", "source_id", "status", "valid_until"),
+    )
+
+    company_id: Mapped[str] = mapped_column(String(36), nullable=False)
+    source_id: Mapped[str] = mapped_column(String(36), nullable=False)
+    policy_revision_id: Mapped[str] = mapped_column(String(36), nullable=False)
+    assessment_reference: Mapped[str] = mapped_column(Text, nullable=False)
+    scope: Mapped[str] = mapped_column(String(40), default="local_comment_quarantine_v1",
+                                     server_default="local_comment_quarantine_v1", nullable=False)
+    status: Mapped[str] = mapped_column(String(16), default="pending", server_default="pending", nullable=False)
+    assessed_by: Mapped[str] = mapped_column(ForeignKey("users.id"), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow,
+                                              server_default=func.now(), nullable=False)
+    valid_until: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
+class ResearchCommentVersion(Base, IdMixin):
+    """Pinned comment candidate in encrypted, expiring local quarantine.
+
+    No author name, profile link or plaintext body is stored. The hash is a
+    restricted fingerprint, not an assertion that the record is anonymous.
+    """
+
+    __tablename__ = "research_comment_versions"
+    __table_args__ = (
+        UniqueConstraint("company_id", "observation_id", "external_comment_id", "content_hash",
+                         name="uq_comment_version_observation_content"),
+        ForeignKeyConstraint(
+            ["company_id", "source_id", "evidence_id"],
+            ["market_evidence.company_id", "market_evidence.source_id", "market_evidence.id"],
+            name="fk_comment_version_source_evidence_tenant", ondelete="CASCADE",
+        ),
+        ForeignKeyConstraint(
+            ["company_id", "evidence_id", "observation_id", "evidence_version_id"],
+            ["market_observations.company_id", "market_observations.evidence_id",
+             "market_observations.id", "market_observations.evidence_version_id"],
+            name="fk_comment_version_observation_tenant", ondelete="CASCADE",
+        ),
+        ForeignKeyConstraint(
+            ["company_id", "observation_id", "parent_key"],
+            ["research_comment_checkpoints.company_id", "research_comment_checkpoints.observation_id",
+             "research_comment_checkpoints.parent_key"],
+            name="fk_comment_version_parent_checkpoint", ondelete="CASCADE",
+        ),
+        ForeignKeyConstraint(
+            ["company_id", "source_id", "decision_id"],
+            ["research_comment_processing_decisions.company_id",
+             "research_comment_processing_decisions.source_id", "research_comment_processing_decisions.id"],
+            name="fk_comment_version_decision_tenant", ondelete="CASCADE",
+        ),
+        CheckConstraint("status IN ('privacy_hold','expired')", name="ck_comment_version_status"),
+        CheckConstraint("expires_at > captured_at", name="ck_comment_version_expiry"),
+        CheckConstraint("expires_at <= captured_at + INTERVAL '24 hours'",
+                        name="ck_comment_version_quarantine_max_age").ddl_if(dialect="postgresql"),
+        CheckConstraint("(likes IS NULL OR likes >= 0) AND (reply_count IS NULL OR reply_count >= 0)",
+                        name="ck_comment_version_counts"),
+        Index("ix_comment_version_quarantine_expiry", "status", "expires_at"),
+        Index("ix_comment_version_observation_identity", "company_id", "observation_id", "external_comment_id"),
+    )
+
+    company_id: Mapped[str] = mapped_column(String(36), nullable=False)
+    source_id: Mapped[str] = mapped_column(String(36), nullable=False)
+    evidence_id: Mapped[str] = mapped_column(String(36), nullable=False)
+    observation_id: Mapped[str] = mapped_column(String(36), nullable=False)
+    evidence_version_id: Mapped[str] = mapped_column(String(36), nullable=False)
+    decision_id: Mapped[str] = mapped_column(String(36), nullable=False)
+    parent_key: Mapped[str] = mapped_column(String(100), nullable=False)
+    external_comment_id: Mapped[str] = mapped_column(String(100), nullable=False)
+    content_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    candidate_ciphertext: Mapped[str | None] = mapped_column(Text)
+    redactor_version: Mapped[str] = mapped_column(String(80), nullable=False)
+    redaction_json: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
+    status: Mapped[str] = mapped_column(String(24), default="privacy_hold", server_default="privacy_hold", nullable=False)
+    content_truncated: Mapped[bool] = mapped_column(Boolean, default=False, server_default=sql_text("false"), nullable=False)
+    published_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    likes: Mapped[int | None] = mapped_column(Integer)
+    reply_count: Mapped[int | None] = mapped_column(Integer)
+    captured_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
+class ResearchCommentPageReceipt(Base, IdMixin):
+    """Atomic delivery receipt for one cursor; no body or Graph URL is retained."""
+
+    __tablename__ = "research_comment_page_receipts"
+    __table_args__ = (
+        UniqueConstraint("company_id", "checkpoint_id", "request_cursor_hash", name="uq_comment_page_cursor_receipt"),
+        ForeignKeyConstraint(
+            ["company_id", "checkpoint_id"],
+            ["research_comment_checkpoints.company_id", "research_comment_checkpoints.id"],
+            name="fk_comment_page_checkpoint_tenant", ondelete="CASCADE",
+        ),
+        CheckConstraint("received_count >= 0 AND withheld_private_count >= 0", name="ck_comment_page_receipt_counts"),
+    )
+
+    company_id: Mapped[str] = mapped_column(String(36), nullable=False)
+    checkpoint_id: Mapped[str] = mapped_column(String(36), nullable=False)
+    request_cursor_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    received_count: Mapped[int] = mapped_column(Integer, nullable=False)
+    withheld_private_count: Mapped[int] = mapped_column(Integer, nullable=False)
+    captured_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
 
 
 class MarketReport(Base, IdMixin, TimestampMixin):

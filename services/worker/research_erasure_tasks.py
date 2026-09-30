@@ -27,6 +27,7 @@ from database.models import (
     MarketReportEvidence,
     MarketReportWebSnapshot,
     ResearchCycle,
+    ResearchCommentCheckpoint, ResearchCommentPageReceipt, ResearchCommentProcessingDecision, ResearchCommentVersion,
     ResearchPrivacyPolicyRevision,
     ResearchSource,
     ResearchSourceErasure,
@@ -443,6 +444,23 @@ async def _finish_purge(job_id: str, claim_token: str) -> None:
         await db.execute(delete(ResearchSourceMetricSnapshot).where(
             ResearchSourceMetricSnapshot.company_id == job.company_id,
             ResearchSourceMetricSnapshot.source_id == source.id,
+        ))
+        comment_checkpoints = select(ResearchCommentCheckpoint.id).where(
+            ResearchCommentCheckpoint.company_id == job.company_id, ResearchCommentCheckpoint.source_id == source.id,
+        )
+        await db.execute(delete(ResearchCommentPageReceipt).where(
+            ResearchCommentPageReceipt.company_id == job.company_id,
+            ResearchCommentPageReceipt.checkpoint_id.in_(comment_checkpoints),
+        ))
+        await db.execute(delete(ResearchCommentVersion).where(
+            ResearchCommentVersion.company_id == job.company_id, ResearchCommentVersion.source_id == source.id,
+        ))
+        await db.execute(delete(ResearchCommentCheckpoint).where(
+            ResearchCommentCheckpoint.company_id == job.company_id, ResearchCommentCheckpoint.source_id == source.id,
+        ))
+        await db.execute(delete(ResearchCommentProcessingDecision).where(
+            ResearchCommentProcessingDecision.company_id == job.company_id,
+            ResearchCommentProcessingDecision.source_id == source.id,
         ))
         await db.execute(delete(MarketObservation).where(
             MarketObservation.company_id == job.company_id,
