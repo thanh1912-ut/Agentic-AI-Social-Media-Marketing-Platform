@@ -25,6 +25,8 @@ from sqlalchemy import (
     String,
     Text,
     UniqueConstraint,
+    func,
+    text as sql_text,
 )
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 from pgvector.sqlalchemy import Vector
@@ -941,6 +943,7 @@ class MarketEvidence(Base, IdMixin, TimestampMixin):
     __table_args__ = (
         UniqueConstraint("company_id", "source_id", "canonical_url", name="uq_market_evidence_source_url"),
         UniqueConstraint("company_id", "id", name="uq_market_evidence_tenant_id"),
+        UniqueConstraint("company_id", "source_id", "id", name="uq_market_evidence_tenant_source_id"),
         UniqueConstraint("company_id", "group_id", "id", name="uq_market_evidence_tenant_group_id"),
         ForeignKeyConstraint(["company_id", "group_id"], ["meta_page_groups.company_id", "meta_page_groups.id"],
                              name="fk_market_evidence_group_tenant", ondelete="CASCADE"),
@@ -990,6 +993,58 @@ class MarketObservation(Base, IdMixin):
     raw_sha256: Mapped[str | None] = mapped_column(String(64))
     raw_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), index=True)
     raw_upload_lease_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class ResearchCommentCheckpoint(Base, IdMixin, TimestampMixin):
+    """Restricted per-observation comment frontier; contains no comment bodies/authors."""
+
+    __tablename__ = "research_comment_checkpoints"
+    __table_args__ = (
+        UniqueConstraint("company_id", "observation_id", "parent_key", name="uq_comment_checkpoint_observation_parent"),
+        UniqueConstraint("company_id", "id", name="uq_comment_checkpoint_tenant_id"),
+        ForeignKeyConstraint(
+            ["company_id", "source_id", "evidence_id"],
+            ["market_evidence.company_id", "market_evidence.source_id", "market_evidence.id"],
+            name="fk_comment_checkpoint_source_evidence_tenant", ondelete="CASCADE",
+        ),
+        ForeignKeyConstraint(
+            ["company_id", "evidence_id", "observation_id", "evidence_version_id"],
+            ["market_observations.company_id", "market_observations.evidence_id",
+             "market_observations.id", "market_observations.evidence_version_id"],
+            name="fk_comment_checkpoint_observation_version_tenant", ondelete="CASCADE",
+        ),
+        CheckConstraint(
+            "status IN ('privacy_hold','queued','collecting','partial','completed','error','suppressed')",
+            name="ck_comment_checkpoint_status",
+        ),
+        CheckConstraint(
+            "received_count >= 0 AND pages_processed >= 0 AND "
+            "(provider_reported_count IS NULL OR provider_reported_count >= 0)",
+            name="ck_comment_checkpoint_counts",
+        ),
+        Index("ix_comment_checkpoint_source_status", "company_id", "source_id", "status", "created_at"),
+    )
+
+    company_id: Mapped[str] = mapped_column(String(36), nullable=False)
+    source_id: Mapped[str] = mapped_column(String(36), nullable=False)
+    evidence_id: Mapped[str] = mapped_column(String(36), nullable=False)
+    observation_id: Mapped[str] = mapped_column(String(36), nullable=False)
+    evidence_version_id: Mapped[str] = mapped_column(String(36), nullable=False)
+    external_post_id: Mapped[str] = mapped_column(String(100), nullable=False)
+    # Root is a fixed sentinel. Replies use a provider comment ID obtained
+    # from this post's own frontier, never an arbitrary user-supplied ID.
+    parent_key: Mapped[str] = mapped_column(String(100), default="root", server_default="root", nullable=False)
+    cursor_after: Mapped[str | None] = mapped_column(String(2048))
+    status: Mapped[str] = mapped_column(String(24), default="privacy_hold", server_default="privacy_hold", nullable=False)
+    received_count: Mapped[int] = mapped_column(Integer, default=0, server_default="0", nullable=False)
+    pages_processed: Mapped[int] = mapped_column(Integer, default=0, server_default="0", nullable=False)
+    provider_reported_count: Mapped[int | None] = mapped_column(Integer)
+    count_definition: Mapped[str] = mapped_column(String(48), default="post_comments_summary", server_default="post_comments_summary", nullable=False)
+    pagination_exhausted: Mapped[bool] = mapped_column(Boolean, default=False, server_default=sql_text("false"), nullable=False)
+    stop_reason: Mapped[str | None] = mapped_column(String(80), default="privacy_hold", server_default="privacy_hold")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, server_default=func.now(), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow,
+                                             server_default=func.now(), nullable=False)
 
 
 class MarketReport(Base, IdMixin, TimestampMixin):

@@ -31,7 +31,7 @@ from database.models import (
     MarketObservation,
     MarketReport, MarketReportEvidence, MarketReportWebSnapshot, MetaPageConnection, MetaPageGroup,
     MetaPageMetricSnapshot, MetaPagePost, MetaPostMetricSnapshot, ResearchCycle,
-    ResearchPrivacyPolicyRevision, ResearchSource, ResearchSourceMetricSnapshot,
+    ResearchCommentCheckpoint, ResearchPrivacyPolicyRevision, ResearchSource, ResearchSourceMetricSnapshot,
     ResearchSourceErasure, ResearchSourceErasureObject,
     WebCrawlPage, WebCrawlRun, WebEntity, WebEntitySnapshot, WebOfferSnapshot,
     new_id, utcnow,
@@ -300,6 +300,24 @@ async def _persist_evidence(
                     missing_metrics_json=missing, **metric_values,
                 )
                 db.add(metric_snapshot)
+            if source.source_type == "owned_facebook_page" and observation.evidence_version_id is not None:
+                await db.flush()
+                checkpoint = await db.scalar(select(ResearchCommentCheckpoint).where(
+                    ResearchCommentCheckpoint.company_id == company_id,
+                    ResearchCommentCheckpoint.observation_id == observation.id,
+                    ResearchCommentCheckpoint.parent_key == "root",
+                ))
+                if checkpoint is None:
+                    db.add(ResearchCommentCheckpoint(
+                        company_id=company_id, source_id=source.id, evidence_id=evidence.id,
+                        observation_id=observation.id, evidence_version_id=observation.evidence_version_id,
+                        external_post_id=external_post_id, parent_key="root",
+                        # Use the immutable observation's first committed count
+                        # on replay, not a newer provider value for the same run.
+                        provider_reported_count=observation.metrics_json.get("comments"),
+                        count_definition="post_comments_summary", status="privacy_hold",
+                        pagination_exhausted=False, stop_reason="privacy_hold",
+                    ))
         await db.commit()
         if raw_to_upload:
             # Commit the expiry pointer before writing the object. If the

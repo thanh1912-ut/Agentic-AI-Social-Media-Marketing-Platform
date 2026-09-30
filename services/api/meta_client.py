@@ -7,7 +7,7 @@ rejection are deliberately marked unknown so callers reconcile before retrying.
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
 from ipaddress import ip_address
 from urllib.parse import quote, parse_qs, parse_qsl, urlencode, urlsplit, urlunsplit
@@ -17,6 +17,8 @@ import httpx
 
 _PAGE_ID = re.compile(r"[0-9]{1,32}\Z")
 _POST_ID = re.compile(r"[0-9]{1,32}(?:_[0-9]{1,32})?\Z")
+_COMMENT_ID = re.compile(r"[0-9]{1,32}(?:_[0-9]{1,32}){0,2}\Z")
+_COMMENT_CURSOR = re.compile(r"[A-Za-z0-9_+/=.-]{1,2048}\Z")
 _VERSION = re.compile(r"v[1-9][0-9]{0,2}\.0\Z")
 _IMAGE_MIME_TYPES = frozenset({"image/jpeg", "image/png"})
 
@@ -61,6 +63,29 @@ class MetaPagePost:
 class MetaPagePostsPage:
     posts: tuple[MetaPagePost, ...]
     next_cursor: str | None
+
+
+@dataclass(frozen=True, slots=True)
+class MetaComment:
+    """Ephemeral collector input; do not persist it without privacy processing."""
+
+    external_id: str = field(repr=False)
+    root_post_id: str = field(repr=False)
+    parent_comment_id: str | None = field(repr=False)
+    message: str | None = field(repr=False)
+    created_time: datetime | None
+    likes: int | None
+    reply_count: int | None
+    content_truncated: bool
+
+
+@dataclass(frozen=True, slots=True)
+class MetaCommentsPage:
+    comments: tuple[MetaComment, ...] = field(repr=False)
+    next_cursor: str | None = field(repr=False)
+    provider_reported_count: int | None
+    withheld_private_count: int
+    pagination_exhausted: bool
 
 
 @dataclass(frozen=True, slots=True)
@@ -575,6 +600,92 @@ class MetaGraphClient:
             item["message"][:4000]
             for item in data
             if isinstance(item, dict) and isinstance(item.get("message"), str) and item["message"].strip()
+        )
+
+    async def list_comments_page(
+        self, external_post_id: str, *, parent_comment_id: str | None = None,
+        limit: int = 100, after: str | None = None,
+    ) -> MetaCommentsPage:
+        """Read one top-level/reply page, never a provider-supplied next URL.
+
+        The caller must obtain reply parent IDs from this post's own frontier.
+        Author identity, profile links, avatars and attachment bodies are not
+        requested. This method does not grant permission to store/send text.
+        """
+        if not _valid_post_id(external_post_id, self.page_id):
+            raise ValueError("invalid external post ID for this Page")
+        if parent_comment_id is not None and (
+            not isinstance(parent_comment_id, str) or not _COMMENT_ID.fullmatch(parent_comment_id)
+        ):
+            raise ValueError("invalid parent comment ID")
+        if type(limit) is not int or not 1 <= limit <= 100:
+            raise ValueError("limit must be between 1 and 100")
+        if after is not None and (not isinstance(after, str) or not _COMMENT_CURSOR.fullmatch(after)):
+            raise ValueError("invalid comment pagination cursor")
+        node = parent_comment_id or external_post_id
+        path = f"/{self.graph_version}/{node}/comments"
+        params: dict[str, str | int] = {
+            "fields": "id,message,created_time,like_count,comment_count,parent{id},is_private,is_hidden",
+            "limit": limit, "filter": "toplevel", "order": "chronological", "summary": "true",
+        }
+        if after is not None:
+            params["after"] = after
+        payload = await self._request("GET", path, publishing=False, params=params)
+        data = payload.get("data")
+        if not isinstance(data, list) or len(data) > limit:
+            raise MetaGraphReadError("Meta Graph returned an invalid comment page.")
+        records: list[MetaComment] = []
+        seen: set[str] = set()
+        withheld = 0
+        for item in data:
+            if not isinstance(item, dict) or not isinstance(item.get("id"), str) or not _COMMENT_ID.fullmatch(item["id"]):
+                raise MetaGraphReadError("Meta Graph returned an invalid comment identity.")
+            if item["id"] in seen:
+                raise MetaGraphReadError("Meta Graph returned duplicate comment identities.")
+            seen.add(item["id"])
+            if item.get("is_private") is True or item.get("is_hidden") is True:
+                withheld += 1
+                continue
+            parent = item.get("parent")
+            returned_parent = parent.get("id") if isinstance(parent, dict) else None
+            if returned_parent is not None and returned_parent != parent_comment_id:
+                raise MetaGraphReadError("Meta Graph returned a comment outside the requested thread.")
+            message = item.get("message")
+            if message is not None and not isinstance(message, str):
+                raise MetaGraphReadError("Meta Graph returned an invalid comment message.")
+            records.append(MetaComment(
+                external_id=item["id"], root_post_id=external_post_id,
+                parent_comment_id=parent_comment_id,
+                message=message[:20000] if message is not None else None,
+                created_time=_created_time(item.get("created_time")),
+                likes=_nonnegative_count(item.get("like_count")),
+                reply_count=_nonnegative_count(item.get("comment_count")),
+                content_truncated=isinstance(message, str) and len(message) > 20000,
+            ))
+        paging = payload.get("paging")
+        cursor = None
+        if isinstance(paging, dict) and paging.get("next") is not None:
+            next_url = paging["next"]
+            try:
+                parsed = urlsplit(next_url) if isinstance(next_url, str) else None
+                valid_next = (
+                    parsed is not None and parsed.scheme == "https" and parsed.hostname == "graph.facebook.com"
+                    and parsed.port in {None, 443} and not parsed.username and not parsed.password
+                    and parsed.path == path and not parsed.fragment
+                )
+            except ValueError:
+                valid_next = False
+            cursors = paging.get("cursors")
+            candidate = cursors.get("after") if isinstance(cursors, dict) else None
+            if not valid_next or not isinstance(candidate, str) or not _COMMENT_CURSOR.fullmatch(candidate):
+                raise MetaGraphReadError("Meta Graph returned invalid comment pagination.")
+            if candidate == after:
+                raise MetaGraphReadError("Meta Graph comment pagination did not advance.")
+            cursor = candidate
+        return MetaCommentsPage(
+            comments=tuple(records), next_cursor=cursor,
+            provider_reported_count=_summary_count({"summary": payload.get("summary")}),
+            withheld_private_count=withheld, pagination_exhausted=cursor is None,
         )
 
     async def list_page_posts(self, limit: int = 25, after: str | None = None) -> MetaPagePostsPage:

@@ -16,7 +16,7 @@ from sqlalchemy.pool import StaticPool
 from database.models import (
     AIUsageBudgetDay, AIUsageLedger, Base, Brand, BrandProfileRevision, Campaign, Job, MarketEvidence, MarketEvidenceVersion, MarketObservation, MetaPageConnection,
     MarketReport, MarketReportEvidence, MetaPageGroup, ResearchCycle, ResearchSource, Company, new_id, utcnow,
-    Membership, ResearchPrivacyPolicyRevision, User, WebCrawlRun,
+    Membership, ResearchCommentCheckpoint, ResearchPrivacyPolicyRevision, User, WebCrawlRun,
 )
 from services.api import market_research as market_research_routes
 from services.api import meta_tokens
@@ -289,6 +289,71 @@ def test_facebook_evidence_persistence_reapplies_redaction_and_withholds_comment
     }
     assert observation.metrics_json["raw_payload_privacy"] == {"status": "not_retained"}
     assert "names_not_detected" in observation.metrics_json["privacy_redaction"]["limitations"]
+
+
+def test_owned_post_registers_comment_frontier_pinned_to_observation_and_replay_keeps_checkpoint(market_api, monkeypatch):
+    client, sessions, _key = market_api
+    company_id, _headers = _owner(client, "comment-frontier-owner@example.com")
+    monkeypatch.setattr(research_tasks, "SessionLocal", sessions)
+    observed_at = utcnow()
+
+    async def exercise():
+        async with sessions() as db:
+            source = await db.scalar(select(ResearchSource).where(
+                ResearchSource.company_id == company_id,
+                ResearchSource.source_type == "owned_facebook_page",
+            ))
+            company = await db.get(Company, company_id)
+            assert source is not None and company is not None
+            page_id = company.page_id
+        parameters = dict(
+            company_id=company_id, group_id=source.group_id, source=source,
+            url=f"https://www.facebook.com/{page_id}/posts/456", title="Fixture post",
+            text="Fixture post", published_at=observed_at, comments=[], raw_body=None,
+            page_id=page_id, external_post_id=f"{page_id}_456",
+        )
+        evidence_id = await research_tasks._persist_evidence(**parameters, metrics={"comments": 5}, observed_at=observed_at)
+        async with sessions() as db:
+            checkpoint = await db.scalar(select(ResearchCommentCheckpoint).where(
+                ResearchCommentCheckpoint.company_id == company_id,
+                ResearchCommentCheckpoint.evidence_id == evidence_id,
+            ))
+            assert checkpoint.status == "privacy_hold" and checkpoint.cursor_after is None
+            assert checkpoint.provider_reported_count == 5
+            assert checkpoint.received_count == 0 and checkpoint.pagination_exhausted is False
+            first_id, first_version = checkpoint.id, checkpoint.evidence_version_id
+            checkpoint.status = "partial"
+            checkpoint.cursor_after = "synthetic-after"
+            checkpoint.received_count = 3
+            checkpoint.pages_processed = 1
+            checkpoint.stop_reason = "batch_limit"
+            await db.commit()
+        await research_tasks._persist_evidence(**parameters, metrics={"comments": 999}, observed_at=observed_at)
+        async with sessions() as db:
+            rows = (await db.scalars(select(ResearchCommentCheckpoint).where(
+                ResearchCommentCheckpoint.company_id == company_id,
+            ))).all()
+            assert len(rows) == 1
+            assert rows[0].id == first_id and rows[0].cursor_after == "synthetic-after"
+            assert rows[0].status == "partial" and rows[0].received_count == 3
+            assert rows[0].provider_reported_count == 5
+        parameters["text"] = "Edited fixture post"
+        await research_tasks._persist_evidence(**parameters, metrics={"comments": 8},
+                                               observed_at=observed_at + timedelta(hours=12))
+        async with sessions() as db:
+            rows = (await db.scalars(select(ResearchCommentCheckpoint).where(
+                ResearchCommentCheckpoint.company_id == company_id,
+            ).order_by(ResearchCommentCheckpoint.created_at))).all()
+            assert len(rows) == 2
+            newest = next(row for row in rows if row.id != first_id)
+            assert newest.evidence_version_id != first_version
+            assert newest.observation_id != rows[0].observation_id
+            assert newest.status == "privacy_hold" and newest.cursor_after is None
+            assert newest.provider_reported_count == 8
+            assert not any(column.name in {"text", "message", "author", "author_id"}
+                           for column in ResearchCommentCheckpoint.__table__.columns)
+
+    asyncio.run(exercise())
 
 
 def test_source_purge_removes_collected_rows_raw_object_and_tombstones_report(market_api, monkeypatch) -> None:
