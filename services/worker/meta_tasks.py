@@ -20,7 +20,8 @@ from services.api.content_integrity import content_sha256
 from services.api.db import SessionLocal
 from services.api.meta_client import (
     MetaGraphClient, MetaGraphOutcomeUnknown, MetaGraphReadError,
-    MetaGraphRejected, MetaGraphTokenExpired,
+    MetaGraphRejected, MetaGraphTokenExpired, safe_external_link_url,
+    safe_page_attachment_metadata,
 )
 from services.api.meta_tokens import TokenEncryptionUnavailable, decrypt_page_token
 from services.api.storage import storage
@@ -273,6 +274,9 @@ async def _upsert_page_post(db: AsyncSession, company_id: str, page_id: str, ite
     row.linked_post_id = linked_post_id or row.linked_post_id
     row.message = getattr(item, "message", row.message)
     row.permalink = getattr(item, "permalink_url", row.permalink)
+    row.link_url = safe_external_link_url(getattr(item, "link_url", row.link_url))
+    row.attachments_json = safe_page_attachment_metadata(getattr(item, "attachments", ()))
+    row.attachment_metadata_status = getattr(item, "attachment_metadata_status", "not_returned")
     row.published_at = getattr(item, "created_time", row.published_at)
     row.reactions = item.reactions
     row.comments = item.comments

@@ -124,3 +124,11 @@ Không dùng các lệnh này nếu đã tái sử dụng các cổng cho tiến
 - Nếu thành công, tên được cập nhật cho workspace, Meta connection và nguồn Page; ảnh đại diện cập nhật theo metadata Meta. Brand Profile do Owner viết không đổi.
 - Nếu Meta báo token hết hạn/thiếu quyền, workspace chuyển sang `needs_reconnect`; tác vụ bị tạm dừng, thời điểm đến hạn được xóa nhưng lịch đã bật của Owner vẫn được giữ để phục hồi sau reconnect. Dữ liệu cũ vẫn đọc được. Owner dùng biểu mẫu **Xác minh lại Fanpage** với token mới của đúng Page.
 - API không trả token và không thử đăng bài. Metadata refresh không chứng minh Page có quyền publish.
+
+### Link và attachment metadata của bài Page
+
+- Migration `0024_page_post_media_references` bổ sung `link_url`, `attachments_json` và `attachment_metadata_status` cho bài của Page công ty.
+- Metadata gồm loại attachment và link đích đã bỏ query/fragment; không lưu binary media, URL CDN có chữ ký, title hoặc description tự do. Link chỉ được hiển thị cho người dùng mở; ứng dụng không tự fetch link đó.
+- `metadata_only_privacy_hold` nghĩa là hình/video chưa được kiểm tra điều kiện riêng tư và chưa tải hoặc gửi sang Gemini. Không coi loại attachment hoặc link là phân tích media hoàn tất.
+- Nếu Meta từ chối các trường attachment, collector lấy lại các trường bài/metrics ổn định và lưu `not_returned`; dữ liệu bài đọc được vẫn giữ.
+- Có thể kiểm tra API metadata trong Nghiên cứu hoặc Analytics. Dữ liệu cũ chưa được backfill, nên trạng thái lịch sử mặc định là `not_returned`.

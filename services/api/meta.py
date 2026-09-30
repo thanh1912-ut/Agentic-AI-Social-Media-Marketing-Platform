@@ -20,7 +20,10 @@ from .db import get_db
 from .dependencies import current_user, membership_for, require_csrf, require_permission
 from .errors import ApiProblem
 from .job_service import accepted_response, dispatch_meta_job
-from .meta_client import MetaGraphClient, MetaGraphReadError, MetaGraphRejected, MetaGraphTokenExpired
+from .meta_client import (
+    MetaGraphClient, MetaGraphReadError, MetaGraphRejected, MetaGraphTokenExpired,
+    safe_external_link_url, safe_page_attachment_metadata,
+)
 from .meta_tokens import TokenEncryptionUnavailable, decrypt_page_token
 from .meta_schemas import (
     MetaConnectionOut, MetaMetricHistoryOut, MetaMetricSnapshotOut,
@@ -119,6 +122,8 @@ def _page_post_out(row: MetaPagePost) -> MetaPagePostOut:
     return MetaPagePostOut(
         id=row.id, external_post_id=row.external_post_id, page_id=row.page_id,
         message=row.message, permalink=row.permalink, published_at=row.published_at,
+        link_url=safe_external_link_url(row.link_url), attachments=safe_page_attachment_metadata(row.attachments_json),
+        attachment_metadata_status=row.attachment_metadata_status,
         reactions=row.reactions, comments=row.comments, shares=row.shares,
         engagements=sum(counts) if all(count is not None for count in counts) else None,
         last_synced_at=row.last_synced_at, linked_post_id=row.linked_post_id,

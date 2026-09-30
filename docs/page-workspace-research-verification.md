@@ -177,3 +177,16 @@ Giá lấy từ [Google Gemini model update](https://ai.google.dev/gemini-api/do
 | Live public group, database broker, preview | NOT_RUN | Không gọi Facebook, không có bằng chứng live. PostgreSQL/Redis và preview người dùng không bị chạm. |
 
 Lát cắt này không đáp ứng thu thập nội dung Group discussions, bài viết, bình luận, ảnh hoặc video. Tình trạng là metadata-only/partial Tier 0, không phải hoàn tất nghiên cứu nhóm.
+
+## Metadata link/media của owned Page posts — 2026-09-30
+
+| Kiểm tra | Trạng thái | Bằng chứng và giới hạn |
+|---|---|---|
+| Attachment/link metadata qua collector | PASS (HTTP fixture) | Metadata có giới hạn, URL đích được làm sạch và host nội bộ bị chặn; binary media và signed media URL không được lưu. |
+| Fallback khi field Meta không được hỗ trợ | PASS (HTTP fixture) | Lượt thử lại dùng fields ổn định; bài vẫn được trả và attachment status là `not_returned`. |
+| Lưu/API/UI | PASS (code + SQLite/API fixture) | Migration `0024_page_post_media_references` thêm link/attachments/status. API, research observation, Analytics và Research UI có metadata-only state. Chưa thử ORM write/read trên PostgreSQL qua worker. |
+| Meta live / media analysis | NOT_RUN | Không dùng Page token thật; không tải ảnh/video và không gọi Gemini. Comment body vẫn `privacy_hold`. |
+| Backend test | PASS | `tests/test_meta_client.py tests/test_market_research_api.py`: 57 passed. Runtime thiếu `pgvector`; pytest dùng SQLite fixtures và import shim tạm ngoài repo. |
+| PostgreSQL migration | PASS | PostgreSQL 18.3 riêng: fresh upgrade tới `0024`, downgrade về `0023`, rồi upgrade lại; kiểm tra cột/default. Đây không phải API/worker integration test. |
+| Frontend quality | PASS | OpenAPI export/type generation, typecheck, lint, Vitest 50 passed, production build. |
+| Privacy deletion/retention propagation | NOT_RUN | Chưa chứng minh purge raw/media, cascade xóa provider/cache/index hoặc deletion ledger. |

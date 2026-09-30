@@ -66,7 +66,10 @@ from .market_research_schemas import (
     CollectionSettingsIn, CollectionRunOut, CompetitorPostOut, CompetitorPostsPage,
     ResearchPrivacyPolicyUpdate, ResearchPrivacyPolicyOut,
 )
-from .meta_client import MetaGraphClient, MetaGraphReadError, MetaGraphRejected, MetaGraphTokenExpired
+from .meta_client import (
+    MetaGraphClient, MetaGraphReadError, MetaGraphRejected, MetaGraphTokenExpired,
+    safe_external_link_url, safe_page_attachment_metadata,
+)
 from .meta_tokens import TokenEncryptionUnavailable, encrypt_page_token, token_fingerprint
 from .rate_limits import rate_limit
 from .schemas import AcceptedResponse
@@ -418,6 +421,10 @@ async def list_competitor_posts(
             for key, value in raw_metrics.items()
             if key in {"reactions", "comments", "shares", "views"}
         }
+        attachments = safe_page_attachment_metadata(raw_metrics.get("attachments"))
+        attachment_status = raw_metrics.get("attachment_metadata_status")
+        if attachment_status not in {"returned", "none_returned", "not_returned", "truncated"}:
+            attachment_status = "not_returned"
         provenance = raw_metrics.get("_provenance", {})
         posts.append(CompetitorPostOut(
             id=evidence.id, source_id=source_id, external_id=evidence.external_id,
@@ -425,6 +432,8 @@ async def list_competitor_posts(
             published_at=evidence.published_at,
             observed_at=observation.observed_at if observation else None,
             metrics=metrics, metric_provenance=provenance if isinstance(provenance, dict) else {},
+            link_url=safe_external_link_url(raw_metrics.get("link_url")),
+            attachments=attachments, attachment_metadata_status=attachment_status,
             content_truncated=bool(raw_metrics.get("content_truncated", False)),
         ))
     audience = await db.scalar(select(ResearchSourceMetricSnapshot).where(

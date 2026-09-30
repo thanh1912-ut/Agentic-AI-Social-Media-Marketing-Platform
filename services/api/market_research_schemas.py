@@ -147,6 +147,15 @@ class CollectionRunOut(StrictModel):
     created_at: datetime
 
 
+class ResearchPostAttachmentOut(StrictModel):
+    kind: Literal["image", "video", "link", "other", "unknown"]
+    provider_type: str | None = None
+    title: str | None = None
+    description: str | None = None
+    target_url: str | None = None
+    content_status: Literal["metadata_only_privacy_hold"] = "metadata_only_privacy_hold"
+
+
 class CompetitorPostOut(StrictModel):
     id: str
     source_id: str
@@ -157,6 +166,9 @@ class CompetitorPostOut(StrictModel):
     published_at: datetime | None
     observed_at: datetime | None
     metrics: dict[str, int | float | None]
+    link_url: str | None = None
+    attachments: list[ResearchPostAttachmentOut] = Field(default_factory=list, max_length=100)
+    attachment_metadata_status: Literal["returned", "none_returned", "not_returned", "truncated"] = "not_returned"
     metric_provenance: dict[str, Any] = Field(default_factory=dict)
     content_truncated: bool = False
 

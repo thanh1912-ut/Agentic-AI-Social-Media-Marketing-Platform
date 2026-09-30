@@ -84,12 +84,24 @@ export interface CompetitorPost {
   published_at: string | null;
   observed_at: string | null;
   metrics: Record<string, number | null>;
+  link_url: string | null;
+  attachments: ResearchPostAttachment[];
+  attachment_metadata_status: 'returned' | 'none_returned' | 'not_returned' | 'truncated';
   metric_provenance: Record<string, {
     raw?: string | null;
     precision?: string | null;
     missing_reason?: string | null;
   }>;
   content_truncated: boolean;
+}
+
+export interface ResearchPostAttachment {
+  kind: 'image' | 'video' | 'link' | 'other' | 'unknown';
+  provider_type: string | null;
+  title: string | null;
+  description: string | null;
+  target_url: string | null;
+  content_status: 'metadata_only_privacy_hold';
 }
 
 export interface CompetitorPostsPage {

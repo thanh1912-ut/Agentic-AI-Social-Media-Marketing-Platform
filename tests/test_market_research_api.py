@@ -572,6 +572,13 @@ def test_competitor_page_uses_approved_public_api_token_when_configured(market_a
                 external_post_id="987654_42", message="Ưu đãi mùa mới", created_time=None,
                 permalink_url="https://www.facebook.com/rival/posts/42",
                 reactions=17, comments=4, shares=2,
+                link_url="https://news.example/story?token=private&lang=vi",
+                attachments=({
+                    "kind": "image", "provider_type": "photo", "title": "Ảnh sản phẩm",
+                    "description": "Mô tả bất kỳ", "target_url": "javascript:alert(1)",
+                    "content_status": "metadata_only_privacy_hold",
+                },),
+                attachment_metadata_status="returned",
             ),), None)
 
         async def list_post_comments(self, external_post_id: str, limit: int = 50):
@@ -608,8 +615,25 @@ def test_competitor_page_uses_approved_public_api_token_when_configured(market_a
     assert observation.metrics_json == {
         "reactions": 17, "comments": 4, "shares": 2, "interactions": 23,
         "views": None,
+        "link_url": "https://news.example/story",
+        "attachments": [{
+            "kind": "image", "provider_type": "photo", "title": None,
+            "description": None, "target_url": None,
+            "content_status": "metadata_only_privacy_hold",
+        }],
+        "attachment_metadata_status": "returned",
     }
     assert observation.comments_json == []
+    posts = client.get(
+        f"/api/v1/workspaces/{workspace_id}/market-research/sources/{source_id}/posts",
+        headers=headers,
+    )
+    assert posts.status_code == 200, posts.text
+    assert posts.json()["posts"][0]["link_url"] == "https://news.example/story"
+    assert posts.json()["posts"][0]["attachments"][0]["target_url"] is None
+    assert posts.json()["posts"][0]["attachments"][0]["content_status"] == "metadata_only_privacy_hold"
+    assert posts.json()["posts"][0]["attachments"][0]["title"] is None
+    assert posts.json()["posts"][0]["attachments"][0]["description"] is None
 
     async def read_source_audience():
         from database.models import ResearchSourceMetricSnapshot
@@ -681,6 +705,13 @@ def test_owned_page_collection_saves_views_and_followers_when_meta_returns_them(
                 external_post_id=f"{self.page_id}_42", message="Bài viết mới", created_time=None,
                 permalink_url=f"https://www.facebook.com/{self.page_id}/posts/42",
                 reactions=22, comments=5, shares=3,
+                link_url="https://example.com/landing?utm_source=facebook",
+                attachments=({
+                    "kind": "image", "provider_type": "photo", "title": "Ảnh minh họa",
+                    "description": None, "target_url": None,
+                    "content_status": "metadata_only_privacy_hold",
+                },),
+                attachment_metadata_status="returned",
             ),), None)
 
         async def read_post_media_views(self, external_post_id: str):
@@ -717,6 +748,13 @@ def test_owned_page_collection_saves_views_and_followers_when_meta_returns_them(
     assert observation.metrics_json == {
         "reactions": 22, "comments": 5, "shares": 3, "interactions": 30,
         "views": 7654,
+        "link_url": "https://example.com/landing",
+        "attachments": [{
+            "kind": "image", "provider_type": "photo", "title": None,
+            "description": None, "target_url": None,
+            "content_status": "metadata_only_privacy_hold",
+        }],
+        "attachment_metadata_status": "returned",
     }
     assert observation.comments_json == []
 
@@ -737,6 +775,9 @@ def test_owned_page_collection_saves_views_and_followers_when_meta_returns_them(
             return page_snapshot, page_post, post_snapshot
 
     page_snapshot, page_post, post_snapshot = asyncio.run(read_page_and_post_history())
+    assert page_post.link_url == "https://example.com/landing"
+    assert page_post.attachments_json[0]["kind"] == "image"
+    assert page_post.attachment_metadata_status == "returned"
     assert page_snapshot.followers == 5400
     assert post_snapshot.views == 7654
     assert post_snapshot.reactions == 22
@@ -752,6 +793,11 @@ def test_owned_page_collection_saves_views_and_followers_when_meta_returns_them(
     assert page_history.json()["snapshots"][0]["followers"] == 5400
     assert post_history.status_code == 200, post_history.text
     assert post_history.json()["snapshots"][0]["views"] == 7654
+    page_posts = client.get(f"/api/v1/workspaces/{workspace_id}/meta/page-posts", headers=headers)
+    assert page_posts.status_code == 200, page_posts.text
+    assert page_posts.json()["items"][0]["link_url"] == "https://example.com/landing"
+    assert page_posts.json()["items"][0]["attachments"][0]["kind"] == "image"
+    assert page_posts.json()["items"][0]["attachment_metadata_status"] == "returned"
 
     async def seed_report_with_pinned_evidence():
         async with session_factory() as db:

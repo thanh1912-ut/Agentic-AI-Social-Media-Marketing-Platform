@@ -60,6 +60,20 @@ function formatMetricChanges(metrics: Record<string, number | null> | undefined)
     .join(' · ');
 }
 
+function safeExternalHttpUrl(value: string | null | undefined): string | null {
+  if (!value) return null;
+  try {
+    const url = new URL(value);
+    if (!['https:', 'http:'].includes(url.protocol) || !url.hostname || url.username || url.password) return null;
+    if (['localhost', '127.0.0.1', '::1'].includes(url.hostname.toLowerCase())) return null;
+    return url.toString();
+  } catch {
+    return null;
+  }
+}
+
+const ATTACHMENT_KIND_LABELS = { image: 'Ảnh', video: 'Video', link: 'Liên kết', other: 'Tệp đính kèm', unknown: 'Media chưa rõ loại' } as const;
+
 function formatUsdMicro(value: number): string {
   return new Intl.NumberFormat('vi-VN', {
     style: 'currency',
@@ -491,6 +505,11 @@ export default function FanpagesMarketResearchPage() {
                                   <span className="text-xs text-slate-500">{post.published_at ? formatDateTime(post.published_at) : 'Ngày đăng chưa công bố'}</span>
                                 </div>
                                 <p className="mt-2 whitespace-pre-line text-sm text-slate-700">{post.text}{post.content_truncated ? ' … [nội dung đã cắt ở giới hạn lưu]' : ''}</p>
+                                {safeExternalHttpUrl(post.link_url) ? <p className="mt-2"><a href={safeExternalHttpUrl(post.link_url)!} target="_blank" rel="noopener noreferrer" className="text-xs font-medium text-sky-800 underline">Mở liên kết trong bài</a></p> : null}
+                                {post.attachments?.length ? <div className="mt-2 space-y-1 text-xs text-slate-600">
+                                  <p>Đính kèm: {post.attachments.map((item) => ATTACHMENT_KIND_LABELS[item.kind]).join(' · ')}. Nội dung ảnh/video chưa tải hoặc phân tích; đang ở privacy hold.</p>
+                                  {post.attachments.some((item) => item.title) ? <p>{post.attachments.filter((item) => item.title).map((item) => item.title).join(' · ')}</p> : null}
+                                </div> : post.attachment_metadata_status === 'none_returned' ? <p className="mt-2 text-xs text-slate-500">Meta không trả media đính kèm cho bài này.</p> : post.attachment_metadata_status === 'not_returned' ? <p className="mt-2 text-xs text-slate-500">Chưa có metadata media từ nguồn.</p> : null}
                                 <p className="mt-2 text-xs text-slate-500">{formatMetrics(post.metrics) || 'Chưa công bố chỉ số tương tác'}{post.observed_at ? ' · đọc lúc ' + formatDateTime(post.observed_at) : ''}</p>
                                 {Object.entries(post.metric_provenance).some(([, value]) => value.raw) ? <p className="mt-1 text-xs text-slate-500">Giá trị hiển thị gốc: {Object.entries(post.metric_provenance).filter(([, value]) => value.raw).map(([key, value]) => (MARKET_METRIC_LABELS[key] ?? key) + ': ' + value.raw).join(' · ')}</p> : null}
                               </article>

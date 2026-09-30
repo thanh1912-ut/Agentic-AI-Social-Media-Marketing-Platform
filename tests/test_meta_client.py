@@ -15,6 +15,8 @@ from services.api.meta_client import (
     MetaGraphRejected,
     MetaGraphTokenExpired,
     facebook_page_reference,
+    safe_page_attachment_metadata,
+    safe_external_link_url,
 )
 
 
@@ -236,6 +238,7 @@ def test_list_historical_page_posts_uses_cursor_without_following_next_url() -> 
         assert request.url.host == "graph.facebook.com"
         assert request.url.path == "/v26.0/123/posts"
         assert request.url.params["limit"] == "2"
+        assert "attachments.limit(20)" in request.url.params["fields"]
         assert SECRET not in str(request.url)
         if requests == 1:
             assert "after" not in request.url.params
@@ -244,6 +247,15 @@ def test_list_historical_page_posts_uses_cursor_without_following_next_url() -> 
                     "id": "123_100", "message": "Bài đăng trực tiếp trên fanpage",
                     "created_time": "2026-09-20T08:00:00+0000",
                     "permalink_url": "https://www.facebook.com/123/posts/100",
+                    "link": "https://example.com/article?utm_source=facebook&access_token=leak#fragment",
+                    "attachments": {"data": [{
+                        "media_type": "photo", "type": "photo", "title": "Ảnh sản phẩm",
+                        "description": "Hình minh họa", "url": "https://example.com/product?token=private",
+                        "subattachments": {"data": [{
+                            "media_type": "video", "type": "video_inline", "title": "Video hướng dẫn",
+                            "url": "https://video.example/watch?v=123",
+                        }]},
+                    }]},
                     "reactions": {"summary": {"total_count": 10}},
                     "comments": {"summary": {"total_count": 2}},
                     "shares": {"count": 1},
@@ -267,6 +279,13 @@ def test_list_historical_page_posts_uses_cursor_without_following_next_url() -> 
     assert len(first.posts) == 1
     assert first.posts[0].external_post_id == "123_100"
     assert first.posts[0].message == "Bài đăng trực tiếp trên fanpage"
+    assert first.posts[0].link_url == "https://example.com/article"
+    assert first.posts[0].attachment_metadata_status == "returned"
+    assert [item["kind"] for item in first.posts[0].attachments] == ["image", "video"]
+    assert first.posts[0].attachments[0]["target_url"] == "https://example.com/product"
+    assert first.posts[0].attachments[0]["title"] is None
+    assert first.posts[0].attachments[0]["description"] is None
+    assert first.posts[0].attachments[0]["content_status"] == "metadata_only_privacy_hold"
     assert (first.posts[0].reactions, first.posts[0].comments, first.posts[0].shares) == (10, 2, 1)
     assert second.posts[0].external_post_id == "123_101"
     assert second.posts[0].reactions is None
@@ -289,6 +308,45 @@ def test_list_page_posts_rejects_bad_page_and_cursor() -> None:
     _run(exercise())
 
 
+def test_list_page_posts_falls_back_when_attachment_fields_are_not_available() -> None:
+    seen_fields: list[str] = []
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        fields = request.url.params["fields"]
+        seen_fields.append(fields)
+        if "attachments" in fields:
+            return httpx.Response(400, json={"error": {"code": 100, "message": "field unavailable"}})
+        return httpx.Response(200, json={"data": [{"id": "123_456", "message": "Readable text"}]})
+
+    async def exercise():
+        async with MetaGraphClient("123", SECRET, transport=httpx.MockTransport(handler)) as client:
+            return await client.list_page_posts()
+
+    page = _run(exercise())
+    assert len(seen_fields) == 2
+    assert "attachments" in seen_fields[0] and "attachments" not in seen_fields[1]
+    assert page.posts[0].message == "Readable text"
+    assert page.posts[0].attachment_metadata_status == "not_returned"
+
+
+def test_list_page_posts_marks_attachment_metadata_truncated_at_provider_budget() -> None:
+    async def handler(_request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json={"data": [{
+            "id": "123_456", "attachments": {"data": [
+                {"media_type": "photo", "type": "photo", "title": f"Photo {index}"}
+                for index in range(21)
+            ]},
+        }]})
+
+    async def exercise():
+        async with MetaGraphClient("123", SECRET, transport=httpx.MockTransport(handler)) as client:
+            return await client.list_page_posts()
+
+    post = _run(exercise()).posts[0]
+    assert len(post.attachments) == 20
+    assert post.attachment_metadata_status == "truncated"
+
+
 def test_list_post_comments_requests_text_without_author_identity() -> None:
     async def handler(request: httpx.Request) -> httpx.Response:
         assert request.url.path == "/v26.0/123_456/comments"
@@ -304,6 +362,34 @@ def test_list_post_comments_requests_text_without_author_identity() -> None:
             return await client.list_post_comments("123_456", limit=2)
 
     assert _run(exercise()) == ("Nội dung bình luận",)
+
+
+@pytest.mark.parametrize("value", [
+    "javascript:alert(1)",
+    "https://user:pass@example.com/",
+    "http://127.0.0.1/private",
+    "https://localhost/private",
+])
+def test_attachment_links_reject_non_web_or_local_targets(value: str) -> None:
+    assert safe_external_link_url(value) is None
+
+
+def test_attachment_links_strip_credentials_and_fragments() -> None:
+    assert safe_external_link_url("https://example.com/path?token=secret&lang=vi#section") == (
+        "https://example.com/path"
+    )
+
+
+def test_persisted_attachment_metadata_discards_free_text_and_revalidates_fields() -> None:
+    item = safe_page_attachment_metadata([{
+        "kind": [], "provider_type": "x" * 100, "title": "person@example.com",
+        "description": "202-555-0198", "target_url": "https://example.com/item?sig=private",
+        "content_status": "unexpected",
+    }])[0]
+    assert item == {
+        "kind": "unknown", "provider_type": "x" * 80, "title": None, "description": None,
+        "target_url": "https://example.com/item", "content_status": "metadata_only_privacy_hold",
+    }
 
 
 @pytest.mark.parametrize("status,code,expected", [

@@ -69,12 +69,24 @@ class MetaReconcileIn(StrictModel):
         return self
 
 
+class MetaPostAttachmentOut(StrictModel):
+    kind: Literal["image", "video", "link", "other", "unknown"]
+    provider_type: str | None = None
+    title: str | None = None
+    description: str | None = None
+    target_url: str | None = None
+    content_status: Literal["metadata_only_privacy_hold"] = "metadata_only_privacy_hold"
+
+
 class MetaPagePostOut(StrictModel):
     id: str
     external_post_id: str
     page_id: str
     message: str | None
     permalink: str | None
+    link_url: str | None = None
+    attachments: list[MetaPostAttachmentOut] = Field(default_factory=list)
+    attachment_metadata_status: Literal["returned", "none_returned", "not_returned", "truncated"] = "not_returned"
     published_at: datetime | None
     reactions: int | None
     comments: int | None

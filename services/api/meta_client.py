@@ -9,6 +9,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 from datetime import datetime
+from ipaddress import ip_address
 from urllib.parse import quote, parse_qs, parse_qsl, urlencode, urlsplit, urlunsplit
 
 import httpx
@@ -51,6 +52,9 @@ class MetaPagePost:
     reactions: int | None
     comments: int | None
     shares: int | None
+    link_url: str | None = None
+    attachments: tuple[dict[str, str | None], ...] = ()
+    attachment_metadata_status: str = "not_returned"
 
 
 @dataclass(frozen=True, slots=True)
@@ -124,6 +128,134 @@ def _facebook_permalink(value: object) -> str | None:
     except ValueError:
         return None
     return value
+
+
+def safe_external_link_url(value: object) -> str | None:
+    """Keep a provider-returned link safe to display; never fetch it here."""
+    if not isinstance(value, str) or len(value) > 4096 or any(ord(char) < 32 for char in value):
+        return None
+    try:
+        parsed = urlsplit(value)
+        host = (parsed.hostname or "").casefold().rstrip(".")
+        if parsed.scheme not in {"https", "http"} or not host or parsed.username or parsed.password:
+            return None
+        if parsed.port not in {None, 80, 443}:
+            return None
+        if host == "localhost" or host.endswith((".localhost", ".local", ".internal")):
+            return None
+        try:
+            address = ip_address(host)
+        except ValueError:
+            address = None
+        if address is not None and not address.is_global:
+            return None
+        # Query parameters often contain signed media credentials or user-specific
+        # tracking values. Keep the public destination path but never persist them.
+        return urlunsplit((parsed.scheme, parsed.netloc, parsed.path, "", ""))[:2048]
+    except ValueError:
+        return None
+
+
+def _attachment_items(value: object) -> tuple[tuple[dict[str, str | None], ...], str]:
+    """Extract bounded attachment metadata only; binary/signed media URLs are excluded."""
+    if not isinstance(value, dict) or not isinstance(value.get("data"), list):
+        return (), "not_returned"
+    source_items = value["data"]
+    truncated = len(source_items) > 20
+    items: list[dict[str, str | None]] = []
+    for attachment in source_items[:20]:
+        if not isinstance(attachment, dict):
+            continue
+        target = attachment.get("target")
+        target_url = safe_external_link_url(attachment.get("url"))
+        if target_url is None and isinstance(target, dict):
+            target_url = safe_external_link_url(target.get("url"))
+        media_type = attachment.get("media_type")
+        provider_type = attachment.get("type")
+        raw_kind = media_type if isinstance(media_type, str) else provider_type
+        kind = "unknown"
+        if isinstance(raw_kind, str):
+            normalized = raw_kind.casefold()
+            if "video" in normalized:
+                kind = "video"
+            elif "photo" in normalized or "image" in normalized:
+                kind = "image"
+            elif "link" in normalized or "share" in normalized or target_url:
+                kind = "link"
+            elif normalized:
+                kind = "other"
+        item = {
+            "kind": kind,
+            "provider_type": provider_type[:80] if isinstance(provider_type, str) else None,
+            # Titles/descriptions are arbitrary post text and may identify people.
+            # Keep this slice metadata-only until the source privacy pipeline exists.
+            "title": None,
+            "description": None,
+            "target_url": target_url,
+            "content_status": "metadata_only_privacy_hold",
+        }
+        items.append(item)
+        nested = attachment.get("subattachments")
+        nested_data = nested.get("data") if isinstance(nested, dict) else None
+        if isinstance(nested_data, list):
+            truncated = truncated or len(nested_data) > 20
+            for child in nested_data[:20]:
+                if not isinstance(child, dict):
+                    continue
+                child_target = child.get("target")
+                child_url = safe_external_link_url(child.get("url"))
+                if child_url is None and isinstance(child_target, dict):
+                    child_url = safe_external_link_url(child_target.get("url"))
+                child_type = child.get("media_type") or child.get("type")
+                child_kind = "video" if isinstance(child_type, str) and "video" in child_type.casefold() else (
+                    "image" if isinstance(child_type, str) and ("photo" in child_type.casefold() or "image" in child_type.casefold())
+                    else "link" if child_url else "other"
+                )
+                items.append({
+                    "kind": child_kind,
+                    "provider_type": child.get("type")[:80] if isinstance(child.get("type"), str) else None,
+                    "title": None,
+                    "description": None,
+                    "target_url": child_url,
+                    "content_status": "metadata_only_privacy_hold",
+                })
+                if len(items) >= 100:
+                    return tuple(items), "truncated"
+        if len(items) >= 100:
+            return tuple(items), "truncated"
+    if truncated:
+        return tuple(items), "truncated"
+    if items:
+        return tuple(items), "returned"
+    return (), "none_returned" if not source_items else "not_returned"
+
+
+def safe_page_attachment_metadata(value: object) -> list[dict[str, str | None]]:
+    """Revalidate attachment DTOs at persistence/API trust boundaries.
+
+    Provider titles and descriptions are arbitrary source text and may contain
+    personal data. Keep them out until a reviewed privacy pipeline exists.
+    """
+    if not isinstance(value, (list, tuple)):
+        return []
+    allowed_kinds = {"image", "video", "link", "other", "unknown"}
+    result: list[dict[str, str | None]] = []
+    for item in value[:100]:
+        if not isinstance(item, dict):
+            continue
+        kind = item.get("kind")
+        if not isinstance(kind, str) or kind not in allowed_kinds:
+            kind = "unknown"
+        provider_type = item.get("provider_type")
+        result.append({
+            "kind": kind,
+            "provider_type": provider_type[:80] if isinstance(provider_type, str) else None,
+            "title": None,
+            "description": None,
+            "target_url": safe_external_link_url(item.get("target_url")),
+            "content_status": "metadata_only_privacy_hold",
+        })
+    return result
 
 
 def _created_time(value: object) -> datetime | None:
@@ -421,15 +553,38 @@ class MetaGraphClient:
             not isinstance(after, str) or not after or len(after) > 2048 or not after.isprintable()
         ):
             raise ValueError("invalid pagination cursor")
+        stable_fields = (
+            "id,message,created_time,permalink_url,reactions.limit(0).summary(true),"
+            "comments.limit(0).summary(true),shares"
+        )
         params: dict[str, str | int] = {
-            "fields": "id,message,created_time,permalink_url,reactions.limit(0).summary(true),comments.limit(0).summary(true),shares",
+            "fields": (
+                "id,message,created_time,permalink_url,link,"
+                "attachments.limit(20){media_type,type,title,description,url,"
+                "subattachments.limit(20){media_type,type,title,description,url}},"
+                "reactions.limit(0).summary(true),comments.limit(0).summary(true),shares"
+            ),
             "limit": limit,
         }
         if after is not None:
             params["after"] = after
-        payload = await self._request(
-            "GET", f"/{self.graph_version}/{self.page_id}/posts", publishing=False, params=params,
-        )
+        attachment_fields_requested = True
+        try:
+            payload = await self._request(
+                "GET", f"/{self.graph_version}/{self.page_id}/posts", publishing=False, params=params,
+            )
+        except MetaGraphTokenExpired:
+            raise
+        except MetaGraphRejected as error:
+            if error.retryable:
+                raise
+            # Field-level permissions/availability vary by Page and app review.
+            # Keep text and metrics useful while truthfully marking media missing.
+            attachment_fields_requested = False
+            params["fields"] = stable_fields
+            payload = await self._request(
+                "GET", f"/{self.graph_version}/{self.page_id}/posts", publishing=False, params=params,
+            )
         data = payload.get("data")
         if not isinstance(data, list):
             raise MetaGraphReadError("Meta Graph returned an invalid Page posts list.")
@@ -438,6 +593,9 @@ class MetaGraphClient:
             if not isinstance(item, dict) or not _valid_post_id(item.get("id"), self.page_id):
                 raise MetaGraphReadError("Meta Graph returned an invalid Page post.")
             message = item.get("message")
+            attachment_data, attachment_status = (
+                _attachment_items(item.get("attachments")) if attachment_fields_requested else ((), "not_returned")
+            )
             posts.append(MetaPagePost(
                 external_post_id=item["id"],
                 message=message if isinstance(message, str) else None,
@@ -446,6 +604,9 @@ class MetaGraphClient:
                 reactions=_summary_count(item.get("reactions")),
                 comments=_summary_count(item.get("comments")),
                 shares=_shares_count(item.get("shares")),
+                link_url=safe_external_link_url(item.get("link")),
+                attachments=attachment_data,
+                attachment_metadata_status=attachment_status,
             ))
         paging = payload.get("paging")
         cursor = None

@@ -37,7 +37,7 @@ from services.api.config import settings
 from services.api.db import SessionLocal
 from services.api.meta_client import (
     MetaGraphClient, MetaGraphReadError, MetaGraphRejected, MetaGraphTokenExpired,
-    facebook_page_reference,
+    facebook_page_reference, safe_external_link_url, safe_page_attachment_metadata,
 )
 from services.api.meta_tokens import TokenEncryptionUnavailable, decrypt_page_token
 from services.api.storage import storage
@@ -245,6 +245,9 @@ async def _persist_evidence(
                 await db.flush()
             page_post.message = text
             page_post.permalink = url
+            page_post.link_url = safe_external_link_url(metrics.get("link_url"))
+            page_post.attachments_json = safe_page_attachment_metadata(metrics.get("attachments"))
+            page_post.attachment_metadata_status = metrics.get("attachment_metadata_status", "not_returned")
             page_post.published_at = published_at
             page_post.reactions = metrics.get("reactions")
             page_post.comments = metrics.get("comments")
@@ -618,6 +621,12 @@ async def _collect_page(company_id: str, group_id: str, source: ResearchSource, 
                         if all(value is not None for value in (post.reactions, post.comments, post.shares)) else None,
                         "views": views,
                     }
+                    if post.attachment_metadata_status != "not_returned" or post.link_url or post.attachments:
+                        metrics.update({
+                            "link_url": safe_external_link_url(post.link_url),
+                            "attachments": safe_page_attachment_metadata(post.attachments),
+                            "attachment_metadata_status": post.attachment_metadata_status,
+                        })
                     for key, value in metrics.items():
                         if value is not None:
                             metric_counts[key] = metric_counts.get(key, 0) + 1
@@ -1192,6 +1201,12 @@ async def _collect_competitor_page_via_meta(
                         "interactions": sum(counts) if all(value is not None for value in counts) else None,
                         "views": None,
                     }
+                    if post.attachment_metadata_status != "not_returned" or post.link_url or post.attachments:
+                        metrics.update({
+                            "link_url": safe_external_link_url(post.link_url),
+                            "attachments": safe_page_attachment_metadata(post.attachments),
+                            "attachment_metadata_status": post.attachment_metadata_status,
+                        })
                     for key, value in metrics.items():
                         if value is not None:
                             metric_counts[key] = metric_counts.get(key, 0) + 1

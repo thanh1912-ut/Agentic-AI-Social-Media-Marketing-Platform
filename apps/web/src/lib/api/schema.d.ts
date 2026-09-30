@@ -2489,6 +2489,16 @@ export interface components {
             readonly title: string;
             /** Url */
             readonly url: string;
+            /** Link Url */
+            readonly link_url?: string | null;
+            /** Attachments */
+            readonly attachments?: readonly components["schemas"]["ResearchPostAttachmentOut"][];
+            /**
+             * Attachment Metadata Status
+             * @default not_returned
+             * @enum {string}
+             */
+            readonly attachment_metadata_status: "returned" | "none_returned" | "not_returned" | "truncated";
         };
         /** CompetitorPostsPage */
         readonly CompetitorPostsPage: {
@@ -3409,6 +3419,16 @@ export interface components {
             readonly reactions: number | null;
             /** Shares */
             readonly shares: number | null;
+            /** Link Url */
+            readonly link_url?: string | null;
+            /** Attachments */
+            readonly attachments?: readonly components["schemas"]["MetaPostAttachmentOut"][];
+            /**
+             * Attachment Metadata Status
+             * @default not_returned
+             * @enum {string}
+             */
+            readonly attachment_metadata_status: "returned" | "none_returned" | "not_returned" | "truncated";
         };
         /** MetaPagePostsOut */
         readonly MetaPagePostsOut: {
@@ -3424,6 +3444,28 @@ export interface components {
             readonly sync_has_more: boolean;
             /** Total */
             readonly total: number;
+        };
+        /** MetaPostAttachmentOut */
+        readonly MetaPostAttachmentOut: {
+            /**
+             * Kind
+             * @enum {string}
+             */
+            readonly kind: "image" | "video" | "link" | "other" | "unknown";
+            /** Provider Type */
+            readonly provider_type?: string | null;
+            /** Title */
+            readonly title?: string | null;
+            /** Description */
+            readonly description?: string | null;
+            /** Target Url */
+            readonly target_url?: string | null;
+            /**
+             * Content Status
+             * @default metadata_only_privacy_hold
+             * @constant
+             */
+            readonly content_status: "metadata_only_privacy_hold";
         };
         /** MetaPublicationOut */
         readonly MetaPublicationOut: {
@@ -3931,6 +3973,28 @@ export interface components {
             readonly spent_micro_usd: number;
             /** Unsettled Requests */
             readonly unsettled_requests: number;
+        };
+        /** ResearchPostAttachmentOut */
+        readonly ResearchPostAttachmentOut: {
+            /**
+             * Kind
+             * @enum {string}
+             */
+            readonly kind: "image" | "video" | "link" | "other" | "unknown";
+            /** Provider Type */
+            readonly provider_type?: string | null;
+            /** Title */
+            readonly title?: string | null;
+            /** Description */
+            readonly description?: string | null;
+            /** Target Url */
+            readonly target_url?: string | null;
+            /**
+             * Content Status
+             * @default metadata_only_privacy_hold
+             * @constant
+             */
+            readonly content_status: "metadata_only_privacy_hold";
         };
         /** ResearchPrivacyPolicyOut */
         readonly ResearchPrivacyPolicyOut: {
@@ -4544,6 +4608,7 @@ export type SchemaMetaMetricsScheduleIn = components['schemas']['MetaMetricsSche
 export type SchemaMetaMetricsScheduleOut = components['schemas']['MetaMetricsScheduleOut'];
 export type SchemaMetaPagePostOut = components['schemas']['MetaPagePostOut'];
 export type SchemaMetaPagePostsOut = components['schemas']['MetaPagePostsOut'];
+export type SchemaMetaPostAttachmentOut = components['schemas']['MetaPostAttachmentOut'];
 export type SchemaMetaPublicationOut = components['schemas']['MetaPublicationOut'];
 export type SchemaMetaPublishIn = components['schemas']['MetaPublishIn'];
 export type SchemaMetaReconcileIn = components['schemas']['MetaReconcileIn'];
@@ -4572,6 +4637,7 @@ export type SchemaRecordExperimentOutcomeRequest = components['schemas']['Record
 export type SchemaRegisterRequest = components['schemas']['RegisterRequest'];
 export type SchemaReprocessDocumentRequest = components['schemas']['ReprocessDocumentRequest'];
 export type SchemaResearchAiBudgetOut = components['schemas']['ResearchAIBudgetOut'];
+export type SchemaResearchPostAttachmentOut = components['schemas']['ResearchPostAttachmentOut'];
 export type SchemaResearchPrivacyPolicyOut = components['schemas']['ResearchPrivacyPolicyOut'];
 export type SchemaResearchPrivacyPolicyUpdate = components['schemas']['ResearchPrivacyPolicyUpdate'];
 export type SchemaResearchReportOut = components['schemas']['ResearchReportOut'];

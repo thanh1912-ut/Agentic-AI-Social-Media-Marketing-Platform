@@ -273,3 +273,16 @@ Base đã kiểm tra: `codex/creative-studio-ui` @ `b769097bfdb3568889d974c6def9
 - DONE: Sửa integration harness để monkeypatch `services.api.db.SessionLocal`, đúng binding được import động trong budget service.
 - PARTIAL: Object storage thật, purge scheduler end-to-end, xử lý xóa lan truyền và retention nội dung chuẩn hóa chưa được kiểm thử/triển khai.
 - NOT_RUN: Không gọi Facebook, DeepSeek, Gemini hoặc Qwen live; không thao tác preview hay database của người dùng.
+
+### 2026-09-30 13:14 Asia/Ho_Chi_Minh — Metadata link và media tham chiếu của bài Page
+
+- DONE: Page post collector yêu cầu attachment metadata có giới hạn và link đích; không tải binary ảnh/video, không lưu URL media có thể chứa chữ ký truy cập, và gắn trạng thái `metadata_only_privacy_hold`.
+- DONE: Link được lọc về HTTP(S), bỏ toàn bộ query/fragment có thể chứa chữ ký hoặc tracking và chặn host/IP nội bộ; attachment list có giới hạn để tránh response lớn.
+- DONE: Nếu Meta không chấp nhận field mở rộng, collector thử lại tập field bài viết ổn định và đánh dấu attachment metadata là `not_returned`, không làm mất bài đọc được.
+- DONE: Migration bổ sung `0024_page_post_media_references` lưu link và metadata an toàn cho owned Page posts; API, research observations và giao diện Nghiên cứu/Analytics hiển thị link/type cùng giới hạn xử lý.
+- PASS: `tests/test_meta_client.py tests/test_market_research_api.py`: 57 passed; gồm fallback field, URL nguy hiểm/secret query, metadata không giữ title/description tự do, response giới hạn và API serialization.
+- PASS: PostgreSQL 18.3 disposable: migrate database rỗng đến `0024`, downgrade `0023` rồi upgrade lại `0024`; kiểm tra cột và default mới. Không kết nối database preview.
+- PASS: OpenAPI export và TypeScript generation; frontend typecheck, lint, Vitest (50 passed) và production build; Ruff và `git diff --check`.
+- PARTIAL: Metadata chưa tương đương phân tích ảnh/video. Binary không tải; Gemini chưa nối vào pipeline. Comment body/replies tiếp tục `privacy_hold` và chưa có cursor pagination.
+- NOT_RUN: Meta live, UI → Redis/Celery → PostgreSQL bằng Page thật, Gemini/Qwen/DeepSeek live, deletion/retention propagation và comment pagination.
+- BLOCKED: Python runtime thiếu package `pgvector`; các API tests dùng SQLite fixture với import shim tạm ở `/private/tmp`. Migration chạy PostgreSQL thật với cùng shim import; chưa chứng minh ORM write/read qua API/worker trên PostgreSQL.

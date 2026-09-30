@@ -46,6 +46,20 @@ function formatMetric(value: number | null | undefined, percent = false): string
   }).format(value);
 }
 
+function safeExternalHttpUrl(value: string | null | undefined): string | null {
+  if (!value) return null;
+  try {
+    const url = new URL(value);
+    if (!['https:', 'http:'].includes(url.protocol) || !url.hostname || url.username || url.password) return null;
+    if (['localhost', '127.0.0.1', '::1'].includes(url.hostname.toLowerCase())) return null;
+    return url.toString();
+  } catch {
+    return null;
+  }
+}
+
+const PAGE_ATTACHMENT_LABELS = { image: 'Ảnh', video: 'Video', link: 'Liên kết', other: 'Tệp đính kèm', unknown: 'Media chưa rõ loại' } as const;
+
 function experimentMetricLabel(metric: ExperimentMetric): string {
   switch (metric) {
     case 'reach': return 'Lượt tiếp cận trung bình';
@@ -431,6 +445,8 @@ export default function AnalyticsPage() {
                             <td className="max-w-xs px-3 py-3"><p className="line-clamp-3 whitespace-pre-wrap text-slate-800">{item.message || 'Bài không có nội dung chữ'}</p>
                               <p className="mt-1 text-xs text-slate-500">{item.linked_post_id ? 'Bài tạo trong nền tảng' : 'Bài cũ / đăng ngoài nền tảng'}</p>
                               {link ? <a href={link} target="_blank" rel="noopener noreferrer" className="text-xs font-medium text-slate-700 underline">Mở trên Facebook</a> : null}
+                              {safeExternalHttpUrl(item.link_url) ? <p><a href={safeExternalHttpUrl(item.link_url)!} target="_blank" rel="noopener noreferrer" className="text-xs font-medium text-sky-800 underline">Mở liên kết trong bài</a></p> : null}
+                              {item.attachments?.length ? <p className="mt-1 text-xs text-slate-500">Đính kèm: {item.attachments.map((attachment) => PAGE_ATTACHMENT_LABELS[attachment.kind]).join(' · ')}. Chỉ metadata đã lưu; nội dung ảnh/video chưa tải hoặc phân tích (privacy hold).</p> : item.attachment_metadata_status === 'none_returned' ? <p className="mt-1 text-xs text-slate-500">Meta không trả media đính kèm cho bài này.</p> : null}
                             </td>
                             <td className="px-3 py-3 whitespace-nowrap">{item.published_at ? formatDateTime(item.published_at) : '—'}</td>
                             <td className="px-3 py-3 tabular-nums">{formatMetric(item.reactions)}</td>
