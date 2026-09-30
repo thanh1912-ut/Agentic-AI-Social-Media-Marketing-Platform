@@ -58,7 +58,7 @@ def _response(text: str):
             "finishReason": "STOP",
             "content": {"parts": [{"text": text}]},
         }],
-        "usageMetadata": {"promptTokenCount": 31, "candidatesTokenCount": 8},
+        "usageMetadata": {"promptTokenCount": 31, "candidatesTokenCount": 8, "totalTokenCount": 39},
     })
 
 

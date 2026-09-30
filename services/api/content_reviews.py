@@ -14,6 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from database.models import Brand, BrandProfileRevision, CampaignPost, Membership, PostContentReview, PostVersion, User, new_id, utcnow
 from services.worker.model_provider import AIConfigurationError, configured_structured_model
+from services.worker.interactive_ai import InteractiveBudgetedModel
 from .content_integrity import content_sha256
 from .db import get_db
 from .dependencies import current_user, membership_for, require_csrf, require_permission
@@ -159,12 +160,18 @@ def _apply_semantic_review(
     return status, checks, summary
 
 
-async def _run_semantic_review(content: dict[str, Any], owner_brand_context: dict[str, Any]) -> tuple[str, ContentSemanticReview | None]:
+async def _run_semantic_review(
+    content: dict[str, Any], owner_brand_context: dict[str, Any], *, company_id: str, request_key: str,
+) -> tuple[str, ContentSemanticReview | None]:
     try:
         model = configured_structured_model()
     except AIConfigurationError:
         return "not_run", None
     try:
+        model = InteractiveBudgetedModel(
+            model, loop=asyncio.get_running_loop(), company_id=company_id,
+            request_key_prefix=request_key, operation="content_semantic_review",
+        )
         output, _metadata = await asyncio.to_thread(
             model.generate,
             system_prompt=_SEMANTIC_REVIEW_SYSTEM_PROMPT,
@@ -252,7 +259,10 @@ async def create_post_review(
     # content edited while it was reviewing.
     await db.rollback()
     if owner_brand_context is not None:
-        semantic_status, semantic_review = await _run_semantic_review(content_snapshot, owner_brand_context)
+        semantic_status, semantic_review = await _run_semantic_review(
+            content_snapshot, owner_brand_context, company_id=company_id,
+            request_key=f"interactive:review:{post_id}:{request.version}:{digest}:{owner_brand_context['profile_version']}:{CONTENT_SEMANTIC_REVIEW_PROMPT_VERSION}",
+        )
         if semantic_review is not None:
             status, checks, summary = _apply_semantic_review(checks, semantic_review, content_text)
         elif semantic_status == "failed":
@@ -273,6 +283,11 @@ async def create_post_review(
     if post.status in {"scheduled", "published"}:
         await db.rollback()
         raise ApiProblem(409, "post_locked", "Bài đã được lên lịch hoặc đăng trong lúc kiểm tra.")
+    if owner_brand_context is not None:
+        current_brand_version = await db.scalar(select(Brand.version).where(Brand.company_id == company_id))
+        if current_brand_version != owner_brand_context["profile_version"]:
+            await db.rollback()
+            raise ApiProblem(409, "content_context_changed", "Hồ sơ thương hiệu đã đổi trong lúc kiểm tra; hãy chạy review lại.")
     row = PostContentReview(
         id=new_id(), company_id=company_id, post_id=post_id, post_version=request.version,
         content_sha256=digest, rule_version=CONTENT_REVIEW_RULE_VERSION, status=status,

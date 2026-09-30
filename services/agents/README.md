@@ -1,6 +1,32 @@
-# M3 DeepSeek handoff for Brand and Content
+# Agent provider handoff
 
-## Provider adapter
+## Active selection — Gemini, 2026-09-30
+
+The Owner selected `gemini-3.8-flash` for every LLM role. Set
+`LLM_PROVIDER=gemini`, `LLM_DEFAULT_MODEL=gemini-3.8-flash` and
+`GEMINI_MODEL=gemini-3.8-flash` in the persistent runtime secret file.
+`GEMINI_API_KEY` stays server-side. Planning, generation, revision, semantic
+review and research use `services.worker.model_provider.configured_structured_model`;
+it returns the native `GeminiStructuredModel`, with local Pydantic validation,
+no tools, fallback or repair call. The ledger counts thinking tokens too.
+
+Gemini text supports `summarize_screened_comments` using the provider-neutral
+`PrivacyApprovedCommentBatch` contract. Comment/media collection and privacy
+decisions are not implemented by the adapter; those pipelines remain on hold.
+Do not call it directly with raw collector output or without a budget reservation.
+
+Brand Profile is Owner-authored. Saving a profile and document ingestion never
+call an LLM. Docling and local retrieval remain local processing components.
+The legacy Brand agent examples below are retained for import/history compatibility,
+not an active ingestion step. DeepSeek/Qwen adapters are retained for compatibility,
+but the selected Gemini route never falls back to them.
+
+Native provider/model access was verified; two bounded synthetic live smoke
+attempts did not complete, the second returned HTTP 503. Fixture and PostgreSQL
+ledger tests do not establish live generation success. See the current
+`docs/page-workspace-research-verification.md` for exact results.
+
+## Legacy DeepSeek adapter and examples
 
 `services.agents.providers.DeepSeekStructuredModel` implements the existing
 `StructuredModel.generate(...)` protocol. Brand and Content handlers can share

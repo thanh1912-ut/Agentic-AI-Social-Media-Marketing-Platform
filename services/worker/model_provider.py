@@ -12,8 +12,19 @@ class AIConfigurationError(RuntimeError):
 def configured_structured_model():
     """Return M3's configured adapter; M2 does not implement an LLM client."""
 
+    if settings.llm_provider == "gemini":
+        if not settings.gemini_api_key:
+            raise AIConfigurationError("GEMINI_API_KEY is required when LLM_PROVIDER=gemini")
+        if settings.llm_default_model != "gemini-3.8-flash":
+            raise AIConfigurationError("LLM_DEFAULT_MODEL must be gemini-3.8-flash for this deployment")
+        from services.agents.providers.gemini_text import GeminiStructuredModel
+        return GeminiStructuredModel(
+            api_key=settings.gemini_api_key, model=settings.llm_default_model,
+            timeout_seconds=settings.ai_request_timeout_seconds,
+            max_tokens=settings.llm_max_tokens, max_input_chars=settings.llm_max_input_chars,
+        )
     if settings.llm_provider != "deepseek":
-        raise AIConfigurationError("LLM_PROVIDER must be deepseek; no provider fallback is configured")
+        raise AIConfigurationError("Unsupported LLM_PROVIDER; no provider fallback is configured")
     if not settings.deepseek_api_key:
         raise AIConfigurationError("DEEPSEEK_API_KEY is required when LLM_PROVIDER=deepseek")
     if not settings.llm_default_model:

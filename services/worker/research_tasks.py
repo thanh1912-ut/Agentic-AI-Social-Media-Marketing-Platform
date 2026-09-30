@@ -1,4 +1,4 @@
-"""Durable, bounded market research collection and DeepSeek reporting."""
+"""Durable, bounded market research collection and configured AI reporting."""
 
 from __future__ import annotations
 
@@ -65,6 +65,7 @@ from services.agents.providers.errors import ProviderContextLimitError
 from .async_runtime import run_worker_coroutine
 from .celery_app import celery_app
 from .model_provider import AIConfigurationError, configured_structured_model
+from .interactive_ai import provider_reservation_parameters
 
 
 logger = logging.getLogger(__name__)
@@ -1810,9 +1811,9 @@ async def _make_report(
     except AIConfigurationError:
         return report_with_context({
             "headline": "Đã lưu dữ liệu, đang chờ cấu hình AI",
-            "summary": "Các nguồn đã được lưu. Cấu hình DEEPSEEK_API_KEY và LLM_DEFAULT_MODEL để tạo phân tích và gợi ý.",
-            "trends": [], "suggestions": [], "analysis_status": "deepseek_not_configured",
-        }, status="not_used", reason="deepseek_not_configured"), None, "deepseek_not_configured"
+            "summary": "Các nguồn đã được lưu. Cấu hình key và model của nhà cung cấp AI đã chọn để tạo phân tích và gợi ý.",
+            "trends": [], "suggestions": [], "analysis_status": "provider_not_configured",
+        }, status="not_used", reason="provider_not_configured"), None, "provider_not_configured"
     payload = {
         "market_scope": _explicit_market_scope(group),
         "owner_authored_brand_profile": owner_brand_context or {"status": business_profile_context["status"]},
@@ -1838,15 +1839,17 @@ async def _make_report(
     )
     request_key = f"research-report:{cycle_id}"
     configured_model = str(getattr(model, "model_name", settings.llm_default_model))
+    configured_provider = str(getattr(model, "provider_name", settings.llm_provider))
     try:
         reservation = await reserve_automatic_request(
-            company_id=company_id, request_key=request_key, provider="deepseek",
+            company_id=company_id, request_key=request_key, provider=configured_provider,
             model=configured_model, operation="market_research_report",
+            **provider_reservation_parameters(model),
         )
     except PricingUnavailable:
         return report_with_context({
             "headline": "Đã lưu dữ liệu, chưa thể tính chi phí AI",
-            "summary": "Model DeepSeek đang cấu hình chưa có giá đã xác minh; hệ thống chưa gửi dữ liệu sang nhà cung cấp.",
+            "summary": "Model AI đang cấu hình chưa có giá hoặc giới hạn token đã xác minh; hệ thống chưa gửi dữ liệu sang nhà cung cấp.",
             "trends": [], "suggestions": [], "analysis_status": "pricing_unavailable",
         }, status="not_used", reason="pricing_unavailable"), configured_model, "pricing_unavailable"
     if reservation.status == "deferred_budget":
@@ -1909,7 +1912,7 @@ async def _make_report(
         actual_model = metadata.model if metadata else configured_model
         settlement = await settle_automatic_request(
             company_id=company_id, reservation=reservation,
-            provider="deepseek", model=actual_model,
+            provider=configured_provider, model=actual_model,
             input_tokens=getattr(metadata, "input_tokens", None),
             output_tokens=getattr(metadata, "output_tokens", None),
             result_json={"report": report, "model_name": actual_model},
@@ -1920,20 +1923,27 @@ async def _make_report(
         await release_unsubmitted_request(company_id=company_id, reservation=reservation)
         return report_with_context({
             "headline": "Đã lưu dữ liệu nhưng yêu cầu vượt giới hạn đầu vào AI",
-            "summary": "Hệ thống chưa gửi yêu cầu tới DeepSeek. Thu hẹp dữ liệu hoặc cấu hình giới hạn phù hợp rồi thử lại ở chu kỳ mới.",
+            "summary": "Hệ thống chưa gửi yêu cầu tới provider. Thu hẹp dữ liệu hoặc cấu hình giới hạn phù hợp rồi thử lại ở chu kỳ mới.",
             "trends": [], "suggestions": [], "analysis_status": "input_limit_exceeded",
             "analysis_budget_status": "released_before_provider_call",
         }, status="not_used", reason="input_limit_exceeded"), configured_model, "input_limit_exceeded"
-    except Exception:
+    except Exception as error:
         await mark_automatic_request_unknown(
-            company_id=company_id, reservation=reservation, error_code="provider_call_outcome_unknown",
+            company_id=company_id, reservation=reservation,
+            error_code=_safe_report_error_code(error),
         )
         return report_with_context({
-            "headline": "Đã lưu dữ liệu nhưng kết quả DeepSeek cần đối soát",
+            "headline": "Đã lưu dữ liệu nhưng kết quả AI cần đối soát",
             "summary": "Không xác định được nhà cung cấp đã nhận yêu cầu hay chưa. Reservation được giữ và hệ thống không tự gửi lại để tránh tính phí trùng.",
             "trends": [], "suggestions": [], "analysis_status": "provider_outcome_unknown",
             "analysis_budget_status": "reserved_for_reconciliation",
+            "analysis_error_code": _safe_report_error_code(error),
         }, status="provider_outcome_unknown"), configured_model, "provider_outcome_unknown"
+
+
+def _safe_report_error_code(error: Exception) -> str:
+    from services.agents.providers.errors import safe_provider_error_code
+    return safe_provider_error_code(error)
 
 
 async def _evidence_for_report(company_id: str, group_id: str) -> list[dict[str, Any]]:

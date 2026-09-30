@@ -1482,7 +1482,7 @@ async def get_workspace_ai_budget(
     pending = int(await db.scalar(select(func.count(MarketReport.id)).where(
         MarketReport.company_id == company_id,
         MarketReport.report_json["analysis_status"].as_string().in_([
-            "deferred_budget", "provider_outcome_unknown", "deepseek_not_configured",
+            "deferred_budget", "provider_outcome_unknown", "deepseek_not_configured", "provider_not_configured",
             "pricing_unavailable", "input_limit_exceeded",
         ]),
     )) or 0)

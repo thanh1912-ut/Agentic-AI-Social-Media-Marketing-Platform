@@ -57,13 +57,13 @@ from .campaign_schemas import (
     SubmitApprovalRequest,
     UpdatePostRequest,
 )
+from .config import settings
 from .db import get_db
 from .dependencies import current_user, membership_for, require_csrf, require_permission
 from .content_integrity import content_sha256
 from .content_reviews import latest_review_for_hash
 from .errors import ApiProblem
 from .job_service import accepted_response, append_job_event, dispatch_campaign_plan_job, dispatch_content_generation_job
-from .permissions import has_permission
 from .rate_limits import rate_limit
 from .schemas import AcceptedResponse
 from .storage import S3ObjectStorage, storage
@@ -386,13 +386,13 @@ async def plan_campaign_from_prompt(
     db.add(job)
     for key, label in (
         ("prepare_context", "Xác minh hồ sơ thương hiệu đã xác nhận"),
-        ("plan_campaign", "Đề xuất brief và ba concept bằng DeepSeek"),
+        ("plan_campaign", "Đề xuất brief và ba concept bằng AI đã cấu hình"),
     ):
         db.add(JobStep(id=new_id(), job_id=job.id, step_key=key, label=label, status="pending", created_at=now, updated_at=now))
     db.add(AuditEvent(
         company_id=company_id, actor_user_id=user.id, action="campaign.plan.request",
         entity_type="job", entity_id=job.id,
-        metadata_json={"brand_version": brand.version, "group_id": request.group_id, "provider": "deepseek"},
+        metadata_json={"brand_version": brand.version, "group_id": request.group_id, "provider": settings.llm_provider},
     ))
     await append_job_event(db, job, "queued", "Đã nhận yêu cầu. Campaign chỉ được tạo sau khi bạn xác nhận đề xuất.", 0)
     try:
@@ -835,7 +835,7 @@ async def revise_post_with_ai(
     db.add(job)
     for key, label in (
         ("prepare_context", "Xác minh phiên bản và tìm nguồn phù hợp"),
-        ("generate_posts", "Sửa bản nháp bằng DeepSeek"),
+        ("generate_posts", "Sửa bản nháp bằng AI đã cấu hình"),
         ("save_posts", "Lưu phiên bản mới, chờ người dùng duyệt"),
     ):
         db.add(JobStep(id=new_id(), job_id=job_id, step_key=key, label=label, status="pending", created_at=now, updated_at=now))
@@ -845,7 +845,7 @@ async def revise_post_with_ai(
         action="content.revise.requested",
         entity_type="post",
         entity_id=post.id,
-        metadata_json={"job_id": job_id, "version": post.current_version, "scope": request.scope, "provider": "deepseek"},
+        metadata_json={"job_id": job_id, "version": post.current_version, "scope": request.scope, "provider": settings.llm_provider},
     ))
     await append_job_event(db, job, "queued", "Đã nhận yêu cầu AI sửa bản nháp.", 0)
     try:
@@ -1194,7 +1194,7 @@ async def generate_content(
             "brand_profile_manual_required",
             "Owner cần tự viết và áp dụng hồ sơ thương hiệu trước khi sinh nội dung.",
         )
-    selected_documents = await _validate_selected_documents(db, company_id, request_payload.get("document_ids") or [])
+    await _validate_selected_documents(db, company_id, request_payload.get("document_ids") or [])
     fingerprint_payload = {
         "request": request_payload,
         "campaign_id": campaign.id,
@@ -1239,7 +1239,7 @@ async def generate_content(
     db.add(job)
     for key, label in (
         ("prepare_context", "Xác minh hồ sơ và tìm nguồn phù hợp"),
-        ("generate_posts", "Sinh bản nháp bằng DeepSeek"),
+        ("generate_posts", "Sinh bản nháp bằng AI đã cấu hình"),
         ("save_posts", "Lưu phiên bản và thông tin kiểm duyệt"),
     ):
         db.add(JobStep(id=new_id(), job_id=job_id, step_key=key, label=label, status="pending", created_at=now, updated_at=now))
@@ -1249,7 +1249,7 @@ async def generate_content(
         action="content.generate.requested",
         entity_type="campaign",
         entity_id=campaign.id,
-        metadata_json={"job_id": job_id, "count": request_payload["count"], "slot_id": request.slot_id, "provider": "deepseek", "brand_version": brand.version},
+        metadata_json={"job_id": job_id, "count": request_payload["count"], "slot_id": request.slot_id, "provider": settings.llm_provider, "brand_version": brand.version},
     ))
     if selected_slot:
         db.add(AuditEvent(

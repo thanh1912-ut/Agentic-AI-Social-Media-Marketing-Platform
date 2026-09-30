@@ -137,7 +137,7 @@ class GeminiMediaAnalyzer:
         system_prompt: str,
         input_payload: Mapping[str, Any],
         response_model: type[ModelT],
-    ) -> tuple[ModelT, GenerationMetadata]:
+    ) -> tuple[ModelT, GenerationMetadata | None]:
         media.validate(max_asset_bytes=self.max_asset_bytes)
         try:
             serialized_payload = json.dumps(input_payload, ensure_ascii=False, separators=(",", ":"))
@@ -177,6 +177,10 @@ class GeminiMediaAnalyzer:
         except (TypeError, ValueError):
             raise ProviderContextLimitError("The Gemini media request could not be serialized safely") from None
 
+        return self._generate_body(body=body, response_model=response_model)
+
+    def _generate_body(self, *, body: dict[str, Any], response_model: type[ModelT]) -> tuple[ModelT, GenerationMetadata | None]:
+        """Shared, one-call native Gemini boundary for text and approved media."""
         started = time.monotonic()
         url = f"{GEMINI_API_ROOT}/{self.model_name}:generateContent"
         try:
@@ -188,7 +192,11 @@ class GeminiMediaAnalyzer:
             )
             response.raise_for_status()
         except Exception as error:
-            raise _request_error(error, provider_label="Gemini") from None
+            safe_error = _request_error(error, provider_label="Gemini")
+            status = getattr(getattr(error, "response", None), "status_code", None)
+            if type(status) is int and 400 <= status <= 599:
+                safe_error.http_status = status
+            raise safe_error from None
 
         try:
             response_body = response.json()
@@ -201,16 +209,17 @@ class GeminiMediaAnalyzer:
         if not isinstance(candidate, dict) or candidate.get("finishReason") != "STOP":
             reason = candidate.get("finishReason") if isinstance(candidate, dict) else None
             raise ProviderOutputError(
-                f"Gemini did not complete media analysis normally ({reason or 'missing candidate'})",
+                f"Gemini did not complete structured analysis normally ({reason or 'missing candidate'})",
                 retryable=False,
             )
         content = candidate.get("content")
         parts = content.get("parts") if isinstance(content, dict) else None
         output_text = "".join(
-            part["text"] for part in parts if isinstance(part, dict) and isinstance(part.get("text"), str)
+            part["text"] for part in parts
+            if isinstance(part, dict) and isinstance(part.get("text"), str) and part.get("thought") is not True
         ) if isinstance(parts, list) else ""
         if not output_text.strip():
-            raise ProviderOutputError("Gemini returned empty structured media output", retryable=False)
+            raise ProviderOutputError("Gemini returned empty structured output", retryable=False)
         try:
             result = response_model.model_validate_json(output_text)
         except (ValidationError, ValueError):
@@ -220,6 +229,26 @@ class GeminiMediaAnalyzer:
 
         usage = response_body.get("usageMetadata")
         usage = usage if isinstance(usage, dict) else {}
+        input_tokens = usage.get("promptTokenCount")
+        visible_tokens = usage.get("candidatesTokenCount")
+        thoughts = usage.get("thoughtsTokenCount")
+        total = usage.get("totalTokenCount")
+        # Google bills thinking tokens too. Missing/malformed usage cannot be
+        # represented as zero; callers keep the reservation for reconciliation.
+        if not all(type(count) is int and count >= 0 for count in (input_tokens, visible_tokens)):
+            return result, None
+        if thoughts is not None and (type(thoughts) is not int or thoughts < 0):
+            return result, None
+        if total is not None:
+            if type(total) is not int or total < input_tokens + visible_tokens:
+                return result, None
+            output_tokens = total - input_tokens
+            if thoughts is not None and output_tokens != visible_tokens + thoughts:
+                return result, None
+        elif thoughts is not None:
+            output_tokens = visible_tokens + thoughts
+        else:
+            return result, None
         model_version = response_body.get("modelVersion")
         actual_model = model_version.strip() if isinstance(model_version, str) and model_version.strip() else self.model_name
         metadata = GenerationMetadata(
@@ -228,8 +257,8 @@ class GeminiMediaAnalyzer:
             prompt_version="set-by-agent",
             schema_version=response_model.__name__,
             input_snapshot_id="set-by-caller",
-            input_tokens=int(usage.get("promptTokenCount", 0) or 0),
-            output_tokens=int(usage.get("candidatesTokenCount", 0) or 0),
+            input_tokens=input_tokens,
+            output_tokens=output_tokens,
             estimated_cost_usd=0.0,
             latency_ms=max(0, int((time.monotonic() - started) * 1000)),
         )

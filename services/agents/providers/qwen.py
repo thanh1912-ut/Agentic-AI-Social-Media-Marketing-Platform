@@ -5,70 +5,24 @@ from __future__ import annotations
 import os
 from collections.abc import Mapping
 from typing import Any
-from typing import Literal
 from urllib.parse import urlsplit
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel
 
 from packages.contracts import GenerationMetadata
 
 from .deepseek import DeepSeekStructuredModel, _positive_float, _positive_int
 from .errors import ProviderConfigurationError, ProviderOutputError
+from .comment_contracts import (
+    CommentAnalysis as QwenCommentAnalysis,
+    CommentTopic as QwenCommentTopic,
+    PrivacyApprovedCommentBatch,
+    ScreenedComment,
+)
 
-
-class ScreenedComment(BaseModel):
-    """One already-screened comment, identified only by a run-scoped evidence ref."""
-
-    model_config = ConfigDict(extra="forbid")
-
-    evidence_ref: str = Field(min_length=8, max_length=128, pattern=r"^comment_[A-Za-z0-9_-]+$")
-    text: str = Field(min_length=1, max_length=1500)
-
-    @field_validator("text")
-    @classmethod
-    def reject_blank_text(cls, value: str) -> str:
-        if not value.strip():
-            raise ValueError("screened comment text must not be blank")
-        return value
-
-
-class PrivacyApprovedCommentBatch(BaseModel):
-    """Provider-bound comments with an upstream privacy decision reference.
-
-    This contract is not a legal-basis determination. Only the owning privacy
-    pipeline may set the status after its configured checks have passed.
-    """
-
-    model_config = ConfigDict(extra="forbid")
-
-    privacy_status: Literal["approved_for_provider"]
-    privacy_decision_id: str = Field(min_length=8, max_length=128)
-    policy_version: str = Field(min_length=1, max_length=80)
-    comments: list[ScreenedComment] = Field(min_length=1, max_length=500)
-
-    @field_validator("comments")
-    @classmethod
-    def require_unique_evidence_refs(cls, comments: list[ScreenedComment]) -> list[ScreenedComment]:
-        refs = [comment.evidence_ref for comment in comments]
-        if len(refs) != len(set(refs)):
-            raise ValueError("comment evidence references must be unique within a batch")
-        return comments
-
-
-class QwenCommentTopic(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    category: Literal["question", "need", "feedback", "other"]
-    topic: str = Field(min_length=1, max_length=160)
-    summary: str = Field(min_length=1, max_length=1000)
-    evidence_refs: list[str] = Field(min_length=1, max_length=100)
-
-
-class QwenCommentAnalysis(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    topics: list[QwenCommentTopic] = Field(max_length=30)
-    limitations: list[str] = Field(max_length=20)
+# Legacy import compatibility; production routing no longer selects Qwen.
+__all__ = ["QwenCommentAnalysis", "QwenCommentTopic", "PrivacyApprovedCommentBatch",
+           "ScreenedComment", "QwenStructuredModel", "configured_qwen_structured_model"]
 
 
 class QwenStructuredModel(DeepSeekStructuredModel):

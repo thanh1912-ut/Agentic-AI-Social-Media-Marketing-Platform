@@ -4,6 +4,19 @@ Ngày bắt đầu: 2026-09-30 (Asia/Ho_Chi_Minh)
 Nhánh: `codex/page-workspaces-research`
 Base đã kiểm tra: `codex/creative-studio-ui` @ `b769097bfdb3568889d974c6def95bb944559113`
 
+## 2026-09-30 22:40 — Gemini theo quyết định mới của Owner
+
+- DONE: Thay mọi tác vụ LLM đang hoạt động sang Gemini `gemini-3.8-flash`: planning, content generate/revise, semantic review và research report. DeepSeek/Qwen giữ adapter lịch sử, không fallback.
+- DONE: Comment contract trung lập provider, role tổng hợp chuyển Gemini, revalidate privacy và citation; chưa nối worker/persistence bình luận.
+- DONE: Ledger dùng usage native gồm thinking; review cũng ghi interactive ledger và pin profile version. Gemini dùng reservation trần token bảo thủ, chưa có countTokens.
+- DONE: File Gemini và Page encryption cấu hình bền vững, 0600. Owner đã nạp key Gemini, GET model thật available=yes. Key/token không được in hoặc commit.
+- PASS: Regression cuối 328 passed/27 skipped/1 deselected (Docling runtime loại riêng); focused74 passed; PostgreSQL/Redis18 passed; Ruff và OpenAPI check; frontend52 tests/lint/typecheck/build.
+- FIXED: Worker test thiếu DATABASE_URL đã dùng SQLite mặc định; thêm assertion setup, chạy lại đúng PostgreSQL thật. Hai lần thử sai tên file test không chạy test; không tính là kết quả PASS.
+- BLOCKED_EXTERNAL: Hai smoke Gemini nhỏ chưa thành công, lượt thứ hai HTTP503; giữ reservation, không gọi lặp hoặc đổi provider. Không gửi tài liệu người dùng hoặc Facebook data tới Gemini.
+- IN_PROGRESS: Preview backend vẫn schema0020/checkout cũ; cần backup, diễn tập upgrade rồi rollout để API/worker nạp Gemini/Page gate đúng. Preflight không có job queued/running hoặc Page token mã hóa.
+- PASS: Backup online vào bundle riêng, restore PG disposable và upgrade0020→0026; 55 bảng lịch sử giữ nguyên số bản ghi, head mới có60 bảng. Chưa thay preview hoặc gọi lại Gemini.
+- TODO: Comments/replies checkpoint/persistence, media worker, privacy/retention/deletion toàn luồng, Page/provider live và browser acceptance đầy đủ. Không tuyên bố mục tiêu tổng thể đạt.
+
 ## Checklist
 
 - [DONE] Baseline repo, contract, auth, Page connection, Research, worker và collector.
@@ -601,3 +614,10 @@ Base đã kiểm tra: `codex/creative-studio-ui` @ `b769097bfdb3568889d974c6def9
 - NOT_RUN: Meta live, bình luận/replies, media, Gemini/Qwen routing, UI-to-worker và rollout worker mới. Các phần này vẫn còn trong phạm vi nhiệm vụ; không đánh dấu pilot hoàn tất.
 - FIXED: Hủy research job giờ khóa bản ghi job, kết thúc research cycle trong cùng transaction và giữ cursor/bằng chứng. Viewer không được hủy; Owner/Editor dùng quyền `market:manage`. Hai case queued/running qua API fixture xác nhận có thể gửi Crawl mới sau khi hủy thay vì bị trả về job cũ.
 - PASS: Regression cuối có thêm `tests/test_campaign_workflows.py` đạt **89 passed**; luồng hủy reservation của content generation vẫn đạt sau khi thêm khóa job.
+
+### 2026-09-30 21:43 Asia/Ho_Chi_Minh — Cấu hình Gemini/Qwen qua restart
+
+- DONE: Launcher đọc `secrets/research-ai.env` tùy chọn từ runtime root, chỉ nhận allowlist Gemini/Qwen và yêu cầu quyền owner-only `0600`. API/worker nhận cấu hình; ingestion/Beat/dispatch/probe DeepSeek không nhận các key mới. File mới không ghi đè auth/database/DeepSeek.
+- PASS: `tests/test_local_preview_runtime.py` — **8 passed**; test rewrite/reload file loại bỏ key cũ, kiểm tra mọi process mode và file sai quyền. Ruff đạt. Không gọi provider hoặc restart preview.
+- BLOCKED_CONFIG: Kiểm tra chỉ có/thiếu cho thấy runtime chưa có key/model Gemini hoặc key/model/region/endpoint Qwen. Không in hoặc sao chép secret; đã yêu cầu model IDs/region, key cần điền trực tiếp trong secret store local.
+- IN_PROGRESS: Owned Page comments/replies và media worker chưa nối; privacy hold giữ nguyên. Đây chưa phải nghiệm thu ba provider.

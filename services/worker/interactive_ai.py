@@ -66,6 +66,7 @@ class InteractiveBudgetedModel:
             provider=self.provider_name,
             model=self.model_name,
             operation=self._operation,
+            **provider_reservation_parameters(self._model),
         ))
         if reservation.status == "cached" and reservation.cached_result is not None:
             cached = reservation.cached_result
@@ -135,3 +136,9 @@ def _metadata_payload(metadata: Any) -> dict[str, Any]:
         for key in ("provider", "model", "input_tokens", "output_tokens", "latency_ms", "estimated_cost_usd")
         if getattr(metadata, key, None) is not None
     }
+
+
+def provider_reservation_parameters(model: Any) -> dict[str, int]:
+    """Explicit bounds supplied by reviewed adapters; legacy DeepSeek unchanged."""
+    parameters = getattr(model, "reservation_parameters", None)
+    return parameters() if callable(parameters) else {}

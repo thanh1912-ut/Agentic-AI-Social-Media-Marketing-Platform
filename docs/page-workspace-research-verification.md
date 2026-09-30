@@ -1,5 +1,28 @@
 # Kiểm chứng Page workspace và Nghiên cứu
 
+## Gemini cho mọi tác vụ AI — 2026-09-30 22:40 Asia/Ho_Chi_Minh
+
+Code kiểm thử: working tree trên nền `d2801fdfcdaf1d552155586626b461c0cd314c88`, nhánh `codex/page-workspaces-research`.
+Các bảng phía dưới là lịch sử từng lát cắt, không thay thế trạng thái mới nhất này.
+
+| Kiểm tra | Trạng thái | Bằng chứng và giới hạn |
+|---|---|---|
+| Routing Gemini cho planning/generate/revise/review/research | PASS fixture | Native generateContent, JSON + Pydantic, không fallback/repair; metadata/audit lấy provider thực. Lưu hồ sơ/upload không gọi AI. |
+| Gemini comment role | PASS fixture; pipeline NOT_RUN | Contract batch đã screening; không gửi author/decision ID; citations ngoài batch và privacy_hold bị chặn. Chưa có comment persistence/worker tự động. |
+| Regression backend | PASS có giới hạn | Lần cuối 328 passed, 27 skipped, 1 deselected; bỏ module Docling parser và một scan-PDF runtime test. Đây không phải toàn bộ runtime/parser/live tests. |
+| PostgreSQL/Redis integration | PASS | 18 passed trên PG18.3 `15559`, Redis8.6.3 `16481/16482`, DB test riêng. Gemini ledger dùng response fixture, gồm thinking usage; replay không gọi lại provider. |
+| Worker test setup | FIXED | Lần đầu worker dùng SQLite mặc định vì thiếu DATABASE_URL. Thêm assertion bắt buộc DATABASE_URL=POSTGRES_TEST_URL; chạy lại PostgreSQL đúng đạt 18/18. Không dùng kết quả lỗi setup làm bằng chứng nghiệm thu. |
+| Runtime secret reload | PASS fixture + cấu hình máy | 0600, reload file mới, API/worker lấy Gemini; ingestion/Beat không nhận key; key Page bền vững. Không sửa key DeepSeek cũ. |
+| Model access thật | PASS | GET model bằng key Owner vừa nạp: gemini-3.8-flash available=yes; không tạo nội dung. |
+| Gemini live generation | BLOCKED_EXTERNAL | Hai lượt nhỏ, mỗi lượt tối đa một call, synthetic collection + Redis/Celery/PG thật. Lượt thứ hai HTTP503, job lưu provider_outcome_unknown, reservation giữ. Chưa có report AI live đạt. |
+| Frontend | PASS | ESLint, TypeScript, Vitest 52/52, production build real mode với API8001. Chỉ sửa nhãn AI, không đổi HTTP schema. |
+| Backend preview hiện hành trước rollout | NEEDS_UPGRADE | Vẫn checkout auth-registration-login/schema0020; frontend Page UI mới đã chạy. Không có job queued/running, Page connection hoặc token mã hóa tại preflight. |
+| Backup/restore/upgrade diễn tập | PASS có giới hạn | Bundle riêng `page-workspace-preflight-20260930T153834Z`: pg_dump custom + storage tar.gz + SHA256. Restore vào PG15559, nâng0020→0026; 55 bảng gốc giữ nguyên số bản ghi, schema mới60 bảng. Bản sao online trước maintenance, chưa là final consistent backup. |
+
+Model/capability và giá kiểm tra lại từ [model Gemini3.8](https://ai.google.dev/gemini-api/docs/models/gemini-3.8-flash)
+và [bảng giá Google](https://ai.google.dev/gemini-api/docs/pricing). Chỉ dùng Standard rate đã ghi trong ledger;
+không coi sentinel estimated_cost_usd=0 của adapter là miễn phí. Chi phí thực đọc từ ledger.
+
 ## Rollout frontend real mode — 2026-09-30 20:32 Asia/Ho_Chi_Minh
 
 | Kiểm tra | Trạng thái | Bằng chứng và giới hạn |
@@ -474,6 +497,8 @@ Commit triển khai: `0d95d9b5704ee6fa37f31ae237d522795a08a304` trên `codex/pag
 
 Source được kiểm thử: working tree trên `452061b259c54083cf88e4e8a702e11a7686ecec` với thay đổi worker/tests trong đợt này. HTTP schema và migration head `0026` giữ nguyên; không thay frontend hoặc runtime preview.
 
+Code đã commit/push tại `d2801fdfcdaf1d552155586626b461c0cd314c88`; remote SHA đã đối chiếu khớp.
+
 | Kiểm tra | Trạng thái | Bằng chứng và giới hạn |
 |---|---|---|
 | Tự tiếp tục qua Redis/Celery | PASS (pipeline thật, Meta fixture) | `test_owned_page_backfill_continues_through_redis_and_finalizes_once`: Celery solo worker nhận job đã commit, đọc sáu trang Meta tổng hợp qua năm lô, các lô tiếp đi từ cursor và không fetch lại trang mới nhất. Không có HTTP request tới Meta. |
@@ -484,3 +509,12 @@ Source được kiểm thử: working tree trên `452061b259c54083cf88e4e8a702e1
 | Hủy và Crawl lại | PASS (SQLite API fixture) | Hai trạng thái queued/running: Viewer bị từ chối, Owner hủy job và cycle nguyên tử; source cursor vẫn giữ, lần Crawl sau nhận job mới. Không đổi publishing/Meta job cancellation. PostgreSQL/API race riêng cho cancel chưa chạy. |
 | Regression | PASS | `tests/test_market_research_api.py tests/test_meta_client.py tests/test_research_privacy.py tests/test_campaign_workflows.py`: **89 passed** sau sửa cancellation. `tests/test_postgres_database_integration.py`: **17 passed**, không skip. Ruff và whitespace check đạt. PostgreSQL/Redis disposable đã dừng. |
 | Meta live và toàn bộ phạm vi | NOT_RUN / INCOMPLETE | Không xác minh backfill Facebook thật, comments/replies, media/Gemini/Qwen hoặc browser-to-worker trong đợt này. Comments/media vẫn privacy hold. Worker preview chưa được rollout; UI real preview hiện hữu không bị đổi. |
+
+## Cấu hình runtime Gemini/Qwen — 2026-09-30 21:43 Asia/Ho_Chi_Minh
+
+| Kiểm tra | Trạng thái | Bằng chứng và giới hạn |
+|---|---|---|
+| File reload/process isolation | PASS (fixtures) | `tests/test_local_preview_runtime.py` — **8 passed** trên working tree từ `d2801fd`. File tổng hợp `0600` được đọc lại; key cũ không kế thừa, auth/database/DeepSeek không bị override; ingestion/Beat không nhận key nghiên cứu. |
+| Static checks | PASS | Ruff cho launcher và test đạt; không thay contract hoặc migration. |
+| Cấu hình live hai provider | BLOCKED_CONFIG | Runtime hiện chưa có Gemini key/model và Qwen key/model/region/endpoint. Không tạo key/model/region giả. |
+| Restart preview/provider call | NOT_RUN | Chỉ kiểm thử reader bằng file tổng hợp; chưa restart preview hoặc gọi Gemini/Qwen. Routing comments/media chưa sẵn sàng. |

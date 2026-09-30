@@ -7,6 +7,7 @@ class ProviderError(RuntimeError):
     """Safe-to-report provider failure; never includes credentials or raw bodies."""
 
     retryable = False
+    http_status: int | None = None
 
     def __init__(self, message: str, *, retryable: bool | None = None, repair_attempts: int = 0):
         super().__init__(message)
@@ -51,3 +52,16 @@ class ProviderContextLimitError(ProviderError):
 
 class ProviderRequestError(ProviderError):
     """The provider rejected or failed a request for another reason."""
+
+
+def safe_provider_error_code(error: Exception) -> str:
+    """A bounded diagnostic code without headers, URLs, bodies or source text."""
+    if isinstance(error, ProviderError):
+        status = error.http_status
+        if type(status) is int and 400 <= status <= 599:
+            return f"provider_http_{status}"
+        if isinstance(error, ProviderOutputError):
+            return "provider_output_invalid"
+        if isinstance(error, ProviderTimeoutError):
+            return "provider_timeout"
+    return "provider_call_outcome_unknown"

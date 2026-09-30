@@ -79,11 +79,23 @@ def test_semantic_review_uses_configured_adapter_without_live_provider(monkeypat
             ), object()
 
     monkeypatch.setattr("services.api.content_reviews.configured_structured_model", lambda: FakeModel())
+    from services.worker import interactive_ai
+    from services.worker.ai_budget import Reservation
+    calls = []
+    async def reserve(**kwargs):
+        calls.append(kwargs)
+        return Reservation("reserved", kwargs["request_key"], ledger_id="synthetic-review-ledger")
+    async def settle(**kwargs):
+        return "usage_unavailable"  # The fixture intentionally has no usage.
+    monkeypatch.setattr(interactive_ai, "reserve_interactive_request", reserve)
+    monkeypatch.setattr(interactive_ai, "settle_interactive_request", settle)
     status, result = asyncio.run(_run_semantic_review(
         {"caption": "Lời khuyên an toàn."}, {"business_name": "MailGuard AI"},
+        company_id="workspace-fixture", request_key="interactive:review:fixture",
     ))
     assert status == "completed"
     assert result is not None and result.brand_voice == "aligned"
+    assert calls[0]["operation"] == "content_semantic_review"
 
 
 def test_content_review_blocks_live_phishing_example_and_warns_on_duplicate() -> None:

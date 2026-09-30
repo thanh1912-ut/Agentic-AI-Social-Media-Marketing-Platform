@@ -77,6 +77,28 @@ def test_missing_deepseek_key_has_provider_specific_configuration_error(monkeypa
         model_provider.configured_structured_model()
 
 
+def test_explicit_gemini_configuration_uses_gemini_without_deepseek_fallback(monkeypatch):
+    monkeypatch.setattr(model_provider, "settings", SimpleNamespace(
+        llm_provider="gemini", gemini_api_key="fixture-gemini", deepseek_api_key="old-key-not-used",
+        llm_default_model="gemini-3.8-flash", ai_request_timeout_seconds=17,
+        llm_max_tokens=512, llm_max_input_chars=6000,
+    ))
+    adapter = model_provider.configured_structured_model()
+    assert adapter.provider_name == "gemini" and adapter.model_name == "gemini-3.8-flash"
+    assert adapter.max_tokens == 512 and adapter.timeout_seconds == 17
+    monkeypatch.setattr(model_provider.settings, "gemini_api_key", "")
+    with pytest.raises(model_provider.AIConfigurationError, match="GEMINI_API_KEY"):
+        model_provider.configured_structured_model()
+
+
+def test_gemini_refuses_an_unapproved_model_instead_of_falling_back(monkeypatch):
+    monkeypatch.setattr(model_provider, "settings", SimpleNamespace(
+        llm_provider="gemini", gemini_api_key="fixture", llm_default_model="some-latest-alias",
+    ))
+    with pytest.raises(model_provider.AIConfigurationError, match="gemini-3.8-flash"):
+        model_provider.configured_structured_model()
+
+
 def test_external_embedding_provider_requires_separate_data_flow_approval(monkeypatch):
     monkeypatch.setattr(
         model_provider,

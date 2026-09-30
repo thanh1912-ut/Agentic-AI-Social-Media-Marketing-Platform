@@ -14,6 +14,7 @@ from services.agents.providers.errors import ProviderContextLimitError, Provider
 from services.api.db import SessionLocal
 from services.api.pilot_schemas import CampaignPlanProposal
 from services.api.config import settings
+from services.worker.interactive_ai import provider_reservation_parameters
 from services.worker.ai_budget import (
     PricingUnavailable,
     Reservation,
@@ -136,6 +137,7 @@ async def campaign_plan_task_async(job_id: str, *, model: Any | None = None) -> 
                 provider=provider_name,
                 model=configured_model_name,
                 operation="campaign_plan",
+                **provider_reservation_parameters(structured_model),
             )
             if interactive_reservation.status == "cached" and interactive_reservation.cached_result:
                 cached = interactive_reservation.cached_result
@@ -280,11 +282,11 @@ async def campaign_plan_task_async(job_id: str, *, model: Any | None = None) -> 
             await _job_event(db, job, "complete", "Đã lưu ba concept để người dùng chọn và xác nhận.", 100)
             await db.commit()
     except AIConfigurationError:
-        await _fail_plan(job_id, claim_token, "ai_not_configured", "DeepSeek chưa được cấu hình cho backend.")
+        await _fail_plan(job_id, claim_token, "ai_not_configured", "Provider AI đã chọn chưa được cấu hình cho backend.")
     except ProviderContextLimitError:
         await _fail_plan(job_id, claim_token, "input_limit_exceeded", "Yêu cầu vượt giới hạn đầu vào của model; hãy rút gọn yêu cầu rồi thử lại.")
     except ProviderError:
-        await _fail_plan(job_id, claim_token, "deepseek_request_failed", "Không thể lập kế hoạch với DeepSeek lần này.")
+        await _fail_plan(job_id, claim_token, "provider_request_failed", "Không thể lập kế hoạch với provider AI đã chọn lần này.")
     except PricingUnavailable:
         await _fail_plan(job_id, claim_token, "pricing_unavailable", "Model chưa có mức giá đã xác minh; hệ thống chưa gửi yêu cầu AI.")
     except Exception:

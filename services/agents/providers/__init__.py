@@ -25,8 +25,9 @@ from .openai import (
     configured_openai_structured_model,
 )
 from .gemini import ApprovedMediaInput, GeminiMediaAnalyzer, configured_gemini_media_analyzer
+from .gemini_text import GeminiStructuredModel
+from .comment_contracts import CommentAnalysis, PrivacyApprovedCommentBatch
 from .qwen import (
-    PrivacyApprovedCommentBatch,
     QwenCommentAnalysis,
     QwenStructuredModel,
     configured_qwen_structured_model,
@@ -37,6 +38,8 @@ __all__ = [
     "DeepSeekStructuredModel",
     "ApprovedMediaInput",
     "GeminiMediaAnalyzer",
+    "GeminiStructuredModel",
+    "CommentAnalysis",
     "FastEmbedLocalEmbeddingProvider",
     "OpenAIEmbeddingProvider",
     "OpenAIProviderError",

@@ -65,7 +65,7 @@ export default function BrandProfilePage() {
     if (!isOwner || !pageReady || !current || !dirty || tooLong || !draft.trim()) return;
     setMessage(null);
     save.mutate({ version: current.version, profile_text: draft, confirm: false }, {
-      onSuccess: () => setMessage('Đã lưu và áp dụng hồ sơ. DeepSeek không được gọi khi lưu hồ sơ.'),
+      onSuccess: () => setMessage('Đã lưu và áp dụng hồ sơ. Lưu hồ sơ không gọi AI.'),
       onError: (error) => setMessage(error instanceof ApiError && error.isVersionConflict
         ? 'Hồ sơ đã được cập nhật ở phiên khác. Tải lại rồi áp dụng lại nội dung của bạn.'
         : error.message || 'Không lưu được hồ sơ. Hãy thử lại.'),
@@ -129,7 +129,7 @@ export default function BrandProfilePage() {
             </Button>
           ) : <span className="text-sm text-slate-600">Chỉ Owner mới được sửa và áp dụng hồ sơ chung.</span>}
         </div>
-        <p className="text-xs text-slate-500">Hồ sơ được lưu nguyên văn, có lịch sử phiên bản. Lưu hồ sơ không gọi DeepSeek. Tài liệu tải lên được chọn riêng trong từng yêu cầu viết bài.</p>
+        <p className="text-xs text-slate-500">Hồ sơ được lưu nguyên văn, có lịch sử phiên bản. Lưu hồ sơ không gọi AI. Tài liệu tải lên được chọn riêng trong từng yêu cầu viết bài.</p>
       </div></Card>
 
       <Card><div className="space-y-3">

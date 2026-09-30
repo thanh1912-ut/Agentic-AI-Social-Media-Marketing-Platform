@@ -82,9 +82,13 @@ class Settings:
     inline_jobs: bool = _bool("INLINE_JOBS", False)
     llm_provider: str = os.getenv("LLM_PROVIDER", "deepseek").strip().casefold()
     deepseek_api_key: str = field(default_factory=lambda: os.getenv("DEEPSEEK_API_KEY", ""), repr=False)
+    gemini_api_key: str = field(default_factory=lambda: os.getenv("GEMINI_API_KEY", ""), repr=False)
     deepseek_base_url: str = os.getenv("DEEPSEEK_BASE_URL", "https://api.deepseek.com").strip()
     llm_default_model: str = os.getenv("LLM_DEFAULT_MODEL", "deepseek-flash").strip()
-    llm_max_tokens: int = int(os.getenv("DEEPSEEK_MAX_TOKENS", "8192"))
+    llm_max_tokens: int = int(os.getenv(
+        "GEMINI_MAX_OUTPUT_TOKENS" if os.getenv("LLM_PROVIDER", "deepseek").strip().casefold() == "gemini"
+        else "DEEPSEEK_MAX_TOKENS", "8192"
+    ))
     llm_max_input_chars: int = int(os.getenv("LLM_MAX_INPUT_CHARS", "24000"))
     auto_ai_daily_budget_micro_usd: int = int(os.getenv("AUTO_AI_DAILY_BUDGET_MICRO_USD", "2000000"))
     embedding_provider: str = os.getenv("EMBEDDING_PROVIDER", "none").strip().casefold()
@@ -213,8 +217,8 @@ for proxy_ip in settings.forwarded_allow_ips.split(","):
         ipaddress.ip_network(proxy_ip.strip(), strict=False)
     except ValueError as exc:
         raise ValueError("FORWARDED_ALLOW_IPS entries must be IP addresses or CIDRs") from exc
-if settings.llm_provider != "deepseek":
-    raise ValueError("LLM_PROVIDER must be deepseek; no implicit provider fallback is supported")
+if settings.llm_provider not in {"deepseek", "gemini"}:
+    raise ValueError("LLM_PROVIDER must be deepseek or gemini; no implicit provider fallback is supported")
 if settings.embedding_provider not in {"none", "openai", "fastembed"}:
     raise ValueError("EMBEDDING_PROVIDER must be none, openai, or fastembed")
 if settings.retrieval_mode not in {"lexical", "semantic_vector"}:
@@ -247,7 +251,9 @@ if not 0 <= settings.auto_ai_daily_budget_micro_usd <= 2_000_000:
 if not 1 <= settings.market_crawl_max_pages <= 25:
     raise ValueError("MARKET_CRAWL_MAX_PAGES must be between 1 and 25")
 if not settings.llm_default_model:
-    raise ValueError("LLM_DEFAULT_MODEL must name a DeepSeek model")
+    raise ValueError("LLM_DEFAULT_MODEL must name a model of the configured provider")
+if settings.llm_provider == "gemini" and settings.llm_default_model != "gemini-3.8-flash":
+    raise ValueError("This deployment requires LLM_DEFAULT_MODEL=gemini-3.8-flash for Gemini")
 deepseek_url = urlsplit(settings.deepseek_base_url)
 if (
     deepseek_url.scheme not in {"http", "https"}

@@ -1,5 +1,48 @@
 # Runbook Page workspace và Nghiên cứu
 
+## Cấu hình hiện hành — Gemini cho mọi tác vụ AI
+
+Quyết định Owner ngày 2026-09-30 thay toàn bộ tác vụ LLM sang Gemini `gemini-3.8-flash`.
+DeepSeek/Qwen trong các phần lịch sử dưới đây không còn là routing đang chọn.
+Docling, collector và retrieval local không đổi. Hồ sơ vẫn do Owner viết.
+
+File `/Users/lethanh/.local/share/agentic-marketing/secrets/research-ai.env` phải có quyền `0600`:
+
+```dotenv
+LLM_PROVIDER=gemini
+LLM_DEFAULT_MODEL=gemini-3.8-flash
+GEMINI_MODEL=gemini-3.8-flash
+GEMINI_API_KEY=<secret-entered-locally>
+GEMINI_MAX_OUTPUT_TOKENS=8192
+```
+
+Launcher đọc file mỗi lần API/worker khởi động, trước khi import settings. Không đặt key
+trong plist, frontend, Git hoặc shell history. Không sửa `deepseek-docling.env`; key cũ
+vẫn được giữ nhưng không truyền tới process khi Gemini được chọn. Qwen không được nạp.
+Worker ingestion/Beat không nhận key AI. API/worker dùng chung model, database, storage và queue.
+
+Chạy bằng virtualenv preview từ checkout đã triển khai:
+
+```bash
+python scripts/local_preview_runtime.py status
+python scripts/local_preview_runtime.py probe-model
+```
+
+`status` chỉ hiện có/thiếu key và model. `probe-model` chỉ GET metadata model, không tạo nội dung.
+Key đã được Owner nạp và model đã trả khả dụng. Hai smoke tổng hợp qua Redis/Celery/PostgreSQL
+test chưa tạo được phân tích: lần thứ hai nhận HTTP 503. Không gọi lặp hoặc tự đổi model;
+reservation chưa rõ kết quả giữ để đối soát. `analysis_error_code=provider_http_503` không chứa body/key.
+
+Text adapter reserve tạm theo toàn bộ trần đầu vào 1.048.576 token và output đã cấu hình,
+không ước lượng token từ ký tự. Settlement dùng usage thật, gồm thinking tokens, rồi nhả phần
+chưa dùng. Cách này an toàn nhưng có thể hoãn sớm các tác vụ chạy đồng thời; chưa tích hợp countTokens.
+Comment adapter đã chuyển sang Gemini và kiểm tra privacy/citation bằng fixture. Chưa nối
+comment/replies/media worker, vì vậy không được coi là phân tích Facebook đầy đủ.
+
+Page encryption key nằm trong `secrets/page-connection.env`, quyền `0600`, tách khỏi AI key.
+Key được tạo một lần sau khi xác minh preview chưa có token mã hóa; giữ bền vững qua restart.
+Không tạo lại key khi có token đã lưu. Backup key riêng với database; không ghi giá trị trong docs.
+
 ## Onboarding doanh nghiệp
 
 1. Đăng ký/đăng nhập bằng tài khoản Agentic Marketing. Đăng ký tạo tài khoản và phiên, chưa tạo doanh nghiệp.
@@ -84,6 +127,23 @@ Không bật xử lý comment/media từ cờ thủ công. Trước khi mở cá
 - Chưa tải hay gửi ảnh/video đến provider; không tuyên bố media analysis đã chạy.
 - Không có full comment pagination/replies hoặc database checkpoint mới. Coverage là `privacy_hold`/Tier 0 partial.
 - Không tự nhận hệ thống tuân thủ đầy đủ Luật 91/2025/QH15 hoặc Nghị định 356/2025/NĐ-CP.
+
+### Cấu hình Gemini/Qwen trước quyết định thay provider — lịch sử
+
+Đoạn này ghi lại cấu hình từng dự kiến; đã bị thay bởi cấu hình Gemini ở đầu tài liệu. Không dùng các biến Qwen dưới đây cho triển khai mới.
+
+```dotenv
+GEMINI_API_KEY=<secret>
+GEMINI_MODEL=<explicit-enabled-model-id>
+QWEN_API_KEY=<secret>
+QWEN_MODEL=<explicit-enabled-model-id>
+QWEN_REGION=<account-region>
+QWEN_BASE_URL=<official-region-endpoint>
+```
+
+Điền key trực tiếp trong file local, không dán vào chat. Endpoint/region Qwen phải khớp tài khoản Alibaba và model/bảng giá đã xác minh; không tự chọn region khi chỉ có key. Model Gemini/Qwen không có mặc định hoặc fallback. Giữ file `deepseek-docling.env` hiện có cho DeepSeek. Worker ingestion, Beat và lệnh dispatch/probe DeepSeek không nhận key Gemini/Qwen.
+
+Chạy `python scripts/local_preview_runtime.py status` bằng virtualenv của preview để xem có/thiếu key, model và region; lệnh không in key. Chỉ restart label API/worker đã xác minh sau khi drain jobs theo quy trình rollout. Không chạy lại installer toàn bộ chỉ để nạp key. Reader đã có kiểm thử restart/reload bằng file tổng hợp; worker routing và provider live vẫn chưa được nghiệm thu.
 
 ## Kiểm thử/deploy
 

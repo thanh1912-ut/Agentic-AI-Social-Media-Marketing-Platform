@@ -648,7 +648,7 @@ export default function FanpagesMarketResearchPage() {
             </section>
           ) : null}
           {aiBudgetQuery.error ? <ErrorPanel message={readableError(aiBudgetQuery.error, 'Không tải được trạng thái ngân sách AI.')} retryable onRetry={() => void aiBudgetQuery.refetch()} /> : null}
-          <Card title="Báo cáo xu hướng và gợi ý" description="DeepSeek phân tích nội dung, tương tác, views, follower count và thay đổi giữa các lần crawl khi nguồn trả dữ liệu. Giá trị thiếu được để trống; kết luận có nguồn đối chiếu.">
+          <Card title="Báo cáo xu hướng và gợi ý" description="AI đã cấu hình phân tích bằng chứng được phép sử dụng và chỉ số mà nguồn trả về. Giá trị thiếu được để trống; kết luận có nguồn đối chiếu. Bình luận và media chưa đủ điều kiện xử lý được báo riêng.">
             {reportsQuery.isLoading ? <LoadingBlock label="Đang tải báo cáo…" /> : null}
             {reportsQuery.error ? <ErrorPanel message={readableError(reportsQuery.error, 'Không tải được báo cáo.')} retryable onRetry={() => void reportsQuery.refetch()} /> : null}
             {reports.map((report) => {

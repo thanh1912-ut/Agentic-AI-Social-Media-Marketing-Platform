@@ -632,6 +632,62 @@ def test_automatic_ai_budget_is_shared_across_deepseek_gemini_and_qwen(
     asyncio.run(run())
 
 
+def test_gemini_research_report_reserves_real_postgres_usage_and_replays_once(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Native Gemini HTTP fixture + real ledger; no Google/Facebook request."""
+    import httpx
+    from types import SimpleNamespace
+    from services.agents.providers.gemini_text import GeminiStructuredModel
+    from services.worker import ai_budget
+
+    requests = []
+    def handler(request):
+        requests.append(request)
+        assert request.url.host == "generativelanguage.googleapis.com"
+        return httpx.Response(200, json={
+            "modelVersion": "gemini-3.8-flash",
+            "candidates": [{"finishReason": "STOP", "content": {"parts": [{"text": json.dumps({
+                "headline": "Báo cáo thử nghiệm", "summary": "Dữ liệu website tổng hợp, không phải nguồn Facebook thật.",
+                "trends": [], "suggestions": [],
+            })}]}}],
+            "usageMetadata": {"promptTokenCount": 20, "candidatesTokenCount": 10,
+                              "thoughtsTokenCount": 15, "totalTokenCount": 45},
+        })
+    model = GeminiStructuredModel(api_key="synthetic-gemini", model="gemini-3.8-flash",
+                                 client=httpx.Client(transport=httpx.MockTransport(handler)), max_tokens=1000)
+    monkeypatch.setattr(research_tasks, "configured_structured_model", lambda: model)
+    monkeypatch.setattr(ai_budget, "settings", SimpleNamespace(auto_ai_daily_budget_micro_usd=2_000_000))
+
+    async def run():
+        assert POSTGRES_TEST_URL
+        engine = create_async_engine(POSTGRES_TEST_URL)
+        sessions = async_sessionmaker(engine, expire_on_commit=False)
+        monkeypatch.setattr(api_db, "SessionLocal", sessions)
+        monkeypatch.setattr(research_tasks, "SessionLocal", sessions)
+        try:
+            async with sessions() as db:
+                company = Company(name="Gemini report fixture", slug=f"gemini-report-{uuid.uuid4().hex}")
+                db.add(company)
+                await db.commit()
+                company_id = company.id
+            group = SimpleNamespace(industry="unknown", region="unknown", locale="vi-VN", keywords_json=[])
+            evidence = [{"id": "website-fixture", "title": "Website fixture", "url": "https://example.invalid/"}]
+            first = await research_tasks._make_report(company_id, "fixture-cycle", group, evidence, [], [])
+            second = await research_tasks._make_report(company_id, "fixture-cycle", group, evidence, [], [])
+            assert first[2] == second[2] == "completed" and first[1] == "gemini-3.8-flash"
+            assert len(requests) == 1  # Durable replay, not another billable call.
+            async with sessions() as db:
+                ledger = (await db.scalars(select(AIUsageLedger).where(AIUsageLedger.company_id == company_id))).one()
+                day = (await db.scalars(select(AIUsageBudgetDay).where(AIUsageBudgetDay.company_id == company_id))).one()
+                assert ledger.provider == "gemini" and ledger.model == "gemini-3.8-flash"
+                assert ledger.status == "succeeded" and ledger.budget_class == "automatic"
+                assert ledger.input_tokens == 20 and ledger.output_tokens == 25
+                assert ledger.actual_micro_usd == 109
+                assert day.spent_micro_usd == 109 and day.reserved_micro_usd == 0
+        finally:
+            await engine.dispose()
+    asyncio.run(run())
+
+
 def test_raw_research_object_has_committed_24_hour_expiry_before_storage_put(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -1229,9 +1285,14 @@ def test_postgres_celery_worker_consumes_committed_research_job() -> None:
         pytest.fail("REDIS_URL must point to the isolated REDIS_QUEUE_TEST_URL")
 
     from celery.contrib.testing.worker import start_worker
+    from services.api.config import settings
     from services.worker.celery_app import celery_app
 
     assert celery_app.conf.broker_url == broker_url
+    assert settings.database_url == POSTGRES_TEST_URL, (
+        "DATABASE_URL must point to POSTGRES_TEST_URL before importing the Celery worker; "
+        "POSTGRES_TEST_URL alone configures the test client, not the application."
+    )
 
     async def run() -> None:
         assert POSTGRES_TEST_URL

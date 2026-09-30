@@ -30,6 +30,8 @@ SECRETS_ROOT = RUNTIME_ROOT / "secrets"
 APP_ENV_FILE = SECRETS_ROOT / "app.env"
 PREVIEW_ENV_FILE = SECRETS_ROOT / "auth-preview.env"
 DEEPSEEK_ENV_FILE = SECRETS_ROOT / "deepseek-docling.env"
+RESEARCH_AI_ENV_FILE = SECRETS_ROOT / "research-ai.env"
+PAGE_ENV_FILE = SECRETS_ROOT / "page-connection.env"
 TEST_DATABASE = "agentic_marketing_auth_test_20260929"
 QUEUE_DB = 4
 
@@ -88,6 +90,15 @@ AI_KEYS = {
     "DEEPSEEK_API_KEY",
     "DEEPSEEK_BASE_URL",
     "LLM_DEFAULT_MODEL",
+}
+RESEARCH_AI_KEYS = {
+    "LLM_PROVIDER", "LLM_DEFAULT_MODEL",
+    "GEMINI_API_KEY", "GEMINI_MODEL", "GEMINI_MAX_OUTPUT_TOKENS",
+    "GEMINI_MAX_ASSET_BYTES", "GEMINI_MAX_INLINE_REQUEST_BYTES",
+}
+PAGE_KEYS = {
+    "META_TOKEN_ENCRYPTION_KEY", "META_TOKEN_ENCRYPTION_KEY_PREVIOUS",
+    "META_GRAPH_VERSION", "FACEBOOK_CLI_RUNNER_PATH",
 }
 
 
@@ -197,17 +208,29 @@ def build_environment(
         }
     )
 
-    for key in AI_KEYS:
+    for key in AI_KEYS | RESEARCH_AI_KEYS:
         env.pop(key, None)
     env["LLM_PROVIDER"] = ai_values.get("LLM_PROVIDER", "deepseek")
     env["LLM_DEFAULT_MODEL"] = ai_values.get("LLM_DEFAULT_MODEL", "")
     env["DEEPSEEK_BASE_URL"] = ai_values.get(
         "DEEPSEEK_BASE_URL", "https://api.deepseek.com"
     )
-    if mode in {"api", "worker", "probe-model", "status"}:
+    provider = env["LLM_PROVIDER"].strip().casefold()
+    if provider not in {"deepseek", "gemini"}:
+        raise PreviewConfigurationError("LLM_PROVIDER must be deepseek or gemini")
+    if provider == "gemini" and (
+        env["LLM_DEFAULT_MODEL"] != "gemini-3.8-flash"
+        or ai_values.get("GEMINI_MODEL") != env["LLM_DEFAULT_MODEL"]
+    ):
+        raise PreviewConfigurationError("All Gemini tasks require the explicit model gemini-3.8-flash")
+    if provider == "deepseek" and mode in {"api", "worker", "probe-model", "status"}:
         env["DEEPSEEK_API_KEY"] = ai_values.get("DEEPSEEK_API_KEY", "")
     else:
         env.pop("DEEPSEEK_API_KEY", None)
+    if mode in {"api", "worker", "status", "probe-model"} and provider == "gemini":
+        env.update({key: value for key, value in ai_values.items() if key in RESEARCH_AI_KEYS})
+    if mode in {"api", "worker", "status"}:
+        env.update({key: value for key, value in preview_values.items() if key in PAGE_KEYS})
     if mode == "worker-ingestion":
         env["DOCLING_ARTIFACTS_PATH"] = str(
             runtime_root / "auth-preview" / "docling-models"
@@ -220,9 +243,23 @@ def build_environment(
 
 
 def load_environment(mode: str, runtime_root: Path = RUNTIME_ROOT) -> dict[str, str]:
-    app_values = read_env_file(APP_ENV_FILE, required=True)
-    preview_values = read_env_file(PREVIEW_ENV_FILE, required=True)
-    ai_values = read_env_file(DEEPSEEK_ENV_FILE)
+    secrets_root = runtime_root / "secrets"
+    app_values = read_env_file(secrets_root / APP_ENV_FILE.name, required=True)
+    preview_values = read_env_file(secrets_root / PREVIEW_ENV_FILE.name, required=True)
+    ai_values = read_env_file(secrets_root / DEEPSEEK_ENV_FILE.name)
+    page_path = secrets_root / PAGE_ENV_FILE.name
+    if page_path.is_file():
+        if page_path.stat().st_mode & 0o077:
+            raise PreviewConfigurationError("page-connection.env must be readable only by its owner (0600)")
+        preview_values.update({key: value for key, value in read_env_file(page_path).items() if key in PAGE_KEYS})
+    research_path = secrets_root / RESEARCH_AI_ENV_FILE.name
+    if research_path.is_file():
+        if research_path.stat().st_mode & 0o077:
+            raise PreviewConfigurationError("research-ai.env must be readable only by its owner (0600)")
+        research_values = read_env_file(research_path)
+        # The new file may explicitly select Gemini; it cannot overwrite the
+        # saved DeepSeek key, database, auth or routing.
+        ai_values.update({key: value for key, value in research_values.items() if key in RESEARCH_AI_KEYS})
     return build_environment(
         mode,
         app_values=app_values,
@@ -233,6 +270,29 @@ def load_environment(mode: str, runtime_root: Path = RUNTIME_ROOT) -> dict[str, 
 
 
 def _provider_probe(env: dict[str, str]) -> int:
+    if env.get("LLM_PROVIDER") == "gemini":
+        model, key = env.get("LLM_DEFAULT_MODEL", ""), env.get("GEMINI_API_KEY", "")
+        if not key:
+            print("Gemini key: missing")
+            return 2
+        # Fixed, explicitly selected model; this reads capabilities, not content.
+        request = Request(
+            f"https://generativelanguage.googleapis.com/v1beta/models/{model}",
+            headers={"x-goog-api-key": key, "Accept": "application/json"}, method="GET",
+        )
+        try:
+            with urlopen(request, timeout=20) as response:
+                payload = json.loads(response.read(1_000_000).decode("utf-8"))
+            available = payload.get("name") == f"models/{model}" and "generateContent" in payload.get("supportedGenerationMethods", [])
+        except HTTPError as error:
+            print(f"Gemini model endpoint: HTTP {error.code}")
+            return 1
+        except (URLError, TimeoutError, OSError, UnicodeError, json.JSONDecodeError, AttributeError, TypeError) as error:
+            print(f"Gemini model endpoint: unavailable ({type(error).__name__})")
+            return 1
+        print("Gemini key: present; value hidden")
+        print(f"Configured model: {model}; available: {'yes' if available else 'no'}")
+        return 0 if available else 1
     key = env.get("DEEPSEEK_API_KEY", "")
     model = env.get("LLM_DEFAULT_MODEL", "")
     if not key:
@@ -277,10 +337,14 @@ def _status(env: dict[str, str]) -> int:
     print(f"preview database: {parsed.database}")
     print("queue Redis: 127.0.0.1:16379/4")
     print("cache Redis: 127.0.0.1:16380/4")
-    print(
-        f"DeepSeek key: {'present' if env.get('DEEPSEEK_API_KEY') else 'missing'} (value hidden)"
-    )
-    print(f"DeepSeek model: {env.get('LLM_DEFAULT_MODEL') or 'not configured'}")
+    if env.get("LLM_PROVIDER") == "deepseek":
+        print(f"DeepSeek key: {'present' if env.get('DEEPSEEK_API_KEY') else 'missing'} (value hidden)")
+    else:
+        print("DeepSeek: inactive; saved key is not forwarded")
+    print(f"Selected AI provider: {env.get('LLM_PROVIDER')}; model: {env.get('LLM_DEFAULT_MODEL') or 'not configured'}")
+    print(f"Gemini key: {'present' if env.get('GEMINI_API_KEY') else 'missing'} (value hidden)")
+    print(f"Gemini media model: {env.get('GEMINI_MODEL') or 'not configured'}")
+    print(f"Page token encryption key: {'present' if env.get('META_TOKEN_ENCRYPTION_KEY') else 'missing'} (value hidden)")
     return 0
 
 

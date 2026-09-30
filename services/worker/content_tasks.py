@@ -645,7 +645,7 @@ async def content_generation_task_async(
             }
             snapshot_id = hashlib.sha256(json.dumps(snapshot_payload, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
             await _set_step(db, job_id, "prepare_context", "succeeded", 100, f"Đã xác minh {len(context)} đoạn nguồn của workspace.")
-            await _set_step(db, job_id, "generate_posts", "running", 10, "Đang gửi nội dung đã xác nhận và các đoạn nguồn tới DeepSeek.")
+            await _set_step(db, job_id, "generate_posts", "running", 10, "Đang gửi nội dung đã xác nhận và các đoạn nguồn tới AI đã cấu hình.")
             job = await db.get(Job, job_id)
             if job:
                 job.progress = 20
@@ -927,7 +927,7 @@ async def content_generation_task_async(
                 post_ids_json=created_posts,
                 input_snapshot_id=snapshot_id,
                 run_metadata_json={
-                    "provider": "deepseek",
+                    "provider": metadata_items[0]["provider"] if metadata_items else settings.llm_provider,
                     "model": metadata_items[0]["model"] if metadata_items else settings.llm_default_model,
                     "prompt_version": prompt_version,
                     "schema_version": "GeneratedPost",
@@ -954,7 +954,8 @@ async def content_generation_task_async(
                 action="content.revise" if target_post else "content.generate",
                 entity_type="post" if target_post else "campaign",
                 entity_id=target_post.id if target_post else campaign.id,
-                metadata_json={"job_id": job_id, "post_ids": created_posts, "count": len(created_posts), "provider": "deepseek"},
+                metadata_json={"job_id": job_id, "post_ids": created_posts, "count": len(created_posts),
+                               "provider": metadata_items[0]["provider"] if metadata_items else settings.llm_provider},
             ))
             job.status = "succeeded"
             job.progress = 100
@@ -965,7 +966,7 @@ async def content_generation_task_async(
                 **payload,
                 "post_ids": created_posts,
                 "input_snapshot_id": snapshot_id,
-                "provider": "deepseek",
+                "provider": metadata_items[0]["provider"] if metadata_items else settings.llm_provider,
                 "model": metadata_items[0]["model"] if metadata_items else settings.llm_default_model,
                 "retrieval_mode": settings.retrieval_mode,
                 "source_count": len(context),
@@ -999,7 +1000,7 @@ async def content_generation_task_async(
     except ProviderContextLimitError:
         await _fail(job_id, ContentGenerationFailure("input_limit_exceeded", "Yêu cầu vượt giới hạn đầu vào của model; hãy rút gọn rồi thử lại."), attempts=attempts)
     except ProviderError as error:
-        await _fail(job_id, ContentGenerationFailure("deepseek_request_failed", str(error), retryable=error.retryable), attempts=attempts)
+        await _fail(job_id, ContentGenerationFailure("provider_request_failed", str(error), retryable=error.retryable), attempts=attempts)
     except Exception:
         await _fail(
             job_id,
