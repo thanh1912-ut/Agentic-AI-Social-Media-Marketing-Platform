@@ -1,5 +1,34 @@
 # Kiểm chứng Page workspace và Nghiên cứu
 
+## Kết quả mới nhất — 2026-10-01 00:28 Asia/Ho_Chi_Minh
+
+Code kiểm thử/deploy: `918ffeb464d61f0f664743af385f2c6515861d92`.
+Frontend vẫn release `2fe9d0a`, real13104/API8001; preview schema `0027_comment_frontier`.
+Các phần có timestamp phía dưới là lịch sử, không thay thế kết quả này.
+
+| Kiểm tra | Trạng thái | Bằng chứng và giới hạn |
+|---|---|---|
+| Comment/reply Graph client | PASS native transport fixture | 500 comments qua5 pages, replies endpoint riêng; không author/attachment requests, không fetch next URL/token, private/hidden bị loại. Có truncated flag trên20.000 ký tự. Không gọi Meta comments live. |
+| Worker root checkpoint | PASS fixture + PostgreSQL | Tạo metadata root trong transaction observation Page sở hữu, pin version chính xác; replay không reset cursor/count/status. Không lưu comment body/author; privacy_hold không tự mở collector/provider. |
+| Tenant/version/replay/fencing | PASS PostgreSQL | FK ghép chặn source/tenant/version sai; duplicate observation/root và count âm bị SQL từ chối. Worker claim cũ không ghi observation/checkpoint mới. |
+| Migration fresh và upgrade | PASS PostgreSQL | Fresh từ0001 và DB từ0026 lên0027; so sánh columns/type/nullability/default, checks, unique, FK và indexes của frontier. Thứ tự vật lý cột id khác do mixin; fingerprint so theo tên, giữ column order trong FK/index. Đây là kiểm tra table/constraint mới, không chứng nhận tất cả bảng legacy đã đồng nhất. |
+| Regression | PASS có giới hạn | 368 passed,29 skipped,1 deselected; 98 focused tests. Loại Docling parser module và một scan-PDF runtime test; PG/provider opt-in tests chạy riêng hoặc chưa live. |
+| PostgreSQL/Redis integration | PASS |22 passed trên PG18.3:15559, Redis8.6.3:16481/16482; migration, stale worker, queue/recovery test và application modules với provider/Meta fixture. |
+| Ruff/OpenAPI | PASS | Changed Python source/tests/migration đạt Ruff; export_openapi --check unchanged. Không đổi HTTP response/type/frontend trong lát cắt này. |
+| Rollout | PASS | Preview backup/drain0 active jobs, upgrade0026→0027 và giữ counts60 bảng gốc. Restart đúng API/workers/ingestion/Beat, API/frontend ready; key Gemini/encryption present, Page connection dữ liệu giữ nguyên. |
+| Backup/restore mới | PASS có giới hạn | page-comment-maintenance-20260930T172557Z ngoài Git, quyền hạn chế. Restore DB/storage riêng, checksum và counts60 bảng/hash3 file khớp sau upgrade0027. Chưa browser/login bản restored. |
+| Production comments/media execution | NOT_IMPLEMENTED / NOT_RUN | Root metadata và client chỉ là nền; chưa có executor/versioned comment text/replies progression/screening/media worker. Không gọi fixture là comments live hoặc lấy đầy đủ. |
+| Provider live | BLOCKED_EXTERNAL | Gemini generation smoke trước đó HTTP503; không thực hiện call thứ ba trong lát cắt này. Không đổi model/provider và không gửi Page/comment/media thật. |
+
+PG integration thêm `POSTGRES_FRESH_TEST_URL` cho database fresh riêng và chạy:
+
+```bash
+python -m pytest -p no:cacheprovider tests/test_postgres_application_modules.py tests/test_postgres_database_integration.py tests/test_postgres_comment_checkpoints.py -q --tb=short
+```
+
+Comment fields/filter/edge được đối chiếu với [SDK chính thức của Meta](https://github.com/facebook/facebook-python-business-sdk/blob/main/facebook_business/adobjects/comment.py).
+Trang reference developers.facebook.com trả429 khi tra cứu; SDK/fixture không chứng minh quyền/capability của token thật.
+
 ## Kết quả mới nhất — 2026-09-30 23:48 Asia/Ho_Chi_Minh
 
 Backend kiểm thử/deploy: `8640d266546ee83e976b225ff26631231ae0ba12`.

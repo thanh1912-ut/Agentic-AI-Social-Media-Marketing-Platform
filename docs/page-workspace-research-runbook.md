@@ -48,7 +48,7 @@ Không tạo lại key khi có token đã lưu. Backup key riêng với database
 
 Checkout: `/Users/lethanh/.codex/worktrees/page-workspaces-research/agent`.
 Frontend real: `http://127.0.0.1:13104`; API/readiness: `http://127.0.0.1:8001/readyz`.
-Schema preview đã nâng lên `0026_research_source_erasure`. PostgreSQL15432, queue16379/4,
+Schema preview đã nâng lên `0027_comment_frontier`. PostgreSQL15432, queue16379/4,
 cache16380/4 và storage bền vững của preview giữ nguyên.
 
 Launcher API/worker trong LaunchAgent dùng Python tại
@@ -74,7 +74,13 @@ launchctl bootout "gui/$(id -u)/com.agentic-marketing.auth-preview-worker"
 launchctl bootstrap "gui/$(id -u)" "$HOME/Library/LaunchAgents/com.agentic-marketing.auth-preview-worker.plist"
 ```
 
-Maintenance backup database/storage trước migration:
+Maintenance backup database/storage gần nhất trước migration0027:
+`/Users/lethanh/.local/share/agentic-marketing/backups/page-comment-maintenance-20260930T172557Z`.
+Restore riêng đã kiểm tra checksum, counts60 bảng lịch sử và hash3 storage files sau upgrade0027.
+Bundle này đã có dữ liệu Page Owner vừa kết nối; khóa mã hóa vẫn cần backup riêng.
+Chưa chạy browser/login ứng dụng restored. Không restore đè preview.
+
+Maintenance backup trước migration0021–0026, giữ để đối chiếu lịch sử:
 `/Users/lethanh/.local/share/agentic-marketing/backups/page-workspace-maintenance-20260930T154320Z`.
 Bundle chứa dump, storage archive, checksum manifest và plist trước rollout; không chứa bản sao AI key.
 Giữ khóa mã hóa token riêng. Bản preflight online trước đó nằm ở bundle có chữ `preflight`,
@@ -92,7 +98,7 @@ python3 apps/web/scripts/creative-studio-preview.py rollback
 ```
 
 Chỉ activate build real mới đã đạt checks. Frontend rollback không đổi backend hoặc schema.
-Sau schema0026 không restore backend cũ thiếu Page gate; nếu lỗi, dùng bản mới giữ gate hoặc
+Sau schema0027 không restore backend cũ thiếu Page gate hoặc thiếu tương thích frontier; nếu lỗi, dùng bản mới giữ gate hoặc
 tắt phần collector/AI trong khi sửa. Không downgrade migration hoặc restore đè database người dùng.
 
 ## Onboarding doanh nghiệp
@@ -176,6 +182,25 @@ Không đưa token vào tài liệu, ticket, browser storage, query string hoặ
 - Lỗi nguồn mới không được xóa kết quả nguồn thành công trước đó.
 - Raw research payload nếu cần quarantine được gắn hạn xóa tối đa 24 giờ; scheduler thử xóa object đến hạn và chỉ gỡ DB pointer sau khi storage xác nhận xóa. Nếu storage lỗi, pointer giữ lại để lần scheduler sau thử lại. Nội dung nghiên cứu chuẩn hóa 90 ngày, media 30 ngày và propagation khi có yêu cầu xóa vẫn chưa được triển khai đầy đủ; không coi raw TTL hoặc trường thời hạn trong policy form là cơ chế xóa dữ liệu cá nhân hoàn chỉnh.
 
+### Checkpoint bình luận — metadata hiện có, execution chưa mở
+
+`research_comment_checkpoints` giữ frontier theo observation và version của bài Page sở hữu.
+Root được tạo cùng transaction lưu observation, status `privacy_hold`; không chứa message, author,
+profile link/avatar hoặc raw response. ID bài/cursor/parent là dữ liệu hạn chế nội bộ, chưa trả qua API list.
+Rerun cùng observation giữ checkpoint đầu; lượt mới tạo root riêng, không sửa provenance lịch sử.
+
+`MetaGraphClient.list_comments_page` hỗ trợ root và reply edge bằng cursor, limit1..100.
+Không follow URL next, không yêu cầu author/media/comment attachment. Private/hidden record bị loại.
+Text trả cho caller tối đa20.000 ký tự kèm truncated flag; đây là dữ liệu chưa screening,
+không được serialize/persist/gửi AI trực tiếp. `pagination_exhausted` chỉ là edge đã hết cursor,
+không chứng minh đã có bình luận ẩn/xóa hoặc toàn bộ replies.
+
+Chưa có production executor/receipt/comment version/approval pipeline. Không đổi status bằng SQL
+để bật lấy bình luận và không dùng policy note của Owner như sự đồng ý của người bình luận.
+Legacy observation chưa pin version không được gán version hồi tố chỉ để tạo root mới.
+Trước bước execution cần hoàn thiện căn cứ/phạm vi xử lý, screening/quarantine, retention/erasure,
+transaction page checkpoint và lấy replies từ frontier cùng source/post đã xác minh.
+
 ## Adapter Qwen — lịch sử, không được chọn
 
 Adapter text yêu cầu `QWEN_API_KEY`, `QWEN_MODEL` và `QWEN_BASE_URL` do quản trị viên cung cấp từ secret store/runtime. `QWEN_BASE_URL` phải là HTTPS endpoint Model Studio đúng region/workspace; không dùng endpoint giả định. Có thể cấu hình `QWEN_MAX_TOKENS`, còn giới hạn input dùng `LLM_MAX_INPUT_CHARS`. Qwen chỉ có method `summarize_screened_comments(PrivacyApprovedCommentBatch)`; đường `generate` tổng quát bị khóa. Batch cần policy decision/version và run-scoped evidence refs, không có trường author/profile; decision ID/version chỉ dùng nội bộ, không gửi model. Adapter kiểm tra mọi citation trả về có trong batch và tắt repair/retry để tránh lời gọi chưa reserve chi phí. Hiện chưa có route gọi adapter từ pipeline bình luận, chưa có Qwen pricing entry trong ledger và chưa có key/region đã nghiệm thu. Không bật bằng cách chỉ đặt ba biến; trước hết cần privacy-approved comment batch và mức giá phù hợp model/region. Xem [endpoint OpenAI-compatible chính thức](https://www.alibabacloud.com/help/en/model-studio/qwen-api-via-openai-chat-completions) và [quy tắc JSON output](https://docs.modelstudio.console.alibabacloud.com/en/model-studio/qwen-structured-output); model/region/pricing phải được xác nhận cho đúng tài khoản.
@@ -199,7 +224,7 @@ Không bật xử lý comment/media từ cờ thủ công. Trước khi mở cá
 - Gemini model/key và routing text đã được xác minh/cấu hình; live generation chưa đạt vì HTTP503. Media/comment pipeline chưa nối. Không fallback sang DeepSeek/Qwen.
 - Ledger ghi tác vụ Gemini tự động cho research và tương tác cho planning/generate/revise/review. Lời gọi tương tác dùng `budget_class=interactive`, không trừ hạn mức tự động2 USD/ngày. Media/comment production chưa route. Trang Nghiên cứu đọc hạn mức tự động qua `GET .../market-research/ai-budget`; tổng chi phí tương tác chưa có màn hình tổng hợp.
 - Chưa tải hay gửi ảnh/video đến provider; không tuyên bố media analysis đã chạy.
-- Không có full comment pagination/replies hoặc database checkpoint mới. Coverage là `privacy_hold`/Tier 0 partial.
+- Comment/reply client và root metadata checkpoint đã có; production traversal/versioned comment persistence chưa có. Coverage tiếp tục `privacy_hold`/Tier 0 partial.
 - Không tự nhận hệ thống tuân thủ đầy đủ Luật 91/2025/QH15 hoặc Nghị định 356/2025/NĐ-CP.
 
 ### Cấu hình Gemini/Qwen trước quyết định thay provider — lịch sử

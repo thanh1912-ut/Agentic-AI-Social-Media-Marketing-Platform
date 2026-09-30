@@ -4,6 +4,17 @@ Ngày bắt đầu: 2026-09-30 (Asia/Ho_Chi_Minh)
 Nhánh: `codex/page-workspaces-research`
 Base đã kiểm tra: `codex/creative-studio-ui` @ `b769097bfdb3568889d974c6def95bb944559113`
 
+## 2026-10-01 00:28 — Phân trang bình luận và checkpoint metadata
+
+- DONE: Code `918ffeb464d61f0f664743af385f2c6515861d92` thêm client đọc từng trang comments/replies bằng cursor. Không đi theo URL next trả về; kiểm tra host/path, ID, cursor đứng yên, response lỗi và record trùng. Không yêu cầu tên/ID/avatar tác giả hoặc nội dung attachment; private/hidden records bị loại. Nội dung quá20.000 ký tự có cờ truncated; wrapper legacy giữ tương thích.
+- DONE/PARTIAL: Migration `0027_comment_frontier` và worker đăng ký root frontier trong cùng transaction lưu observation của bài Page sở hữu. FK ghép ràng buộc tenant/source/evidence/observation/version; replay giữ cursor/count cũ và không tạo root trùng. Table chỉ giữ metadata/cursor, không chứa text bình luận hoặc author. Status mặc định privacy_hold, không tự gọi collector hay provider.
+- PASS: Native Graph fixture gồm500 root comments qua5 cursor pages, replies riêng, NULL/0, text hơn4.000 ký tự, private/hidden, malformed data/cursor và scope sai. Root exhaustion không được gọi là đã đọc replies.
+- PASS: 98 focused tests; regression368 passed/29 skipped/1 deselected,21 dependency warnings, vẫn loại module Docling parser và một scan-PDF runtime test. Ruff/OpenAPI unchanged check đạt; frontend không đổi trong lát cắt này.
+- PASS: PostgreSQL/Redis22 tests, không skip. Kiểm tra checkpoint tenant/version, chống replay, worker mất lease và schema fresh/upgrade so sánh type/default/constraint/index. Lần verifier đầu báo khác thứ tự cột id do metadata mixin; sửa so sánh semantic theo tên cột, vẫn giữ thứ tự trong FK/index và mọi assertion định nghĩa schema.
+- DONE/PASS rollout: Drain được0 job queued/running, maintenance backup `page-comment-maintenance-20260930T172557Z`, nâng preview0026→0027, counts60 bảng lịch sử giữ nguyên. API/workers/ingestion/Beat restart; frontend13104, JWT, Page token, secret store và Redis preview giữ nguyên. Readiness/key presence đạt.
+- PASS restore: Backup mới khôi phục vào PG15559/database/storage riêng, nâng0027; checksum bundle, counts60 bảng và hash3 storage files khớp. Chưa browser/login ứng dụng restored. Backup mới có dữ liệu Page đã kết nối, ngoài Git/quyền hạn chế.
+- TODO: Chưa có executor paging bình luận production, bảng comment/version, screening review, receipt/replies progression hoặc phân tích comment/media. Chưa đọc bình luận thật; privacy_hold và Gemini live HTTP503 vẫn được báo đúng. Goal tổng thể còn active.
+
 ## 2026-09-30 23:48 — Page thật kết nối thành công và kiểm tra bản sửa cuối
 
 - DONE: Backend `8640d266546ee83e976b225ff26631231ae0ba12` phân biệt token sai Page, token không phải Page, lỗi identity và lỗi đọc bài. Kích hoạt chỉ đọc identity có Page category và `posts?fields=id&limit=1`; không yêu cầu media/metrics hoặc đăng thử. Error/log chỉ có mã số và bước kiểm tra, không chứa token hay raw Meta response.
