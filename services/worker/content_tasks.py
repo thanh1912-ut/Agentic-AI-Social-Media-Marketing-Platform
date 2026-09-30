@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import json
 import math
@@ -11,6 +12,7 @@ from typing import Any
 from sqlalchemy import func, select, update
 
 from database.models import (
+    AIUsageLedger,
     AuditEvent,
     Brand,
     BrandProfileRevision,
@@ -43,7 +45,7 @@ from packages.contracts import CampaignBrief
 from packages.prompts import CONTENT_POST_PROMPT_VERSION, CONTENT_REVISE_PROMPT_VERSION
 from services.agents.content_agent import ContentAgent
 from services.agents.knowledge.interfaces import source_context
-from services.agents.providers.errors import ProviderError
+from services.agents.providers.errors import ProviderContextLimitError, ProviderError
 from services.api.config import settings
 from services.api.db import SessionLocal
 from services.ingestion.knowledge_store import PostgresKnowledgeIndex
@@ -51,6 +53,8 @@ from services.worker.ai_tasks import run_content_task
 from services.worker.async_runtime import run_worker_coroutine
 from services.worker.celery_app import celery_app
 from services.worker.model_provider import AIConfigurationError, configured_embedding_provider, configured_structured_model
+from services.worker.ai_budget import PricingUnavailable
+from services.worker.interactive_ai import InteractiveBudgetedModel, InteractiveProviderOutcomeUnknown
 
 
 class ContentGenerationFailure(RuntimeError):
@@ -484,7 +488,18 @@ async def content_generation_task_async(
         claim_job_fence(job_id, claim_token)
 
     try:
-        agent = agent or ContentAgent(configured_structured_model())
+        budgeted_model: InteractiveBudgetedModel | None = None
+        if agent is None:
+            loop = asyncio.get_running_loop()
+            configured_model = configured_structured_model()
+            budgeted_model = InteractiveBudgetedModel(
+                configured_model,
+                loop=loop,
+                company_id=company_id,
+                request_key_prefix=f"interactive:content:{job_id}",
+                operation="content_revise" if job_kind == "content_revise" else "content_generation",
+            )
+            agent = ContentAgent(budgeted_model)
         embedder = embedder if embedder is not None else configured_embedding_provider()
         knowledge_index = index or PostgresKnowledgeIndex()
         target_post = None
@@ -662,7 +677,7 @@ async def content_generation_task_async(
                         "image_brief": base_content.get("image_brief"),
                     },
                 })
-            task_result = run_content_task(
+            task_result = await asyncio.to_thread(run_content_task,
                 job_id=job_id,
                 input_snapshot_id=snapshot_id,
                 agent=agent,
@@ -752,6 +767,32 @@ async def content_generation_task_async(
             total_repairs = 0
             input_tokens = output_tokens = latency_ms = 0
             prompt_version = CONTENT_REVISE_PROMPT_VERSION if target_post else CONTENT_POST_PROMPT_VERSION
+            interactive_rows = []
+            if budgeted_model and budgeted_model.ledger_ids:
+                interactive_rows = (await db.scalars(select(AIUsageLedger).where(
+                    AIUsageLedger.company_id == company_id,
+                    AIUsageLedger.id.in_(set(budgeted_model.ledger_ids)),
+                    AIUsageLedger.budget_class == "interactive",
+                ).with_for_update())).all()
+            interactive_actuals = [row.actual_micro_usd for row in interactive_rows]
+            interactive_cost = (
+                sum(value for value in interactive_actuals if value is not None)
+                if interactive_rows and all(value is not None for value in interactive_actuals)
+                else None
+            )
+            interactive_usage = {
+                "budget_class": "interactive",
+                "status": "not_recorded_fixture" if not budgeted_model else (
+                    "usage_unavailable" if interactive_cost is None else "recorded"
+                ),
+                "provider_requests": len(interactive_rows),
+                "actual_micro_usd": interactive_cost,
+                "pricing_versions": sorted({row.pricing_version for row in interactive_rows}),
+                "ledger_ids": [row.id for row in interactive_rows],
+            }
+            for row in interactive_rows:
+                # The durable job and generated post versions now own the result.
+                row.result_json = None
             for item in generated:
                 generated_post = item["payload"]
                 post_id = target_post.id if target_post else new_id()
@@ -892,6 +933,8 @@ async def content_generation_task_async(
                     "repair_attempts": total_repairs,
                     "estimated_cost_usd": None,
                     "estimated_cost_available": False,
+                    "interactive_actual_micro_usd": interactive_cost,
+                    "interactive_usage_status": interactive_usage["status"],
                     "retrieval_mode": settings.retrieval_mode,
                     "source_count": len(context),
                     "brand_version": brand_version,
@@ -927,6 +970,7 @@ async def content_generation_task_async(
                 "repair_attempts": total_repairs,
                 "estimated_cost_usd": None,
                 "estimated_cost_available": False,
+                "interactive_ai_usage": interactive_usage,
             }
             await _set_step(db, job_id, "generate_posts", "succeeded", 100, "Đã sửa bản nháp bằng AI." if target_post else f"Đã sinh {len(created_posts)} bản nháp.")
             await _set_step(db, job_id, "save_posts", "succeeded", 100, "Đã lưu phiên bản mới, chờ người dùng duyệt; chưa đăng bài." if target_post else "Đã lưu draft và phiên bản; chưa gửi duyệt hay đăng bài.")
@@ -936,6 +980,12 @@ async def content_generation_task_async(
         await _fail(job_id, failure, attempts=attempts)
     except AIConfigurationError as error:
         await _fail(job_id, ContentGenerationFailure("ai_not_configured", str(error)), attempts=attempts)
+    except PricingUnavailable as error:
+        await _fail(job_id, ContentGenerationFailure("pricing_unavailable", str(error)), attempts=attempts)
+    except InteractiveProviderOutcomeUnknown as error:
+        await _fail(job_id, ContentGenerationFailure("provider_outcome_unknown", str(error)), attempts=attempts)
+    except ProviderContextLimitError as error:
+        await _fail(job_id, ContentGenerationFailure("input_limit_exceeded", str(error)), attempts=attempts)
     except ProviderError as error:
         await _fail(job_id, ContentGenerationFailure("deepseek_request_failed", str(error), retryable=error.retryable), attempts=attempts)
     except Exception:

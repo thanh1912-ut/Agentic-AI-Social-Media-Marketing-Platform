@@ -365,3 +365,14 @@ Commit triển khai: `0d95d9b5704ee6fa37f31ae237d522795a08a304` trên `codex/pag
 | Xóa raw thành công/storage lỗi | PASS (unit fixture) | `tests/test_scheduled_raw_retention.py` xác nhận chỉ object xóa thành công mới bị gỡ DB pointer và được tính vào kết quả; lỗi storage giữ key/expiry để scheduler retry. Không thay thế kiểm thử adapter object storage thật. |
 | Retention nội dung chuẩn hóa/media và xóa lan truyền | NOT_RUN / NOT_IMPLEMENTED | Policy retention do Owner nhập vẫn chưa được scheduler thi hành; comment/media tiếp tục privacy hold. Xóa nguồn hiện có phạm vi ứng dụng hạn chế đã nêu ở phần Purge. |
 | Kết luận tuân thủ luật | BLOCKED | Chưa có đánh giá pháp lý/tổ chức, xác định căn cứ xử lý/chuyển dữ liệu theo tình huống thật hoặc deletion propagation đầy đủ. Metadata ngày hiệu lực không phải chứng nhận tuân thủ. |
+
+## Ledger cho lời gọi AI interactive — 2026-09-30 18:54 Asia/Ho_Chi_Minh
+
+| Kiểm tra | Trạng thái | Bằng chứng và giới hạn |
+|---|---|---|
+| Campaign planning DeepSeek | PASS (code + test) | Reservation `interactive` trước request; settlement ghi provider/model/tokens/cost; job retry phát lại kết quả đã lưu. Không tính vào hạn mức tự động. Provider live NOT_RUN. |
+| Content generate/revise DeepSeek | PASS (code + unit/workflow tests) | Mỗi lời gọi được gắn key theo job/call index; worker thread gọi adapter, DB accounting chạy về event loop; request chưa rõ không gửi lại. Thành công lưu usage vào job và `ContentGenerationRun`, rồi xóa bản sao output trong ledger. Provider live NOT_RUN. |
+| Interactive không làm thay đổi cap tự động | PASS (PostgreSQL 18.3 disposable) | Toàn bộ `tests/test_postgres_database_integration.py` — 7 passed, 3 skipped sau fresh migration đến `0026`; assertion xác nhận `ai_usage_budget_days` reserved/spent giữ nguyên sau reserve + settle interactive. Ba test Redis được skip vì URL Redis bị đặt trống; cụm disposable cổng `15557` đã dừng. |
+| Regression workflow và API | PASS (fixture) | `tests/test_ai_budget.py tests/test_interactive_ai_accounting.py tests/test_mailguard_pilot.py tests/test_campaign_workflows.py tests/test_market_research_api.py` — 64 passed. Không có provider live call. |
+| Pricing / provider availability | PARTIAL | Chỉ model DeepSeek có giá được kiểm tra ở các callsite này; provider/model ngoài bảng bị chặn trước request. Gemini/Qwen chưa được route qua worker. |
+| Tổng hợp chi phí interactive cho người dùng | NOT_RUN | API `/ai-budget` hiện chỉ phản ánh hạn mức và usage tự động; chi phí tương tác nằm ở durable job/`ContentGenerationRun`, chưa có tổng hợp UI/API độc lập. |

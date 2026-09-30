@@ -495,6 +495,20 @@ def test_research_ai_budget_is_workspace_scoped_and_reports_reserved_cost(market
                 reserved_micro_usd=250_000,
                 status="unknown",
             ))
+            db.add(AIUsageLedger(
+                id=new_id(),
+                company_id=workspace_id,
+                request_key="interactive-budget-api-test",
+                provider="deepseek",
+                model="deepseek-flash",
+                operation="content_generation",
+                budget_class="interactive",
+                budget_date=budget_date,
+                pricing_version="fixture",
+                cost_basis="fixture",
+                reserved_micro_usd=500_000,
+                status="unknown",
+            ))
             now = datetime.now(timezone.utc)
             db.add(MarketReport(
                 id=new_id(),

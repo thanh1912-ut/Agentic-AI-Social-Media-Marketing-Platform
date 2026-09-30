@@ -216,6 +216,83 @@ async def reserve_automatic_request(
         return Reservation("reserved", request_key, existing.id, amount)
 
 
+async def reserve_interactive_request(
+    *, company_id: str, request_key: str, provider: str, model: str, operation: str,
+    region: str | None = None, max_input_tokens: int | None = None,
+    max_output_tokens: int | None = None, max_attempts: int = 1,
+) -> Reservation:
+    """Record a user-triggered call separately; it does not consume auto budget.
+
+    The row is committed before the provider request. A retry of the same job
+    can replay a completed result, but never resends a request whose outcome is
+    still uncertain.
+    """
+
+    price = price_for(provider, model, region=region)
+    if max_input_tokens is not None or max_output_tokens is not None:
+        if max_input_tokens is None or max_output_tokens is None:
+            raise PricingUnavailable("pricing_reservation_bounds_unavailable")
+        amount = reserve_token_bound_micro_usd(
+            price, max_input_tokens=max_input_tokens, max_output_tokens=max_output_tokens,
+            max_attempts=max_attempts,
+        )
+    elif provider == "deepseek":
+        amount = reserve_upper_bound_micro_usd(
+            price, max_input_chars=settings.llm_max_input_chars,
+            max_output_tokens=settings.llm_max_tokens,
+        )
+    else:
+        raise PricingUnavailable("pricing_reservation_bounds_unavailable")
+
+    from database.models import AIUsageLedger, Company, new_id
+    from services.api.db import SessionLocal
+
+    now = datetime.now(timezone.utc)
+    async with SessionLocal() as db:
+        company = await db.scalar(select(Company.id).where(Company.id == company_id).with_for_update())
+        if company is None:
+            return Reservation("workspace_missing", request_key)
+        existing = await db.scalar(select(AIUsageLedger).where(
+            AIUsageLedger.company_id == company_id,
+            AIUsageLedger.request_key == request_key,
+        ).with_for_update())
+        if existing is not None:
+            if existing.status in {"succeeded", "overrun", "usage_unavailable"} and existing.result_json is not None:
+                return Reservation("cached", request_key, existing.id, existing.reserved_micro_usd, existing.result_json)
+            if existing.status == "unknown" and existing.result_json is not None:
+                return Reservation("cached_unknown", request_key, existing.id, existing.reserved_micro_usd, existing.result_json)
+            if existing.status != "released":
+                return Reservation("uncertain", request_key, existing.id, existing.reserved_micro_usd)
+
+        if existing is None:
+            existing = AIUsageLedger(
+                id=new_id(), company_id=company_id, request_key=request_key,
+                provider=provider, model=model, operation=operation,
+                budget_class="interactive", budget_date=_budget_date(now),
+                pricing_version=PRICE_TABLE_VERSION, cost_basis=price.basis,
+                reserved_micro_usd=amount, status="reserved",
+            )
+            db.add(existing)
+        else:
+            existing.provider = provider
+            existing.model = model
+            existing.operation = operation
+            existing.budget_class = "interactive"
+            existing.budget_date = _budget_date(now)
+            existing.pricing_version = PRICE_TABLE_VERSION
+            existing.cost_basis = price.basis
+            existing.reserved_micro_usd = amount
+            existing.actual_micro_usd = None
+            existing.input_tokens = None
+            existing.output_tokens = None
+            existing.result_json = None
+            existing.unknown_at = None
+            existing.error_code = None
+            existing.status = "reserved"
+        await db.commit()
+        return Reservation("reserved", request_key, existing.id, amount)
+
+
 async def settle_automatic_request(
     *, company_id: str, reservation: Reservation, provider: str, model: str,
     input_tokens: int | None, output_tokens: int | None, result_json: dict,
@@ -273,11 +350,99 @@ async def settle_automatic_request(
         return row.status
 
 
+async def settle_interactive_request(
+    *, company_id: str, reservation: Reservation, provider: str, model: str,
+    input_tokens: int | None, output_tokens: int | None, result_json: dict,
+    region: str | None = None,
+) -> str:
+    """Store successful interactive-call usage without altering auto budget counters."""
+
+    from database.models import AIUsageLedger
+    from services.api.db import SessionLocal
+
+    if not reservation.ledger_id:
+        return "missing"
+    try:
+        price = price_for(provider, model, region=region)
+    except PricingUnavailable:
+        price = None
+    usage_valid = (
+        input_tokens is not None and output_tokens is not None
+        and input_tokens > 0 and output_tokens >= 0
+    )
+    actual = cost_micro_usd(price, input_tokens, output_tokens) if price and usage_valid else None
+    async with SessionLocal() as db:
+        row = await db.scalar(select(AIUsageLedger).where(
+            AIUsageLedger.id == reservation.ledger_id,
+            AIUsageLedger.company_id == company_id,
+            AIUsageLedger.budget_class == "interactive",
+        ).with_for_update())
+        if row is None or row.status != "reserved":
+            return "missing"
+        row.actual_micro_usd = actual
+        row.input_tokens = input_tokens if input_tokens is not None and input_tokens >= 0 else None
+        row.output_tokens = output_tokens if output_tokens is not None and output_tokens >= 0 else None
+        row.result_json = result_json
+        if actual is None:
+            row.status = "usage_unavailable"
+            row.error_code = "provider_usage_or_pricing_unavailable"
+        else:
+            row.status = "succeeded" if actual <= row.reserved_micro_usd else "overrun"
+            row.error_code = "reservation_underestimated" if actual > row.reserved_micro_usd else None
+        await db.commit()
+        return row.status
+
+
+async def release_interactive_request(*, company_id: str, reservation: Reservation) -> None:
+    """Release a user-call reservation only when no provider request was sent."""
+
+    from database.models import AIUsageLedger
+    from services.api.db import SessionLocal
+
+    if not reservation.ledger_id:
+        return
+    async with SessionLocal() as db:
+        row = await db.scalar(select(AIUsageLedger).where(
+            AIUsageLedger.id == reservation.ledger_id,
+            AIUsageLedger.company_id == company_id,
+            AIUsageLedger.budget_class == "interactive",
+        ).with_for_update())
+        if row is not None and row.status == "reserved":
+            row.status = "released"
+            row.reserved_micro_usd = 0
+            row.error_code = None
+            await db.commit()
+
+
 async def mark_automatic_request_unknown(
     *, company_id: str, reservation: Reservation, error_code: str,
     result_json: dict | None = None,
 ) -> None:
     """Keep the reservation when provider acceptance/charge is uncertain."""
+
+    await _mark_request_unknown(
+        company_id=company_id, reservation=reservation,
+        error_code=error_code, result_json=result_json,
+    )
+
+
+async def mark_interactive_request_unknown(
+    *, company_id: str, reservation: Reservation, error_code: str,
+    result_json: dict | None = None,
+) -> None:
+    """Keep a user-triggered reservation when provider acceptance is uncertain."""
+
+    await _mark_request_unknown(
+        company_id=company_id, reservation=reservation,
+        error_code=error_code, result_json=result_json,
+    )
+
+
+async def _mark_request_unknown(
+    *, company_id: str, reservation: Reservation, error_code: str,
+    result_json: dict | None = None,
+) -> None:
+    """Shared fail-closed state transition for both ledger classes."""
 
     from database.models import AIUsageLedger
     from services.api.db import SessionLocal

@@ -375,6 +375,44 @@ def test_ai_budget_reservations_are_atomic_and_idempotent(monkeypatch: pytest.Mo
                 ))).all()
                 assert len(rows) == 2
                 assert sum(row.reserved_micro_usd for row in rows) <= 40_000
+
+            interactive = await ai_budget.reserve_interactive_request(
+                company_id=company_id,
+                request_key="interactive:campaign-plan:fixture-job",
+                provider="deepseek",
+                model="deepseek-flash",
+                operation="campaign_plan",
+            )
+            assert interactive.status == "reserved"
+            interactive_settlement = await ai_budget.settle_interactive_request(
+                company_id=company_id,
+                reservation=interactive,
+                provider="deepseek",
+                model="deepseek-flash",
+                input_tokens=100,
+                output_tokens=10,
+                result_json={"output": {"proposal": "fixture"}},
+            )
+            assert interactive_settlement == "succeeded"
+            interactive_replay = await ai_budget.reserve_interactive_request(
+                company_id=company_id,
+                request_key="interactive:campaign-plan:fixture-job",
+                provider="deepseek",
+                model="deepseek-flash",
+                operation="campaign_plan",
+            )
+            assert interactive_replay.status == "cached"
+            assert interactive_replay.cached_result == {"output": {"proposal": "fixture"}}
+            async with sessions() as db:
+                day = (await db.scalars(select(AIUsageBudgetDay).where(
+                    AIUsageBudgetDay.company_id == company_id,
+                ))).one()
+                interactive_row = await db.get(AIUsageLedger, interactive_replay.ledger_id)
+                assert day.reserved_micro_usd == amount
+                assert day.spent_micro_usd == 42
+                assert interactive_row is not None
+                assert interactive_row.budget_class == "interactive"
+                assert interactive_row.actual_micro_usd == 42
         finally:
             await engine.dispose()
 

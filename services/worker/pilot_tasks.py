@@ -2,17 +2,26 @@
 
 from __future__ import annotations
 
+import asyncio
 from datetime import timedelta
 from typing import Any
 
 from sqlalchemy import func, select, update
 
 from database.job_fencing import claim_job_fence, isolated_job_fence
-from database.models import Brand, BrandProfileRevision, Job, JobEvent, JobStep, new_id, utcnow
-from services.agents.providers.errors import ProviderError
+from database.models import AIUsageLedger, Brand, BrandProfileRevision, Job, JobEvent, JobStep, new_id, utcnow
+from services.agents.providers.errors import ProviderContextLimitError, ProviderError
 from services.api.db import SessionLocal
 from services.api.pilot_schemas import CampaignPlanProposal
 from services.api.config import settings
+from services.worker.ai_budget import (
+    PricingUnavailable,
+    Reservation,
+    mark_interactive_request_unknown,
+    release_interactive_request,
+    reserve_interactive_request,
+    settle_interactive_request,
+)
 from services.worker.async_runtime import run_worker_coroutine
 from services.worker.celery_app import celery_app
 from services.worker.model_provider import AIConfigurationError, configured_structured_model
@@ -63,6 +72,8 @@ async def _fail_plan(job_id: str, claim_token: str, code: str, message: str) -> 
 async def campaign_plan_task_async(job_id: str, *, model: Any | None = None) -> None:
     now = utcnow()
     claim_token = new_id()
+    interactive_reservation: Reservation | None = None
+    live_interactive_accounting = model is None
     async with SessionLocal() as db:
         claimed = await db.execute(
             update(Job)
@@ -102,6 +113,10 @@ async def campaign_plan_task_async(job_id: str, *, model: Any | None = None) -> 
             await db.commit()
             await _fail_plan(job_id, claim_token, "brand_profile_manual_required", "Owner cần tự viết và áp dụng hồ sơ thương hiệu trước khi lập campaign.")
             return
+        if brand.version != payload.get("brand_version") or brand.id != payload.get("brand_id"):
+            await db.commit()
+            await _fail_plan(job_id, claim_token, "content_context_changed", "Hồ sơ thương hiệu đã đổi sau khi gửi yêu cầu; hãy tạo yêu cầu mới.")
+            return
         brand_id = brand.id
         brand_version = brand.version
         profile = brand.profile if isinstance(brand.profile, dict) else {}
@@ -110,9 +125,80 @@ async def campaign_plan_task_async(job_id: str, *, model: Any | None = None) -> 
 
     try:
         structured_model = model or configured_structured_model()
-        output, metadata = structured_model.generate(
-            system_prompt=CAMPAIGN_PLAN_SYSTEM_PROMPT,
-            input_payload={
+        provider_name = str(getattr(structured_model, "provider_name", "deepseek"))
+        configured_model_name = str(getattr(structured_model, "model_name", settings.llm_default_model))
+        metadata_payload: dict[str, Any] = {}
+        output: Any
+        if live_interactive_accounting:
+            interactive_reservation = await reserve_interactive_request(
+                company_id=company_id,
+                request_key=f"interactive:campaign-plan:{job_id}",
+                provider=provider_name,
+                model=configured_model_name,
+                operation="campaign_plan",
+            )
+            if interactive_reservation.status == "cached" and interactive_reservation.cached_result:
+                cached = interactive_reservation.cached_result
+                output = cached.get("output")
+                metadata_payload = cached.get("metadata") or {}
+            elif interactive_reservation.status != "reserved":
+                await _fail_plan(
+                    job_id, claim_token, "provider_outcome_unknown",
+                    "Yêu cầu AI trước đó có thể đã được tính phí; hệ thống không gửi lặp. Hãy tạo một yêu cầu mới.",
+                )
+                return
+            else:
+                try:
+                    output, metadata = await asyncio.to_thread(
+                        structured_model.generate,
+                        system_prompt=CAMPAIGN_PLAN_SYSTEM_PROMPT,
+                        input_payload={
+                            "prompt": str(payload.get("prompt", "")),
+                            "owner_authored_brand_profile": {
+                                "profile_text": profile.get("profile_text"),
+                                "profile_version": brand_version,
+                                "authorship": "workspace_owner",
+                            },
+                            "channel": "facebook_page",
+                            "today_utc": now.date().isoformat(),
+                            "proposal_only": True,
+                            "source_text_is_untrusted_data": True,
+                        },
+                        response_model=CampaignPlanProposal,
+                    )
+                except ProviderContextLimitError:
+                    await release_interactive_request(company_id=company_id, reservation=interactive_reservation)
+                    raise
+                except Exception as error:
+                    await mark_interactive_request_unknown(
+                        company_id=company_id, reservation=interactive_reservation,
+                        error_code="provider_call_outcome_unknown",
+                    )
+                    raise error
+                metadata_payload = _generation_metadata_payload(metadata)
+                output_payload = output.model_dump(mode="json") if hasattr(output, "model_dump") else output
+                if not isinstance(output_payload, dict):
+                    await mark_interactive_request_unknown(
+                        company_id=company_id, reservation=interactive_reservation,
+                        error_code="provider_output_unserializable",
+                    )
+                    raise ValueError("Campaign plan output is not a JSON object")
+                usage_status = await settle_interactive_request(
+                    company_id=company_id,
+                    reservation=interactive_reservation,
+                    provider=str(metadata_payload.get("provider") or provider_name),
+                    model=str(metadata_payload.get("model") or configured_model_name),
+                    input_tokens=metadata_payload.get("input_tokens"),
+                    output_tokens=metadata_payload.get("output_tokens"),
+                    result_json={"output": output_payload, "metadata": metadata_payload},
+                )
+                if usage_status == "missing":
+                    raise RuntimeError("Interactive AI usage ledger could not be settled")
+        else:
+            output, metadata = await asyncio.to_thread(
+                structured_model.generate,
+                system_prompt=CAMPAIGN_PLAN_SYSTEM_PROMPT,
+                input_payload={
                 "prompt": str(payload.get("prompt", "")),
                 "owner_authored_brand_profile": {
                     "profile_text": profile.get("profile_text"),
@@ -124,8 +210,9 @@ async def campaign_plan_task_async(job_id: str, *, model: Any | None = None) -> 
                 "proposal_only": True,
                 "source_text_is_untrusted_data": True,
             },
-            response_model=CampaignPlanProposal,
-        )
+                response_model=CampaignPlanProposal,
+            )
+            metadata_payload = _generation_metadata_payload(metadata)
         proposal = output if isinstance(output, CampaignPlanProposal) else CampaignPlanProposal.model_validate(output)
         if len({concept.id for concept in proposal.concepts}) != 3:
             raise ValueError("The three proposed concepts must have unique IDs")
@@ -139,16 +226,38 @@ async def campaign_plan_task_async(job_id: str, *, model: Any | None = None) -> 
             if current_brand is None or current_brand.version != brand_version:
                 raise ValueError("Brand Profile changed while the plan was generated")
             proposal_json = proposal.model_dump(mode="json")
+            ai_usage = {
+                "budget_class": "interactive",
+                "status": "not_recorded_fixture" if interactive_reservation is None else "recorded",
+                "ledger_id": interactive_reservation.ledger_id if interactive_reservation else None,
+            }
+            if interactive_reservation and interactive_reservation.ledger_id:
+                ledger_row = await db.scalar(select(AIUsageLedger).where(
+                    AIUsageLedger.company_id == company_id,
+                    AIUsageLedger.id == interactive_reservation.ledger_id,
+                    AIUsageLedger.budget_class == "interactive",
+                ).with_for_update())
+                if ledger_row is not None:
+                    ai_usage.update({
+                        "status": ledger_row.status,
+                        "provider": ledger_row.provider,
+                        "model": ledger_row.model,
+                        "actual_micro_usd": ledger_row.actual_micro_usd,
+                        "input_tokens": ledger_row.input_tokens,
+                        "output_tokens": ledger_row.output_tokens,
+                        "pricing_version": ledger_row.pricing_version,
+                    })
+                    # The durable job now owns the proposal; avoid retaining a second copy in the ledger.
+                    ledger_row.result_json = None
             job.result = {
                 **payload,
                 "proposal": proposal_json,
-                "provider": getattr(structured_model, "provider_name", "deepseek"),
-                "model": getattr(metadata, "model", settings.llm_default_model),
-                "input_tokens": getattr(metadata, "input_tokens", None),
-                "output_tokens": getattr(metadata, "output_tokens", None),
-                "latency_ms": getattr(metadata, "latency_ms", None),
-                "estimated_cost_usd": None,
-                "estimated_cost_available": False,
+                "provider": metadata_payload.get("provider", provider_name),
+                "model": metadata_payload.get("model", configured_model_name),
+                "input_tokens": metadata_payload.get("input_tokens"),
+                "output_tokens": metadata_payload.get("output_tokens"),
+                "latency_ms": metadata_payload.get("latency_ms"),
+                "interactive_ai_usage": ai_usage,
                 "prompt_version": CAMPAIGN_PLAN_PROMPT_VERSION,
                 "brand_version": brand_version,
             }
@@ -166,10 +275,27 @@ async def campaign_plan_task_async(job_id: str, *, model: Any | None = None) -> 
             await db.commit()
     except AIConfigurationError:
         await _fail_plan(job_id, claim_token, "ai_not_configured", "DeepSeek chưa được cấu hình cho backend.")
+    except ProviderContextLimitError:
+        await _fail_plan(job_id, claim_token, "input_limit_exceeded", "Yêu cầu vượt giới hạn đầu vào của model; hãy rút gọn yêu cầu rồi thử lại.")
     except ProviderError:
         await _fail_plan(job_id, claim_token, "deepseek_request_failed", "Không thể lập kế hoạch với DeepSeek lần này.")
+    except PricingUnavailable:
+        await _fail_plan(job_id, claim_token, "pricing_unavailable", "Model chưa có mức giá đã xác minh; hệ thống chưa gửi yêu cầu AI.")
     except Exception:
         await _fail_plan(job_id, claim_token, "campaign_plan_failed", "Không thể hoàn tất đề xuất campaign; dữ liệu chưa được campaign hóa.")
+
+
+def _generation_metadata_payload(metadata: Any) -> dict[str, Any]:
+    if metadata is None:
+        return {}
+    if hasattr(metadata, "model_dump"):
+        value = metadata.model_dump(mode="json")
+        return value if isinstance(value, dict) else {}
+    return {
+        key: getattr(metadata, key)
+        for key in ("provider", "model", "input_tokens", "output_tokens", "latency_ms", "estimated_cost_usd")
+        if getattr(metadata, key, None) is not None
+    }
 
 
 @celery_app.task(bind=True, autoretry_for=(), acks_late=True, time_limit=600, soft_time_limit=540)

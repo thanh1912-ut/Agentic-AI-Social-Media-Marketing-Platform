@@ -1475,6 +1475,7 @@ async def get_workspace_ai_budget(
     spent = day.spent_micro_usd if day else 0
     uncertain = int(await db.scalar(select(func.count(AIUsageLedger.id)).where(
         AIUsageLedger.company_id == company_id,
+        AIUsageLedger.budget_class == "automatic",
         AIUsageLedger.budget_date == budget_date,
         AIUsageLedger.status.in_(["reserved", "unknown"]),
     )) or 0)
