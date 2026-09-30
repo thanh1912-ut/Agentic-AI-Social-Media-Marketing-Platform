@@ -21,7 +21,7 @@
 | Nghiên cứu không cần người dùng chọn nhóm | PARTIAL | UI facade workspace; nhóm legacy vẫn là FK persistence/report |
 | Page công ty Meta collection | PARTIAL; live NOT_RUN | Existing Meta post/metrics path; bounded posts; không thêm comment bodies |
 | Public Page Tier 0 | PARTIAL; live NOT_RUN | Existing facebook-cli pipeline; không chứng minh lịch sử đầy đủ |
-| Public Group Tier 0 | UNSUPPORTED/PARTIAL | Status `unsupported_tier0`; Group discussions không được hỗ trợ ở Tier 0 |
+| Public Group Tier 0 | PARTIAL | Đọc metadata nhóm public; không đọc GroupFeed/thảo luận; coverage `tier0_group_shell_only`, 0 posts/evidence |
 | Comment text / replies | PRIVACY_HOLD | Không tải comment text mới; report bỏ comment text legacy khỏi model context; aggregate count riêng |
 | Media download/analysis | NOT_IMPLEMENTED | Có Gemini inline adapter fixture; chưa có asset pipeline hoặc worker routing |
 | Qwen / Gemini / DeepSeek routing | PARTIAL | DeepSeek giữ luồng hiện có; Qwen text JSON-mode và Gemini inline media adapters có fixture nhưng chưa nối comment/media pipeline hoặc unified budget; không tự fallback |
@@ -163,3 +163,17 @@ Giá lấy từ [Google Gemini model update](https://ai.google.dev/gemini-api/do
 | Reconnect đúng Page phục hồi lịch | PASS (API lifecycle fixture) | Test xác minh cùng Page, đặt lại research due time và metrics sync theo interval; group due time theo source. Lịch vốn tắt không tự bật. |
 | Chất lượng code | PASS | Ruff và `git diff --check`; adapter Meta là fixture và DB của test là SQLite. |
 | PostgreSQL/Redis, scheduler thật, Meta live | NOT_RUN | Chưa chứng minh recovery ở hạ tầng chạy thật; không thay preview. |
+
+## Facebook Group public Tier 0 metadata — 2026-09-30
+
+| Kiểm tra | Trạng thái | Bằng chứng và giới hạn |
+|---|---|---|
+| URL nguồn và lịch | PASS (API fixture) | Chỉ nhận trang chủ `/groups/{id-or-slug}` trên Facebook; nguồn chuyển sang `public_web`, Crawl ngay/lịch sử hoạt động và lịch có thể tắt. Nguồn sai loại bị từ chối; Group không cho đổi sang Meta API. |
+| Runner Tier 0 | PASS (Go unit/build) | `go test ./...`; runner gọi `Engine.Group`, yêu cầu privacy công khai và chỉ phát metadata/provenance. Code không gọi `GroupFeed`; không trả description/address/avatar/tabs/join state/member identities/posts. |
+| Collector protocol | PASS (fixture) | `tests/test_facebook_cli_collector.py` chạy bản sao cô lập do runtime đang load `tests/conftest.py`; 6 passed. Xác nhận response `partial`, `history_complete=false`, no discussions và private group bị từ chối. |
+| Worker persistence | PASS (SQLite API/worker fixture) | Group run lưu metadata/coverage vào `WebCrawlRun`, `status=partial`, 0 evidence, không tạo report; source vẫn active và lịch sau 12 giờ. |
+| API/worker test env | PARTIAL | Ba test API/worker đạt với SQLite fixture và shim `pgvector` tạm trong `/private/tmp`; package khai báo còn thiếu trong Python runtime. Đây không phải PostgreSQL/Redis test. |
+| Frontend | PASS | ESLint, typecheck và Vitest: 50 passed. UI giải thích chỉ đọc metadata, không đọc thảo luận; lịch có thể bật/tắt. |
+| Live public group, database broker, preview | NOT_RUN | Không gọi Facebook, không có bằng chứng live. PostgreSQL/Redis và preview người dùng không bị chạm. |
+
+Lát cắt này không đáp ứng thu thập nội dung Group discussions, bài viết, bình luận, ảnh hoặc video. Tình trạng là metadata-only/partial Tier 0, không phải hoàn tất nghiên cứu nhóm.

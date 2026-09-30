@@ -81,6 +81,7 @@ MAX_SOURCES_PER_WORKSPACE = 20
 VN_TZ = ZoneInfo("Asia/Ho_Chi_Minh")
 EMAIL_RE = re.compile(r"\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b", re.IGNORECASE)
 PHONE_RE = re.compile(r"(?<!\w)(?:\+?\d[\d ().-]{7,}\d)(?!\w)")
+FACEBOOK_GROUP_PATH_RE = re.compile(r"^/groups/([A-Za-z0-9._-]{1,128})/?$", re.IGNORECASE)
 
 
 def _group_out(row: MetaPageGroup, page_count: int, source_count: int) -> GroupOut:
@@ -297,11 +298,14 @@ async def update_collection_settings(
 ):
     source = await db.scalar(select(ResearchSource).where(
         ResearchSource.company_id == company_id, ResearchSource.id == source_id,
-        ResearchSource.source_type == "competitor_facebook_page", ResearchSource.active.is_(True),
+        ResearchSource.source_type.in_(["competitor_facebook_page", "facebook_group"]),
+        ResearchSource.active.is_(True),
     ).with_for_update())
     if source is None:
-        raise ApiProblem(404, "not_found", "Không tìm thấy Fanpage đối thủ.")
+        raise ApiProblem(404, "not_found", "Không tìm thấy nguồn Facebook công khai.")
     previous_mode = source.collection_mode
+    if source.source_type == "facebook_group" and request.collector != "public_web":
+        raise ApiProblem(422, "group_collector_fixed", "Nhóm công khai chỉ dùng facebook-cli Tier 0 metadata.")
     source.collection_mode = request.collector
     source.collection_post_limit = request.post_limit
     source.schedule_enabled = request.schedule_enabled
@@ -309,7 +313,9 @@ async def update_collection_settings(
         source.collection_status = "not_started"
         source.error_json = None
         source.status = "active"
-    blocked = source.collection_status in {"login_required", "access_denied", "challenge", "challenge_required"}
+    blocked = source.collection_status in {
+        "login_required", "access_denied", "challenge", "challenge_required", "group_not_public",
+    }
     source.next_due_at = (
         utcnow() if request.schedule_enabled and request.collector != "manual" and not blocked else None
     )
@@ -336,10 +342,10 @@ async def list_competitor_collection_runs(
     await membership_for(company_id, user, db)
     source = await db.scalar(select(ResearchSource.id).where(
         ResearchSource.company_id == company_id, ResearchSource.id == source_id,
-        ResearchSource.source_type == "competitor_facebook_page",
+        ResearchSource.source_type.in_(["competitor_facebook_page", "facebook_group"]),
     ))
     if source is None:
-        raise ApiProblem(404, "not_found", "Không tìm thấy Fanpage đối thủ.")
+        raise ApiProblem(404, "not_found", "Không tìm thấy nguồn Facebook công khai.")
     rows = (await db.scalars(select(WebCrawlRun).where(
         WebCrawlRun.company_id == company_id, WebCrawlRun.source_id == source_id,
     ).order_by(WebCrawlRun.created_at.desc()).limit(50))).all()
@@ -904,9 +910,15 @@ async def create_source(
     elif request.source_type == "facebook_group":
         parsed = urlsplit(normalized)
         host = (parsed.hostname or "").casefold()
-        if host != "facebook.com" and not host.endswith(".facebook.com"):
-            raise ApiProblem(422, "facebook_url_required", "Nguồn Facebook cần là liên kết facebook.com.")
-        status = "manual_import_only"
+        match = FACEBOOK_GROUP_PATH_RE.fullmatch(parsed.path)
+        if host not in {"facebook.com", "www.facebook.com", "m.facebook.com"} or match is None:
+            raise ApiProblem(
+                422, "facebook_group_url_required",
+                "Nhập trang chủ nhóm dạng https://www.facebook.com/groups/{id-hoặc-slug}.",
+            )
+        normalized = f"https://www.facebook.com/groups/{match.group(1)}"
+        collection_mode = "public_web"
+        status = "active"
     else:
         connection = None
     now = utcnow()

@@ -5,11 +5,13 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+import re
 import signal
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Awaitable, Callable
+from urllib.parse import urlsplit, urlunsplit
 
 from .web_crawler import CrawlError, canonicalize_url
 
@@ -32,6 +34,7 @@ FAILURE_CODES = {
     "response_too_large": "Facebook trả response vượt giới hạn an toàn.",
     "request_budget_reached": "Đã dùng hết ngân sách request của lượt crawl.",
     "collector_error": "facebook-cli không đọc được dữ liệu nguồn.",
+    "group_not_public": "Không xác minh được nhóm Facebook là công khai.",
 }
 
 
@@ -39,6 +42,13 @@ FAILURE_CODES = {
 class FacebookCliResult:
     page: dict[str, Any]
     posts: list[dict[str, Any]]
+    coverage: dict[str, Any]
+    engine_version: str
+
+
+@dataclass(frozen=True, slots=True)
+class FacebookCliGroupResult:
+    group: dict[str, Any]
     coverage: dict[str, Any]
     engine_version: str
 
@@ -52,20 +62,55 @@ async def collect_public_facebook_page(
     runner_path: str | Path | None = None,
     heartbeat: Callable[[], Awaitable[None]] | None = None,
 ) -> FacebookCliResult:
+    return await _collect_public_facebook_source(
+        source_type="competitor_facebook_page", source_url=page_url,
+        run_id=run_id, post_limit=post_limit, known_post_urls=known_post_urls,
+        runner_path=runner_path, heartbeat=heartbeat,
+    )
+
+
+async def collect_public_facebook_group(
+    group_url: str,
+    *,
+    run_id: str,
+    runner_path: str | Path | None = None,
+    heartbeat: Callable[[], Awaitable[None]] | None = None,
+) -> FacebookCliGroupResult:
+    return await _collect_public_facebook_source(
+        source_type="facebook_group", source_url=group_url,
+        run_id=run_id, post_limit=0, known_post_urls=[],
+        runner_path=runner_path, heartbeat=heartbeat,
+    )
+
+
+async def _collect_public_facebook_source(
+    *,
+    source_type: str,
+    source_url: str,
+    run_id: str,
+    post_limit: int,
+    known_post_urls: list[str] | None,
+    runner_path: str | Path | None,
+    heartbeat: Callable[[], Awaitable[None]] | None,
+) -> FacebookCliResult | FacebookCliGroupResult:
     executable = Path(runner_path or os.getenv("FACEBOOK_CLI_RUNNER_PATH", "")).expanduser()
     if not executable.is_absolute() or not executable.is_file() or not os.access(executable, os.X_OK):
         raise CrawlError("engine_unavailable", "facebook-cli runner chưa được build hoặc chưa cấu hình đường dẫn.")
-    if not 1 <= post_limit <= 100:
+    is_group = source_type == "facebook_group"
+    if source_type not in {"competitor_facebook_page", "facebook_group"}:
+        raise CrawlError("invalid_collection_settings", "Loại nguồn facebook-cli không được hỗ trợ.")
+    if (not is_group and not 1 <= post_limit <= 100) or (is_group and post_limit != 0):
         raise CrawlError("invalid_collection_settings", "Giới hạn bài phải trong khoảng 1 đến 100.")
     try:
-        page_url = canonicalize_url(page_url)
-        known = [canonicalize_url(value) for value in (known_post_urls or [])[:100]]
+        source_url = _canonicalize_group_url(source_url) if is_group else canonicalize_url(source_url)
+        known = [] if is_group else [canonicalize_url(value) for value in (known_post_urls or [])[:100]]
     except CrawlError:
         raise
 
     request = {
+        "source_type": source_type,
         "run_id": run_id,
-        "page_url": page_url,
+        "page_url": source_url,
         "post_limit": post_limit,
         "known_post_urls": known,
         "max_http_requests": 20,
@@ -135,7 +180,7 @@ async def collect_public_facebook_page(
     if stdout_overflow or stderr_overflow:
         raise CrawlError("runner_output_too_large", "facebook-cli vượt giới hạn output của một lượt.")
 
-    page: dict[str, Any] | None = None
+    metadata: dict[str, Any] | None = None
     posts: list[dict[str, Any]] = []
     summary: dict[str, Any] | None = None
     failure: dict[str, Any] | None = None
@@ -147,9 +192,12 @@ async def collect_public_facebook_page(
             if row.get("schema_version") != 1:
                 raise ValueError("unsupported runner schema")
             kind = row.get("type")
-            if kind == "page" and isinstance(row.get("page"), dict):
-                page = row["page"]
+            expected_record = "group" if is_group else "page"
+            if kind == expected_record and isinstance(row.get(expected_record), dict):
+                metadata = row[expected_record]
             elif kind == "post" and isinstance(row.get("post"), dict):
+                if is_group:
+                    raise ValueError("Tier 0 group metadata run returned discussion content")
                 posts.append(row["post"])
             elif kind == "summary":
                 summary = row
@@ -164,8 +212,50 @@ async def collect_public_facebook_page(
         code = str(failure.get("failure_kind") or "collector_error")
         raise CrawlError(code, FAILURE_CODES.get(code, "facebook-cli từ chối hoặc không đọc được nguồn."),
                          retryable=code in {"rate_limited", "network_error"})
-    if process.returncode != 0 or page is None or summary is None:
-        raise CrawlError("parser_error", "facebook-cli kết thúc mà không trả đủ Page và trạng thái lượt crawl.")
+    if process.returncode != 0 or metadata is None or summary is None:
+        entity_label = "nhóm" if is_group else "Page"
+        raise CrawlError("parser_error", f"facebook-cli kết thúc mà không trả đủ metadata {entity_label} và trạng thái lượt crawl.")
+
+    if is_group:
+        group = {
+            "id": metadata.get("id"),
+            "name": metadata.get("name"),
+            "url": metadata.get("url"),
+            "privacy": metadata.get("privacy"),
+            "public": metadata.get("public"),
+            "provenance": metadata.get("provenance") if isinstance(metadata.get("provenance"), dict) else {},
+        }
+        if (
+            not isinstance(group["id"], str) or not group["id"]
+            or not isinstance(group["name"], str) or not group["name"].strip()
+            or not isinstance(group["url"], str) or group["public"] is not True
+            or not isinstance(group["privacy"], str) or not group["privacy"].casefold().startswith("public")
+        ):
+            raise CrawlError("group_not_public", FAILURE_CODES["group_not_public"])
+        try:
+            group["url"] = _canonicalize_group_url(group["url"])
+        except CrawlError as error:
+            raise CrawlError("parser_error", "facebook-cli trả URL metadata nhóm ngoài định dạng cho phép.") from error
+        summary_version = str(summary.get("engine_version") or ENGINE_VERSION)
+        if summary_version != ENGINE_VERSION:
+            raise CrawlError("engine_version_mismatch", "Phiên bản facebook-cli runner không khớp phiên bản đã ghim.")
+        coverage = {
+            "coverage": "partial",
+            "coverage_reason": "tier0_group_shell_only",
+            "engine": "facebook-cli",
+            "engine_version": summary_version,
+            "access_tier": 0,
+            "history_complete": False,
+            "discussion_posts_collected": False,
+            "returned_posts": 0,
+            "http_requests": int(summary.get("http_requests") or 0),
+            "stop_reason": "group_discussions_not_requested_tier0",
+            "group_id": group["id"],
+            "group_name": group["name"],
+            "group_privacy": group["privacy"],
+            "missing_fields": ["discussion_posts", "comments"],
+        }
+        return FacebookCliGroupResult(group=group, coverage=coverage, engine_version=summary_version)
 
     unique: dict[str, dict[str, Any]] = {}
     for post in posts:
@@ -219,11 +309,26 @@ async def collect_public_facebook_page(
         "stop_reason": str(summary.get("stop_reason") or "unknown"),
         "oldest_post_at": min(dates).isoformat() if dates else None,
         "missing_fields": missing_fields,
-        "page_name": page.get("name"),
-        "page_id": page.get("id"),
-        "page_kind": page.get("kind"),
+        "page_name": metadata.get("name"),
+        "page_id": metadata.get("id"),
+        "page_kind": metadata.get("kind"),
     }
-    return FacebookCliResult(page=page, posts=posts, coverage=coverage, engine_version=summary_version)
+    return FacebookCliResult(page=metadata, posts=posts, coverage=coverage, engine_version=summary_version)
+
+
+def _canonicalize_group_url(value: str) -> str:
+    canonical = canonicalize_url(value)
+    parsed = urlsplit(canonical)
+    allowed_hosts = {"facebook.com", "www.facebook.com", "m.facebook.com"}
+    if (
+        parsed.scheme != "https" or (parsed.hostname or "").casefold() not in allowed_hosts
+        or parsed.query or parsed.fragment or parsed.username or parsed.password
+    ):
+        raise CrawlError("invalid_facebook_group_url", "Nguồn nhóm cần là link HTTPS facebook.com/groups/{id-hoặc-slug}.")
+    segments = [segment for segment in parsed.path.split("/") if segment]
+    if len(segments) != 2 or segments[0].casefold() != "groups" or not re.fullmatch(r"[A-Za-z0-9._-]{1,128}", segments[1]):
+        raise CrawlError("invalid_facebook_group_url", "Chỉ nhận trang chủ công khai dạng facebook.com/groups/{id-hoặc-slug}.")
+    return urlunsplit(("https", parsed.netloc, f"/groups/{segments[1]}", "", ""))
 
 
 async def _read_limited(

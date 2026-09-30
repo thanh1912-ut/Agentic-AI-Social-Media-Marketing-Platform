@@ -41,6 +41,7 @@ var allowedHosts = map[string]struct{}{
 }
 
 type request struct {
+	SourceType      string   `json:"source_type"`
 	RunID           string   `json:"run_id"`
 	PageURL         string   `json:"page_url"`
 	PostLimit       int      `json:"post_limit"`
@@ -73,6 +74,17 @@ type pageRecord struct {
 	Envelope           envelope `json:"provenance"`
 }
 
+// groupRecord deliberately excludes descriptions, addresses, image URLs,
+// member identities, and discussions. Tier 0 support here is metadata only.
+type groupRecord struct {
+	ID       string   `json:"id"`
+	Name     string   `json:"name"`
+	URL      string   `json:"url"`
+	Privacy  string   `json:"privacy"`
+	Public   bool     `json:"public"`
+	Envelope envelope `json:"provenance"`
+}
+
 type postCounts struct {
 	Reactions *int `json:"reactions"`
 	Comments  *int `json:"comments"`
@@ -95,18 +107,19 @@ type postRecord struct {
 }
 
 type output struct {
-	SchemaVersion   int         `json:"schema_version"`
-	Type            string      `json:"type"`
-	Page            *pageRecord `json:"page,omitempty"`
-	Post            *postRecord `json:"post,omitempty"`
-	PostsTruncated  bool        `json:"posts_truncated,omitempty"`
-	HistoryComplete bool        `json:"history_complete,omitempty"`
-	HTTPRequests    int64       `json:"http_requests,omitempty"`
-	EngineVersion   string      `json:"engine_version,omitempty"`
-	StopReason      string      `json:"stop_reason,omitempty"`
-	ErrorCode       int         `json:"error_code,omitempty"`
-	FailureKind     string      `json:"failure_kind,omitempty"`
-	Error           string      `json:"error,omitempty"`
+	SchemaVersion   int          `json:"schema_version"`
+	Type            string       `json:"type"`
+	Page            *pageRecord  `json:"page,omitempty"`
+	Group           *groupRecord `json:"group,omitempty"`
+	Post            *postRecord  `json:"post,omitempty"`
+	PostsTruncated  bool         `json:"posts_truncated,omitempty"`
+	HistoryComplete bool         `json:"history_complete,omitempty"`
+	HTTPRequests    int64        `json:"http_requests,omitempty"`
+	EngineVersion   string       `json:"engine_version,omitempty"`
+	StopReason      string       `json:"stop_reason,omitempty"`
+	ErrorCode       int          `json:"error_code,omitempty"`
+	FailureKind     string       `json:"failure_kind,omitempty"`
+	Error           string       `json:"error,omitempty"`
 }
 
 func main() {
@@ -133,12 +146,26 @@ func run() error {
 	if err := decoder.Decode(&in); err != nil {
 		return codedError{code: 2, err: err}
 	}
-	pageRef, err := pageReference(in.PageURL)
+	if in.SourceType == "" {
+		in.SourceType = "competitor_facebook_page"
+	}
+	if in.SourceType != "competitor_facebook_page" && in.SourceType != "facebook_group" {
+		return codedError{code: 2, err: errors.New("source_type must be a supported public Facebook source")}
+	}
+	var sourceRef string
+	if in.SourceType == "facebook_group" {
+		sourceRef, err = groupReference(in.PageURL)
+		if in.PostLimit != 0 {
+			return codedError{code: 2, err: errors.New("post_limit must be zero for Tier 0 group metadata")}
+		}
+	} else {
+		sourceRef, err = pageReference(in.PageURL)
+		if in.PostLimit < 1 || in.PostLimit > 100 {
+			return codedError{code: 2, err: errors.New("post_limit must be between 1 and 100")}
+		}
+	}
 	if err != nil {
 		return codedError{code: 2, err: err}
-	}
-	if in.PostLimit < 1 || in.PostLimit > 100 {
-		return codedError{code: 2, err: errors.New("post_limit must be between 1 and 100")}
 	}
 	if !regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$`).MatchString(in.RunID) {
 		return codedError{code: 2, err: errors.New("run_id is required")}
@@ -182,8 +209,36 @@ func run() error {
 		Timeout:       maxRequestTime,
 		CheckRedirect: boundedRedirectCallback(transport),
 	}
+	if in.SourceType == "facebook_group" {
+		group, err := engine.Group(ctx, sourceRef)
+		if transport.redirectRejected.Load() {
+			return codedError{code: 4, err: errRedirectRejected}
+		}
+		if err != nil {
+			return codedError{code: fb.ExitCode(err), err: err}
+		}
+		if group.ID == "" || strings.TrimSpace(group.Name) == "" || !allowedFacebookURL(group.URL) {
+			return codedError{code: 7, err: errors.New("the reference did not resolve to a verified public group")}
+		}
+		if !group.Visible || !strings.HasPrefix(strings.ToLower(strings.TrimSpace(group.Privacy)), "public") {
+			return codedError{code: 9, err: errors.New("the group was not confirmed public")}
+		}
+		record := &groupRecord{
+			ID: group.ID, Name: strings.TrimSpace(group.Name), URL: group.URL,
+			Privacy: strings.TrimSpace(group.Privacy), Public: true,
+			Envelope: envelopeOf(group.Envelope),
+		}
+		if err := writeJSON(output{SchemaVersion: schemaVersion, Type: "group", Group: record}); err != nil {
+			return err
+		}
+		return writeJSON(output{
+			SchemaVersion: schemaVersion, Type: "summary", HistoryComplete: false,
+			HTTPRequests: transport.count.Load(), EngineVersion: engineVersion,
+			StopReason: "group_discussions_not_requested_tier0",
+		})
+	}
 
-	profile, err := engine.Profile(ctx, pageRef, fb.ProfileOptions{})
+	profile, err := engine.Profile(ctx, sourceRef, fb.ProfileOptions{})
 	if transport.redirectRejected.Load() {
 		return codedError{code: 4, err: errRedirectRejected}
 	}
@@ -292,6 +347,8 @@ func failureKind(err error) string {
 		return "not_found"
 	case errors.As(err, &coded) && coded.code == 7:
 		return "page_identity_unverified"
+	case errors.As(err, &coded) && coded.code == 9:
+		return "group_not_public"
 	case errors.Is(err, errRequestBudget):
 		return "request_budget_reached"
 	case errors.Is(err, errResponseTooLarge):
@@ -350,6 +407,8 @@ func publicError(code int) string {
 		return "Không tìm thấy Page hoặc bài viết công khai."
 	case 7:
 		return "Nguồn không được nhận diện là Fanpage hoặc thao tác không hỗ trợ."
+	case 9:
+		return "Chỉ hỗ trợ metadata của nhóm được xác nhận là công khai."
 	case 8:
 		return "Lỗi mạng, giới hạn request hoặc response của Facebook."
 	default:
@@ -390,6 +449,19 @@ func pageReference(raw string) (string, error) {
 		return "", errors.New("expected a Page handle or Page id")
 	}
 	return path, nil
+}
+
+func groupReference(raw string) (string, error) {
+	u, err := url.Parse(strings.TrimSpace(raw))
+	if err != nil || !allowedFacebookURL(raw) || u.User != nil || u.RawQuery != "" || u.Fragment != "" {
+		return "", errors.New("expected an HTTPS public Facebook Group URL")
+	}
+	parts := strings.Split(strings.Trim(u.Path, "/"), "/")
+	if len(parts) != 2 || !strings.EqualFold(parts[0], "groups") ||
+		!regexp.MustCompile(`^[A-Za-z0-9._-]{1,128}$`).MatchString(parts[1]) {
+		return "", errors.New("expected https://www.facebook.com/groups/{public-id-or-slug}")
+	}
+	return parts[1], nil
 }
 
 func allowedFacebookURL(raw string) bool {

@@ -100,3 +100,88 @@ print(json.dumps({"schema_version": 1, "type": "summary", "engine_version": "fac
         ))
 
     assert error.value.code == "engine_version_mismatch"
+
+
+def test_group_tier0_collector_returns_public_shell_only_and_no_discussions(
+    tmp_path: Path,
+) -> None:
+    marker = tmp_path / "group-request.json"
+    group = {
+        "id": "123456789",
+        "name": "Nhóm công khai",
+        "url": "https://www.facebook.com/groups/public-demo",
+        "privacy": "Public group",
+        "public": True,
+        "description": "This field must not be returned to the application.",
+        "address": "private-looking location",
+        "avatar": {"url": "https://cdn.example/avatar"},
+        "provenance": {"tier": 0, "surfaces": ["group"]},
+    }
+    rows = "\n".join([
+        _row("group", group=group),
+        _row("summary", engine_version=collector.ENGINE_VERSION, http_requests=2,
+             history_complete=False, stop_reason="group_discussions_not_requested_tier0"),
+    ])
+    executable = _runner(tmp_path, f"""
+import json, sys
+request = json.load(sys.stdin)
+pathlib = __import__('pathlib')
+pathlib.Path({str(marker)!r}).write_text(json.dumps(request))
+sys.stdout.write({rows!r} + "\\n")
+""")
+
+    result = asyncio.run(collector.collect_public_facebook_group(
+        "https://www.facebook.com/groups/public-demo", run_id="group-run-1",
+        runner_path=executable,
+    ))
+
+    request = json.loads(marker.read_text())
+    assert request["source_type"] == "facebook_group"
+    assert request["post_limit"] == 0
+    assert result.group == {
+        "id": "123456789", "name": "Nhóm công khai",
+        "url": "https://www.facebook.com/groups/public-demo",
+        "privacy": "Public group", "public": True,
+        "provenance": {"tier": 0, "surfaces": ["group"]},
+    }
+    assert result.coverage["coverage"] == "partial"
+    assert result.coverage["history_complete"] is False
+    assert result.coverage["discussion_posts_collected"] is False
+    assert result.coverage["stop_reason"] == "group_discussions_not_requested_tier0"
+
+
+def test_group_tier0_collector_rejects_non_public_group(
+    tmp_path: Path,
+) -> None:
+    group = {"id": "123456789", "name": "Private group",
+             "url": "https://www.facebook.com/groups/private-demo", "privacy": "Private group",
+             "public": False}
+    rows = "\n".join([
+        _row("group", group=group),
+        _row("summary", engine_version=collector.ENGINE_VERSION, http_requests=1),
+    ])
+    executable = _runner(tmp_path, f"import sys\nsys.stdout.write({rows!r} + \"\\n\")\n")
+
+    with pytest.raises(CrawlError) as error:
+        asyncio.run(collector.collect_public_facebook_group(
+            "https://www.facebook.com/groups/private-demo", run_id="group-run-2",
+            runner_path=executable,
+        ))
+
+    assert error.value.code == "group_not_public"
+
+
+def test_group_tier0_collector_rejects_non_group_urls(
+    tmp_path: Path,
+) -> None:
+    executable = _runner(tmp_path, "raise SystemExit(0)\n")
+    for url in (
+        "https://www.facebook.com/some-profile",
+        "https://www.facebook.com/groups/example/posts/123",
+        "https://facebook.com.evil.example/groups/example",
+    ):
+        with pytest.raises(CrawlError) as error:
+            asyncio.run(collector.collect_public_facebook_group(
+                url, run_id="group-run-invalid", runner_path=executable,
+            ))
+        assert error.value.code == "invalid_facebook_group_url"

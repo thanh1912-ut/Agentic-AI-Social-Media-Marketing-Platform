@@ -42,7 +42,9 @@ from services.api.meta_client import (
 from services.api.meta_tokens import TokenEncryptionUnavailable, decrypt_page_token
 from services.api.storage import storage
 from services.research.web_crawler import CrawlError, crawl_public_site
-from services.research.facebook_cli_collector import ENGINE_VERSION, collect_public_facebook_page
+from services.research.facebook_cli_collector import (
+    ENGINE_VERSION, collect_public_facebook_group, collect_public_facebook_page,
+)
 from services.research.privacy import raw_quarantine_expiry
 from services.research.website_entities import PARSER_VERSION
 from services.worker.ai_budget import (
@@ -997,6 +999,91 @@ async def _collect_public_competitor_page(
     }
 
 
+async def _collect_public_facebook_group(
+    company_id: str, group_id: str, source: ResearchSource,
+    *, cycle_id: str, job_id: str, privacy_policy_snapshot: dict[str, Any] | None = None,
+) -> tuple[int, dict[str, Any]]:
+    """Read public group shell metadata only; never fetch discussion feeds."""
+    run_id = await _open_competitor_run(
+        company_id, group_id, source, cycle_id, job_id,
+        privacy_policy_snapshot=privacy_policy_snapshot,
+    )
+    runner_path = getattr(settings, "facebook_cli_runner_path", "")
+    if not runner_path:
+        await _finish_competitor_run(
+            company_id, run_id, status="error",
+            counters={"items_seen": 0, "items_saved": 0, "blocked_reason": "engine_unavailable"},
+            config={"collector": "public_web", "engine": "facebook-cli", "access_tier": 0},
+        )
+        raise CrawlError("engine_unavailable", "Cấu hình FACEBOOK_CLI_RUNNER_PATH trỏ tới runner đã build.")
+    lock_session = None
+    lock_session, acquired = await _acquire_facebook_cli_lock()
+    if not acquired:
+        await _finish_competitor_run(
+            company_id, run_id, status="retry_wait",
+            counters={"items_seen": 0, "items_saved": 0,
+                      "blocked_reason": "facebook_collector_busy", "retryable": True},
+            config={"collector": "public_web", "engine": "facebook-cli", "access_tier": 0},
+        )
+        raise CrawlError("facebook_collector_busy", "Một nguồn Facebook khác đang được đọc; thử lại sau.", retryable=True)
+    try:
+        await _reserve_facebook_request_slot()
+        result = await collect_public_facebook_group(
+            source.url, run_id=run_id, runner_path=runner_path,
+            heartbeat=lambda: _facebook_cli_heartbeat(lock_session, job_id),
+        )
+    except CrawlError as error:
+        is_access_block = error.code in {"login_required", "access_denied", "challenge", "group_not_public"}
+        await _finish_competitor_run(
+            company_id, run_id, status="blocked" if is_access_block else "error",
+            counters={"items_seen": 0, "items_saved": 0, "pages_requested": 0,
+                      "blocked_reason": error.code, "coverage": {"coverage": "blocked"},
+                      "retryable": error.retryable},
+            config={"collector": "public_web", "engine": "facebook-cli",
+                    "engine_version": ENGINE_VERSION, "access_tier": 0,
+                    "discussion_collection": "not_attempted"},
+        )
+        raise
+    except Exception as error:
+        await _finish_competitor_run(
+            company_id, run_id, status="error",
+            counters={"items_seen": 0, "items_saved": 0,
+                      "blocked_reason": "collector_error", "coverage": {"coverage": "failed"}},
+            config={"collector": "public_web", "engine": "facebook-cli",
+                    "engine_version": ENGINE_VERSION, "access_tier": 0,
+                    "discussion_collection": "not_attempted"},
+        )
+        raise CrawlError("collector_error", "facebook-cli không hoàn tất metadata nhóm.") from error
+    finally:
+        if lock_session is not None:
+            with suppress(Exception):
+                await _advance_facebook_request_slot()
+            with suppress(Exception):
+                await _release_facebook_cli_lock(lock_session)
+
+    coverage = {
+        **result.coverage,
+        "items_seen": 0,
+        "items_saved": 0,
+        "discussion_posts_collected": False,
+    }
+    await _finish_competitor_run(
+        company_id, run_id, status="partial",
+        counters={"items_seen": 0, "items_saved": 0,
+                  "pages_requested": coverage.get("http_requests", 0), "coverage": coverage},
+        config={"collector": "public_web", "engine": "facebook-cli",
+                "engine_version": result.engine_version, "access_tier": 0,
+                "discussion_collection": "not_attempted_tier0_shell_only"},
+    )
+    return 0, {
+        "status": "partial", "items_seen": 0, "items_saved": 0,
+        "coverage": coverage, "collector": "public_web", "engine": "facebook-cli",
+        "engine_version": result.engine_version,
+        "group_metadata": {key: result.group.get(key) for key in ("id", "name", "url", "privacy")},
+        "message": "Đã xác minh metadata nhóm công khai. Tier 0 không được yêu cầu feed thảo luận; chưa thu thập bài viết hoặc bình luận.",
+    }
+
+
 def _facebook_post_published_at(value: object, fallback: datetime) -> datetime | None:
     if not isinstance(value, str) or not value.strip():
         return None
@@ -1447,17 +1534,18 @@ async def _run(job_id: str) -> None:
                 if source_type in {"owned_facebook_page", "competitor_facebook_page", "facebook_group"}
                 else None
             )
-            if source_type == "competitor_facebook_page":
+            if source_type in {"competitor_facebook_page", "facebook_group"}:
                 source.last_collection_attempt_at = utcnow()
-                source.collection_last_method = (
-                    "facebook-cli" if source.collection_mode == "public_web" else source.collection_mode
-                )
+                source.collection_last_method = "facebook-cli"
             # Do not keep a database transaction open while collectors make network calls.
             await db.commit()
             try:
                 if source_type == "facebook_group":
-                    outcome = {"status": "unsupported_tier0", "items_saved": 0,
-                               "message": "facebook-cli Tier 0 không đọc thảo luận nhóm; hệ thống không đăng nhập hoặc tham gia nhóm."}
+                    _count, details = await _collect_public_facebook_group(
+                        company_id, group_id, source, cycle_id=cycle.id, job_id=job_id,
+                        privacy_policy_snapshot=privacy_policy_snapshot,
+                    )
+                    outcome = {**details}
                 elif source_type == "competitor_facebook_page" and source.collection_mode == "manual":
                     outcome = {"status": "manual_import_only", "items_saved": 0,
                                "message": "Nguồn đang ở chế độ nhập thủ công."}
@@ -1481,10 +1569,9 @@ async def _run(job_id: str) -> None:
                     outcome = {**details}
                 else:
                     raise CrawlError("source_type_unsupported", "Loại nguồn này chưa được hỗ trợ.")
-                if source_type == "facebook_group":
-                    source.status = outcome.get("status", "unsupported_tier0")
-                elif source_type in {
+                if source_type in {
                     "website", "owned_facebook_page", "competitor_facebook_page",
+                    "facebook_group",
                 }:
                     source.status = "active"
                 else:
@@ -1504,6 +1591,11 @@ async def _run(job_id: str) -> None:
                         source.next_due_at = None
                     else:
                         source.next_due_at = utcnow() + timedelta(hours=12) if source.schedule_enabled else None
+                elif source_type == "facebook_group":
+                    source.collection_status = outcome.get("status", "partial")
+                    source.collection_last_method = "facebook-cli"
+                    source.last_collection_success_at = utcnow()
+                    source.next_due_at = utcnow() + timedelta(hours=12) if source.schedule_enabled else None
                 else:
                     source.next_due_at = (
                         utcnow() + timedelta(hours=12)
@@ -1514,15 +1606,14 @@ async def _run(job_id: str) -> None:
                 is_public_block = error.code in {
                     "login_required", "access_denied", "challenge", "challenge_required",
                 }
+                is_nonpublic_group = source_type == "facebook_group" and error.code == "group_not_public"
                 outcome = {"status": "blocked" if is_public_block else "failed",
                            "code": error.code, "message": str(error), "items_saved": 0,
                            "retryable": error.retryable}
-                if source_type == "competitor_facebook_page":
+                if source_type in {"competitor_facebook_page", "facebook_group"}:
                     source.collection_status = error.code
-                    source.collection_last_method = (
-                        "facebook-cli" if source.collection_mode == "public_web" else source.collection_mode
-                    )
-                    source.status = "active" if is_public_block else (
+                    source.collection_last_method = "facebook-cli"
+                    source.status = "active" if is_public_block or is_nonpublic_group else (
                         "needs_access" if error.code in {
                             "page_needs_reconnect", "page_token_unavailable", "page_token_expired",
                             "page_permission_missing", "page_public_content_access_not_configured",
@@ -1555,7 +1646,7 @@ async def _run(job_id: str) -> None:
                            "message": "Không xử lý được nguồn này trong chu kỳ hiện tại.",
                            "items_saved": 0, "retryable": False}
                 source.status = "error"
-                if source_type == "competitor_facebook_page":
+                if source_type in {"competitor_facebook_page", "facebook_group"}:
                     source.collection_status = "source_processing_failed"
                     source.next_due_at = None
                 source.error_json = {"code": "source_processing_failed", "message": outcome["message"]}

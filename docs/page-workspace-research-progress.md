@@ -11,7 +11,7 @@ Base đã kiểm tra: `codex/creative-studio-ui` @ `b769097bfdb3568889d974c6def9
 - [DONE] Page identity/avatar fields, unique workspace binding, activation gate và reconnect cùng Page.
 - [DONE] UI Nghiên cứu không hỏi tạo/chọn nhóm; backend giữ nhóm legacy nội bộ và facade workspace cho báo cáo.
 - [PARTIAL] Page sở hữu lưu bài và chỉ số mà Meta trả. Nội dung bình luận đang `privacy_hold`; chỉ số đếm bình luận vẫn có thể được lưu.
-- [PARTIAL] Public Facebook giữ collector Tier 0 hiện có. Nhóm chỉ báo `unsupported_tier0`; không có nội dung thảo luận.
+- [PARTIAL] Public Facebook Page dùng collector Tier 0. Nhóm hiện xác minh/lưu metadata công khai ở trạng thái `partial`; không lấy bài thảo luận.
 - [PARTIAL] Ledger ngân sách tự động PostgreSQL và mức trần $2/workspace/ngày đã được thêm cho báo cáo Nghiên cứu chạy DeepSeek; API và UI hiển thị số đã dùng/giữ chỗ/còn lại. Bảng giá đã ghi nhận model Gemini/Qwen đã chọn, nhưng chưa route call của hai provider hoặc media vào ledger.
 - [PARTIAL] Worker không gửi comment text cũ/mới cho agent. Chưa có pipeline nhận dạng/redact toàn diện, retention/deletion ledger hoặc quy trình pháp lý; không được coi là chứng nhận tuân thủ.
 - [PARTIAL] Owner có thể ghi nhận mục đích, tham chiếu căn cứ, phiên bản chính sách và thời hạn dự kiến theo từng nguồn; bản ghi bất biến có số revision. Đây chỉ là hồ sơ cấu hình, chưa thi hành retention và không mở `privacy_hold`.
@@ -26,7 +26,7 @@ Base đã kiểm tra: `codex/creative-studio-ui` @ `b769097bfdb3568889d974c6def9
 - `POST /auth/register` hiện tạo đồng thời user, company, owner membership và brand; biểu mẫu yêu cầu tên workspace.
 - `MetaPageConnection` hiện có unique `(company_id, page_id)` nhưng chưa có binding toàn hệ thống và chưa lưu avatar.
 - Nguồn nghiên cứu vẫn gắn `group_id`; giao diện có tab Fanpage/nguồn/báo cáo và form nhóm.
-- `facebook-cli` `v0.3.0` Tier 0 không phân trang timeline lịch sử; Group discussions cần Tier 1; public collector hiện lưu `comments=[]` và runner chưa đưa media ra schema.
+- `facebook-cli` `v0.3.0` Tier 0 không phân trang timeline lịch sử; Group shell metadata có thể đọc không đăng nhập nhưng không dùng để tuyên bố thu thập discussions; public Page collector hiện lưu `comments=[]` và runner chưa đưa media ra schema.
 - Provider AI hiện có adapter DeepSeek; chưa có ledger ngân sách tự động.
 - Không kiểm tra/đọc giá trị API key, Page token, cookie hoặc DSN trong quá trình baseline.
 
@@ -252,6 +252,16 @@ Base đã kiểm tra: `codex/creative-studio-ui` @ `b769097bfdb3568889d974c6def9
 - PASS: `tests/test_account_lifecycle.py -k metadata_refresh`: 1 passed; bao gồm expiry, dữ liệu được giữ, schedule intent còn nguyên, reconnect cùng Page và due time được phục hồi.
 - PASS: Ruff và `git diff --check`.
 - NOT_RUN: Không gọi Meta live, PostgreSQL/Redis production hoặc thay preview. Đây là API lifecycle test với Meta fixture/SQLite.
+
+### 2026-09-30 — Public Group Tier 0 metadata shell
+
+- DONE: API chỉ nhận URL trang chủ `/groups/{id-or-slug}` trên host Facebook đã cho phép; nguồn mới dùng `public_web`, có thể Crawl ngay và bật/tắt lịch 12 giờ.
+- DONE: Go runner gọi `Engine.Group` ở Tier 0, yêu cầu upstream xác nhận privacy public, chỉ xuất ID/tên/URL/privacy và provenance. Không gọi `GroupFeed`; không xuất mô tả, địa chỉ, avatar, danh sách thành viên hoặc bài thảo luận.
+- DONE: Worker lưu metadata và coverage trong `WebCrawlRun`, trạng thái `partial`, `items_saved=0`, `history_complete=false`; không tạo evidence/report từ metadata nhóm. Lịch tạm ngừng sau khi nhóm không được xác nhận public.
+- DONE: UI có Crawl ngay, lịch 12 giờ, metadata/lịch sử và thông báo rõ không có thảo luận trong Tier 0.
+- PASS: Go runner `go test ./...`; collector protocol fixtures 6 passed; API/worker SQLite fixture với `pgvector` test shim 3 passed; frontend lint, typecheck và Vitest 50 passed; Python AST parse và `git diff --check`.
+- BLOCKED: Python runtime hiện tại thiếu dependency `pgvector` đã khai trong `pyproject.toml`; mạng không phân giải được package index. API fixture dùng shim tạm trong `/private/tmp`, không phải xác minh PostgreSQL/Redis.
+- NOT_RUN: Không gọi Facebook thật, không gọi GroupFeed, không chạy PostgreSQL/Redis cho lát cắt này và không thay preview. Kết quả là fixture/pipeline code, không phải live Group crawl.
 
 ### 2026-09-30 10:02 Asia/Ho_Chi_Minh — PostgreSQL/Redis integration và raw retention
 

@@ -38,6 +38,28 @@ func TestPageReference(t *testing.T) {
 	}
 }
 
+func TestGroupReferenceAcceptsOnlyGroupHomeURLs(t *testing.T) {
+	tests := []struct {
+		input string
+		want  string
+		ok    bool
+	}{
+		{"https://www.facebook.com/groups/123456", "123456", true},
+		{"https://m.facebook.com/groups/local-news/", "local-news", true},
+		{"https://facebook.com/people/example", "", false},
+		{"https://www.facebook.com/groups/example/posts/123", "", false},
+		{"https://facebook.com.evil.example/groups/example", "", false},
+		{"https://www.facebook.com/groups/example?ref=share", "", false},
+		{"http://www.facebook.com/groups/example", "", false},
+	}
+	for _, test := range tests {
+		got, err := groupReference(test.input)
+		if (err == nil) != test.ok || got != test.want {
+			t.Errorf("groupReference(%q) = (%q, %v), want (%q, ok=%t)", test.input, got, err, test.want, test.ok)
+		}
+	}
+}
+
 func TestFacebookURLAndRedirectAllowlist(t *testing.T) {
 	for _, raw := range []string{
 		"https://facebook.com/page", "https://www.facebook.com/page", "https://m.facebook.com/page",

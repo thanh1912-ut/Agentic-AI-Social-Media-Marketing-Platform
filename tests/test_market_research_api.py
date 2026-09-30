@@ -16,7 +16,7 @@ from sqlalchemy.pool import StaticPool
 from database.models import (
     AIUsageBudgetDay, AIUsageLedger, Base, Campaign, Job, MarketEvidence, MarketEvidenceVersion, MarketObservation, MetaPageConnection,
     MarketReport, MarketReportEvidence, MetaPageGroup, ResearchCycle, ResearchSource, new_id,
-    Membership, ResearchPrivacyPolicyRevision, User,
+    Membership, ResearchPrivacyPolicyRevision, User, WebCrawlRun,
 )
 from services.api import market_research as market_research_routes
 from services.api import meta_tokens
@@ -1206,3 +1206,148 @@ def test_source_privacy_policy_write_requires_owner(market_api) -> None:
             },
         )
     assert response.status_code == 403, response.text
+
+
+def test_public_group_source_uses_tier0_metadata_and_supports_schedule_toggle(market_api) -> None:
+    client, _session_factory, _encryption_key = market_api
+    workspace_id, headers = _owner(client, "public-group-source@example.com")
+    created = client.post(
+        f"/api/v1/workspaces/{workspace_id}/market-research/sources",
+        headers=headers,
+        json={
+            "source_type": "facebook_group",
+            "name": "Nhóm công khai",
+            "url": "https://facebook.com/groups/public-market?ref=share",
+        },
+    )
+    assert created.status_code == 201, created.text
+    source = created.json()
+    assert source["source_type"] == "facebook_group"
+    assert source["url"] == "https://www.facebook.com/groups/public-market"
+    assert source["status"] == "active"
+    assert source["collection_mode"] == "public_web"
+    assert source["schedule_enabled"] is True
+
+    source_url = f"/api/v1/workspaces/{workspace_id}/market-research/sources/{source['id']}"
+    runs = client.get(source_url + "/collection-runs", headers=headers)
+    assert runs.status_code == 200, runs.text
+    assert runs.json() == []
+
+    paused = client.patch(
+        source_url + "/collection-settings",
+        headers=headers,
+        json={"collector": "public_web", "schedule_enabled": False, "post_limit": 50},
+    )
+    assert paused.status_code == 200, paused.text
+    assert paused.json()["schedule_enabled"] is False
+    assert paused.json()["next_due_at"] is None
+
+    wrong_collector = client.patch(
+        source_url + "/collection-settings",
+        headers=headers,
+        json={"collector": "meta_api", "schedule_enabled": True, "post_limit": 50},
+    )
+    assert wrong_collector.status_code == 422, wrong_collector.text
+    assert wrong_collector.json()["error"]["code"] == "group_collector_fixed"
+
+
+def test_public_group_source_rejects_non_group_facebook_urls(market_api) -> None:
+    client, _session_factory, _encryption_key = market_api
+    workspace_id, headers = _owner(client, "public-group-validation@example.com")
+    rejected = client.post(
+        f"/api/v1/workspaces/{workspace_id}/market-research/sources",
+        headers=headers,
+        json={
+            "source_type": "facebook_group",
+            "name": "Not a group",
+            "url": "https://www.facebook.com/not-a-group",
+        },
+    )
+    assert rejected.status_code == 422, rejected.text
+    assert rejected.json()["error"]["code"] == "facebook_group_url_required"
+
+
+def test_public_group_worker_persists_shell_metadata_as_partial_without_report(market_api, monkeypatch) -> None:
+    async def no_redis_dispatch(_job_id: str) -> bool:
+        return False
+
+    async def no_facebook_slot() -> None:
+        return None
+
+    async def acquired_cli_lock():
+        return None, True
+
+    async def no_cli_lock_release(_session) -> None:
+        return None
+
+    async def fake_group_collect(_url: str, **_kwargs):
+        return SimpleNamespace(
+            group={"id": "123456789", "name": "Nhóm công khai", "url": "https://www.facebook.com/groups/demo",
+                   "privacy": "Public group"},
+            coverage={"coverage": "partial", "coverage_reason": "tier0_group_shell_only",
+                      "history_complete": False, "discussion_posts_collected": False,
+                      "http_requests": 2, "group_id": "123456789", "group_name": "Nhóm công khai",
+                      "group_privacy": "Public group", "missing_fields": ["discussion_posts", "comments"]},
+            engine_version="facebook-cli-fixture-test",
+        )
+
+    monkeypatch.setattr(market_research_routes, "dispatch_research_job", no_redis_dispatch)
+    monkeypatch.setattr(research_tasks, "SessionLocal", market_api[1])
+    monkeypatch.setattr(research_tasks, "settings", SimpleNamespace(facebook_cli_runner_path="/test/runner"))
+    monkeypatch.setattr(research_tasks, "_acquire_facebook_cli_lock", acquired_cli_lock)
+    monkeypatch.setattr(research_tasks, "_reserve_facebook_request_slot", no_facebook_slot)
+    monkeypatch.setattr(research_tasks, "_advance_facebook_request_slot", no_facebook_slot)
+    monkeypatch.setattr(research_tasks, "_release_facebook_cli_lock", no_cli_lock_release)
+    monkeypatch.setattr(research_tasks, "collect_public_facebook_group", fake_group_collect)
+
+    client, session_factory, _encryption_key = market_api
+    workspace_id, headers = _owner(client, "public-group-worker@example.com")
+    group_id = _create_group(client, workspace_id, headers)
+    created = client.post(
+        f"/api/v1/workspaces/{workspace_id}/market-research/sources",
+        headers=headers,
+        json={"group_id": group_id, "source_type": "facebook_group", "name": "Public group",
+              "url": "https://www.facebook.com/groups/demo"},
+    )
+    assert created.status_code == 201, created.text
+    source_id = created.json()["id"]
+    accepted = client.post(
+        f"/api/v1/workspaces/{workspace_id}/market-research/sources/{source_id}/crawl",
+        headers=headers,
+    )
+    assert accepted.status_code == 202, accepted.text
+    job_id = accepted.json()["job_id"]
+
+    async def run_and_read():
+        async with session_factory() as db:
+            job = await db.get(Job, job_id)
+            assert job is not None
+            job.status = "running"
+            await db.commit()
+        await research_tasks._run(job_id)
+        async with session_factory() as db:
+            job = await db.get(Job, job_id)
+            source = await db.get(ResearchSource, source_id)
+            run = await db.scalar(select(WebCrawlRun).where(WebCrawlRun.source_id == source_id))
+            evidence = (await db.scalars(select(MarketEvidence).where(
+                MarketEvidence.company_id == workspace_id,
+                MarketEvidence.source_id == source_id,
+            ))).all()
+            assert job is not None and source is not None and run is not None
+            return job, source, run, evidence
+
+    job, source, run, evidence = asyncio.run(run_and_read())
+    assert job.status == "succeeded"
+    assert job.result["report_id"] is None
+    assert job.result["analysis_status"] == "not_run_no_new_evidence"
+    assert job.result["source_results"][0]["status"] == "partial"
+    assert job.result["source_results"][0]["group_metadata"]["name"] == "Nhóm công khai"
+    assert source.status == "active"
+    assert source.collection_status == "partial"
+    assert source.last_collection_success_at is not None
+    assert source.next_due_at is not None
+    assert run.status == "partial"
+    assert run.counters_json["items_saved"] == 0
+    assert run.counters_json["coverage"]["discussion_posts_collected"] is False
+    assert run.config_json["discussion_collection"] == "not_attempted_tier0_shell_only"
+    assert evidence == []
