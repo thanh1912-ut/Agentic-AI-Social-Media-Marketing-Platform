@@ -453,3 +453,4 @@ Base đã kiểm tra: `codex/creative-studio-ui` @ `b769097bfdb3568889d974c6def9
 - PASS (Docling thật): Chạy test bằng `/private/tmp/docling-ingestion-venv` với Docling `2.130.0`, model local đã verify 66 files, OCR disabled; upload TXT được xử lý bởi Docling child process. `pgvector` chỉ cần shim import trong test process.
 - LIMITATION: Meta Graph, DeepSeek, embedding và object storage production không được gọi; storage dùng thư mục tạm. Worker được gọi trực tiếp trong test, không qua Redis/Celery. Chưa phải browser/UI hoặc live Page nghiệm thu.
 - PASS: Cụm PostgreSQL disposable đã dừng sau test.
+- PASS (follow-up 18:00): Lặp lại PostgreSQL smoke sau khi bổ sung assertion đăng ký trả danh sách workspace rỗng, Page activation trả đúng tên/Page ID/state/ảnh placeholder — `1 passed`. SQLite auth/tenant regression `test_auth_and_tenant_isolation` — `1 passed`.
