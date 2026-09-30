@@ -92,6 +92,10 @@ class MetaGraphTokenExpired(MetaGraphRejected):
     """Page token is expired, revoked, or otherwise invalid; reconnect it."""
 
 
+class MetaPageIdentityMismatch(MetaGraphRejected):
+    """The supplied token's /me identity is not the requested Page."""
+
+
 class MetaGraphOutcomeUnknown(MetaGraphError):
     """A publish request may have succeeded; reconcile before any retry."""
 
@@ -402,8 +406,10 @@ class MetaGraphClient:
             params={"fields": "id,name,picture"},
         )
         page_id, name = payload.get("id"), payload.get("name")
-        if page_id != self.page_id or not isinstance(name, str) or not name.strip():
-            raise MetaGraphRejected(403)
+        if page_id != self.page_id:
+            raise MetaPageIdentityMismatch(403)
+        if not isinstance(name, str) or not name.strip():
+            raise MetaGraphReadError("Meta Graph returned an invalid Page name.")
         picture = payload.get("picture")
         picture_data = picture.get("data") if isinstance(picture, dict) else None
         picture_url = picture_data.get("url") if isinstance(picture_data, dict) else None
@@ -431,6 +437,22 @@ class MetaGraphClient:
             except ValueError:
                 picture_url = None
         return MetaPage(id=page_id, name=name.strip(), picture_url=picture_url)
+
+    async def verify_posts_read_access(self) -> None:
+        """Check the posts edge without requiring media/metric field permissions.
+
+        An empty Page can still be readable. Do not fetch comment text, media,
+        metrics, or pagination during account activation.
+        """
+        payload = await self._request(
+            "GET", f"/{self.graph_version}/{self.page_id}/posts", publishing=False,
+            params={"fields": "id", "limit": 1},
+        )
+        data = payload.get("data")
+        if not isinstance(data, list) or len(data) > 1:
+            raise MetaGraphReadError("Meta Graph returned an invalid Page posts access check.")
+        if any(not isinstance(item, dict) or not _valid_post_id(item.get("id"), self.page_id) for item in data):
+            raise MetaGraphReadError("Meta Graph returned a post outside the requested Page.")
 
     async def resolve_public_page(self, reference: str) -> MetaPublicPage:
         """Resolve a public Page with an app/user token approved for Page public access."""

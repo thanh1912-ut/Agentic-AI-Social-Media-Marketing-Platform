@@ -58,6 +58,9 @@ def account_client(tmp_path, monkeypatch: pytest.MonkeyPatch):
             from services.api.meta_client import MetaPage
             return MetaPage(id=self.page_id, name=f"Test Page {self.page_id}", picture_url=None)
 
+        async def verify_posts_read_access(self):
+            return None
+
         async def list_page_posts(self, **_kwargs):
             return SimpleNamespace(posts=[], next_cursor=None)
 
@@ -183,6 +186,81 @@ def test_page_activation_owns_workspace_and_token_does_not_grant_membership(
     assert account_client.get("/api/v1/workspaces").json() == []
 
 
+@pytest.mark.parametrize(("step", "failure", "expected_code", "status"), [
+    ("token_identity", "mismatch", "meta_page_identity_mismatch", 422),
+    ("token_identity", "expired", "meta_token_invalid", 422),
+    ("token_identity", "rejected", "meta_page_identity_rejected", 422),
+    ("posts_read_access", "rejected", "meta_page_permission_missing", 422),
+    ("posts_read_access", "rate", "meta_rate_limited", 429),
+    ("posts_read_access", "read", "meta_verification_failed", 502),
+])
+@pytest.mark.parametrize("reconnect", [False, True])
+def test_page_verification_reports_step_and_safe_codes_without_changing_binding(
+    account_client, monkeypatch, caplog, step, failure, expected_code, status, reconnect,
+):
+    from services.api.meta_client import (
+        MetaGraphReadError, MetaGraphRejected, MetaGraphTokenExpired, MetaPage, MetaPageIdentityMismatch,
+    )
+
+    if reconnect:
+        workspace_id, csrf = register_owner(account_client, "verification-owner@example.com")
+        original = account_client.get(f"/api/v1/workspaces/{workspace_id}").json()
+        page_id = original["page_id"]
+        endpoint = f"/api/v1/workspaces/{workspace_id}/page-connection"
+        method = account_client.patch
+    else:
+        response = account_client.post("/api/v1/auth/register", json={
+            "email": "verification-new@example.com", "password": "synthetic-password-123", "full_name": "Verification Owner",
+        })
+        assert response.status_code == 201
+        csrf = account_client.cookies["agentic_csrf"]
+        page_id = "123"
+        endpoint, method = "/api/v1/workspaces/from-page", account_client.post
+
+    failures = {
+        "mismatch": MetaPageIdentityMismatch(403), "expired": MetaGraphTokenExpired(400, 190, 463),
+        "rejected": MetaGraphRejected(400, 10, 33), "rate": MetaGraphRejected(429, 4),
+        "read": MetaGraphReadError("Synthetic response unavailable"),
+    }
+
+    class FailingClient:
+        def __init__(self, *_args):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *_args):
+            return False
+
+        async def verify_page(self):
+            if step == "token_identity":
+                raise failures[failure]
+            return MetaPage(id=page_id, name="Verified identity fixture")
+
+        async def verify_posts_read_access(self):
+            raise failures[failure]
+
+    monkeypatch.setattr(workspaces_module, "MetaGraphClient", FailingClient)
+    token = "synthetic-secret-token-must-never-appear"
+    response = method(endpoint, headers={"X-CSRF-Token": csrf}, json={"page_id": page_id, "page_access_token": token})
+    assert response.status_code == status
+    error = response.json()["error"]
+    assert error["code"] == expected_code
+    assert error["details"]["verification_step"] == step
+    assert error["retryable"] is (failure in {"rate", "read"})
+    assert token not in response.text and token not in caplog.text
+    assert error["request_id"] in caplog.text
+    assert step in caplog.text
+    if failure == "rejected":
+        assert error["details"]["meta_code"] == 10
+        assert error["details"]["meta_subcode"] == 33
+    if reconnect:
+        assert account_client.get(f"/api/v1/workspaces/{workspace_id}").json() == original
+    else:
+        assert account_client.get("/api/v1/workspaces").json() == []
+
+
 def test_refresh_page_metadata_uses_stored_token_without_touching_brand(
     account_client: TestClient, monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -210,9 +288,9 @@ def test_refresh_page_metadata_uses_stored_token_without_touching_brand(
                 picture_url="https://cdn.example.test/page-avatar.png",
             )
 
-        async def list_page_posts(self, **_kwargs):
+        async def verify_posts_read_access(self):
             list_calls.append(1)
-            return SimpleNamespace(posts=[], next_cursor=None)
+            return None
 
     monkeypatch.setattr(workspaces_module, "decrypt_page_token", lambda _value: "stored-page-token")
     monkeypatch.setattr(workspaces_module, "MetaGraphClient", RefreshedMetaClient)
@@ -355,6 +433,9 @@ def test_metadata_refresh_expired_token_pauses_page_work_but_keeps_workspace(
 
         async def verify_page(self):
             return MetaPage(id=self.page_id, name="Page sau kết nối lại", picture_url=None)
+
+        async def verify_posts_read_access(self):
+            return None
 
         async def list_page_posts(self, **_kwargs):
             return SimpleNamespace(posts=[], next_cursor=None)

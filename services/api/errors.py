@@ -3,10 +3,18 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import logging
 from typing import Any
 
 from fastapi import Request
 from fastapi.responses import JSONResponse
+
+
+logger = logging.getLogger(__name__)
+_PAGE_VERIFICATION_ERRORS = frozenset({
+    "meta_token_invalid", "meta_page_identity_mismatch", "meta_page_identity_rejected",
+    "meta_page_permission_missing", "meta_rate_limited", "meta_verification_failed",
+})
 
 
 @dataclass
@@ -34,5 +42,10 @@ def error_body(problem: ApiProblem, request_id: str) -> dict[str, Any]:
 
 async def api_problem_handler(request: Request, exc: ApiProblem) -> JSONResponse:
     request_id = getattr(request.state, "request_id", "req_unknown")
+    if exc.code in _PAGE_VERIFICATION_ERRORS and exc.details and "verification_step" in exc.details:
+        logger.warning(
+            "page_verification_rejected request_id=%s reason=%s step=%s meta_http_status=%s meta_code=%s meta_subcode=%s",
+            request_id, exc.code, exc.details["verification_step"],
+            exc.details.get("meta_http_status"), exc.details.get("meta_code"), exc.details.get("meta_subcode"),
+        )
     return JSONResponse(status_code=exc.status_code, content=error_body(exc, request_id))
-

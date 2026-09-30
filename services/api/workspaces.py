@@ -27,13 +27,47 @@ from .schemas import InviteMemberRequest, InviteMemberResponse, MemberOut, PageW
 from .security import is_expired, new_opaque_token, token_hash
 from .auth import make_session
 from .rate_limits import rate_limit
-from .meta_client import MetaGraphClient, MetaGraphReadError, MetaGraphRejected, MetaGraphTokenExpired, MetaPage
+from .meta_client import MetaGraphClient, MetaGraphReadError, MetaGraphRejected, MetaGraphTokenExpired, MetaPage, MetaPageIdentityMismatch
 from .meta_tokens import (
     TokenEncryptionUnavailable, decrypt_page_token, encrypt_page_token, token_fingerprint,
 )
 
 
 router = APIRouter(tags=["workspaces"])
+
+
+def _verification_problem(error: Exception, step: str) -> ApiProblem:
+    """Only expose allowlisted numeric Graph diagnostics, never its raw body."""
+    details: dict[str, str | int] = {"verification_step": step}
+    if isinstance(error, MetaGraphRejected):
+        details["meta_http_status"] = error.status_code
+        if error.graph_code is not None:
+            details["meta_code"] = error.graph_code
+        if error.graph_subcode is not None:
+            details["meta_subcode"] = error.graph_subcode
+    if isinstance(error, MetaGraphTokenExpired):
+        return ApiProblem(422, "meta_token_invalid", "Page Access Token hết hạn, bị thu hồi hoặc không hợp lệ. Hãy tạo token mới cho đúng Fanpage.", details=details)
+    if isinstance(error, MetaPageIdentityMismatch):
+        return ApiProblem(422, "meta_page_identity_mismatch", "Token thuộc tài khoản hoặc Page khác với Page ID đã nhập. Hãy chọn đúng Fanpage khi lấy Page Access Token; không dùng User Access Token.", details=details)
+    if isinstance(error, MetaGraphRejected):
+        if error.retryable:
+            return ApiProblem(429, "meta_rate_limited", "Meta đang giới hạn yêu cầu. Hãy chờ rồi xác minh lại; không cần thay token chỉ vì lỗi này.", details=details, retryable=True)
+        if step == "posts_read_access":
+            return ApiProblem(422, "meta_page_permission_missing", "Token khớp Page ID nhưng Meta chưa cho đọc bài. Kiểm tra quyền pages_read_engagement của ứng dụng và quyền quản lý Fanpage, rồi tạo lại Page Access Token sau khi cấp quyền.", details=details)
+        return ApiProblem(422, "meta_page_identity_rejected", "Meta từ chối xác minh danh tính của token. Kiểm tra Page Access Token, quyền ứng dụng và Page đã chọn; đây chưa phải kết quả kiểm tra quyền đọc bài.", details=details)
+    return ApiProblem(502, "meta_verification_failed", "Chưa nhận được kết quả xác minh hợp lệ từ Meta. Hãy thử lại; dữ liệu và kết nối cũ vẫn được giữ.", details=details, retryable=True)
+
+
+async def _verify_page_connection(page_id: str, token: str) -> MetaPage:
+    step = "token_identity"
+    try:
+        async with MetaGraphClient(page_id, token, settings.meta_graph_version) as client:
+            page = await client.verify_page()
+            step = "posts_read_access"
+            await client.verify_posts_read_access()
+            return page
+    except (MetaGraphRejected, MetaGraphReadError, ValueError) as error:
+        raise _verification_problem(error, step) from None
 
 
 def _page_slug(name: str, page_id: str) -> str:
@@ -260,18 +294,7 @@ async def create_workspace_from_page(
     except ValueError:
         raise ApiProblem(422, "invalid_page_token", "Page Access Token không hợp lệ.") from None
 
-    try:
-        async with MetaGraphClient(payload.page_id, payload.page_access_token, settings.meta_graph_version) as client:
-            page = await client.verify_page()
-            # A successful public metadata lookup is not sufficient: require a
-            # real, read-only call using this exact Page token. Never test by posting.
-            await client.list_page_posts(limit=1)
-    except MetaGraphTokenExpired:
-        raise ApiProblem(422, "meta_token_invalid", "Page Access Token đã hết hạn hoặc bị thu hồi. Hãy tạo token mới.") from None
-    except MetaGraphRejected:
-        raise ApiProblem(422, "meta_page_permission_missing", "Không xác minh được Page ID và quyền đọc bằng token này.") from None
-    except (MetaGraphReadError, ValueError):
-        raise ApiProblem(502, "meta_verification_failed", "Meta chưa xác minh được Fanpage. Hãy kiểm tra Page ID, token và thử lại.", retryable=True) from None
+    page = await _verify_page_connection(payload.page_id, payload.page_access_token)
 
     existing = await db.scalar(select(Company).where(Company.page_id == page.id))
     if existing is not None:
@@ -343,16 +366,7 @@ async def reconnect_workspace_page(
         raise ApiProblem(503, "token_encryption_unavailable", "Backend chưa cấu hình META_TOKEN_ENCRYPTION_KEY.") from None
     except ValueError:
         raise ApiProblem(422, "invalid_page_token", "Page Access Token không hợp lệ.") from None
-    try:
-        async with MetaGraphClient(payload.page_id, payload.page_access_token, settings.meta_graph_version) as client:
-            page = await client.verify_page()
-            await client.list_page_posts(limit=1)
-    except MetaGraphTokenExpired:
-        raise ApiProblem(422, "meta_token_invalid", "Page Access Token đã hết hạn hoặc bị thu hồi.") from None
-    except MetaGraphRejected:
-        raise ApiProblem(422, "meta_page_permission_missing", "Token không xác minh được Page ID hoặc quyền đọc.") from None
-    except (MetaGraphReadError, ValueError):
-        raise ApiProblem(502, "meta_verification_failed", "Meta chưa xác minh được Fanpage. Hãy thử lại.", retryable=True) from None
+    page = await _verify_page_connection(payload.page_id, payload.page_access_token)
     other_workspace = await db.scalar(select(Company.id).where(
         Company.page_id == page.id, Company.id != company_id,
     ))
@@ -423,7 +437,7 @@ async def refresh_workspace_page_metadata(
             page = await client.verify_page()
             if page.id != page_id:
                 raise ValueError("verified Page identity changed")
-            await client.list_page_posts(limit=1)
+            await client.verify_posts_read_access()
     except MetaGraphTokenExpired:
         await _mark_workspace_page_needs_reconnect(db, company_id, connection_id, "token_expired")
         raise ApiProblem(409, "page_needs_reconnect", "Page Access Token hết hạn hoặc bị thu hồi. Owner cần kết nối lại.") from None

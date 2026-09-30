@@ -77,6 +77,9 @@ class FakeMetaGraphClient:
     async def verify_page(self) -> MetaPage:
         return MetaPage(id=self.page_id, name=f"Page {self.page_id}")
 
+    async def verify_posts_read_access(self):
+        return None
+
     async def list_page_posts(self, limit: int = 1):
         return SimpleNamespace(posts=[], next_cursor=None)
 

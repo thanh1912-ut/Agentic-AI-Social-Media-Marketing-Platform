@@ -14,6 +14,7 @@ from services.api.meta_client import (
     MetaGraphReadError,
     MetaGraphRejected,
     MetaGraphTokenExpired,
+    MetaPageIdentityMismatch,
     facebook_page_reference,
     safe_page_attachment_metadata,
     safe_external_link_url,
@@ -62,6 +63,49 @@ def test_verify_page_discards_untrusted_avatar_hosts() -> None:
 
     page = _run(exercise())
     assert page.picture_url is None
+
+
+def test_verify_page_rejects_another_token_identity_without_exposing_it() -> None:
+    async def handler(_request):
+        return httpx.Response(200, json={"id": "999", "name": "Unrelated identity"})
+
+    async def exercise():
+        async with MetaGraphClient("123", SECRET, transport=httpx.MockTransport(handler)) as client:
+            await client.verify_page()
+
+    with pytest.raises(MetaPageIdentityMismatch) as error:
+        _run(exercise())
+    assert SECRET not in str(error.value)
+    assert "999" not in str(error.value)
+
+
+@pytest.mark.parametrize("records", [[], [{"id": "123_456"}]])
+def test_onboarding_read_check_requires_only_post_ids(records) -> None:
+    async def handler(request):
+        assert request.url.path == "/v26.0/123/posts"
+        assert dict(request.url.params) == {"fields": "id", "limit": "1"}
+        assert request.headers["Authorization"] == f"Bearer {SECRET}"
+        assert SECRET not in str(request.url)
+        return httpx.Response(200, json={"data": records})
+
+    async def exercise():
+        async with MetaGraphClient("123", SECRET, transport=httpx.MockTransport(handler)) as client:
+            await client.verify_posts_read_access()
+
+    _run(exercise())
+
+
+@pytest.mark.parametrize("payload", [{}, {"data": None}, {"data": [{"id": "999_456"}]}, {"data": [{"id": "123_1"}, {"id": "123_2"}]}])
+def test_onboarding_read_check_rejects_invalid_or_out_of_scope_posts(payload) -> None:
+    async def handler(_request):
+        return httpx.Response(200, json=payload)
+
+    async def exercise():
+        async with MetaGraphClient("123", SECRET, transport=httpx.MockTransport(handler)) as client:
+            await client.verify_posts_read_access()
+
+    with pytest.raises(MetaGraphReadError):
+        _run(exercise())
 
 
 @pytest.mark.parametrize(("url", "expected"), [

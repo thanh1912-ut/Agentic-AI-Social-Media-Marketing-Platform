@@ -77,6 +77,9 @@ class FakeMetaGraphClient:
     async def verify_page(self) -> MetaPage:
         return MetaPage(id=self.page_id, name="PostgreSQL integration Page")
 
+    async def verify_posts_read_access(self):
+        return None
+
     async def list_page_posts(self, limit: int = 1) -> SimpleNamespace:
         return SimpleNamespace(posts=[], next_cursor=None)
 
@@ -484,6 +487,9 @@ def test_postgres_concurrent_page_activation_creates_one_workspace(
 
             async def verify_page(self) -> MetaPage:
                 return MetaPage(id=self.page_id, name="Concurrent activation fixture")
+
+            async def verify_posts_read_access(self):
+                return None
 
             async def list_page_posts(self, limit: int = 1) -> SimpleNamespace:
                 assert limit == 1

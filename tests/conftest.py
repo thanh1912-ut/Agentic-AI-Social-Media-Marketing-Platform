@@ -28,6 +28,9 @@ def fake_page_activation_for_tests(monkeypatch):
         async def verify_page(self):
             return MetaPage(id=self.page_id, name=f"Test Page {self.page_id}", picture_url=None)
 
+        async def verify_posts_read_access(self):
+            return None
+
         async def list_page_posts(self, **_kwargs):
             return SimpleNamespace(posts=[], next_cursor=None)
 
