@@ -27,10 +27,10 @@
 | Ngân sách API/UI | PASS theo API fixture và frontend lint/unit; browser real NOT_RUN | `GET .../market-research/ai-budget`; `test_research_ai_budget_is_workspace_scoped_and_reports_reserved_cost` |
 | Pin bằng chứng cho hướng viết | PASS (API + worker fixture) | `test_market_suggestion_draft_pins_report_observation_and_version`, `test_content_generation_job_persists_cited_draft_and_is_idempotent` |
 | Privacy retention/deletion | BLOCKED | Chưa có policy version, deletion ledger/propagation hoặc legal review; không tuyên bố tuân thủ đầy đủ |
-| Raw research quarantine TTL | PARTIAL | Helper giới hạn expiry 24h và worker ghi DB pointer trước object upload; unit test thời hạn đạt. Chưa có test PostgreSQL/object-storage cho scheduler purge hoặc timeout không xác định. |
-| Manual comment import privacy hold | PARTIAL | Endpoint bỏ lưu và không trả comment text, giữ aggregate metrics, trả `privacy_hold` và số lượng đã bỏ qua; integration assertion được cập nhật nhưng chưa chạy được do runtime pytest thiếu `pgvector`. |
+| Raw research quarantine TTL | PARTIAL | PostgreSQL integration test xác nhận pointer+24h expiry đã commit trước storage `put`; simulated timeout giữ pointer. Object storage thật và purge scheduler end-to-end chưa chạy. |
+| Manual comment import privacy hold | PASS (SQLite API fixture) | `tests/test_market_research_api.py` — 10 passed; endpoint không lưu/trả comment text, giữ metrics và trả count/status. |
 | PostgreSQL migration fresh/upgrade | PASS (test cluster tạm) | Fresh migration đạt `0022`; database riêng đã nâng `0021` → `0022`; legacy mapping của `0021` được kiểm tra trước đó |
-| PostgreSQL/Redis integration | PASS (test services tạm) | `tests/test_postgres_database_integration.py tests/test_ai_budget.py`: 16 passed; queue/cache TTL, fencing/claim, Celery dispatch và reservation race |
+| PostgreSQL/Redis integration | PASS (test services tạm, latest 2026-09-30) | Combined focused suite `tests/test_ai_budget.py tests/test_market_research_api.py tests/test_research_privacy.py tests/test_postgres_database_integration.py`: 32 passed; fresh migration to `0022`, schema/vector, fencing/claim, Redis queue/cache, dispatch, reservation race và raw-expiry ordering. Test services đã dừng sau lượt chạy. |
 | Budget pricing + no-provider fallback | PASS (unit) | 9 test; tiền micro-USD, upper bound một repair, worker không gọi provider khi deferred/uncertain |
 | DeepSeek live billing and replay | NOT_RUN | Không gọi live provider; reservation/settlement dùng usage fixture trên PostgreSQL thật |
 | Full Python suite with Docling | FAIL / ENVIRONMENT BLOCKED | 11 parser tests không khởi tạo được Docling subprocess trong API venv hiện tại; không liên quan ledger |

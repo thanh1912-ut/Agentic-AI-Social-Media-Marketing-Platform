@@ -10,12 +10,16 @@ import uuid
 from datetime import datetime, timedelta, timezone
 
 import pytest
-from sqlalchemy import inspect, select, update
+from sqlalchemy import delete, inspect, select, update
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from redis.asyncio import Redis
 
 from database.job_fencing import JobLeaseLost, _current_job_fence
-from database.models import AIUsageBudgetDay, AIUsageLedger, Base, Company, Job, User
+from database.models import (
+    AIUsageBudgetDay, AIUsageLedger, Base, Company, Job, MarketObservation,
+    MetaPageGroup, ResearchSource, User,
+)
+from services.api import db as api_db
 from services.api import job_service
 from services.api.db import FencedAsyncSession
 from services.worker import research_tasks
@@ -160,7 +164,7 @@ def test_ai_budget_reservations_are_atomic_and_idempotent(monkeypatch: pytest.Mo
         assert POSTGRES_TEST_URL
         engine = create_async_engine(POSTGRES_TEST_URL)
         sessions = async_sessionmaker(engine, expire_on_commit=False)
-        monkeypatch.setattr(ai_budget, "SessionLocal", sessions)
+        monkeypatch.setattr(api_db, "SessionLocal", sessions)
         monkeypatch.setattr(ai_budget, "settings", SimpleNamespace(
             llm_max_input_chars=100,
             llm_max_tokens=100,
@@ -234,6 +238,102 @@ def test_ai_budget_reservations_are_atomic_and_idempotent(monkeypatch: pytest.Mo
                 assert len(rows) == 2
                 assert sum(row.reserved_micro_usd for row in rows) <= 40_000
         finally:
+            await engine.dispose()
+
+    asyncio.run(run())
+
+
+def test_raw_research_object_has_committed_24_hour_expiry_before_storage_put(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def run() -> None:
+        assert POSTGRES_TEST_URL
+        engine = create_async_engine(POSTGRES_TEST_URL)
+        sessions = async_sessionmaker(engine, expire_on_commit=False)
+        monkeypatch.setattr(research_tasks, "SessionLocal", sessions)
+        observed: dict[str, object] = {}
+
+        class AmbiguousStorage:
+            async def put(self, key: str, _body: bytes) -> None:
+                async with sessions() as db:
+                    observation = await db.scalar(select(MarketObservation).where(
+                        MarketObservation.raw_object_key == key,
+                    ))
+                    assert observation is not None
+                    assert observation.raw_expires_at is not None
+                    observed["key"] = key
+                    observed["expires_at"] = observation.raw_expires_at
+                raise OSError("simulated ambiguous storage timeout")
+
+        monkeypatch.setattr(research_tasks, "storage", AmbiguousStorage())
+        company_id: str | None = None
+        user_id: str | None = None
+        stored_at = datetime.now(timezone.utc)
+        try:
+            async with sessions() as db:
+                company = Company(
+                    name="Raw retention test", slug=f"raw-{uuid.uuid4().hex[:16]}",
+                )
+                user = User(
+                    email=f"raw-{uuid.uuid4().hex}@example.invalid",
+                    full_name="Raw retention test",
+                    password_hash="test-only-not-a-login",
+                )
+                db.add_all([company, user])
+                await db.flush()
+                group = MetaPageGroup(
+                    company_id=company.id, name="Research", industry="unknown",
+                    region="unknown", locale="vi-VN", keywords_json=[], active=True,
+                )
+                db.add(group)
+                await db.flush()
+                source = ResearchSource(
+                    company_id=company.id, group_id=group.id, source_type="website",
+                    name="Example source", url="https://example.com/",
+                    normalized_url="https://example.com/", created_by=user.id,
+                    collection_mode="public_web", collection_post_limit=1,
+                    schedule_enabled=False,
+                )
+                db.add(source)
+                await db.commit()
+                company_id, user_id = company.id, user.id
+
+            seven_days_old = stored_at - timedelta(days=7)
+            async with sessions() as db:
+                source = await db.scalar(select(ResearchSource).where(
+                    ResearchSource.company_id == company_id,
+                ))
+                assert source is not None
+                await research_tasks._persist_evidence(
+                    company_id=company_id,
+                    group_id=source.group_id,
+                    source=source,
+                    url="https://example.com/page",
+                    title="Example",
+                    text="Public research text",
+                    published_at=seven_days_old,
+                    metrics={},
+                    comments=[],
+                    raw_body=b"temporary raw page payload",
+                    observed_at=seven_days_old,
+                )
+
+            expiry = observed.get("expires_at")
+            assert isinstance(expiry, datetime)
+            assert abs((expiry - stored_at).total_seconds() - 24 * 60 * 60) < 5
+            async with sessions() as db:
+                observation = await db.scalar(select(MarketObservation).where(
+                    MarketObservation.raw_object_key == observed.get("key"),
+                ))
+                assert observation is not None
+                assert observation.raw_expires_at == expiry
+        finally:
+            async with sessions() as db:
+                if company_id is not None:
+                    await db.execute(delete(Company).where(Company.id == company_id))
+                if user_id is not None:
+                    await db.execute(delete(User).where(User.id == user_id))
+                await db.commit()
             await engine.dispose()
 
     asyncio.run(run())

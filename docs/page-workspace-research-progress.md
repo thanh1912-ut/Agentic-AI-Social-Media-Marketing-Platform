@@ -190,6 +190,17 @@ Base đã kiểm tra: `codex/creative-studio-ui` @ `b769097bfdb3568889d974c6def9
 - DONE: Research raw payload dùng helper `raw_quarantine_expiry`, expiry đặt tối đa 24 giờ từ lúc worker lưu metadata. DB ghi key/expiry trước object upload để purge scheduler còn biết key nếu storage trả timeout hoặc worker dừng.
 - DONE: Manual import không lưu comment text dựa trên regex che email/điện thoại; aggregate comment metric vẫn giữ, response báo `privacy_hold` và số lượng bình luận bỏ qua. Test API cập nhật theo hành vi này.
 - PASS: Unit test helper kiểm tra timestamp timezone-aware, đúng thời điểm hết hạn sau 24 giờ và comment text bị giữ lại trong khi count được giữ; Ruff và `git diff --check` đạt.
-- BLOCKED: Test API manual-import không thu thập được vì Python runtime hiện tại thiếu dependency `pgvector`; chưa kiểm thử PostgreSQL/object storage cho purge thật hoặc storage timeout.
+- PARTIAL: Lượt đầu test API không thu thập được vì runtime thiếu `pgvector`; sau đó cài riêng đúng dependency khai báo vào `/private/tmp` và chạy lại thành công. Chưa kiểm thử object storage thật hoặc purge scheduler.
 - PARTIAL: Chưa có retention 90 ngày cho nội dung chuẩn hóa, deletion ledger/propagation hoặc legal review.
 - NOT_RUN: Không chạy crawl live, không tạo/đọc dữ liệu Facebook hoặc website.
+
+### 2026-09-30 10:02 Asia/Ho_Chi_Minh — PostgreSQL/Redis integration và raw retention
+
+- PASS: Tạo PostgreSQL 18.3 riêng trong `/private/tmp`, hai Redis riêng trên loopback; chạy migration từ database rỗng tới `0022_ai_usage_budget`.
+- PASS: `tests/test_postgres_database_integration.py` đạt **8 passed** trên PostgreSQL/Redis thật: schema/pgvector, lease fencing, reservation cạnh tranh/idempotency, dispatch queue/cache và raw-expiry persistence.
+- PASS: Raw-retention test cho thấy key cùng expiry 24h đã đọc được từ một database connection khác trước khi storage `put` chạy; mô phỏng storage timeout vẫn giữ expiry pointer để purge scheduler xử lý.
+- PASS: `tests/test_market_research_api.py` đạt **10 passed** và `tests/test_research_privacy.py` đạt **3 passed**; dependency `pgvector` chỉ được thêm trong `/private/tmp`, không sửa virtualenv hay manifest dự án.
+- PASS: Chạy gộp `tests/test_ai_budget.py tests/test_market_research_api.py tests/test_research_privacy.py tests/test_postgres_database_integration.py`: **32 passed**. Sau đó dừng PostgreSQL/Redis test instance; preview và dịch vụ người dùng không bị chạm.
+- DONE: Sửa integration harness để monkeypatch `services.api.db.SessionLocal`, đúng binding được import động trong budget service.
+- PARTIAL: Object storage thật, purge scheduler end-to-end, xử lý xóa lan truyền và retention nội dung chuẩn hóa chưa được kiểm thử/triển khai.
+- NOT_RUN: Không gọi Facebook, DeepSeek, Gemini hoặc Qwen live; không thao tác preview hay database của người dùng.
