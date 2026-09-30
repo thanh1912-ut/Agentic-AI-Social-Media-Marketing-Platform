@@ -1,8 +1,8 @@
 # Public Page comments — verification
 
-Timestamp: 2026-10-01 04:32 Asia/Ho_Chi_Minh.
+Timestamp: 2026-10-01 04:48 Asia/Ho_Chi_Minh.
 Branch: `codex/page-workspaces-research`; baseline `1b29ab4c99872246fa44565a70345f9762039af3`.
-Tested implementation SHA and deployed release are appended after commit/rollout.
+Tested implementation and deployed code: `9197847d7915ec2520feca417c8d33fb30b659b1`. Remote implementation SHA verified after push.
 
 ## Results
 
@@ -61,3 +61,13 @@ Engine: `facebook-cli@v0.3.0+8e251abf0bc6fd28acca9b9fa1cafbd07ccae39`.
 Tier 0, no login/cookies; `history_complete=false`, `stop_reason=tier0_feed_exhausted`, comments_requested=false. No live commenter content was captured in this smoke.
 
 Per-comment interaction means reactions/likes received by the comment. It does not mean a person's complete activity or a list of people who liked/shared. Aliases are scoped pseudonyms, not proof of anonymity. No claim of complete Page history, every reply, absolute redaction or legal certification is made.
+
+## Rollout verification
+
+PASS: frontend release `codex-page-workspaces-research-9197847d7915-20260930T214102Z`, API readiness, comment-processing/comment-list OpenAPI routes, real runtime origin 8001 with mocks off, /login, /register and local font. A fresh browser context rendered the login form with no script errors. The exact-empty-form selector initially failed because the existing control includes its disabled explanation in the accessible name; corrected check passed without a product change.
+
+PASS: API/worker/ingestion/Beat labels restarted once, two worker names/queue routes confirmed after startup (`auth-preview-agent`: agent/default; `auth-preview-ingestion`: ingestion). Initial immediate registration check was premature; bounded follow-up passed. Existing Page verified state and persistent key configuration are preserved; owned schedule off; busy jobs 0 at verification. No migration or user password change.
+
+Runner binary SHA-256: `c23d6c87abced068693029b7e2f4b4238eafbcc526da16e000981f7efd0dc007`. Prior runner backup and frontend release retained. No source processing assessment was fabricated for the live Page; live comment content remains NOT_RUN.
+
+PASS cleanup: only disposable UI/API/worker processes, fixture tenant and credential files were removed; PostgreSQL 15559 and Redis 16481/16482 stopped. User preview 13104/API8001/PG15432/Redis16379/16380 remain running. Sanitized evidence above documents the fixture run after cleanup.

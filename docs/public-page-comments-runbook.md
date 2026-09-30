@@ -50,7 +50,7 @@ npm --workspace @agentic/web run test
 NEXT_PUBLIC_USE_MOCKS=0 NEXT_PUBLIC_API_BASE_URL=http://127.0.0.1:8001 npm --workspace @agentic/web run build
 ```
 
-PostgreSQL/Redis acceptance and the browser fixture setup are described in verification.md. Use dedicated databases/ports. Do not stop services at 5432/6379 or purge shared queues to test failures.
+PostgreSQL/Redis acceptance and the browser fixture setup are described in [verification](public-page-comments-verification.md). Use dedicated databases/ports. Do not stop services at 5432/6379 or purge shared queues to test failures.
 
 ## Rollout, stop and rollback
 
@@ -79,3 +79,16 @@ Frontend rollback: `creative-studio-preview.py rollback` restores the prior web 
 - Provider unavailable: post/comment persistence is independent; held comments never go to AI.
 
 Operational pseudonymization/redaction is not a guarantee of complete anonymity or a legal compliance certification. Retention/processing obligations require the operator's verified source-specific assessment.
+
+## Active release
+
+Implementation `9197847d7915ec2520feca417c8d33fb30b659b1` is deployed. Runner backup: `/Users/lethanh/.local/share/agentic-marketing/auth-preview/bin/facebook-cli-runner-before-public-comments-9197847`. Frontend release `codex-page-workspaces-research-9197847d7915-20260930T214102Z`; the existing frontend rollout state retains the prior plist/release for rollback.
+
+For the specific worker label, after draining jobs:
+
+```sh
+launchctl bootout "gui/$(id -u)/com.agentic-marketing.auth-preview-worker"
+launchctl bootstrap "gui/$(id -u)" "$HOME/Library/LaunchAgents/com.agentic-marketing.auth-preview-worker.plist"
+```
+
+Wait until the label has fully unloaded before bootstrap and allow bounded time for worker registration. Do not change another preview's labels or secrets. The disposable verification services have been stopped; start dedicated test infrastructure again before rerunning database/browser acceptance.
