@@ -119,6 +119,23 @@ def _source_out(row: ResearchSource) -> ResearchSourceOut:
     )
 
 
+def _explicit_group_audience(group: MetaPageGroup) -> list[str]:
+    unknown_values = {"chưa xác định", "unknown", "not specified", "n/a"}
+    industry = group.industry.strip() if isinstance(group.industry, str) else ""
+    region = group.region.strip() if isinstance(group.region, str) else ""
+    if industry.casefold() in unknown_values:
+        industry = ""
+    if region.casefold() in unknown_values:
+        region = ""
+    if industry and region:
+        return [f"Khách hàng thuộc ngành {industry} tại {region}"]
+    if industry:
+        return [f"Khách hàng thuộc ngành {industry}"]
+    if region:
+        return [f"Khách hàng tại {region}"]
+    return []
+
+
 async def _tenant_group(db: AsyncSession, company_id: str, group_id: str, *, lock: bool = False) -> MetaPageGroup:
     statement = select(MetaPageGroup).where(
         MetaPageGroup.company_id == company_id, MetaPageGroup.id == group_id,
@@ -1489,7 +1506,7 @@ async def create_draft_from_report(
     brief = {
         "objective": "engagement",
         "objective_note": f"Tạo tương tác cho chủ đề: {title}",
-        "audience": [f"Khách hàng thuộc thị trường {group.industry} tại {group.region}"],
+        "audience": _explicit_group_audience(group),
         "product_ids": [],
         "key_message": angle or title,
         "must_include": [],
@@ -1499,6 +1516,11 @@ async def create_draft_from_report(
         "market_research_context": {
             "report_id": report.id, "group_id": group.id, "suggestion": suggestion,
             "evidence": sources, "web_snapshot_ids": selected_web_ids,
+            "business_profile_context": (
+                report_json.get("business_profile_context")
+                if isinstance(report_json.get("business_profile_context"), dict)
+                else {"status": "legacy_unknown"}
+            ),
             "trust_level": "external_unverified",
         },
     }

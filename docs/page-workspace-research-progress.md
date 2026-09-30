@@ -286,3 +286,13 @@ Base đã kiểm tra: `codex/creative-studio-ui` @ `b769097bfdb3568889d974c6def9
 - PARTIAL: Metadata chưa tương đương phân tích ảnh/video. Binary không tải; Gemini chưa nối vào pipeline. Comment body/replies tiếp tục `privacy_hold` và chưa có cursor pagination.
 - NOT_RUN: Meta live, UI → Redis/Celery → PostgreSQL bằng Page thật, Gemini/Qwen/DeepSeek live, deletion/retention propagation và comment pagination.
 - BLOCKED: Python runtime thiếu package `pgvector`; các API tests dùng SQLite fixture với import shim tạm ở `/private/tmp`. Migration chạy PostgreSQL thật với cùng shim import; chưa chứng minh ORM write/read qua API/worker trên PostgreSQL.
+
+### 2026-09-30 13:39 Asia/Ho_Chi_Minh — Cá nhân hóa báo cáo bằng hồ sơ Owner và bỏ audience giả
+
+- DONE: DeepSeek Research report chỉ nhận hồ sơ `manual_text_v1` hiện hành khi brand và revision đã xác nhận khớp nguyên văn; legacy/AI-generated profile không được gửi như hướng dẫn thương hiệu.
+- DONE: Báo cáo và coverage ghim trạng thái, ID revision và số revision đã dùng. Draft được tạo từ hướng viết giữ provenance này trong `market_research_context`.
+- DONE: Giá trị nội bộ `Chưa xác định`/`unknown` không còn được đưa thành phạm vi thị trường hoặc audience campaign giả. Chỉ dùng industry/region có nội dung rõ và từ khóa đã chuẩn hóa.
+- PASS: `tests/test_ai_budget.py tests/test_market_research_api.py`: 33 passed; gồm xác thực profile revision, không có profile, payload model, group placeholder và pin vào draft.
+- PASS: Ruff trên file Python thay đổi, `git diff --check`, frontend typecheck (không incremental), ESLint và Vitest (50 passed).
+- PARTIAL: Lát cắt này sửa cá nhân hóa bản phân tích DeepSeek; chưa triển khai routing Qwen/Gemini cho comments/media hoặc ngân sách dùng chung cho các provider.
+- NOT_RUN: Không gọi provider live, không crawl nguồn live, không chạy browser/PostgreSQL/Redis integration và không thay preview.

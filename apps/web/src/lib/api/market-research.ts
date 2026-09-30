@@ -177,6 +177,12 @@ export interface MarketReport {
     headline?: string;
     summary?: string;
     analysis_status?: string;
+    business_profile_context?: {
+      status: 'applied' | 'not_configured' | 'revision_unavailable' | 'legacy_unknown' | string;
+      brand_id?: string;
+      revision_id?: string;
+      revision?: number;
+    };
     trends?: Array<{
       title: string;
       explanation: string;
@@ -217,6 +223,12 @@ export interface MarketReport {
       message?: string;
     }>;
     ai_status?: string;
+    business_profile_context?: {
+      status: 'applied' | 'not_configured' | 'revision_unavailable' | 'legacy_unknown' | string;
+      brand_id?: string;
+      revision_id?: string;
+      revision?: number;
+    };
     web_snapshot_ids?: string[];
     metrics_note?: string;
   };

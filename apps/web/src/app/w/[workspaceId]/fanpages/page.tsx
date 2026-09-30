@@ -613,12 +613,27 @@ export default function FanpagesMarketResearchPage() {
           <Card title="Báo cáo xu hướng và gợi ý" description="DeepSeek phân tích nội dung, tương tác, views, follower count và thay đổi giữa các lần crawl khi nguồn trả dữ liệu. Giá trị thiếu được để trống; kết luận có nguồn đối chiếu.">
             {reportsQuery.isLoading ? <LoadingBlock label="Đang tải báo cáo…" /> : null}
             {reportsQuery.error ? <ErrorPanel message={readableError(reportsQuery.error, 'Không tải được báo cáo.')} retryable onRetry={() => void reportsQuery.refetch()} /> : null}
-            {reports.map((report) => (
+            {reports.map((report) => {
+              const profileContext = report.coverage.business_profile_context ?? report.report.business_profile_context;
+              return (
               <article key={report.id} className="mb-4 rounded-xl border border-slate-200 p-4 last:mb-0">
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div><h3 className="font-semibold text-slate-900">{report.report.headline || 'Báo cáo thị trường'}</h3><p className="mt-1 text-xs text-slate-500">Tạo {formatDateTime(report.created_at)}{report.model_name ? ' · ' + report.model_name : ''}</p></div>
                   <StatusBadge label={report.coverage.ai_status === 'completed' ? 'Đã phân tích' : 'Phân tích chưa hoàn tất'} tone={report.coverage.ai_status === 'completed' ? 'success' : 'warning'} />
                 </div>
+                <p className="mt-2 text-xs text-slate-600">
+                  {profileContext?.status === 'applied' && report.coverage.ai_status === 'completed'
+                    ? `Cá nhân hóa theo hồ sơ Owner đã áp dụng · phiên bản ${profileContext.revision ?? 'không rõ'}.`
+                    : profileContext?.status === 'not_configured'
+                      ? 'Chưa có hồ sơ Owner được áp dụng tại thời điểm phân tích; báo cáo chưa được cá nhân hóa theo thương hiệu.'
+                      : profileContext?.status === 'revision_unavailable'
+                        ? 'Không xác minh được phiên bản hồ sơ tại thời điểm phân tích; báo cáo chưa được cá nhân hóa.'
+                        : profileContext?.status === 'not_used'
+                          ? 'Hồ sơ Owner chưa được gửi vào AI vì lượt phân tích không chạy.'
+                          : profileContext?.status === 'provider_outcome_unknown'
+                            ? 'Chưa xác định được nhà cung cấp đã nhận yêu cầu; không thể xác nhận hồ sơ nào đã được dùng.'
+                        : 'Báo cáo cũ không lưu trạng thái hồ sơ thương hiệu tại thời điểm phân tích.'}
+                </p>
                 <p className="mt-3 whitespace-pre-line text-sm text-slate-700">{report.report.summary}</p>
                 {(report.report.trends ?? []).length > 0 ? (
                   <div className="mt-4"><h4 className="text-sm font-semibold text-slate-900">Xu hướng ghi nhận</h4><ul className="mt-2 space-y-2">{report.report.trends?.map((trend, index) => <li key={trend.title + index} className="rounded-lg bg-slate-50 p-3"><p className="text-sm font-medium text-slate-900">{trend.title} <span className="text-xs font-normal text-slate-500">· độ tin cậy {Math.round(trend.confidence * 100)}%</span></p><p className="mt-1 text-sm text-slate-700">{trend.explanation}</p><p className="mt-1 text-xs text-slate-500">{trend.evidence_ids.length} nguồn văn bản · {trend.web_snapshot_ids?.length ?? 0} snapshot sản phẩm/bài viết</p></li>)}</ul></div>
@@ -646,7 +661,8 @@ export default function FanpagesMarketResearchPage() {
                 ) : null}
                 {(report.coverage.sources ?? []).length > 0 ? <details className="mt-4"><summary className="cursor-pointer text-sm font-medium text-slate-700">Chi tiết nguồn và quyền số liệu</summary><ul className="mt-2 space-y-1 text-xs text-slate-600">{report.coverage.sources?.map((source) => <li key={source.source_id}>{source.status} · {source.items_saved ?? 0} mục đã lưu{source.metrics_available?.length ? ' · số liệu có: ' + source.metrics_available.join(', ') : ''}{source.metrics_unavailable?.length ? ' · số liệu thiếu: ' + source.metrics_unavailable.join(', ') : ''}{source.metrics_partial && Object.keys(source.metrics_partial).length ? ' · thiếu một phần: ' + Object.entries(source.metrics_partial).map(([key, value]) => `${key} (${value.observed_posts}/${value.total_posts})`).join(', ') : ''}{source.message ? ' · ' + source.message : ''}</li>)}</ul>{report.coverage.metrics_note ? <p className="mt-2 text-xs text-slate-500">{report.coverage.metrics_note}</p> : null}</details> : null}
               </article>
-            ))}
+              );
+            })}
             {!reportsQuery.isLoading && reports.length === 0 ? <EmptyState title="Chưa có báo cáo" description="Sau khi lưu nguồn, bấm Thu thập ngay hoặc chờ lượt tự động đầu tiên. Lịch tiếp theo chạy sau mỗi 12 giờ." /> : null}
           </Card>
           </section>

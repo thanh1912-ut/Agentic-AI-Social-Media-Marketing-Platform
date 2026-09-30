@@ -14,7 +14,7 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from sqlalchemy.pool import StaticPool
 
 from database.models import (
-    AIUsageBudgetDay, AIUsageLedger, Base, Campaign, Job, MarketEvidence, MarketEvidenceVersion, MarketObservation, MetaPageConnection,
+    AIUsageBudgetDay, AIUsageLedger, Base, Brand, BrandProfileRevision, Campaign, Job, MarketEvidence, MarketEvidenceVersion, MarketObservation, MetaPageConnection,
     MarketReport, MarketReportEvidence, MetaPageGroup, ResearchCycle, ResearchSource, new_id,
     Membership, ResearchPrivacyPolicyRevision, User, WebCrawlRun,
 )
@@ -241,6 +241,10 @@ def test_market_suggestion_draft_pins_report_observation_and_version(market_api)
                 window_end=now,
                 report_json={
                     "analysis_status": "completed",
+                    "business_profile_context": {
+                        "status": "applied", "brand_id": "brand-1",
+                        "revision_id": "revision-3", "revision": 3,
+                    },
                     "suggestions": [{
                         "title": "Hướng nội dung đã chọn",
                         "angle": "Giải thích câu hỏi phổ biến",
@@ -261,9 +265,19 @@ def test_market_suggestion_draft_pins_report_observation_and_version(market_api)
                     }],
                 },
                 evidence_ids_json=[evidence_id],
-                coverage_json={"ai_status": "completed"},
+                coverage_json={
+                    "ai_status": "completed",
+                    "business_profile_context": {
+                        "status": "applied", "brand_id": "brand-1",
+                        "revision_id": "revision-3", "revision": 3,
+                    },
+                },
                 model_name="fixture-model",
             ))
+            group = await db.get(MetaPageGroup, group_id)
+            assert group is not None
+            group.industry = "Chưa xác định"
+            group.region = "unknown"
             db.add(MarketReportEvidence(
                 company_id=workspace_id,
                 group_id=group_id,
@@ -289,8 +303,14 @@ def test_market_suggestion_draft_pins_report_observation_and_version(market_api)
             assert campaign is not None
             return campaign.brief_json
 
-    market_context = asyncio.run(read_brief())["market_research_context"]
+    brief = asyncio.run(read_brief())
+    market_context = brief["market_research_context"]
     assert market_context["report_id"] == report_id
+    assert brief["audience"] == []
+    assert market_context["business_profile_context"] == {
+        "status": "applied", "brand_id": "brand-1",
+        "revision_id": "revision-3", "revision": 3,
+    }
     assert market_context["evidence"] == [{
         "id": evidence_id,
         "title": "Tiêu đề tại thời điểm báo cáo",
@@ -302,6 +322,72 @@ def test_market_suggestion_draft_pins_report_observation_and_version(market_api)
         "observed_at": now.replace(tzinfo=None).isoformat(),
         "metrics": {"reactions": 14, "shares": 3},
     }]
+
+
+def test_research_context_requires_the_current_applied_manual_profile(market_api, monkeypatch) -> None:
+    _client, session_factory, _encryption_key = market_api
+    workspace_id, _headers = _owner(_client, "research-brand-profile@example.com")
+    from services.worker import research_tasks
+
+    async def seed_profile():
+        async with session_factory() as db:
+            user = await db.scalar(select(User).where(User.email == "research-brand-profile@example.com"))
+            brand = await db.scalar(select(Brand).where(Brand.company_id == workspace_id))
+            assert user is not None and brand is not None
+            profile_text = "Chúng tôi bán trà rang nhẹ, giọng gần gũi và không phóng đại công dụng."
+            brand.version = 4
+            brand.profile = {
+                "profile_mode": "manual_text_v1",
+                "profile_text": profile_text,
+                "version": 4,
+                "confirmed_at": datetime.now(timezone.utc).isoformat(),
+                "confirmed_by": user.id,
+            }
+            revision = BrandProfileRevision(
+                brand_id=brand.id,
+                company_id=workspace_id,
+                revision=4,
+                profile_json=dict(brand.profile),
+                source_refs_json=[],
+                warnings_json=[],
+                confirmed_at=datetime.now(timezone.utc),
+                confirmed_by=user.id,
+            )
+            db.add(revision)
+            await db.flush()
+            await db.commit()
+            return brand.id, revision.id, user.id, profile_text
+
+    brand_id, revision_id, user_id, profile_text = asyncio.run(seed_profile())
+    monkeypatch.setattr(research_tasks, "SessionLocal", session_factory)
+    context, provenance = asyncio.run(research_tasks._active_owner_brand_context(workspace_id))
+
+    assert context == {
+        "source": "owner_authored",
+        "brand_id": brand_id,
+        "revision_id": revision_id,
+        "revision": 4,
+        "profile_text": profile_text,
+    }
+    assert provenance == {
+        "status": "applied",
+        "brand_id": brand_id,
+        "revision_id": revision_id,
+        "revision": 4,
+    }
+    assert context["revision_id"] == revision_id
+
+    async def switch_back_to_legacy():
+        async with session_factory() as db:
+            brand = await db.scalar(select(Brand).where(Brand.company_id == workspace_id))
+            assert brand is not None
+            brand.profile = {"business": "AI legacy profile", "confirmed_by": user_id}
+            await db.commit()
+
+    asyncio.run(switch_back_to_legacy())
+    context, provenance = asyncio.run(research_tasks._active_owner_brand_context(workspace_id))
+    assert context is None
+    assert provenance == {"status": "not_configured"}
 
 
 def test_page_token_is_encrypted_and_same_page_can_reconnect(market_api, monkeypatch) -> None:

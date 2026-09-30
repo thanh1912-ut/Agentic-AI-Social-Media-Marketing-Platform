@@ -97,6 +97,10 @@ def test_research_report_does_not_call_provider_without_a_fresh_reservation(
 
     monkeypatch.setattr(research_tasks, "configured_structured_model", lambda: Model())
     monkeypatch.setattr(research_tasks, "reserve_automatic_request", fake_reserve)
+    async def no_owner_profile(_company_id):
+        return None, {"status": "not_configured"}
+
+    monkeypatch.setattr(research_tasks, "_active_owner_brand_context", no_owner_profile)
     group = SimpleNamespace(industry="", region="", locale="vi-VN", keywords_json=[])
     evidence = [{"id": "evidence-1", "title": "fixture", "url": "https://example.invalid/"}]
     report, model_name, status = asyncio.run(research_tasks._make_report(
@@ -106,3 +110,62 @@ def test_research_report_does_not_call_provider_without_a_fresh_reservation(
     assert model_name == "deepseek-flash"
     assert status == report["analysis_status"]
     assert status == ("deferred_budget" if reservation_status == "deferred_budget" else "provider_outcome_unknown")
+
+
+def test_research_report_uses_only_applied_owner_profile_and_explicit_market_scope(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from services.worker import research_tasks
+
+    class Model:
+        model_name = "deepseek-flash"
+        payload = None
+
+        def generate(self, *, system_prompt, input_payload, response_model):
+            self.payload = input_payload
+            assert "chân dung khách hàng" in system_prompt
+            return response_model(
+                headline="Nghiên cứu có hồ sơ",
+                summary="Tóm tắt dựa trên nguồn đã cung cấp.",
+                trends=[],
+                suggestions=[],
+            ), SimpleNamespace(model="deepseek-flash", input_tokens=20, output_tokens=10)
+
+    model = Model()
+    profile = {
+        "source": "owner_authored",
+        "brand_id": "brand-1",
+        "revision_id": "revision-3",
+        "revision": 3,
+        "profile_text": "Chúng tôi bán trà rang nhẹ cho người pha tại nhà.",
+    }
+    provenance = {"status": "applied", "brand_id": "brand-1", "revision_id": "revision-3", "revision": 3}
+
+    async def active_profile(_company_id):
+        return profile, provenance
+
+    async def reserve(**_kwargs):
+        return Reservation("reserved", "cycle-key")
+
+    async def settle(**_kwargs):
+        return "settled"
+
+    monkeypatch.setattr(research_tasks, "configured_structured_model", lambda: model)
+    monkeypatch.setattr(research_tasks, "_active_owner_brand_context", active_profile)
+    monkeypatch.setattr(research_tasks, "reserve_automatic_request", reserve)
+    monkeypatch.setattr(research_tasks, "settle_automatic_request", settle)
+
+    group = SimpleNamespace(
+        industry="Chưa xác định", region="unknown", locale="vi-VN",
+        keywords_json=["  trà  ", ""],
+    )
+    evidence = [{"id": "evidence-1", "title": "fixture", "url": "https://example.invalid/"}]
+    report, model_name, status = asyncio.run(research_tasks._make_report(
+        "workspace-test", "cycle-test", group, evidence, [], [],
+    ))
+
+    assert model_name == "deepseek-flash"
+    assert status == "completed"
+    assert model.payload["owner_authored_brand_profile"] == profile
+    assert model.payload["market_scope"] == {"locale": "vi-VN", "keywords": ["trà"]}
+    assert report["business_profile_context"] == provenance

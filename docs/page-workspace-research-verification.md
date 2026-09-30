@@ -190,3 +190,15 @@ Lát cắt này không đáp ứng thu thập nội dung Group discussions, bài
 | PostgreSQL migration | PASS | PostgreSQL 18.3 riêng: fresh upgrade tới `0024`, downgrade về `0023`, rồi upgrade lại; kiểm tra cột/default. Đây không phải API/worker integration test. |
 | Frontend quality | PASS | OpenAPI export/type generation, typecheck, lint, Vitest 50 passed, production build. |
 | Privacy deletion/retention propagation | NOT_RUN | Chưa chứng minh purge raw/media, cascade xóa provider/cache/index hoặc deletion ledger. |
+
+## Owner profile context trong Research report — 2026-09-30
+
+| Kiểm tra | Trạng thái | Bằng chứng và giới hạn |
+|---|---|---|
+| Chỉ dùng hồ sơ Owner đang áp dụng | PASS (fixture) | `_active_owner_brand_context` yêu cầu `manual_text_v1`, brand profile đã áp dụng và revision hiện tại cùng text/actor; legacy AI profile bị loại. |
+| DeepSeek nhận hướng dẫn thương hiệu đúng nguồn | PASS (unit fixture) | `test_research_report_uses_only_applied_owner_profile_and_explicit_market_scope` kiểm tra payload chỉ có hồ sơ user-authored cùng brand/revision ID. |
+| Báo cáo/draft giữ revision đã dùng | PASS (API fixture) | `business_profile_context` nằm trong report JSON, coverage và `market_research_context` của campaign draft. |
+| Placeholder thị trường không thành audience | PASS (API/unit fixtures) | `Chưa xác định` và `unknown` bị loại; draft audience để rỗng nếu không có industry/region được khai báo rõ. |
+| Backend focused | PASS | `tests/test_ai_budget.py tests/test_market_research_api.py`: 33 passed; Ruff và `git diff --check` đạt. Tests API dùng SQLite fixture, không phải PostgreSQL integration. |
+| Frontend quality | PASS | TypeScript typecheck với incremental tắt, ESLint và Vitest: 50 passed. Chưa chạy production build cho thay đổi này. |
+| DeepSeek/Gemini/Qwen live, browser và PostgreSQL/Redis | NOT_RUN | Không gọi provider, không dùng nguồn/Page thật, không triển khai preview; Gemini/Qwen routing và chi phí dùng chung vẫn chưa được nối. |
