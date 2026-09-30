@@ -190,6 +190,85 @@ def test_postgres_migrations_constraints_vector_and_job_fencing() -> None:
     asyncio.run(run())
 
 
+def test_postgres_facebook_evidence_persistence_enforces_privacy_boundary(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def run() -> None:
+        assert POSTGRES_TEST_URL
+        engine = create_async_engine(POSTGRES_TEST_URL)
+        sessions = async_sessionmaker(engine, expire_on_commit=False)
+        monkeypatch.setattr(research_tasks, "SessionLocal", sessions)
+
+        class NoFacebookStorage:
+            async def put(self, *_args, **_kwargs) -> None:
+                raise AssertionError("Facebook raw content must not be stored")
+
+        monkeypatch.setattr(research_tasks, "storage", NoFacebookStorage())
+        company_id, user_id, group_id, source_id = new_id(), new_id(), new_id(), new_id()
+        slug = f"facebook-privacy-{uuid.uuid4().hex[:16]}"
+        try:
+            async with sessions() as db:
+                db.add_all([
+                    Company(id=company_id, name="Facebook privacy fixture", slug=slug),
+                    User(
+                        id=user_id, email=f"fb-privacy-{uuid.uuid4().hex}@example.invalid",
+                        full_name="Disposable privacy fixture", password_hash="not-a-login",
+                    ),
+                ])
+                await db.flush()
+                db.add(MetaPageGroup(
+                    id=group_id, company_id=company_id, name="Research",
+                    industry="test", region="test",
+                ))
+                await db.flush()
+                source = ResearchSource(
+                    id=source_id, company_id=company_id, group_id=group_id,
+                    source_type="competitor_facebook_page", name="Public Page",
+                    url="https://www.facebook.com/privacy-fixture",
+                    normalized_url="https://www.facebook.com/privacy-fixture",
+                    created_by=user_id, active=True,
+                )
+                db.add(source)
+                await db.commit()
+
+            async with sessions() as db:
+                source = await db.get(ResearchSource, source_id)
+                assert source is not None
+            evidence_id = await research_tasks._persist_evidence(
+                company_id=company_id,
+                group_id=group_id,
+                source=source,
+                url="https://www.facebook.com/privacy-fixture/posts/42",
+                title="Gọi 0901 234 567",
+                text="Gửi email person@example.test; nhà riêng: 12/5 Đường Cá Nhân, Quận 1",
+                published_at=None,
+                metrics={"comments": 1},
+                comments=["commenter@example.test"],
+                raw_body=b"raw Facebook response",
+                observed_at=utcnow(),
+            )
+            async with sessions() as db:
+                evidence = await db.get(MarketEvidence, evidence_id)
+                observation = await db.scalar(select(MarketObservation).where(
+                    MarketObservation.evidence_id == evidence_id,
+                ))
+                assert evidence is not None and observation is not None
+                assert "0901 234 567" not in evidence.title
+                assert "person@example.test" not in evidence.text
+                assert "12/5 Đường Cá Nhân" not in evidence.text
+                assert observation.comments_json == []
+                assert observation.raw_object_key is None
+                assert observation.metrics_json["comments_privacy"]["status"] == "privacy_hold"
+                assert observation.metrics_json["raw_payload_privacy"]["status"] == "not_retained"
+                assert "not_anonymization" in observation.metrics_json["privacy_redaction"]["limitations"]
+        finally:
+            async with sessions() as db:
+                await db.execute(delete(Company).where(Company.id == company_id))
+                await db.execute(delete(User).where(User.id == user_id))
+                await db.commit()
+            await engine.dispose()
+
+
 def test_postgres_research_source_erasure_worker_deletes_raw_and_source_rows(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

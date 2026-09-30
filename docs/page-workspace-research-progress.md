@@ -501,3 +501,10 @@ Base đã kiểm tra: `codex/creative-studio-ui` @ `b769097bfdb3568889d974c6def9
 - PASS: Ruff trên 4 file Python thay đổi, `py_compile` với cache ở `/private/tmp`, và `git diff --check`.
 - NOT_RUN: Chưa chạy PostgreSQL/Redis/Celery hoặc Meta/provider live cho lát cắt này; không thay preview.
 - PARTIAL: Redactor vẫn không nhận diện tên người tự do và không bảo đảm đã loại hết dữ liệu cá nhân. Bình luận/media vẫn `privacy_hold`; retention nội dung chuẩn hóa chưa được thực thi.
+
+### 2026-09-30 19:16 Asia/Ho_Chi_Minh — Xác minh chốt privacy trên PostgreSQL thật
+
+- PASS: Khởi tạo cụm PostgreSQL 18.3 disposable mới trên cổng `15558`, tạo `vector` extension, chạy migration fresh tới `0026_research_source_erasure`.
+- PASS: `test_postgres_facebook_evidence_persistence_enforces_privacy_boundary` — 1 passed; test gọi `_persist_evidence` trên PostgreSQL thật và đọc lại title/body đã lọc, comment/raw bị giữ, metrics privacy còn lưu.
+- DONE: Dừng đúng cụm disposable `page-workspace-privacy-pg-20260930`; không chạm database/Redis preview.
+- NOT_RUN: Redis/Celery, object storage thật, Browser UI, Meta và các provider AI.

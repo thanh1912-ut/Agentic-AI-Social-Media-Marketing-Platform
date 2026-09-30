@@ -385,5 +385,6 @@ Commit triển khai: `0d95d9b5704ee6fa37f31ae237d522795a08a304` trên `codex/pag
 | Bình luận/raw payload không lưu | PASS (SQLite API-worker fixture) | Test xác nhận comment text không vào `comments_json`, metadata giữ `privacy_hold`, raw body không gọi storage adapter và không có `raw_object_key`. |
 | Ghi rõ giới hạn nhận diện | PASS (unit + persistence fixture) | Metadata vẫn đánh dấu `names_not_detected`, `not_anonymization` và `manual_review_may_be_required`. Không tuyên bố dữ liệu đã ẩn danh hay có căn cứ xử lý. |
 | Regression tests | PASS | `tests/test_research_privacy.py tests/test_market_research_api.py` — 33 passed; Ruff, Python compile và `git diff --check` đạt. |
-| PostgreSQL/Redis/browser/Meta/provider live | NOT_RUN | Không dùng dịch vụ preview và không phát request ra Facebook/AI provider trong lát cắt này. |
+| PostgreSQL persistence boundary | PASS (PostgreSQL 18.3 disposable) | Fresh migration tới `0026_research_source_erasure`; `test_postgres_facebook_evidence_persistence_enforces_privacy_boundary` — 1 passed trên cổng test `15558`. Cụm đã dừng; không dùng database preview. |
+| Redis/Celery/browser/Meta/provider live | NOT_RUN | Không phát request ra Facebook/AI provider trong lát cắt này. |
 | Nhận diện tên người và retention nội dung chuẩn hóa | NOT_IMPLEMENTED / BLOCKED FOR LEGAL REVIEW | Redactor hiện chỉ bắt một số pattern liên hệ; bình luận/media vẫn privacy hold. `requested_retention_days` chưa được scheduler thi hành. Cần đánh giá pháp lý và thiết kế retention/deletion lan truyền riêng. |
