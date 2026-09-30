@@ -166,6 +166,32 @@ def test_postgres_api_persists_existing_product_modules(monkeypatch: pytest.Monk
         assert workspace["page_id"] == page_id
         assert workspace["page_connection_state"] == "active"
         assert workspace["page_avatar_url"] is None
+
+        # Possessing the same Page token is not a workspace invitation.
+        second_email = f"postgres-nonmember-{uuid.uuid4().hex}@example.com"
+        second_registered = client.post("/api/v1/auth/register", json={
+            "email": second_email,
+            "password": "postgres-nonmember-smoke-password",
+            "full_name": "PostgreSQL non-member",
+            "company_name": "Ignored legacy workspace name",
+        })
+        assert second_registered.status_code == 201, second_registered.text
+        assert second_registered.json()["workspaces"] == []
+        assert client.get("/api/v1/workspaces").json() == []
+        duplicate_page = client.post(
+            "/api/v1/workspaces/from-page",
+            headers={"X-CSRF-Token": client.cookies["agentic_csrf"]},
+            json={"page_id": page_id, "page_access_token": "test-page-access-token-12345"},
+        )
+        assert duplicate_page.status_code == 409, duplicate_page.text
+        assert duplicate_page.json()["error"]["code"] == "page_already_connected"
+        assert client.get("/api/v1/workspaces").json() == []
+        owner_login = client.post("/api/v1/auth/login", json={
+            "email": email,
+            "password": "postgres-module-smoke-password",
+        })
+        assert owner_login.status_code == 200, owner_login.text
+
         headers = {"X-CSRF-Token": client.cookies["agentic_csrf"]}
 
         profile = client.get(f"/api/v1/workspaces/{workspace_id}/brand-profile")

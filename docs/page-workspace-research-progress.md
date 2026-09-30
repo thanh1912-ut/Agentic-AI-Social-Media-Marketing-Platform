@@ -532,3 +532,10 @@ Base đã kiểm tra: `codex/creative-studio-ui` @ `b769097bfdb3568889d974c6def9
 - PASS: `tests/test_ai_budget.py` — `14 passed`; Ruff, `py_compile` dùng cache ở `/private/tmp`, `git diff --check`.
 - LIMITATION: Đây chỉ chứng minh reservation/ledger dùng chung khi caller cung cấp model, region và token bounds đã kiểm tra. Worker chưa gọi Gemini/Qwen; comment/media tiếp tục `privacy_hold`; không có provider live request.
 - PASS: Sau khi sandbox chặn loopback ở lượt đầu, chạy lại toàn `tests/test_postgres_database_integration.py` khi được cấp quyền tới đúng cụm disposable — `9 passed, 3 skipped` (`POSTGRES_TEST_URL` thật; các test Redis bị skip vì Redis test URLs không cấu hình). Cụm PostgreSQL 18.3 port `15559` đã dừng sau test.
+
+### 2026-09-30 20:05 Asia/Ho_Chi_Minh — PostgreSQL API kiểm tra Page không tự cấp membership
+
+- DONE: Mở rộng API integration smoke với tài khoản thứ hai: đăng ký không tạo workspace; dù gửi lại đúng Page ID và Page Access Token đã gắn, tài khoản không phải thành viên vẫn nhận `409 page_already_connected` và danh sách workspace rỗng.
+- PASS: `tests/test_postgres_application_modules.py -k test_postgres_api_persists_existing_product_modules` — `1 passed` trên PostgreSQL 18.3 disposable, toàn bộ API call qua `TestClient`, Meta được thay bằng fixture; không có Meta live request.
+- PASS: Ruff, `py_compile`, `git diff --check`; PostgreSQL cổng `15559` đã dừng.
+- LIMITATION: Đây xác nhận không tự cấp membership qua token trên một request nối tiếp; chưa phải stress test race đồng thời hai request `from-page`.
