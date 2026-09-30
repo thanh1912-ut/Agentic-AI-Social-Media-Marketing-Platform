@@ -389,6 +389,15 @@ Commit triển khai: `0d95d9b5704ee6fa37f31ae237d522795a08a304` trên `codex/pag
 | Redis/Celery/browser/Meta/provider live | NOT_RUN | Không phát request ra Facebook/AI provider trong lát cắt này. |
 | Nhận diện tên người và retention nội dung chuẩn hóa | NOT_IMPLEMENTED / BLOCKED FOR LEGAL REVIEW | Redactor hiện chỉ bắt một số pattern liên hệ; bình luận/media vẫn privacy hold. `requested_retention_days` chưa được scheduler thi hành. Cần đánh giá pháp lý và thiết kế retention/deletion lan truyền riêng. |
 
+## Allowlist metadata Facebook tại persistence — 2026-09-30
+
+| Kiểm tra | Trạng thái | Bằng chứng và giới hạn |
+|---|---|---|
+| Metric/provenance và attachment metadata | PASS (unit + API-worker fixture) | `protect_facebook_evidence` chỉ giữ metric số đã allowlist; nested author/comment/raw fields bị bỏ; provenance locator/counter được lọc; URL mất query/fragment; attachment title/description bị bỏ. `tests/test_research_privacy.py` bao gồm 1.2K, 100+, bare phone-like count và locator giả. |
+| PostgreSQL persistence | PASS (PostgreSQL 18.3 disposable) | Fresh migration đến `0026`; `test_postgres_facebook_evidence_persistence_enforces_privacy_boundary` — 1 passed, trong đó metadata đầu vào chứa author/comment/raw fields cố tình lẫn vào metrics. Test cluster đã dừng. |
+| Regression backend | PASS (fixtures) | Working tree dựa trên SHA `1c54ee1296d1055c1525e95f1383eba65a738748`; `tests` bỏ `test_ingestion_parsers.py` và test scan-PDF cần Docling — **301 passed, 18 skipped, 1 deselected**; Ruff, `py_compile` và `git diff --check` đạt. |
+| Giới hạn | PARTIAL | Đây là allowlist/giảm rò rỉ ở persistence, không phát hiện đầy đủ danh tính hoặc chứng minh ẩn danh/căn cứ pháp lý. Bình luận/media chưa được lưu hay gửi provider; retention nội dung chuẩn hóa chưa được thực thi. |
+
 ## Regression backend sau persistence privacy guard — 2026-09-30
 
 | Kiểm tra | Trạng thái | Bằng chứng và giới hạn |

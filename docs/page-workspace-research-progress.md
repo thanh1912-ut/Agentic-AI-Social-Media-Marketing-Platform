@@ -509,6 +509,15 @@ Base đã kiểm tra: `codex/creative-studio-ui` @ `b769097bfdb3568889d974c6def9
 - DONE: Dừng đúng cụm disposable `page-workspace-privacy-pg-20260930`; không chạm database/Redis preview.
 - NOT_RUN: Redis/Celery, object storage thật, Browser UI, Meta và các provider AI.
 
+### 2026-09-30 — Allowlist metadata Facebook tại persistence
+
+- DONE: `_persist_evidence` giờ chỉ lưu metric số được allowlist, provenance counter đã kiểm tra, loại/URL attachment an toàn và metadata redaction đã chuẩn hóa; field tùy ý như `authors`, `comment_text`, `raw_response`, tiêu đề media và query token bị loại.
+- DONE: URL hiển thị bỏ query/fragment; bare counter dài có thể giống số điện thoại không được giữ dưới dạng chuỗi raw. Số chuẩn hóa vẫn có thể được lưu khi đến từ metric đã được kiểm tra.
+- PASS: Toàn bộ backend fixture suite trên working tree dựa trên SHA `1c54ee1296d1055c1525e95f1383eba65a738748` đạt **301 passed, 18 skipped, 1 deselected**.
+- PASS: PostgreSQL 18.3 disposable, migration fresh đến `0026`, `test_postgres_facebook_evidence_persistence_enforces_privacy_boundary` đạt **1 passed** với metric metadata cố tình chứa trường PII/field lạ. Cụm test đã dừng.
+- PASS: Ruff `--no-cache`, `py_compile`, `git diff --check`.
+- LIMITATION: Đây là defense-in-depth, không phải ẩn danh hoặc xác nhận căn cứ xử lý. Comments/media vẫn `privacy_hold`; expiry/deletion tự động chưa được bật.
+
 ### 2026-09-30 — Regression backend sau persistence privacy guard
 
 - PASS: Trên commit `158e44e9dbc22395a87d26090092f28090214095`, `PYTHONPATH=/private/tmp/page-workspace-python-deps python -m pytest -p no:cacheprovider tests --ignore=tests/test_ingestion_parsers.py -k 'not test_parser_returns_locators_and_rejects_scan_pdf' -q` — **300 passed, 18 skipped, 1 deselected**.

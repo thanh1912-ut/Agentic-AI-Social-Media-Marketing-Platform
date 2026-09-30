@@ -242,7 +242,25 @@ def test_postgres_facebook_evidence_persistence_enforces_privacy_boundary(
                 title="Gọi 0901 234 567",
                 text="Gửi email person@example.test; nhà riêng: 12/5 Đường Cá Nhân, Quận 1",
                 published_at=None,
-                metrics={"comments": 1},
+                metrics={
+                    "comments": 1,
+                    "reactions": 19,
+                    "shares": 1.5,
+                    "comment_text": "Do not store this nested personal text",
+                    "authors": [{"name": "Private Person", "profile_url": "https://facebook.com/private-person"}],
+                    "raw_response": {"comments": ["private@example.invalid"]},
+                    "link_url": "https://news.example/story?email=private@example.invalid&token=signed",
+                    "attachments": [{
+                        "kind": "image", "provider_type": "photo", "title": "Private Person",
+                        "target_url": "https://cdn.example/image?access_token=secret",
+                        "author": "Private Person",
+                    }],
+                    "_provenance": {
+                        "reactions": {"raw": "19", "precision": "exact",
+                                      "locator": "facebook-cli/counts.reactions"},
+                        "shares": {"raw": "private@example.invalid", "locator": "comment_author"},
+                    },
+                },
                 comments=["commenter@example.test"],
                 raw_body=b"raw Facebook response",
                 observed_at=utcnow(),
@@ -261,6 +279,21 @@ def test_postgres_facebook_evidence_persistence_enforces_privacy_boundary(
                 assert observation.metrics_json["comments_privacy"]["status"] == "privacy_hold"
                 assert observation.metrics_json["raw_payload_privacy"]["status"] == "not_retained"
                 assert "not_anonymization" in observation.metrics_json["privacy_redaction"]["limitations"]
+                assert observation.metrics_json["reactions"] == 19
+                assert "shares" not in observation.metrics_json
+                assert "comment_text" not in observation.metrics_json
+                assert "authors" not in observation.metrics_json
+                assert "raw_response" not in observation.metrics_json
+                assert observation.metrics_json["link_url"] == "https://news.example/story"
+                assert observation.metrics_json["attachments"] == [{
+                    "kind": "image", "provider_type": "photo", "title": None,
+                    "description": None, "target_url": "https://cdn.example/image",
+                    "content_status": "metadata_only_privacy_hold",
+                }]
+                assert observation.metrics_json["_provenance"]["reactions"] == {
+                    "raw": "19", "precision": "exact", "locator": "facebook-cli/counts.reactions",
+                }
+                assert "shares" not in observation.metrics_json["_provenance"]
         finally:
             async with sessions() as db:
                 await db.execute(delete(Company).where(Company.id == company_id))

@@ -76,3 +76,63 @@ def test_facebook_persistence_boundary_redacts_text_and_holds_comments_and_raw_p
     assert safe_metrics["raw_payload_privacy"] == {"status": "not_retained"}
     assert safe_metrics["privacy_redaction"]["status"] == "pattern_redacted_review_incomplete"
     assert metrics == {"reactions": 3}
+
+
+def test_facebook_persistence_boundary_allowlists_nested_metrics_and_media_metadata() -> None:
+    title, text, safe_metrics, comments, raw_body = protect_facebook_evidence(
+        title="Public post",
+        text="Public text",
+        metrics={
+            "reactions": 1200,
+            "comments": True,
+            "shares": 1.5,
+            "comment_text": "Commenter's home address and phone",
+            "authors": [{"name": "Private Person", "profile_url": "https://facebook.com/private-person"}],
+            "raw_response": {"message": "unfiltered provider body"},
+            "link_url": "https://news.example/story?email=person@example.test&token=signed#private",
+            "attachments": [{
+                "kind": "image", "provider_type": "photo", "title": "Private Person",
+                "description": "Private address", "target_url": "https://cdn.example/item?access_token=secret",
+                "author": "Private Person",
+            }],
+            "_provenance": {
+                "reactions": {
+                    "raw": "1.2K", "precision": "approximate", "locator": "facebook-cli/counts.reactions",
+                },
+                "shares": {"raw": "100+", "precision": "lower_bound", "locator": "facebook-cli/counts.shares"},
+                "comments": {
+                    "raw": "0901234567", "precision": "exact", "locator": "facebook-cli/counts.comments",
+                },
+                "views": {"raw": "1.2K", "precision": "approximate", "locator": "user_name01"},
+            },
+        },
+        comments=[],
+        raw_body=None,
+    )
+
+    assert title == "Public post"
+    assert text == "Public text"
+    assert comments == []
+    assert raw_body is None
+    assert safe_metrics["reactions"] == 1200
+    assert "comments" not in safe_metrics  # bool is not a numeric count
+    assert "shares" not in safe_metrics  # Facebook interaction counters must be integer counts
+    assert "comment_text" not in safe_metrics
+    assert "authors" not in safe_metrics
+    assert "raw_response" not in safe_metrics
+    assert safe_metrics["link_url"] == "https://news.example/story"
+    assert safe_metrics["attachments"] == [{
+        "kind": "image", "provider_type": "photo", "title": None,
+        "description": None, "target_url": "https://cdn.example/item",
+        "content_status": "metadata_only_privacy_hold",
+    }]
+    assert safe_metrics["_provenance"]["reactions"] == {
+        "raw": "1.2K", "precision": "approximate", "locator": "facebook-cli/counts.reactions",
+    }
+    assert safe_metrics["_provenance"]["shares"] == {
+        "raw": "100+", "precision": "lower_bound", "locator": "facebook-cli/counts.shares",
+    }
+    assert "raw" not in safe_metrics["_provenance"]["comments"]
+    assert "views" not in safe_metrics["_provenance"]
+    assert "0901234567" not in str(safe_metrics)
+    assert "user_name01" not in str(safe_metrics)
