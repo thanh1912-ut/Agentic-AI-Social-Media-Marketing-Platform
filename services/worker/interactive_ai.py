@@ -19,6 +19,10 @@ class InteractiveProviderOutcomeUnknown(ProviderError):
     """A prior interactive call may have been accepted; never send it twice."""
 
 
+class InteractiveReservationUnavailable(ProviderError):
+    """No safe usage reservation exists, so the provider was not called."""
+
+
 class InteractiveBudgetedModel:
     """Sync StructuredModel proxy that reserves and records each user call.
 
@@ -68,9 +72,13 @@ class InteractiveBudgetedModel:
             self.ledger_ids.append(reservation.ledger_id or "")
             metadata = cached.get("metadata")
             return cached.get("output"), GenerationMetadata.model_validate(metadata) if metadata else None
-        if reservation.status != "reserved":
+        if reservation.status in {"uncertain", "cached_unknown"}:
             raise InteractiveProviderOutcomeUnknown(
                 "A previous request may already have been sent; create a new request instead of resending it."
+            )
+        if reservation.status != "reserved":
+            raise InteractiveReservationUnavailable(
+                f"Interactive AI usage reservation was not created ({reservation.status})."
             )
 
         try:

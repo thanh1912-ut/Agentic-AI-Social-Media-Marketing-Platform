@@ -143,6 +143,30 @@ def test_interactive_model_does_not_resend_uncertain_request(monkeypatch: pytest
     assert model.calls == 0
 
 
+def test_interactive_model_distinguishes_missing_reservation_from_unknown_outcome(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def reserve(**_kwargs):
+        return Reservation("workspace_missing", "request-key")
+
+    monkeypatch.setattr(interactive_ai, "reserve_interactive_request", reserve)
+    model = _Model()
+
+    async def run():
+        loop = asyncio.get_running_loop()
+        proxy = _proxy(model, loop)
+        await asyncio.to_thread(
+            proxy.generate,
+            system_prompt="test",
+            input_payload={"prompt": "hello"},
+            response_model=dict,
+        )
+
+    with pytest.raises(interactive_ai.InteractiveReservationUnavailable):
+        asyncio.run(run())
+    assert model.calls == 0
+
+
 def test_interactive_model_releases_reservation_for_local_context_limit(monkeypatch: pytest.MonkeyPatch) -> None:
     calls: list[str] = []
 

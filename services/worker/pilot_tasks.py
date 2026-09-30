@@ -141,10 +141,16 @@ async def campaign_plan_task_async(job_id: str, *, model: Any | None = None) -> 
                 cached = interactive_reservation.cached_result
                 output = cached.get("output")
                 metadata_payload = cached.get("metadata") or {}
-            elif interactive_reservation.status != "reserved":
+            elif interactive_reservation.status in {"uncertain", "cached_unknown"}:
                 await _fail_plan(
                     job_id, claim_token, "provider_outcome_unknown",
                     "Yêu cầu AI trước đó có thể đã được tính phí; hệ thống không gửi lặp. Hãy tạo một yêu cầu mới.",
+                )
+                return
+            elif interactive_reservation.status != "reserved":
+                await _fail_plan(
+                    job_id, claim_token, "ai_usage_reservation_failed",
+                    "Không thể ghi nhận chi phí AI trước khi gửi yêu cầu; provider chưa được gọi.",
                 )
                 return
             else:

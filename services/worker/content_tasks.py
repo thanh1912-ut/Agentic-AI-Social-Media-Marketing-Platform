@@ -54,7 +54,11 @@ from services.worker.async_runtime import run_worker_coroutine
 from services.worker.celery_app import celery_app
 from services.worker.model_provider import AIConfigurationError, configured_embedding_provider, configured_structured_model
 from services.worker.ai_budget import PricingUnavailable
-from services.worker.interactive_ai import InteractiveBudgetedModel, InteractiveProviderOutcomeUnknown
+from services.worker.interactive_ai import (
+    InteractiveBudgetedModel,
+    InteractiveProviderOutcomeUnknown,
+    InteractiveReservationUnavailable,
+)
 
 
 class ContentGenerationFailure(RuntimeError):
@@ -980,12 +984,20 @@ async def content_generation_task_async(
         await _fail(job_id, failure, attempts=attempts)
     except AIConfigurationError as error:
         await _fail(job_id, ContentGenerationFailure("ai_not_configured", str(error)), attempts=attempts)
-    except PricingUnavailable as error:
-        await _fail(job_id, ContentGenerationFailure("pricing_unavailable", str(error)), attempts=attempts)
-    except InteractiveProviderOutcomeUnknown as error:
-        await _fail(job_id, ContentGenerationFailure("provider_outcome_unknown", str(error)), attempts=attempts)
-    except ProviderContextLimitError as error:
-        await _fail(job_id, ContentGenerationFailure("input_limit_exceeded", str(error)), attempts=attempts)
+    except PricingUnavailable:
+        await _fail(job_id, ContentGenerationFailure("pricing_unavailable", "Chưa có giá đã xác minh cho model; hệ thống chưa gửi yêu cầu AI."), attempts=attempts)
+    except InteractiveProviderOutcomeUnknown:
+        await _fail(job_id, ContentGenerationFailure(
+            "provider_outcome_unknown",
+            "Yêu cầu AI trước đó có thể đã được gửi; hệ thống không gửi lặp. Hãy tạo yêu cầu mới.",
+        ), attempts=attempts)
+    except InteractiveReservationUnavailable:
+        await _fail(job_id, ContentGenerationFailure(
+            "ai_usage_reservation_failed",
+            "Không thể ghi nhận chi phí AI trước khi gửi yêu cầu; provider chưa được gọi.",
+        ), attempts=attempts)
+    except ProviderContextLimitError:
+        await _fail(job_id, ContentGenerationFailure("input_limit_exceeded", "Yêu cầu vượt giới hạn đầu vào của model; hãy rút gọn rồi thử lại."), attempts=attempts)
     except ProviderError as error:
         await _fail(job_id, ContentGenerationFailure("deepseek_request_failed", str(error), retryable=error.retryable), attempts=attempts)
     except Exception:

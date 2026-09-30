@@ -478,13 +478,13 @@ Base đã kiểm tra: `codex/creative-studio-ui` @ `b769097bfdb3568889d974c6def9
 - PASS: Chạy lại nhóm PG/Redis — schema/fencing, queue-cache isolation, competing claims, dispatch outage recovery, dispatcher Redis và worker consume — `6 passed in 2.02s` trên PostgreSQL 18.3 + Redis 8.6.3 disposable.
 - SCOPE: Job không có nguồn nghiên cứu; đây là kiểm thử queue/worker/persistence, không phải crawl nguồn, API/browser thật hoặc phân tích AI. DeepSeek tắt, không gọi Meta, Gemini hay Qwen.
 
-### 2026-09-30 18:54 Asia/Ho_Chi_Minh — Ghi riêng chi phí AI do người dùng chủ động chạy
+### 2026-09-30 18:58 Asia/Ho_Chi_Minh — Ghi riêng chi phí AI do người dùng chủ động chạy
 
 - DONE: Bổ sung `budget_class=interactive` cho lời gọi DeepSeek trong lập kế hoạch campaign, tạo bài và sửa bài. Mỗi provider request có reservation/usage ledger riêng; không cộng vào bộ đếm hạn mức tự động 2 USD/ngày.
-- DONE: Tạo wrapper cho content agent: reservation được commit trước khi gọi model; kết quả hoàn tất có thể được phát lại nếu worker bị gián đoạn; trạng thái provider chưa rõ không bị gửi lại. Lỗi giới hạn đầu vào trước khi gửi giải phóng reservation.
+- DONE: Tạo wrapper cho content agent: reservation được commit trước khi gọi model; kết quả hoàn tất có thể được phát lại nếu worker bị gián đoạn; trạng thái provider chưa rõ không bị gửi lại. Lỗi giới hạn đầu vào trước khi gửi giải phóng reservation. Reservation chưa tạo được được phân biệt với kết quả provider chưa rõ.
 - LIMITATION: Job thành công xóa payload tạm khỏi ledger sau khi lưu bản chính vào job/post versions. Nếu job thất bại sau khi provider đã trả kết quả, cache ledger được giữ để retry an toàn; chưa có TTL riêng cho các cache output này.
 - DONE: Ghi usage interactive vào kết quả durable job và `ContentGenerationRun`; API ngân sách tiếp tục chỉ báo quota tự động. Màn hình tổng hợp chi phí interactive chưa có.
-- PASS: `tests/test_ai_budget.py tests/test_interactive_ai_accounting.py tests/test_mailguard_pilot.py tests/test_campaign_workflows.py tests/test_market_research_api.py` — 64 passed; bao gồm replay không gọi model lần hai, ngăn gửi lại request uncertain, budget API tách loại interactive/automatic, và content workflows dùng model fixture.
+- PASS: `tests/test_ai_budget.py tests/test_interactive_ai_accounting.py tests/test_mailguard_pilot.py tests/test_campaign_workflows.py tests/test_market_research_api.py` — 65 passed; bao gồm replay không gọi model lần hai, ngăn gửi lại request uncertain, phân biệt reservation chưa tạo với kết quả chưa rõ, budget API tách loại interactive/automatic, và content workflows dùng model fixture.
 - PASS: Toàn bộ `tests/test_postgres_database_integration.py` — 7 passed, 3 skipped trên PostgreSQL 18.3 disposable mới tạo, pgvector và migration head `0026`; test xác nhận settlement interactive không đổi bộ đếm automatic. Ba test Redis bị skip vì các URL Redis được đặt trống có chủ đích.
 - DONE: Dừng đúng cluster disposable cổng `15557` sau kiểm thử; không chạm PostgreSQL/Redis preview.
 - PASS: Ruff, Python `py_compile`, OpenAPI `--check` và `git diff --check`.
