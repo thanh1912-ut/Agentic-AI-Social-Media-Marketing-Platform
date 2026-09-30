@@ -60,6 +60,20 @@ export interface ResearchSource {
   last_collection_success_at?: string | null;
 }
 
+export interface ResearchPrivacyPolicy {
+  source_id: string;
+  configured: boolean;
+  revision_no: number | null;
+  purpose: string | null;
+  processing_basis_reference: string | null;
+  policy_version: string | null;
+  requested_retention_days: number | null;
+  configured_by: string | null;
+  configured_at: string | null;
+  retention_enforcement_status: 'not_enforced';
+  comments_content_status: 'privacy_hold';
+}
+
 export interface CompetitorPost {
   id: string;
   source_id: string;
@@ -250,6 +264,8 @@ export const marketResearchKeys = {
     ['workspaces', workspaceId, 'market-research', 'competitor-posts', sourceId] as const,
   competitorRuns: (workspaceId: string, sourceId: string) =>
     ['workspaces', workspaceId, 'market-research', 'competitor-runs', sourceId] as const,
+  privacyPolicy: (workspaceId: string, sourceId: string) =>
+    ['workspaces', workspaceId, 'market-research', 'privacy-policy', sourceId] as const,
 };
 
 export const marketResearchApi = {
@@ -278,6 +294,19 @@ export const marketResearchApi = {
     apiRequest<ResearchSource>(path(workspaceId) + '/sources', { method: 'POST', body }),
   deleteSource: (workspaceId: string, sourceId: string) =>
     apiRequest<void>(path(workspaceId) + '/sources/' + encodeURIComponent(sourceId), { method: 'DELETE' }),
+  privacyPolicy: (workspaceId: string, sourceId: string) =>
+    apiRequest<ResearchPrivacyPolicy>(
+      path(workspaceId) + '/sources/' + encodeURIComponent(sourceId) + '/privacy-policy',
+    ),
+  savePrivacyPolicy: (workspaceId: string, sourceId: string, body: {
+    purpose: string;
+    processing_basis_reference: string;
+    policy_version: string;
+    requested_retention_days: number;
+  }) => apiRequest<ResearchPrivacyPolicy>(
+    path(workspaceId) + '/sources/' + encodeURIComponent(sourceId) + '/privacy-policy',
+    { method: 'PUT', body },
+  ),
   updateCrawlSettings: (workspaceId: string, sourceId: string, body: {
     crawl_mode: 'legacy' | 'site_catalog';
     crawl_page_limit: number;

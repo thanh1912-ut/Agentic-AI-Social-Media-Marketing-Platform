@@ -16,6 +16,7 @@ from sqlalchemy.pool import StaticPool
 from database.models import (
     AIUsageBudgetDay, AIUsageLedger, Base, Campaign, Job, MarketEvidence, MarketEvidenceVersion, MarketObservation, MetaPageConnection,
     MarketReport, MarketReportEvidence, MetaPageGroup, ResearchCycle, ResearchSource, new_id,
+    Membership, ResearchPrivacyPolicyRevision, User,
 )
 from services.api import market_research as market_research_routes
 from services.api import meta_tokens
@@ -25,6 +26,7 @@ from services.api.main import app
 from tests.helpers.page_workspace import activate_test_page
 from services.api.meta_client import MetaPage
 from services.worker import research_tasks, scheduled_jobs
+from services.api.security import create_access_token, hash_password
 
 
 @pytest.fixture
@@ -870,3 +872,133 @@ def test_disabling_last_source_schedule_clears_group_due_time(market_api) -> Non
             return count
 
     assert asyncio.run(make_disabled_source_overdue_and_enqueue()) == 0
+
+
+def test_source_privacy_policy_is_owner_recorded_but_does_not_enable_processing(market_api) -> None:
+    client, session_factory, _encryption_key = market_api
+    workspace_id, headers = _owner(client, "privacy-policy-owner@example.com")
+    group_id = _create_group(client, workspace_id, headers)
+    source_response = client.post(
+        f"/api/v1/workspaces/{workspace_id}/market-research/sources",
+        headers=headers,
+        json={
+            "group_id": group_id,
+            "source_type": "competitor_facebook_page",
+            "name": "Public competitor page",
+            "url": "https://www.facebook.com/example.public.page",
+        },
+    )
+    assert source_response.status_code == 201, source_response.text
+    source_id = source_response.json()["id"]
+    policy_url = f"/api/v1/workspaces/{workspace_id}/market-research/sources/{source_id}/privacy-policy"
+
+    empty = client.get(policy_url)
+    assert empty.status_code == 200, empty.text
+    assert empty.json()["configured"] is False
+    assert empty.json()["comments_content_status"] == "privacy_hold"
+    assert empty.json()["retention_enforcement_status"] == "not_enforced"
+
+    saved = client.put(policy_url, headers=headers, json={
+        "purpose": "Tổng hợp câu hỏi công khai về sản phẩm để lập báo cáo nghiên cứu.",
+        "processing_basis_reference": "Hồ sơ rà soát nội bộ PRIV-2026-09, mục 4.",
+        "policy_version": "privacy-policy-2026-09-v1",
+        "requested_retention_days": 90,
+    })
+    assert saved.status_code == 200, saved.text
+    body = saved.json()
+    assert body["configured"] is True
+    assert body["revision_no"] == 1
+    assert body["requested_retention_days"] == 90
+    assert body["retention_enforcement_status"] == "not_enforced"
+    assert body["comments_content_status"] == "privacy_hold"
+    reread = client.get(policy_url)
+    assert reread.status_code == 200
+    assert reread.json()["purpose"] == body["purpose"]
+
+    async def read_policy():
+        async with session_factory() as db:
+            return await db.scalar(select(ResearchPrivacyPolicyRevision).where(
+                ResearchPrivacyPolicyRevision.company_id == workspace_id,
+                ResearchPrivacyPolicyRevision.source_id == source_id,
+            ))
+
+    persisted = asyncio.run(read_policy())
+    assert persisted is not None
+    assert persisted.policy_version == "privacy-policy-2026-09-v1"
+
+    repeated = client.put(policy_url, headers=headers, json={
+        "purpose": "Tổng hợp câu hỏi công khai về sản phẩm để lập báo cáo nghiên cứu.",
+        "processing_basis_reference": "Hồ sơ rà soát nội bộ PRIV-2026-09, mục 4.",
+        "policy_version": "privacy-policy-2026-09-v1",
+        "requested_retention_days": 90,
+    })
+    assert repeated.status_code == 200
+    assert repeated.json()["revision_no"] == 1
+    revised = client.put(policy_url, headers=headers, json={
+        "purpose": "Tổng hợp câu hỏi và chủ đề công khai cho báo cáo nghiên cứu.",
+        "processing_basis_reference": "Hồ sơ rà soát nội bộ PRIV-2026-09, mục 4.",
+        "policy_version": "privacy-policy-2026-09-v2",
+        "requested_retention_days": 60,
+    })
+    assert revised.status_code == 200
+    assert revised.json()["revision_no"] == 2
+
+    async def count_policy_revisions():
+        async with session_factory() as db:
+            return len((await db.scalars(select(ResearchPrivacyPolicyRevision).where(
+                ResearchPrivacyPolicyRevision.company_id == workspace_id,
+                ResearchPrivacyPolicyRevision.source_id == source_id,
+            ))).all())
+
+    assert asyncio.run(count_policy_revisions()) == 2
+
+
+def test_source_privacy_policy_write_requires_owner(market_api) -> None:
+    client, session_factory, _encryption_key = market_api
+    workspace_id, headers = _owner(client, "privacy-policy-permissions@example.com")
+    group_id = _create_group(client, workspace_id, headers)
+    source_response = client.post(
+        f"/api/v1/workspaces/{workspace_id}/market-research/sources",
+        headers=headers,
+        json={
+            "group_id": group_id,
+            "source_type": "website",
+            "name": "Public source",
+            "url": "https://example.test/research",
+        },
+    )
+    assert source_response.status_code == 201, source_response.text
+    source_id = source_response.json()["id"]
+
+    async def add_editor() -> User:
+        async with session_factory() as db:
+            editor = User(
+                id=new_id(),
+                email="privacy-policy-editor@example.com",
+                full_name="Editor",
+                password_hash=hash_password("safe-test-password"),
+            )
+            db.add(editor)
+            await db.flush()
+            db.add(Membership(
+                id=new_id(), company_id=workspace_id, user_id=editor.id,
+                role="editor", is_active=True,
+            ))
+            await db.commit()
+            return editor
+
+    editor = asyncio.run(add_editor())
+    editor_token, _expires_at = create_access_token(editor)
+    policy_url = f"/api/v1/workspaces/{workspace_id}/market-research/sources/{source_id}/privacy-policy"
+    with TestClient(app) as editor_client:
+        response = editor_client.put(
+            policy_url,
+            headers={"Authorization": f"Bearer {editor_token}"},
+            json={
+                "purpose": "Tổng hợp câu hỏi công khai về sản phẩm.",
+                "processing_basis_reference": "Hồ sơ rà soát nội bộ PRIV-2026-09.",
+                "policy_version": "privacy-policy-2026-09-v1",
+                "requested_retention_days": 90,
+            },
+        )
+    assert response.status_code == 403, response.text

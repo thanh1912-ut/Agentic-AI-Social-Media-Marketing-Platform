@@ -38,7 +38,7 @@ def test_postgres_migrations_constraints_vector_and_job_fencing() -> None:
                 revision = await connection.exec_driver_sql(
                     "SELECT version_num FROM alembic_version ORDER BY version_num LIMIT 1"
                 )
-                assert revision.scalar_one() == "0022_ai_usage_budget"
+                assert revision.scalar_one() == "0023_research_privacy_policy_records"
                 extension = await connection.exec_driver_sql(
                     "SELECT extversion FROM pg_extension WHERE extname='vector'"
                 )
@@ -83,7 +83,14 @@ def test_postgres_migrations_constraints_vector_and_job_fencing() -> None:
                         "post_content_reviews", "scheduled_meta_publications",
                         "mailguard_integrations", "mailguard_tracking_references",
                         "mailguard_conversion_events", "ai_usage_budget_days", "ai_usage_ledger",
+                        "research_privacy_policy_revisions",
                     })
+                    privacy_fks = inspector.get_foreign_keys("research_privacy_policy_revisions")
+                    assert any(
+                        fk["name"] == "fk_research_privacy_policy_source_tenant"
+                        and fk["constrained_columns"] == ["company_id", "source_id"]
+                        for fk in privacy_fks
+                    )
                     review_fks = inspector.get_foreign_keys("post_content_reviews")
                     assert any(fk["name"] == "fk_post_content_review_version_tenant" for fk in review_fks)
                     schedule_fks = inspector.get_foreign_keys("scheduled_meta_publications")

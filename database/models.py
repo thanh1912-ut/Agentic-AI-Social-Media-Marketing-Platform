@@ -819,6 +819,32 @@ class ResearchSource(Base, IdMixin, TimestampMixin):
     created_by: Mapped[str] = mapped_column(ForeignKey("users.id"), nullable=False)
 
 
+class ResearchPrivacyPolicyRevision(Base, IdMixin):
+    """Immutable owner-recorded processing notes; never authorizes personal-data processing."""
+
+    __tablename__ = "research_privacy_policy_revisions"
+    __table_args__ = (
+        UniqueConstraint("company_id", "source_id", "revision_no", name="uq_research_privacy_policy_revision"),
+        ForeignKeyConstraint(
+            ["company_id", "source_id"],
+            ["research_sources.company_id", "research_sources.id"],
+            name="fk_research_privacy_policy_source_tenant",
+            ondelete="CASCADE",
+        ),
+        CheckConstraint("requested_retention_days BETWEEN 1 AND 365", name="ck_research_privacy_retention_days"),
+    )
+
+    company_id: Mapped[str] = mapped_column(ForeignKey("companies.id", ondelete="CASCADE"), nullable=False)
+    source_id: Mapped[str] = mapped_column(String(36), nullable=False)
+    revision_no: Mapped[int] = mapped_column(Integer, nullable=False)
+    purpose: Mapped[str] = mapped_column(Text, nullable=False)
+    processing_basis_reference: Mapped[str] = mapped_column(Text, nullable=False)
+    policy_version: Mapped[str] = mapped_column(String(100), nullable=False)
+    requested_retention_days: Mapped[int] = mapped_column(Integer, default=90, nullable=False)
+    configured_by: Mapped[str] = mapped_column(ForeignKey("users.id"), nullable=False)
+    configured_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
+
+
 class CrawlHostThrottle(Base):
     """Shared request spacing for public collectors across worker processes."""
 

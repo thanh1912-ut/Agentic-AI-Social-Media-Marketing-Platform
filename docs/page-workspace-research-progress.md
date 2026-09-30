@@ -14,6 +14,7 @@ Base đã kiểm tra: `codex/creative-studio-ui` @ `b769097bfdb3568889d974c6def9
 - [PARTIAL] Public Facebook giữ collector Tier 0 hiện có. Nhóm chỉ báo `unsupported_tier0`; không có nội dung thảo luận.
 - [PARTIAL] Ledger ngân sách tự động PostgreSQL và mức trần $2/workspace/ngày đã được thêm cho báo cáo Nghiên cứu chạy DeepSeek; API và UI hiển thị số đã dùng/giữ chỗ/còn lại. Bảng giá đã ghi nhận model Gemini/Qwen đã chọn, nhưng chưa route call của hai provider hoặc media vào ledger.
 - [PARTIAL] Worker không gửi comment text cũ/mới cho agent. Chưa có pipeline nhận dạng/redact toàn diện, retention/deletion ledger hoặc quy trình pháp lý; không được coi là chứng nhận tuân thủ.
+- [PARTIAL] Owner có thể ghi nhận mục đích, tham chiếu căn cứ, phiên bản chính sách và thời hạn dự kiến theo từng nguồn; bản ghi bất biến có số revision. Đây chỉ là hồ sơ cấu hình, chưa thi hành retention và không mở `privacy_hold`.
 - [PARTIAL] OpenAPI và TypeScript declarations đã được regenerate. Frontend lint, typecheck, unit tests và desktop/mobile fixture E2E hiện đạt; các test này không thay cho nghiệm thu real API/browser.
 - [PARTIAL] API/worker fixtures và PostgreSQL/Redis/Celery integration test đã chạy trên môi trường disposable; browser real mode, Meta/provider live và worker crawl chưa chạy.
 
@@ -40,6 +41,18 @@ Base đã kiểm tra: `codex/creative-studio-ui` @ `b769097bfdb3568889d974c6def9
 - DONE: Không lấy text bình luận mới cho đến khi có điều kiện xử lý phù hợp; report bỏ qua comment text legacy, trả coverage `privacy_hold`.
 - TODO: Playwright thật, nối Qwen/Gemini vào comment/media pipeline, privacy/retention/deletion và mở rộng ledger cho mọi AI tự động.
 - BLOCKED: Không có căn cứ trong repo cho phép kết luận việc xử lý dữ liệu cá nhân đã đáp ứng đầy đủ luật; cần đánh giá tổ chức/pháp lý và triển khai retention/erasure trước khi mở comment/media processing.
+
+### 2026-09-30 10:21 Asia/Ho_Chi_Minh — Ghi nhận policy theo nguồn
+
+- DONE: Thêm bảng revision bất biến `research_privacy_policy_revisions` và migration `0023_research_privacy_policy_records`, tenant FK ghép từ `(company_id, source_id)` về nguồn.
+- DONE: Owner dùng `GET/PUT .../sources/{source_id}/privacy-policy` để đọc/lưu mục đích, tham chiếu hồ sơ căn cứ, policy version và thời hạn dự kiến 1–365 ngày. Lặp lại cùng nội dung không tạo revision thừa; thay đổi tạo revision mới; audit log chỉ ghi version và số ngày, không ghi nội dung mục đích/căn cứ.
+- DONE: Tab Nghiên cứu có form cho Owner. Response luôn ghi `retention_enforcement_status=not_enforced` và `comments_content_status=privacy_hold`; form giải thích rõ rằng việc nhập cấu hình không phải chứng nhận pháp lý hoặc quyền gửi bình luận/media tới AI.
+- PASS: `tests/test_market_research_api.py tests/test_research_privacy.py` — 15 passed; kiểm tra lưu/reload, revision idempotency, status giữ privacy hold và Editor bị từ chối.
+- PASS: PostgreSQL 18.3 disposable cluster: migration fresh tới `0023_research_privacy_policy_records`, đồng thời tạo DB khác ở `0022` rồi upgrade lên `0023`; kiểm tra FK/schema qua `test_postgres_migrations_constraints_vector_and_job_fencing` — 1 passed. Cluster đã dừng.
+- PASS: Frontend typecheck, ESLint và Vitest — 50 passed; OpenAPI lấy từ ứng dụng Python và TypeScript sinh bằng script `gen:api`.
+- PASS: Production build Next.js trong worktree riêng hoàn tất; preview người dùng không bị thay.
+- NOT_RUN: Lịch sử policy chưa có endpoint xem riêng; source-run chưa pin policy revision; retention dữ liệu chuẩn hóa và xóa lan truyền chưa được thi hành; chưa có legal review.
+- BLOCKED: Không cho phép xử lý comment text hoặc media từ bản ghi này. Cần quy trình retention/erasure, xác định căn cứ/mục đích ở cấp tổ chức và xem xét chuyển dữ liệu tới provider trước khi mở pipeline.
 
 ### 2026-09-30 01:28 Asia/Ho_Chi_Minh — Kiểm thử và rà contract
 

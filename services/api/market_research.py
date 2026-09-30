@@ -39,6 +39,7 @@ from database.models import (
     MetaSyncState,
     ResearchCycle,
     ResearchSource,
+    ResearchPrivacyPolicyRevision,
     User,
     new_id,
     utcnow,
@@ -63,6 +64,7 @@ from .market_research_schemas import (
     ResearchSourceOut,
     WebCrawlSettingsIn, WebCrawlRunOut, WebItemOut, WebItemsPage, WebOfferOut,
     CollectionSettingsIn, CollectionRunOut, CompetitorPostOut, CompetitorPostsPage,
+    ResearchPrivacyPolicyUpdate, ResearchPrivacyPolicyOut,
 )
 from .meta_client import MetaGraphClient, MetaGraphReadError, MetaGraphRejected, MetaGraphTokenExpired
 from .meta_tokens import TokenEncryptionUnavailable, encrypt_page_token, token_fingerprint
@@ -944,6 +946,103 @@ async def delete_source(
                       metadata_json={"source_type": row.source_type}))
     await db.commit()
     return None
+
+
+def _privacy_policy_out(source_id: str, row: ResearchPrivacyPolicyRevision | None) -> ResearchPrivacyPolicyOut:
+    if row is None:
+        return ResearchPrivacyPolicyOut(source_id=source_id, configured=False)
+    return ResearchPrivacyPolicyOut(
+        source_id=source_id,
+        configured=True,
+        revision_no=row.revision_no,
+        purpose=row.purpose,
+        processing_basis_reference=row.processing_basis_reference,
+        policy_version=row.policy_version,
+        requested_retention_days=row.requested_retention_days,
+        configured_by=row.configured_by,
+        configured_at=row.configured_at,
+    )
+
+
+@router.get("/sources/{source_id}/privacy-policy", response_model=ResearchPrivacyPolicyOut)
+async def get_source_privacy_policy(
+    company_id: str,
+    source_id: str,
+    user: User = Depends(current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    await membership_for(company_id, user, db)
+    source = await db.scalar(select(ResearchSource).where(
+        ResearchSource.company_id == company_id,
+        ResearchSource.id == source_id,
+    ))
+    if source is None:
+        raise ApiProblem(404, "not_found", "Không tìm thấy nguồn nghiên cứu.")
+    row = await db.scalar(select(ResearchPrivacyPolicyRevision).where(
+        ResearchPrivacyPolicyRevision.company_id == company_id,
+        ResearchPrivacyPolicyRevision.source_id == source_id,
+    ).order_by(ResearchPrivacyPolicyRevision.revision_no.desc()).limit(1))
+    return _privacy_policy_out(source_id, row)
+
+
+@router.put("/sources/{source_id}/privacy-policy", response_model=ResearchPrivacyPolicyOut,
+           dependencies=[Depends(require_csrf)])
+async def put_source_privacy_policy(
+    company_id: str,
+    source_id: str,
+    request: ResearchPrivacyPolicyUpdate,
+    user: User = Depends(current_user),
+    membership=Depends(require_permission("connection:manage")),
+    db: AsyncSession = Depends(get_db),
+):
+    source = await db.scalar(select(ResearchSource).where(
+        ResearchSource.company_id == company_id,
+        ResearchSource.id == source_id,
+    ).with_for_update())
+    if source is None:
+        raise ApiProblem(404, "not_found", "Không tìm thấy nguồn nghiên cứu.")
+    row = await db.scalar(select(ResearchPrivacyPolicyRevision).where(
+        ResearchPrivacyPolicyRevision.company_id == company_id,
+        ResearchPrivacyPolicyRevision.source_id == source_id,
+    ).order_by(ResearchPrivacyPolicyRevision.revision_no.desc()).limit(1).with_for_update())
+    now = utcnow()
+    if row is not None and (
+        row.purpose == request.purpose
+        and row.processing_basis_reference == request.processing_basis_reference
+        and row.policy_version == request.policy_version
+        and row.requested_retention_days == request.requested_retention_days
+    ):
+        return _privacy_policy_out(source_id, row)
+    revision_no = 1 if row is None else row.revision_no + 1
+    row = ResearchPrivacyPolicyRevision(
+        id=new_id(),
+        company_id=company_id,
+        source_id=source_id,
+        revision_no=revision_no,
+        purpose=request.purpose,
+        processing_basis_reference=request.processing_basis_reference,
+        policy_version=request.policy_version,
+        requested_retention_days=request.requested_retention_days,
+        configured_by=user.id,
+        configured_at=now,
+    )
+    db.add(row)
+    db.add(AuditEvent(
+        company_id=company_id,
+        actor_user_id=user.id,
+        action="market.privacy_policy.record",
+        entity_type="research_privacy_policy",
+        entity_id=source_id,
+        metadata_json={
+            "policy_version": request.policy_version,
+            "requested_retention_days": request.requested_retention_days,
+            "enforcement_status": "not_enforced",
+            "comment_processing_status": "privacy_hold",
+        },
+    ))
+    await db.commit()
+    await db.refresh(row)
+    return _privacy_policy_out(source_id, row)
 
 
 @router.post("/groups/{group_id}/crawl", response_model=AcceptedResponse,

@@ -114,10 +114,12 @@ export default function FanpagesMarketResearchPage() {
   const mocksOn = useMocks();
   const workspace = workspaces.find((item) => item.id === workspaceId) ?? null;
   const canManageMarket = Boolean(workspace?.permissions.includes('market:manage'));
+  const canManageConnections = Boolean(workspace?.permissions.includes('connection:manage'));
   const [sourceType, setSourceType] = useState<ResearchSourceType>('website');
   const [lastCrawlJob, setLastCrawlJob] = useState<{ jobId: string; groupId: string } | null>(null);
   const [lastSourceCrawl, setLastSourceCrawl] = useState<{ jobId: string; sourceId: string } | null>(null);
   const [expandedCompetitorId, setExpandedCompetitorId] = useState('');
+  const [expandedPrivacyPolicyId, setExpandedPrivacyPolicyId] = useState('');
   const [draftCampaign, setDraftCampaign] = useState<string | null>(null);
   const [draftError, setDraftError] = useState<string | null>(null);
   const [webKind, setWebKind] = useState('product');
@@ -180,6 +182,11 @@ export default function FanpagesMarketResearchPage() {
     enabled: workspaceId !== '' && expandedCompetitor !== undefined,
     refetchInterval: (query) => query.state.fetchStatus === 'fetching' ? false : 15_000,
   });
+  const privacyPolicyQuery = useQuery({
+    queryKey: marketResearchKeys.privacyPolicy(workspaceId, expandedPrivacyPolicyId),
+    queryFn: () => marketResearchApi.privacyPolicy(workspaceId, expandedPrivacyPolicyId),
+    enabled: workspaceId !== '' && expandedPrivacyPolicyId !== '',
+  });
   const pages = pagesQuery.data ?? [];
   const sources = sourcesQuery.data ?? [];
   const reports = reportsQuery.data ?? [];
@@ -216,6 +223,15 @@ export default function FanpagesMarketResearchPage() {
   const deleteSource = useMutation({
     mutationFn: (sourceId: string) => marketResearchApi.deleteSource(workspaceId, sourceId),
     onSuccess: () => refreshGroupData(),
+  });
+  const savePrivacyPolicy = useMutation({
+    mutationFn: ({ sourceId, body }: { sourceId: string; body: {
+      purpose: string; processing_basis_reference: string; policy_version: string; requested_retention_days: number;
+    } }) => marketResearchApi.savePrivacyPolicy(workspaceId, sourceId, body),
+    onSuccess: async (policy, variables) => {
+      queryClient.setQueryData(marketResearchKeys.privacyPolicy(workspaceId, variables.sourceId), policy);
+      await queryClient.invalidateQueries({ queryKey: marketResearchKeys.privacyPolicy(workspaceId, variables.sourceId) });
+    },
   });
   const updateCrawlSettings = useMutation({
     mutationFn: ({ sourceId, settings }: { sourceId: string; settings: {
@@ -395,9 +411,49 @@ export default function FanpagesMarketResearchPage() {
                         ) : null}
                         {source.source_type === 'website' && canManageMarket && (source.crawl_mode ?? 'legacy') === 'legacy' ? <Button size="sm" variant="secondary" loading={updateCrawlSettings.isPending} onClick={() => updateCrawlSettings.mutate({ sourceId: source.id, settings: { crawl_mode: 'site_catalog', crawl_page_limit: 1000, render_mode: 'http_only', resource_hosts: [], schedule_enabled: true } })}>Bật sản phẩm & bài viết</Button> : null}
                         {source.source_type === 'website' && canManageMarket && source.crawl_mode === 'site_catalog' ? <Button size="sm" variant="secondary" loading={updateCrawlSettings.isPending} onClick={() => updateCrawlSettings.mutate({ sourceId: source.id, settings: { crawl_mode: 'site_catalog', crawl_page_limit: source.crawl_page_limit ?? 1000, render_mode: 'http_only', resource_hosts: source.resource_hosts ?? [], schedule_enabled: !(source.schedule_enabled ?? true) } })}>{source.schedule_enabled === false ? 'Bật lịch' : 'Tắt lịch'}</Button> : null}
+                        {canManageConnections ? <Button size="sm" variant="secondary" onClick={() => setExpandedPrivacyPolicyId(expandedPrivacyPolicyId === source.id ? '' : source.id)}>{expandedPrivacyPolicyId === source.id ? 'Ẩn chính sách dữ liệu' : 'Chính sách dữ liệu'}</Button> : null}
                         {canManageMarket ? <Button size="sm" variant="ghost" loading={deleteSource.isPending} onClick={() => deleteSource.mutate(source.id)}>Xoá link</Button> : null}
                       </div>
                     </div>
+                    {expandedPrivacyPolicyId === source.id ? (
+                      <div className="mt-4 border-t border-slate-200 pt-4">
+                        {privacyPolicyQuery.isLoading ? <LoadingBlock label="Đang tải ghi nhận chính sách…" /> : null}
+                        {privacyPolicyQuery.error ? <ErrorPanel message={readableError(privacyPolicyQuery.error, 'Không tải được ghi nhận chính sách.')} retryable onRetry={() => void privacyPolicyQuery.refetch()} /> : null}
+                        {privacyPolicyQuery.data ? (
+                          <form className="grid gap-3 rounded-lg bg-slate-50 p-4" onSubmit={(event) => {
+                            event.preventDefault();
+                            const values = new FormData(event.currentTarget);
+                            savePrivacyPolicy.mutate({
+                              sourceId: source.id,
+                              body: {
+                                purpose: String(values.get('purpose') ?? ''),
+                                processing_basis_reference: String(values.get('processing_basis_reference') ?? ''),
+                                policy_version: String(values.get('policy_version') ?? ''),
+                                requested_retention_days: Number(values.get('requested_retention_days') ?? 90),
+                              },
+                            });
+                          }}>
+                            <div>
+                              <h3 className="text-sm font-semibold text-slate-950">Ghi nhận phạm vi xử lý cho nguồn</h3>
+                              <p className="mt-1 max-w-3xl text-xs leading-5 text-slate-600">Lưu mục đích, tài liệu tham chiếu và thời hạn dự kiến để Owner quản lý. Đây không phải xác nhận tuân thủ hoặc căn cứ pháp lý tự động.</p>
+                              {privacyPolicyQuery.data.configured ? <p className="mt-1 text-xs text-slate-500">Bản ghi gần nhất: revision {privacyPolicyQuery.data.revision_no} · {privacyPolicyQuery.data.policy_version} · lưu {privacyPolicyQuery.data.configured_at ? formatDateTime(privacyPolicyQuery.data.configured_at) : 'chưa rõ thời điểm'}</p> : <p className="mt-1 text-xs text-slate-500">Chưa có bản ghi cho nguồn này.</p>}
+                            </div>
+                            <label className="grid gap-1 text-sm text-slate-700">Mục đích xử lý<textarea name="purpose" required minLength={10} maxLength={4000} rows={3} defaultValue={privacyPolicyQuery.data.purpose ?? ''} className="rounded-md border border-slate-300 bg-white px-3 py-2" /></label>
+                            <label className="grid gap-1 text-sm text-slate-700">Mã/tài liệu tham chiếu căn cứ xử lý<textarea name="processing_basis_reference" required minLength={5} maxLength={4000} rows={2} defaultValue={privacyPolicyQuery.data.processing_basis_reference ?? ''} className="rounded-md border border-slate-300 bg-white px-3 py-2" placeholder="Ghi mã hồ sơ/chính sách nội bộ đã được tổ chức rà soát" /></label>
+                            <div className="grid gap-3 sm:grid-cols-2">
+                              <label className="grid gap-1 text-sm text-slate-700">Phiên bản chính sách<input name="policy_version" required maxLength={100} defaultValue={privacyPolicyQuery.data.policy_version ?? ''} className="rounded-md border border-slate-300 bg-white px-3 py-2" placeholder="privacy-policy-v1" /></label>
+                              <label className="grid gap-1 text-sm text-slate-700">Thời hạn lưu giữ dự kiến (ngày)<input name="requested_retention_days" type="number" required min={1} max={365} defaultValue={privacyPolicyQuery.data.requested_retention_days ?? 90} className="rounded-md border border-slate-300 bg-white px-3 py-2" /></label>
+                            </div>
+                            <div className="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-xs leading-5 text-amber-950">
+                              Trạng thái hiện tại: bình luận văn bản vẫn <strong>privacy_hold</strong>; thời hạn lưu giữ ở đây mới được ghi nhận, chưa được áp dụng tự động. Chưa có quy trình xóa lan truyền đầy đủ; không gửi bình luận/media cá nhân sang AI dựa trên biểu mẫu này.
+                            </div>
+                            {savePrivacyPolicy.error ? <p role="alert" className="text-sm text-rose-800">{readableError(savePrivacyPolicy.error, 'Không lưu được ghi nhận chính sách.')}</p> : null}
+                            {savePrivacyPolicy.data?.source_id === source.id ? <p role="status" className="text-sm text-emerald-800">Đã lưu bản ghi revision {savePrivacyPolicy.data.revision_no} cho phiên bản {savePrivacyPolicy.data.policy_version}. Bình luận vẫn được giữ ở trạng thái privacy_hold.</p> : null}
+                            <div><Button type="submit" size="sm" loading={savePrivacyPolicy.isPending} disabled={!canManageConnections} disabledReason="Chỉ Owner được ghi nhận chính sách dữ liệu.">Lưu ghi nhận</Button></div>
+                          </form>
+                        ) : null}
+                      </div>
+                    ) : null}
                     {lastSourceCrawl?.sourceId === source.id ? (
                       <p role="status" className="mt-3 rounded-md bg-sky-50 px-3 py-2 text-xs text-sky-900">
                         Job {sourceJobQuery.data?.status ?? 'queued'} · <Link className="font-medium underline" href={'/w/' + workspaceId + '/jobs/' + lastSourceCrawl.jobId}>Theo dõi tiến độ</Link>

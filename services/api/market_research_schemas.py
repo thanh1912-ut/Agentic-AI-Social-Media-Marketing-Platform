@@ -102,6 +102,27 @@ class CollectionSettingsIn(StrictModel):
     post_limit: int = Field(default=50, ge=1, le=100)
 
 
+class ResearchPrivacyPolicyUpdate(StrictModel):
+    purpose: str = Field(min_length=10, max_length=4000)
+    processing_basis_reference: str = Field(min_length=5, max_length=4000)
+    policy_version: str = Field(min_length=1, max_length=100)
+    requested_retention_days: int = Field(default=90, ge=1, le=365)
+
+
+class ResearchPrivacyPolicyOut(StrictModel):
+    source_id: str
+    configured: bool
+    revision_no: int | None = None
+    purpose: str | None = None
+    processing_basis_reference: str | None = None
+    policy_version: str | None = None
+    requested_retention_days: int | None = None
+    configured_by: str | None = None
+    configured_at: datetime | None = None
+    retention_enforcement_status: Literal["not_enforced"] = "not_enforced"
+    comments_content_status: Literal["privacy_hold"] = "privacy_hold"
+
+
 class CollectionRunOut(StrictModel):
     id: str
     source_id: str
