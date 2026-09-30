@@ -111,6 +111,347 @@ def _create_group(client: TestClient, workspace_id: str, headers: dict[str, str]
     return response.json()["id"]
 
 
+def test_source_purge_is_owner_only_durable_and_idempotent(market_api, monkeypatch) -> None:
+    client, session_factory, _encryption_key = market_api
+    workspace_id, headers = _owner(client, "source-purge-owner@example.com")
+    group_id = _create_group(client, workspace_id, headers)
+    created = client.post(
+        f"/api/v1/workspaces/{workspace_id}/market-research/sources",
+        headers=headers,
+        json={
+            "group_id": group_id,
+            "source_type": "website",
+            "name": "Nguồn cần xóa",
+            "url": "https://example.com/research",
+        },
+    )
+    assert created.status_code == 201, created.text
+    source_id = created.json()["id"]
+    dispatched: list[str] = []
+
+    async def no_redis(job_id: str) -> bool:
+        dispatched.append(job_id)
+        return False
+
+    monkeypatch.setattr(market_research_routes, "dispatch_research_source_erasure_job", no_redis)
+    path = f"/api/v1/workspaces/{workspace_id}/market-research/sources/{source_id}/purge-collected-data"
+    first = client.post(path, headers=headers)
+    assert first.status_code == 202, first.text
+    second = client.post(path, headers=headers)
+    assert second.status_code == 202, second.text
+    assert first.json()["job_id"] == second.json()["job_id"]
+    assert dispatched == [first.json()["job_id"]]
+
+    async def read_state():
+        async with session_factory() as db:
+            source = await db.get(ResearchSource, source_id)
+            job = await db.get(Job, first.json()["job_id"])
+            from database.models import ResearchSourceErasure
+
+            erasure = await db.scalar(select(ResearchSourceErasure).where(
+                ResearchSourceErasure.source_id == source_id,
+            ))
+            assert source is not None and job is not None and erasure is not None
+            return source, job, erasure
+
+    source, job, erasure = asyncio.run(read_state())
+    assert source.active is False
+    assert source.schedule_enabled is False
+    assert source.status == "erasure_pending"
+    assert job.status == "queued"
+    assert job.last_dispatch_error == "queue_unavailable"
+    assert erasure.status == "queued"
+
+    async def demote_owner():
+        async with session_factory() as db:
+            membership = await db.scalar(select(Membership).where(Membership.company_id == workspace_id))
+            assert membership is not None
+            membership.role = "editor"
+            await db.commit()
+
+    asyncio.run(demote_owner())
+    denied = client.post(path, headers=headers)
+    assert denied.status_code == 403
+    assert denied.json()["error"]["code"] == "owner_required"
+
+
+def test_raw_research_upload_lease_is_cleared_after_storage_put(market_api, monkeypatch) -> None:
+    client, session_factory, _encryption_key = market_api
+    workspace_id, headers = _owner(client, "raw-upload-lease@example.com")
+    group_id = _create_group(client, workspace_id, headers)
+    created = client.post(
+        f"/api/v1/workspaces/{workspace_id}/market-research/sources",
+        headers=headers,
+        json={"group_id": group_id, "source_type": "website", "name": "Raw fixture", "url": "https://example.com/raw"},
+    )
+    assert created.status_code == 201, created.text
+    source_id = created.json()["id"]
+    monkeypatch.setattr(research_tasks, "SessionLocal", session_factory)
+
+    class FakeStorage:
+        def __init__(self):
+            self.keys: list[str] = []
+
+        async def put(self, key: str, _body: bytes) -> None:
+            self.keys.append(key)
+
+        async def delete(self, _key: str) -> None:
+            raise AssertionError("an active source must not delete its raw payload")
+
+    fake_storage = FakeStorage()
+    monkeypatch.setattr(research_tasks, "storage", fake_storage)
+
+    async def persist():
+        async with session_factory() as db:
+            source = await db.get(ResearchSource, source_id)
+            assert source is not None
+        evidence_id = await research_tasks._persist_evidence(
+            company_id=workspace_id, group_id=group_id, source=source,
+            url="https://example.com/raw/page", title="Fixture", text="Fixture body",
+            published_at=None, metrics={}, comments=[], raw_body=b"fixture body bytes",
+            observed_at=datetime.now(timezone.utc),
+        )
+        async with session_factory() as db:
+            observation = await db.scalar(select(MarketObservation).where(
+                MarketObservation.evidence_id == evidence_id,
+            ))
+            assert observation is not None
+            assert observation.raw_object_key is not None
+            assert observation.raw_upload_lease_until is None
+            return observation.raw_object_key
+
+    object_key = asyncio.run(persist())
+    assert fake_storage.keys == [object_key]
+
+
+def test_source_purge_removes_collected_rows_raw_object_and_tombstones_report(market_api, monkeypatch) -> None:
+    from database.models import (
+        AnalyticsRecommendationRecord,
+        CampaignBriefRevisionDraft,
+        MarketEvidenceVersion,
+        MarketObservation,
+        MarketReportEvidence,
+        ResearchCycle,
+    )
+    from services.worker import research_erasure_tasks
+
+    client, session_factory, _encryption_key = market_api
+    workspace_id, headers = _owner(client, "source-purge-worker@example.com")
+    group_id = _create_group(client, workspace_id, headers)
+    created = client.post(
+        f"/api/v1/workspaces/{workspace_id}/market-research/sources",
+        headers=headers,
+        json={
+            "group_id": group_id,
+            "source_type": "website",
+            "name": "Nguồn có evidence",
+            "url": "https://example.com/research-data",
+        },
+    )
+    assert created.status_code == 201, created.text
+    source_id = created.json()["id"]
+    async def no_redis(_job_id: str) -> bool:
+        return False
+
+    monkeypatch.setattr(market_research_routes, "dispatch_research_source_erasure_job", no_redis)
+
+    async def seed_research_data():
+        async with session_factory() as db:
+            now = datetime.now(timezone.utc)
+            user = (await db.scalars(select(User).where(User.email == "source-purge-worker@example.com"))).one()
+            cycle_job = Job(
+                id=new_id(), company_id=workspace_id, created_by=user.id,
+                kind="market_research", title="Fixture cycle", status="succeeded",
+                result={"group_id": group_id, "source_results": [{"source_id": source_id, "url": "https://example.com/research-data"}]},
+                idempotency_key="source-purge-cycle-job",
+            )
+            db.add(cycle_job)
+            await db.flush()
+            cycle = ResearchCycle(
+                id=new_id(), company_id=workspace_id, group_id=group_id, job_id=cycle_job.id,
+                cycle_key="source-purge-cycle", status="completed",
+                source_results_json=[{"source_id": source_id, "url": "https://example.com/research-data"}],
+                completed_at=now,
+            )
+            db.add(cycle)
+            evidence = MarketEvidence(
+                id=new_id(), company_id=workspace_id, group_id=group_id, source_id=source_id,
+                canonical_url="https://example.com/research-data/post", title="Fixture evidence",
+                text="Fixture source content", content_hash="a" * 64,
+                trust_level="external_unverified", first_seen_at=now, last_seen_at=now,
+            )
+            db.add(evidence)
+            await db.flush()
+            version = MarketEvidenceVersion(
+                id=new_id(), company_id=workspace_id, evidence_id=evidence.id,
+                content_hash="a" * 64, parser_version="fixture-v1", title=evidence.title,
+                text=evidence.text, captured_at=now,
+            )
+            db.add(version)
+            await db.flush()
+            observation = MarketObservation(
+                company_id=workspace_id, evidence_id=evidence.id, evidence_version_id=version.id,
+                observed_at=now, metrics_json={"reactions": 3}, comments_json=[],
+                raw_object_key=f"market-research/{workspace_id}/{source_id}/fixture.bin",
+                raw_sha256="b" * 64, raw_expires_at=now + timedelta(hours=1),
+                raw_upload_lease_until=now + timedelta(minutes=4),
+            )
+            db.add(observation)
+            await db.flush()
+            report = MarketReport(
+                id=new_id(), company_id=workspace_id, group_id=group_id, cycle_id=cycle.id,
+                window_start=now - timedelta(hours=1), window_end=now,
+                report_json={"headline": "Fixture summary", "private_source_excerpt": "fixture"},
+                evidence_ids_json=[evidence.id], coverage_json={"sources": [{"source_id": source_id}]},
+                model_name="fixture-model",
+            )
+            db.add(report)
+            await db.flush()
+            db.add(MarketReportEvidence(
+                company_id=workspace_id, group_id=group_id, report_id=report.id,
+                observation_id=observation.id, evidence_id=evidence.id,
+                evidence_version_id=version.id,
+            ))
+            campaign = Campaign(
+                id=new_id(), company_id=workspace_id, group_id=group_id,
+                name="Fixture report draft", status="draft",
+                brief_json={"market_research_context": {"report_id": report.id}, "must_include": []},
+                content_plan_json={}, pillars_json=[], channels_json=["facebook_page"],
+                version=1, created_by=user.id,
+            )
+            db.add(campaign)
+            recommendation = AnalyticsRecommendationRecord(
+                id=new_id(), company_id=workspace_id, source_id="fixture-source",
+                evidence_fingerprint="c" * 64,
+                recommendation_json={"status": "proposed", "observation": "Fixture", "metric": "engagement",
+                                     "confidence": 0.2, "sample_size": 1, "evidence_ids": [evidence.id],
+                                     "limitations": ["Fixture only"], "created_at": now.isoformat()},
+                lifecycle_status="applied",
+            )
+            db.add(recommendation)
+            await db.flush()
+            draft = CampaignBriefRevisionDraft(
+                id=new_id(), company_id=workspace_id, campaign_id=campaign.id,
+                recommendation_id=recommendation.id, base_version=1,
+                changes_json=[{"field": "must_include", "label": "Fixture", "before": [],
+                               "after": ["derived research detail"], "rationale": "derived source detail"}],
+                resulting_brief_json={"market_research_context": {"report_id": report.id},
+                                      "must_include": ["derived research detail"]},
+                status="pending_review", created_by=user.id,
+            )
+            db.add(draft)
+            await db.commit()
+            return evidence.id, version.id, observation.id, report.id, cycle.id, campaign.id, draft.id
+
+    evidence_id, version_id, observation_id, report_id, cycle_id, campaign_id, draft_id = asyncio.run(seed_research_data())
+    path = f"/api/v1/workspaces/{workspace_id}/market-research/sources/{source_id}/purge-collected-data"
+    accepted = client.post(path, headers=headers)
+    assert accepted.status_code == 202, accepted.text
+
+    deleted_objects: list[str] = []
+
+    class FakeStorage:
+        async def delete(self, key: str) -> None:
+            deleted_objects.append(key)
+
+    monkeypatch.setattr(research_erasure_tasks, "SessionLocal", session_factory)
+    monkeypatch.setattr(research_erasure_tasks, "storage", FakeStorage())
+    asyncio.run(research_erasure_tasks.research_source_erasure_task_async(accepted.json()["job_id"]))
+    assert deleted_objects == []
+
+    async def finish_inflight_raw_write():
+        async with session_factory() as db:
+            observation = await db.scalar(select(MarketObservation).where(
+                MarketObservation.evidence_id == evidence_id,
+            ))
+            job = await db.get(Job, accepted.json()["job_id"])
+            assert observation is not None and job is not None
+            assert job.status == "queued"
+            assert job.result["phase"] == "waiting_for_raw_uploads"
+            observation.raw_upload_lease_until = None
+            job.lease_until = datetime.now(timezone.utc)
+            await db.commit()
+
+    asyncio.run(finish_inflight_raw_write())
+    asyncio.run(research_erasure_tasks.research_source_erasure_task_async(accepted.json()["job_id"]))
+
+    async def assert_purged():
+        async with session_factory() as db:
+            source = await db.get(ResearchSource, source_id)
+            job = await db.get(Job, accepted.json()["job_id"])
+            report = await db.get(MarketReport, report_id)
+            cycle = await db.get(ResearchCycle, cycle_id)
+            campaign = await db.get(Campaign, campaign_id)
+            draft = await db.get(CampaignBriefRevisionDraft, draft_id)
+            from database.models import ResearchSourceErasure
+
+            erasure = await db.scalar(select(ResearchSourceErasure).where(
+                ResearchSourceErasure.source_id == source_id,
+            ))
+            assert source is not None and job is not None and report is not None and cycle is not None
+            assert campaign is not None and draft is not None
+            assert erasure is not None
+            assert await db.get(MarketEvidence, evidence_id) is None
+            assert await db.get(MarketEvidenceVersion, version_id) is None
+            assert await db.get(MarketObservation, observation_id) is None
+            assert await db.scalar(select(MarketReportEvidence.id).where(
+                MarketReportEvidence.report_id == report_id,
+            )) is None
+            assert report.report_json == {
+                "status": "source_data_erased",
+                "message": "Dữ liệu nghiên cứu nguồn đã được xóa; báo cáo cũ không còn dùng để tạo nội dung.",
+            }
+            assert report.evidence_ids_json == []
+            assert cycle.source_results_json == []
+            assert source.status == "erased" and not source.active
+            assert source.url == f"https://deleted.invalid/{source_id}"
+            assert erasure.status == "completed"
+            assert job.status == "succeeded"
+            assert "market_research_context" not in campaign.brief_json
+            assert campaign.brief_json["market_research_context_invalidated"]["reason"] == "source_data_erased"
+            assert draft.status == "invalidated"
+            assert draft.changes_json == []
+            assert draft.note is None
+            assert "report_id" not in draft.resulting_brief_json.get("market_research_context", {})
+
+    asyncio.run(assert_purged())
+    assert deleted_objects == [f"market-research/{workspace_id}/{source_id}/fixture.bin"]
+
+    # Simulate a put() completing after the purge worker has already finalized.
+    # If immediate object deletion fails, the completed job must become durable
+    # work again rather than leaving an orphaned storage object.
+    class FailingLateStorage:
+        async def delete(self, _key: str) -> None:
+            raise OSError("fixture storage outage")
+
+    monkeypatch.setattr(research_tasks, "SessionLocal", session_factory)
+    monkeypatch.setattr(research_tasks, "storage", FailingLateStorage())
+    asyncio.run(research_tasks._reconcile_raw_upload_after_purge(
+        company_id=workspace_id,
+        source_id=source_id,
+        object_key=f"market-research/{workspace_id}/{source_id}/late-object.bin",
+    ))
+
+    async def assert_late_object_requeued():
+        from database.models import ResearchSourceErasure, ResearchSourceErasureObject
+
+        async with session_factory() as db:
+            job = await db.scalar(select(Job).where(Job.kind == "research_source_erasure"))
+            request = await db.scalar(select(ResearchSourceErasure).where(
+                ResearchSourceErasure.source_id == source_id,
+            ))
+            obj = await db.scalar(select(ResearchSourceErasureObject).where(
+                ResearchSourceErasureObject.erasure_id == request.id,
+            ))
+            assert job is not None and request is not None and obj is not None
+            assert job.status == "queued"
+            assert request.status == "deleting_raw_objects"
+            assert obj.status == "pending"
+            assert obj.object_key.endswith("late-object.bin")
+
+    asyncio.run(assert_late_object_requeued())
+
+
 def test_research_ai_budget_is_workspace_scoped_and_reports_reserved_cost(market_api) -> None:
     client, session_factory, _encryption_key = market_api
     workspace_id, headers = _owner(client, "budget-owner@example.com")

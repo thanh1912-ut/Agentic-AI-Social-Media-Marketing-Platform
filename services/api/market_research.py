@@ -39,6 +39,7 @@ from database.models import (
     MetaSyncState,
     ResearchCycle,
     ResearchSource,
+    ResearchSourceErasure,
     ResearchPrivacyPolicyRevision,
     User,
     new_id,
@@ -50,7 +51,7 @@ from .db import get_db
 from .dependencies import current_user, membership_for, require_csrf, require_permission
 from .errors import ApiProblem
 from .permissions import has_permission
-from .job_service import accepted_response, dispatch_research_job
+from .job_service import accepted_response, dispatch_research_job, dispatch_research_source_erasure_job
 from .market_research_schemas import (
     DraftFromReportIn,
     GroupCreate,
@@ -1055,6 +1056,89 @@ async def delete_source(
     return None
 
 
+@router.post(
+    "/sources/{source_id}/purge-collected-data",
+    response_model=AcceptedResponse,
+    status_code=202,
+    dependencies=[Depends(require_csrf)],
+)
+async def purge_source_collected_data(
+    company_id: str,
+    source_id: str,
+    request: Request,
+    user: User = Depends(current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Queue removal of source-collected research rows and derived reports.
+
+    This action is deliberately distinct from disabling a source. It does not
+    certify legal erasure of copies already exported, published, or retained by
+    external providers/backups.
+    """
+    membership = await membership_for(company_id, user, db)
+    if membership.role != "owner":
+        raise ApiProblem(403, "owner_required", "Chỉ Owner mới được yêu cầu xóa dữ liệu thu thập của nguồn này.")
+
+    source = await db.scalar(select(ResearchSource).where(
+        ResearchSource.company_id == company_id,
+        ResearchSource.id == source_id,
+    ).with_for_update())
+    if source is None:
+        raise ApiProblem(404, "not_found", "Không tìm thấy nguồn nghiên cứu.")
+
+    existing = await db.scalar(select(ResearchSourceErasure).where(
+        ResearchSourceErasure.company_id == company_id,
+        ResearchSourceErasure.source_id == source_id,
+    ))
+    if existing is not None:
+        job = await db.scalar(select(Job).where(Job.company_id == company_id, Job.id == existing.job_id))
+        if job is None:
+            raise ApiProblem(409, "purge_job_missing", "Không tìm thấy tiến trình xóa dữ liệu đã tạo.")
+        return await accepted_response(db, job)
+    if source.status == "erased":
+        raise ApiProblem(409, "source_already_purged", "Dữ liệu thu thập của nguồn này đã được xóa.")
+
+    now = utcnow()
+    source.active = False
+    source.status = "erasure_pending"
+    source.collection_status = "erasure_pending"
+    source.schedule_enabled = False
+    source.next_due_at = None
+    source.error_json = None
+
+    job = Job(
+        id=new_id(), company_id=company_id, created_by=user.id,
+        kind="research_source_erasure", title="Xóa dữ liệu đã thu thập từ nguồn nghiên cứu",
+        status="queued", progress=0,
+        result={"source_id": source.id, "phase": "queued"},
+        idempotency_key=f"research-source-erasure:{source.id}",
+    )
+    db.add(job)
+    await db.flush()
+    erasure = ResearchSourceErasure(
+        id=new_id(), company_id=company_id, source_id=source.id, job_id=job.id,
+        requested_by=user.id, status="queued",
+    )
+    db.add(erasure)
+    db.add(JobStep(
+        job_id=job.id, step_key="purge_source_data", label="Xóa dữ liệu thu thập và vô hiệu báo cáo",
+        status="pending",
+    ))
+    db.add(AuditEvent(
+        company_id=company_id, actor_user_id=user.id, action="market.source.purge_requested",
+        entity_type="research_source_erasure", entity_id=erasure.id,
+        metadata_json={"source_type": source.source_type, "scope": "collected_source_data_and_reports"},
+    ))
+    await db.commit()
+
+    sent = await dispatch_research_source_erasure_job(job.id)
+    job.dispatch_attempts += 1
+    job.last_dispatch_at = now
+    job.last_dispatch_error = None if sent else "queue_unavailable"
+    await db.commit()
+    return await accepted_response(db, job)
+
+
 def _privacy_policy_out(source_id: str, row: ResearchPrivacyPolicyRevision | None) -> ResearchPrivacyPolicyOut:
     if row is None:
         return ResearchPrivacyPolicyOut(source_id=source_id, configured=False, collection_ready=False)
@@ -1421,7 +1505,7 @@ async def list_reports(
 ):
     await membership_for(company_id, user, db)
     await _tenant_group(db, company_id, group_id)
-    revision = await db.execute(select(func.count(MarketReport.id), func.max(MarketReport.created_at)).where(
+    revision = await db.execute(select(func.count(MarketReport.id), func.max(MarketReport.updated_at)).where(
         MarketReport.company_id == company_id, MarketReport.group_id == group_id,
     ))
     count, latest = revision.one()

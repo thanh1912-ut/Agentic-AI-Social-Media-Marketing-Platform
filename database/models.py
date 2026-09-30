@@ -854,6 +854,58 @@ class ResearchPrivacyPolicyRevision(Base, IdMixin):
     configured_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
 
 
+class ResearchSourceErasure(Base, IdMixin):
+    """Durable, source-scoped purge request; this is not a legal-erasure certification."""
+
+    __tablename__ = "research_source_erasures"
+    __table_args__ = (
+        UniqueConstraint("company_id", "source_id", name="uq_research_source_erasure_source"),
+        UniqueConstraint("company_id", "id", name="uq_research_source_erasure_tenant_id"),
+        UniqueConstraint("company_id", "job_id", name="uq_research_source_erasure_job"),
+        ForeignKeyConstraint(
+            ["company_id", "source_id"],
+            ["research_sources.company_id", "research_sources.id"],
+            name="fk_research_source_erasure_source_tenant",
+        ),
+        ForeignKeyConstraint(
+            ["company_id", "job_id"], ["jobs.company_id", "jobs.id"],
+            name="fk_research_source_erasure_job_tenant", ondelete="CASCADE",
+        ),
+        Index("ix_research_source_erasure_status", "status", "created_at"),
+    )
+
+    company_id: Mapped[str] = mapped_column(ForeignKey("companies.id", ondelete="CASCADE"), nullable=False)
+    source_id: Mapped[str] = mapped_column(String(36), nullable=False)
+    job_id: Mapped[str] = mapped_column(String(36), nullable=False)
+    requested_by: Mapped[str] = mapped_column(ForeignKey("users.id"), nullable=False)
+    status: Mapped[str] = mapped_column(String(32), default="queued", nullable=False)
+    object_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    error_code: Mapped[str | None] = mapped_column(String(80))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
+
+
+class ResearchSourceErasureObject(Base, IdMixin):
+    """Retryable storage-key queue for a source purge; keys are removed on completion."""
+
+    __tablename__ = "research_source_erasure_objects"
+    __table_args__ = (
+        UniqueConstraint("company_id", "erasure_id", "object_key", name="uq_research_source_erasure_object_key"),
+        ForeignKeyConstraint(
+            ["company_id", "erasure_id"],
+            ["research_source_erasures.company_id", "research_source_erasures.id"],
+            name="fk_research_source_erasure_object_tenant", ondelete="CASCADE",
+        ),
+        Index("ix_research_source_erasure_object_status", "company_id", "erasure_id", "status"),
+    )
+
+    company_id: Mapped[str] = mapped_column(String(36), nullable=False)
+    erasure_id: Mapped[str] = mapped_column(String(36), nullable=False)
+    object_key: Mapped[str] = mapped_column(String(1024), nullable=False)
+    status: Mapped[str] = mapped_column(String(20), default="pending", nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
+
+
 class CrawlHostThrottle(Base):
     """Shared request spacing for public collectors across worker processes."""
 
@@ -937,6 +989,7 @@ class MarketObservation(Base, IdMixin):
     raw_object_key: Mapped[str | None] = mapped_column(String(1024))
     raw_sha256: Mapped[str | None] = mapped_column(String(64))
     raw_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), index=True)
+    raw_upload_lease_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
 class MarketReport(Base, IdMixin, TimestampMixin):

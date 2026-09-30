@@ -32,6 +32,7 @@ from database.models import (
     MarketReport, MarketReportEvidence, MarketReportWebSnapshot, MetaPageConnection, MetaPageGroup,
     MetaPageMetricSnapshot, MetaPagePost, MetaPostMetricSnapshot, ResearchCycle,
     ResearchPrivacyPolicyRevision, ResearchSource, ResearchSourceMetricSnapshot,
+    ResearchSourceErasure, ResearchSourceErasureObject,
     WebCrawlPage, WebCrawlRun, WebEntity, WebEntitySnapshot, WebOfferSnapshot,
     new_id, utcnow,
 )
@@ -176,6 +177,15 @@ async def _persist_evidence(
     text = " ".join(text.split())[:12000]
     content_hash = hashlib.sha256(text.encode("utf-8")).hexdigest()
     async with SessionLocal() as db:
+        # Serialize persistence with an Owner's source-purge request. A crawl
+        # that was already in flight must not reinsert data after the source
+        # has been disabled for deletion.
+        active = await db.scalar(select(ResearchSource.active).where(
+            ResearchSource.company_id == company_id,
+            ResearchSource.id == source.id,
+        ).with_for_update())
+        if active is not True:
+            raise CrawlError("source_disabled", "Nguồn nghiên cứu đã bị tắt và không nhận thêm dữ liệu.")
         evidence = await db.scalar(select(MarketEvidence).where(
             MarketEvidence.company_id == company_id, MarketEvidence.source_id == source.id,
             MarketEvidence.canonical_url == url,
@@ -224,6 +234,7 @@ async def _persist_evidence(
                 evidence_version_id=version.id,
                 metrics_json=metrics, comments_json=comments, raw_object_key=key,
                 raw_sha256=raw_hash, raw_expires_at=expiry,
+                raw_upload_lease_until=now + timedelta(minutes=5) if key and raw_body else None,
             )
             db.add(observation)
             if key and raw_body:
@@ -292,7 +303,121 @@ async def _persist_evidence(
                     extra={"company_id": company_id, "source_id": source.id,
                            "evidence_id": evidence.id},
                 )
+            finally:
+                await _clear_raw_upload_lease(company_id, raw_to_upload[0])
+                # Purge can race the object-store write: it may delete a key
+                # after the DB pointer commits but before put() completes.
+                # Reconcile after the write and put failed deletes back on the
+                # durable erasure queue so a completed purge cannot orphan it.
+                await _reconcile_raw_upload_after_purge(
+                    company_id=company_id, source_id=source.id, object_key=raw_to_upload[0],
+                )
         return evidence.id
+
+
+async def _clear_raw_upload_lease(company_id: str, object_key: str) -> None:
+    async with SessionLocal() as db:
+        observation = await db.scalar(select(MarketObservation).where(
+            MarketObservation.company_id == company_id,
+            MarketObservation.raw_object_key == object_key,
+        ).with_for_update())
+        if observation is not None:
+            observation.raw_upload_lease_until = None
+            await db.commit()
+
+
+async def _reconcile_raw_upload_after_purge(
+    *, company_id: str, source_id: str, object_key: str,
+) -> None:
+    """Delete a late raw upload or durably requeue it for an in-progress purge."""
+    async with SessionLocal() as db:
+        source_active = await db.scalar(select(ResearchSource.active).where(
+            ResearchSource.company_id == company_id,
+            ResearchSource.id == source_id,
+        ))
+        erasure_job_id = await db.scalar(select(ResearchSourceErasure.job_id).where(
+            ResearchSourceErasure.company_id == company_id,
+            ResearchSourceErasure.source_id == source_id,
+        ))
+    if source_active is not False or not erasure_job_id:
+        return
+
+    async with SessionLocal() as db:
+        job = await db.scalar(select(Job).where(
+            Job.company_id == company_id,
+            Job.id == erasure_job_id,
+            Job.kind == "research_source_erasure",
+        ).with_for_update())
+        request = await db.scalar(select(ResearchSourceErasure).where(
+            ResearchSourceErasure.company_id == company_id,
+            ResearchSourceErasure.source_id == source_id,
+        ).with_for_update())
+        source = await db.scalar(select(ResearchSource).where(
+            ResearchSource.company_id == company_id,
+            ResearchSource.id == source_id,
+        ).with_for_update())
+        if job is None or request is None or source is None or source.active:
+            await db.rollback()
+            return
+        if job.status == "queued":
+            job.lease_until = utcnow()
+            request.status = "deleting_raw_objects"
+        await db.commit()
+
+    try:
+        await storage.delete(object_key)
+        return
+    except Exception:
+        logger.warning(
+            "Could not immediately remove late raw research upload; queueing durable retry",
+            extra={"company_id": company_id, "source_id": source_id},
+        )
+
+    async with SessionLocal() as db:
+        # Follow the erasure worker's lock order (job -> request -> source) so
+        # its final transaction and this late-upload recovery serialize.
+        job = await db.scalar(select(Job).where(
+            Job.company_id == company_id,
+            Job.id == erasure_job_id,
+            Job.kind == "research_source_erasure",
+        ).with_for_update())
+        request = await db.scalar(select(ResearchSourceErasure).where(
+            ResearchSourceErasure.company_id == company_id,
+            ResearchSourceErasure.source_id == source_id,
+        ).with_for_update())
+        source = await db.scalar(select(ResearchSource).where(
+            ResearchSource.company_id == company_id,
+            ResearchSource.id == source_id,
+        ).with_for_update())
+        if job is None or request is None or source is None or source.active:
+            await db.rollback()
+            return
+
+        row = await db.scalar(select(ResearchSourceErasureObject).where(
+            ResearchSourceErasureObject.company_id == company_id,
+            ResearchSourceErasureObject.erasure_id == request.id,
+            ResearchSourceErasureObject.object_key == object_key,
+        ).with_for_update())
+        if row is None:
+            db.add(ResearchSourceErasureObject(
+                id=new_id(), company_id=company_id, erasure_id=request.id,
+                object_key=object_key, status="pending",
+            ))
+            request.object_count += 1
+        else:
+            row.status = "pending"
+        request.status = "deleting_raw_objects"
+        request.finished_at = None
+        request.error_code = None
+        if job.status not in {"queued", "running"}:
+            job.status = "queued"
+            job.progress = min(job.progress, 30)
+            job.error = None
+            job.finished_at = None
+            job.lease_until = None
+            job.claim_token = None
+            job.result = {"source_id": source_id, "phase": "deleting_raw_objects"}
+        await db.commit()
 
 
 async def _persist_web_entities(
@@ -302,6 +427,12 @@ async def _persist_web_entities(
     if not entities:
         return 0
     async with SessionLocal() as db:
+        active = await db.scalar(select(ResearchSource.active).where(
+            ResearchSource.company_id == company_id,
+            ResearchSource.id == source_id,
+        ).with_for_update())
+        if active is not True:
+            return 0
         evidence_version = await db.scalar(select(MarketEvidenceVersion).where(
             MarketEvidenceVersion.company_id == company_id,
             MarketEvidenceVersion.evidence_id == evidence_id,
@@ -1872,7 +2003,7 @@ async def _run(job_id: str) -> None:
             source = await db.scalar(select(ResearchSource).where(
                 ResearchSource.company_id == company_id, ResearchSource.id == source_id,
             ))
-            if source is None:
+            if source is None or not source.active:
                 continue
             source_type = source.source_type
             privacy_policy_snapshot = (

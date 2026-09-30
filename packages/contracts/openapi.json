@@ -14101,6 +14101,74 @@
         ]
       }
     },
+    "/api/v1/workspaces/{company_id}/market-research/sources/{source_id}/purge-collected-data": {
+      "post": {
+        "description": "Queue removal of source-collected research rows and derived reports.\n\nThis action is deliberately distinct from disabling a source. It does not\ncertify legal erasure of copies already exported, published, or retained by\nexternal providers/backups.",
+        "operationId": "purge_source_collected_data_api_v1_workspaces__company_id__market_research_sources__source_id__purge_collected_data_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "company_id",
+            "required": true,
+            "schema": {
+              "title": "Company Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "source_id",
+            "required": true,
+            "schema": {
+              "title": "Source Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AcceptedResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Purge Source Collected Data",
+        "tags": [
+          "market-research"
+        ]
+      }
+    },
     "/api/v1/workspaces/{company_id}/market-research/web-items/{item_id}": {
       "get": {
         "operationId": "get_web_item_api_v1_workspaces__company_id__market_research_web_items__item_id__get",

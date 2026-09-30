@@ -416,3 +416,16 @@ Base đã kiểm tra: `codex/creative-studio-ui` @ `b769097bfdb3568889d974c6def9
 - PASS (SQLite/fixture): `tests/test_market_research_api.py tests/test_facebook_cli_collector.py` — 30 passed khi dùng shim `pgvector` tạm ngoài repo; test kiểm tra hành vi logic, không xác nhận kiểu vector/PostgreSQL.
 - BLOCKED: Không chạy được PostgreSQL integration trong môi trường hiện tại vì thiếu package `pgvector` thật và chưa xác nhận `POSTGRES_TEST_URL`.
 - NOT_RUN: Không gọi facebook-cli live, PostgreSQL/Redis, browser/API thật hoặc provider AI; preview `13104` giữ nguyên.
+
+### 2026-09-30 17:23 Asia/Ho_Chi_Minh — Hàng đợi xóa dữ liệu đã thu thập theo nguồn
+
+- DONE: Thêm migration `0026_research_source_erasure` với yêu cầu purge và hàng đợi object key có trạng thái retryable, tenant FK ghép; không sửa migration cũ.
+- DONE: Owner có thể yêu cầu purge qua `POST .../market-research/sources/{source_id}/purge-collected-data`. API tắt source/lịch và commit durable job trước khi dispatch; request lặp trả cùng job. Editor bị từ chối.
+- DONE: Worker xóa object raw theo lô, xóa evidence/version/observation và catalog snapshot của source, tombstone các report tham chiếu nguồn, gỡ context khỏi brief campaign; brief revision còn chờ duyệt bị chuyển `invalidated`.
+- DONE: Research worker kiểm tra source active trước persist. Observation giữ lease ngắn trong lúc object-store put; purge đợi lease đang hoạt động hết/được giải phóng, rồi xóa key. Sau put muộn, worker kiểm tra purge; nếu xóa object thất bại sau khi job đã hoàn tất thì tạo hàng pending và requeue durable job.
+- PASS (SQLite/API-worker fixture): `tests/test_market_research_api.py -k 'source_purge or raw_research_upload_lease'` — 3 passed; kiểm tra Owner/idempotency/dispatch outage, purge evidence/raw/report, vô hiệu brief draft, late-object retry và put lease cleanup.
+- PASS (regression): `tests/test_market_research_api.py tests/test_market_research_sources.py tests/test_facebook_cli_collector.py tests/test_research_privacy.py tests/test_website_entities.py` — 57 passed; Ruff, OpenAPI `--check` và `git diff --check` đạt.
+- PASS (SQLite migration order): Alembic fresh upgrade tới `0026`, downgrade về `0025`, upgrade lại tới `0026`; current revision đúng head. Chỉ xác nhận flow Alembic trên SQLite, không đại diện PostgreSQL.
+- PASS: Ruff cho các file Python đã sửa; `git diff --check` đạt.
+- BLOCKED: PostgreSQL migration `0025 → 0026` chưa chạy: PostgreSQL 18 disposable không khởi động được trong sandbox vì hệ điều hành từ chối `shmget`; PostgreSQL `127.0.0.1:15432` cũng không phản hồi. Redis/Celery recovery, object storage thật, Browser UI và test race đa-worker chưa chạy.
+- PARTIAL: Đây là purge dữ liệu nghiên cứu do ứng dụng quản lý theo một source, không phải xóa toàn bộ dữ liệu cá nhân hay chứng nhận pháp lý. Bản bài/approval/publication đã tạo, nội dung đã xuất/đăng, provider ngoài, cache/backup ngoài cơ chế này và deletion propagation toàn diện chưa được xử lý.

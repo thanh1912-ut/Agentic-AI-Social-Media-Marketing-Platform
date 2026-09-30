@@ -149,3 +149,13 @@ Không dùng các lệnh này nếu đã tái sử dụng các cổng cho tiến
 - `metadata_only_privacy_hold` nghĩa là hình/video chưa được kiểm tra điều kiện riêng tư và chưa tải hoặc gửi sang Gemini. Không coi loại attachment hoặc link là phân tích media hoàn tất.
 - Nếu Meta từ chối các trường attachment, collector lấy lại các trường bài/metrics ổn định và lưu `not_returned`; dữ liệu bài đọc được vẫn giữ.
 - Có thể kiểm tra API metadata trong Nghiên cứu hoặc Analytics. Dữ liệu cũ chưa được backfill, nên trạng thái lịch sử mặc định là `not_returned`.
+
+### Yêu cầu xóa dữ liệu đã thu thập từ một nguồn
+
+- Đây là thao tác riêng với “Ngừng theo dõi”. Chỉ Owner có thể gọi `POST /api/v1/workspaces/{workspace_id}/market-research/sources/{source_id}/purge-collected-data`; thao tác tắt source và lịch trước, rồi tạo durable job. Request lặp trả cùng `job_id`.
+- Theo dõi job qua endpoint job hiện có. Worker xóa raw object đã ghi nhận theo lô, xóa evidence/version/observation và catalog snapshots của source, tombstone report có tham chiếu, gỡ research context khỏi brief hiện tại và vô hiệu hóa brief revision đang chờ duyệt.
+- Trong khi collector ghi raw object, observation có `raw_upload_lease_until` tối đa 5 phút. Purge worker đưa job về queued tới khi lease được giải phóng hoặc hết hạn, rồi scheduler phục hồi; điều này tránh xóa key trước khi thao tác put kết thúc.
+- Nếu object storage lỗi, các object keys được giữ trong hàng đợi retry. Nếu collector vừa ghi raw object sau khi purge worker kết thúc, collector xóa lại; nếu thao tác đó lỗi, nó đưa object key vào hàng đợi và đưa job đã hoàn tất trở lại trạng thái queued để scheduler phục hồi.
+- Sau khi trạng thái nguồn thành `erased`, nguồn không thể bật lại; tạo nguồn mới nếu cần thu thập tiếp. Dữ liệu nguồn cũ không được tự khôi phục.
+- Giới hạn: thao tác này không xóa bài/campaign/post versions đã tạo thành nội dung nghiệp vụ, nội dung đã xuất hoặc đăng lên Facebook, dữ liệu provider ngoài, bản backup, hoặc bản sao ngoài storage/database mà ứng dụng không quản lý. Không dùng nó làm bằng chứng đã xử lý xong mọi yêu cầu chủ thể dữ liệu hoặc đã tuân thủ pháp luật.
+- Trước rollout, áp dụng migration `0026_research_source_erasure` trên database kiểm thử/triển khai theo quy trình migration chuẩn. Không chạy test purge trên nguồn thật của người dùng; dùng workspace và object storage fixture riêng. Nếu worker hoặc storage lỗi, không xóa thủ công các hàng pending; khôi phục worker/storage rồi để durable job retry.

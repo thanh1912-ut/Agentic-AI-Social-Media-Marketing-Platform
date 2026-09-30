@@ -159,6 +159,25 @@ async def dispatch_research_job(job_id: str) -> bool:
         return False
 
 
+async def dispatch_research_source_erasure_job(job_id: str) -> bool:
+    """Dispatch a durable privacy purge after its source is disabled and committed."""
+    if settings.inline_jobs:
+        from services.worker.research_erasure_tasks import research_source_erasure_task_async
+
+        await research_source_erasure_task_async(job_id)
+        return True
+    try:
+        from services.worker.celery_app import celery_app
+
+        celery_app.send_task(
+            "services.worker.research_erasure_tasks.research_source_erasure_task",
+            args=[job_id], queue="default",
+        )
+        return True
+    except Exception:
+        return False
+
+
 async def _record_dispatch(db: AsyncSession, job_id: str, sent: bool) -> None:
     job = await db.get(Job, job_id)
     if job is None:
@@ -186,6 +205,7 @@ async def dispatch_queued_jobs(db: AsyncSession) -> int:
     plan_dispatch: list[str] = []
     meta_dispatch: list[tuple[str, str]] = []
     research_dispatch: list[str] = []
+    erasure_dispatch: list[str] = []
     for job in jobs:
         if job.kind in {"content_generation", "content_revise"} and job.result and job.result.get("campaign_id"):
             if job.attempts >= settings.max_job_attempts:
@@ -250,6 +270,9 @@ async def dispatch_queued_jobs(db: AsyncSession) -> int:
                 continue
             job.lease_until = now + timedelta(minutes=settings.job_lease_minutes)
             research_dispatch.append(job.id)
+        elif job.kind == "research_source_erasure":
+            job.lease_until = now + timedelta(minutes=settings.job_lease_minutes)
+            erasure_dispatch.append(job.id)
 
     # Persist the lease before queue delivery. If Redis is unavailable, the
     # scheduler can safely retry after expiry without losing the DB job.
@@ -273,6 +296,10 @@ async def dispatch_queued_jobs(db: AsyncSession) -> int:
         count += int(sent)
     for job_id in research_dispatch:
         sent = await dispatch_research_job(job_id)
+        await _record_dispatch(db, job_id, sent)
+        count += int(sent)
+    for job_id in erasure_dispatch:
+        sent = await dispatch_research_source_erasure_job(job_id)
         await _record_dispatch(db, job_id, sent)
         count += int(sent)
     return count

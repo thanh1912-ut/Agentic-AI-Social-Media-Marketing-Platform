@@ -323,3 +323,19 @@ Lát cắt này không đáp ứng thu thập nội dung Group discussions, bài
 | Static checks | PASS | Ruff cho `services/worker/research_tasks.py` và test; `py_compile`; `git diff --check`. |
 | PostgreSQL integration | BLOCKED | Python hiện hành không có package `pgvector` thật; `POSTGRES_TEST_URL` chưa xác minh. Không chạy test PostgreSQL/Redis bằng shim SQLite. |
 | Live Group discussions | NOT_RUN / không hỗ trợ ở Tier 0 hiện tại | Không có bài/bình luận nhóm được thu thập; fixture hay metadata shell không được tính là crawl nội dung nhóm. |
+
+## Purge dữ liệu nghiên cứu theo nguồn — 2026-09-30 17:23 Asia/Ho_Chi_Minh
+
+Commit đang kiểm tra: worktree branch `codex/page-workspaces-research`; thay đổi chưa commit.
+
+| Kiểm tra | Trạng thái | Bằng chứng và giới hạn |
+|---|---|---|
+| Owner-only, tenant lookup, durable job, commit-before-dispatch | PASS (SQLite/API fixture) | `tests/test_market_research_api.py::test_source_purge_is_owner_only_durable_and_idempotent`: request lặp trả cùng job; dispatch thất bại giữ job queued; Editor bị từ chối; source và lịch bị tắt. |
+| Xóa raw object/evidence/report và tombstone source | PASS (SQLite/worker fixture) | `tests/test_market_research_api.py::test_source_purge_removes_collected_rows_raw_object_and_tombstones_report`: object fixture bị xóa; evidence/version/observation và report links bị xóa; report giữ tombstone; source được làm sạch metadata và đánh dấu erased. |
+| Ngăn brief cũ được áp dụng lại | PASS (SQLite/worker fixture) | Campaign research context bị gỡ; brief revision đang `pending_review` chuyển `invalidated`, changes/note được gỡ. Không thay đổi post/campaign content đã phát hành. |
+| Raw put lease và late upload retry | PASS (SQLite/worker fixture) | Test raw upload xác nhận lease được xóa sau put; purge bị trì hoãn khi lease còn hiệu lực. Sau khi purge hoàn tất, mô phỏng object upload muộn và storage delete thất bại; worker phục hồi thêm pending key và đưa job đã xong về queued để scheduler retry. Không phải concurrency test nhiều worker trên PostgreSQL. |
+| Backend focused | PASS | `PYTHONPATH=/private/tmp/page-workspace-test-shim pytest -q -p no:cacheprovider tests/test_market_research_api.py tests/test_market_research_sources.py tests/test_facebook_cli_collector.py tests/test_research_privacy.py tests/test_website_entities.py` — 57 passed. Shim chỉ xử lý import dependency còn thiếu; API/worker fixture DB vẫn SQLite. Ruff, OpenAPI `--check`, Python AST parse và `git diff --check` đạt. |
+| Migration 0026 trên SQLite | PASS (migration syntax/order only) | Database tạm `/private/tmp/page-workspaces-erasure-migration.db` nâng mới từ base tới head, downgrade từ `0026` về `0025`, nâng lại tới `0026`; `alembic current` xác nhận head. Đây không xác minh PostgreSQL FK/index/locking semantics. |
+| Migration 0026 trên PostgreSQL | BLOCKED | PostgreSQL test tại `127.0.0.1:15432` không phản hồi. PostgreSQL 18 disposable cũng không khởi động được vì sandbox từ chối system call `shmget`; không chạy Alembic migration trên PostgreSQL. SQLite `Base.metadata.create_all`/Alembic không thay cho kiểm thử PostgreSQL. |
+| Redis/Celery recovery, storage thật, API/browser UI | NOT_RUN | Chưa chạy worker/Beat thật, chưa test migration trên PostgreSQL, object storage, real browser hoặc preview. |
+| Phạm vi xóa | PARTIAL | Xóa dữ liệu nghiên cứu do ứng dụng quản lý theo source và vô hiệu báo cáo/brief đang chờ. Không xóa bản đã xuất/đăng, post versions/campaign copy đã tạo, provider ngoài, backup ngoài cơ chế này hoặc dữ liệu ngoài ứng dụng; không phải chứng nhận tuân thủ pháp luật. |
