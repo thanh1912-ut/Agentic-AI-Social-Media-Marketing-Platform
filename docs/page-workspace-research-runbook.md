@@ -31,7 +31,8 @@ python scripts/local_preview_runtime.py probe-model
 `status` chỉ hiện có/thiếu key và model. `probe-model` chỉ GET metadata model, không tạo nội dung.
 Key đã được Owner nạp và model đã trả khả dụng. Hai smoke tổng hợp qua Redis/Celery/PostgreSQL
 test chưa tạo được phân tích: lần thứ hai nhận HTTP 503. Không gọi lặp hoặc tự đổi model;
-reservation chưa rõ kết quả giữ để đối soát. `analysis_error_code=provider_http_503` không chứa body/key.
+reservation chưa rõ kết quả giữ để đối soát. Bản mới trả mã `provider_http_503` đã làm sạch khi phù hợp;
+hai job smoke cũ được tạo trước thay đổi này nên không được mô tả như đã lưu trường mã lỗi mới.
 
 Text adapter reserve tạm theo toàn bộ trần đầu vào 1.048.576 token và output đã cấu hình,
 không ước lượng token từ ký tự. Settlement dùng usage thật, gồm thinking tokens, rồi nhả phần
@@ -43,6 +44,57 @@ Page encryption key nằm trong `secrets/page-connection.env`, quyền `0600`, t
 Key được tạo một lần sau khi xác minh preview chưa có token mã hóa; giữ bền vững qua restart.
 Không tạo lại key khi có token đã lưu. Backup key riêng với database; không ghi giá trị trong docs.
 
+## Preview đang chạy và khởi động lại
+
+Checkout: `/Users/lethanh/.codex/worktrees/page-workspaces-research/agent`.
+Frontend real: `http://127.0.0.1:13104`; API/readiness: `http://127.0.0.1:8001/readyz`.
+Schema preview đã nâng lên `0026_research_source_erasure`. PostgreSQL15432, queue16379/4,
+cache16380/4 và storage bền vững của preview giữ nguyên.
+
+Launcher API/worker trong LaunchAgent dùng Python tại
+`/Users/lethanh/.local/share/agentic-marketing/auth-preview/venvs/api-py311/bin/python`;
+ingestion dùng venv `docling-py314`, không nhận API key AI. Không chạy installer toàn bộ để đổi key.
+
+```bash
+/Users/lethanh/.local/share/agentic-marketing/auth-preview/venvs/api-py311/bin/python scripts/local_preview_runtime.py status
+python3 apps/web/scripts/creative-studio-preview.py status
+```
+
+Trước khi thay backend/worker, kiểm tra job queued/running và để lượt đang xử lý kết thúc.
+Các label thuộc preview này:
+`com.agentic-marketing.auth-preview-api`, `-worker`, `-ingestion`, `-beat`, `-web`.
+Mỗi lệnh chỉ nhắm label đã xác minh; không dừng PostgreSQL/Redis dịch vụ khác.
+
+```bash
+# Restart chỉ API để nạp lại cấu hình/code đã kiểm tra.
+launchctl kickstart -k "gui/$(id -u)/com.agentic-marketing.auth-preview-api"
+# Dừng một worker sau khi drain, giữ database/queue/storage.
+launchctl bootout "gui/$(id -u)/com.agentic-marketing.auth-preview-worker"
+# Khởi động lại worker đã dừng; dùng đúng plist hiện có.
+launchctl bootstrap "gui/$(id -u)" "$HOME/Library/LaunchAgents/com.agentic-marketing.auth-preview-worker.plist"
+```
+
+Maintenance backup database/storage trước migration:
+`/Users/lethanh/.local/share/agentic-marketing/backups/page-workspace-maintenance-20260930T154320Z`.
+Bundle chứa dump, storage archive, checksum manifest và plist trước rollout; không chứa bản sao AI key.
+Giữ khóa mã hóa token riêng. Bản preflight online trước đó nằm ở bundle có chữ `preflight`,
+không được mô tả là backup nhất quán khi dịch vụ đang ghi.
+
+Final maintenance bundle đã restore vào database/storage test riêng, checksum, counts55 bảng lịch sử
+và hash3 file storage khớp, schema0026. Chưa thử browser/login ứng dụng restored. Bundle được tạo
+trước khi Owner kết nối Page thật; cần backup mới theo lịch vận hành để bảo vệ thay đổi sau đó.
+
+Frontend được đóng gói thành release bất biến; release cũ/plist giữ riêng để rollback:
+
+```bash
+python3 apps/web/scripts/creative-studio-preview.py activate
+python3 apps/web/scripts/creative-studio-preview.py rollback
+```
+
+Chỉ activate build real mới đã đạt checks. Frontend rollback không đổi backend hoặc schema.
+Sau schema0026 không restore backend cũ thiếu Page gate; nếu lỗi, dùng bản mới giữ gate hoặc
+tắt phần collector/AI trong khi sửa. Không downgrade migration hoặc restore đè database người dùng.
+
 ## Onboarding doanh nghiệp
 
 1. Đăng ký/đăng nhập bằng tài khoản Agentic Marketing. Đăng ký tạo tài khoản và phiên, chưa tạo doanh nghiệp.
@@ -50,6 +102,28 @@ Không tạo lại key khi có token đã lưu. Backup key riêng với database
 3. Backend đọc Page identity và thử đọc một trang bài công khai; không đăng bài thử. Khi thành công, workspace lấy tên Page, lưu avatar an toàn nếu URL ảnh phù hợp, mã hóa token và tạo Owner/Brand trống.
 4. Brand Profile vẫn do Owner tự viết. Page name/avatar chỉ là nhận diện workspace.
 5. Thành viên khác tham gia bằng lời mời. Có token không tự cấp quyền thành viên.
+
+Màn hình chọn doanh nghiệp luôn giữ nút Đăng xuất và không tự mở workspace duy nhất.
+Logout lỗi giữ phiên/cache để người dùng thử lại; backend xác nhận thành công mới xóa cache.
+
+### Chẩn đoán kết nối Page
+
+Onboarding/reconnect đọc `/me` để kiểm tra token có cùng Page ID và có Page-only category, rồi đọc
+`/{page_id}/posts?fields=id&limit=1`. Không yêu cầu các trường media/metrics ở bước kích hoạt;
+Page chưa có bài vẫn có thể qua kiểm tra quyền đọc. Metadata không chứng minh quyền publish.
+
+- `meta_page_identity_mismatch`: token đại diện một danh tính khác; lấy Page Access Token cho đúng Page.
+- `meta_page_type_unverified`: identity khớp nhưng thiếu category của Page; không dùng token profile cá nhân để kích hoạt doanh nghiệp. Kiểm tra lại Page token, không bỏ guard.
+- `meta_token_invalid`: Meta báo token hết hạn/thu hồi/không hợp lệ.
+- `meta_page_identity_rejected`: Meta từ chối bước identity; chưa thể kết luận quyền đọc bài.
+- `meta_page_permission_missing`: identity khớp, Meta từ chối posts edge tối thiểu; kiểm tra quyền ứng dụng/Page, đặc biệt `pages_read_engagement`, trước khi tạo lại Page token.
+- `meta_rate_limited`: HTTP429; chờ rồi thử lại, không tạo token mới chỉ vì rate limit.
+- `meta_verification_failed`: lỗi mạng/upstream/response; giữ dữ liệu và kết nối cũ, có thể thử lại.
+
+Error `details` và log chỉ chứa `verification_step`, HTTP status khi có phản hồi Meta, Graph code/subcode và request ID.
+Lỗi validation cục bộ không tạo HTTP status upstream giả.
+Không log provider message, payload, token, tên người hoặc nội dung Page. Gửi mã yêu cầu để tra cứu,
+không gửi token vào chat. Token/ID phải lấy cùng Page từ [collection chính thức của Meta](https://www.postman.com/meta/facebook/request/bqfxwbp/get-access-tokens-of-pages-you-manage).
 
 API dùng trong vận hành:
 
@@ -63,7 +137,7 @@ Không đưa token vào tài liệu, ticket, browser storage, query string hoặ
 ## Secrets
 
 - Không dán API key, Page Access Token hoặc cookie vào chat, frontend bundle, Git hay log.
-- DeepSeek/Gemini/Qwen chỉ được nạp từ backend secret store/runtime environment.
+- Gemini đang được nạp từ backend secret store/runtime environment. DeepSeek/Qwen không là provider hoạt động.
 - Page Access Token phải được mã hóa server-side bằng `META_TOKEN_ENCRYPTION_KEY`.
 - Mẫu biến cấu hình sẽ dùng placeholder; file này không chứa giá trị bí mật.
 
@@ -89,28 +163,28 @@ Không đưa token vào tài liệu, ticket, browser storage, query string hoặ
 - Public Page chạy collector `facebook-cli` Tier 0 hiện có; không đăng nhập. Public Group chỉ có thể trả thông tin nhóm, không có thảo luận Tier 1. Không báo hoàn thành toàn bộ lịch sử.
 - Với Group mới, nhập URL trang chủ `https://www.facebook.com/groups/{id-or-slug}`. Bật/tắt lịch trên thẻ nguồn; Crawl ngay chạy dù lịch tắt. Runner chỉ đọc shell metadata công khai qua Tier 0, không gọi feed; run được lưu `partial`, `history_complete=false`, không sinh report từ metadata đơn lẻ. Nếu privacy không xác nhận public, trạng thái là `group_not_public` và lịch không tiếp tục tự thử. Nguồn public Group cần binary tại `FACEBOOK_CLI_RUNNER_PATH` đã build từ bản upstream ghim.
 - Bình luận hiện ở trạng thái `privacy_hold`: chỉ số tổng hợp có thể lưu, nhưng text bình luận mới không tải/lưu/gửi cho agent. Endpoint nhập thủ công cũng bỏ qua comment text và trả `comments_withheld_count`. Văn bản bài Facebook và manual import chạy qua `facebook-contact-patterns-v1`, che email, điện thoại và cụm địa chỉ nhà có nhãn rõ; observation ghi số lượng/phiên bản bộ lọc. Bộ lọc không phát hiện tên hoặc mọi kiểu PII, không phải cơ chế ẩn danh. Media chưa có pipeline tải/phân tích.
-- Vì vậy, evidence Facebook chưa được gửi dạng tiêu đề/nội dung vào DeepSeek. Report chỉ có Facebook trả `deferred_privacy_review` và không gọi model; report lẫn website chỉ gửi metrics/IDs và nhãn giữ nội dung từ Facebook. Kết quả cache chỉ được phát lại khi fingerprint evidence/version/trạng thái Facebook khớp với lượt hiện tại. Chưa có đường chuyển trạng thái sang `approved_for_provider`.
+- Vì vậy, evidence Facebook chưa được gửi dạng tiêu đề/nội dung vào provider đang chọn (Gemini). Report chỉ có Facebook trả `deferred_privacy_review` và không gọi model; report lẫn website chỉ gửi metrics/IDs và nhãn giữ nội dung từ Facebook. Kết quả cache chỉ được phát lại khi fingerprint evidence/version/trạng thái Facebook khớp với lượt hiện tại. Chưa có đường chuyển trạng thái sang `approved_for_provider`.
 - Owner có thể xem/ghi nhận cấu hình theo nguồn tại `GET/PUT /api/v1/workspaces/{workspace_id}/market-research/sources/{source_id}/privacy-policy`: mục đích, tham chiếu hồ sơ căn cứ, phiên bản chính sách và thời hạn lưu dự kiến (1–365 ngày, mặc định UI 90). Thao tác yêu cầu Owner + CSRF; các revision giữ lịch sử, gửi lại đúng cùng nội dung idempotent.
 - Nguồn Facebook mới ở `needs_privacy_policy`; worker và manual import kiểm tra lại mục đích/tham chiếu trước khi xử lý. Khi đủ trường cấu hình, nguồn được mở lại cho collector theo lịch đã chọn. `collection_ready` chỉ có nghĩa là đủ trường; `legal_basis_verified` luôn `false`. Đây không xác minh quyền xử lý, sự đồng ý hay tuân thủ. Nếu tổ chức chưa xác định được căn cứ áp dụng, giữ nguồn tạm dừng thay vì nhập dữ liệu giả để vượt gate.
 - Trạng thái response luôn `retention_enforcement_status=not_enforced` và `comments_content_status=privacy_hold`. Riêng raw payload quarantine có lịch xóa kỹ thuật 24 giờ; thời hạn do Owner ghi trong form chưa được áp dụng lên nội dung chuẩn hóa. Nhập mục đích/căn cứ không chứng minh quyền xử lý hoặc đồng ý của chủ thể và không mở comment/media sang provider. Audit log không chứa văn bản mục đích/căn cứ.
 - Nguồn pháp luật chính thức được kiểm tra ngày 2026-09-30: [Luật 91/2025/QH15](https://vanban.chinhphu.vn/?classid=1&docid=214590&pageid=27160&typegroupid=3) và [Nghị định 356/2025/NĐ-CP](https://vanban.chinhphu.vn/?classid=1&docid=216387&orggroupid=2&pageid=27160). Cổng Chính phủ ghi cả hai có hiệu lực từ 01-01-2026. Lượt kiểm tra này chỉ xác nhận thông tin văn bản/ngày hiệu lực, không phải rà soát điều khoản, ý kiến pháp lý hoặc kết luận rằng sản phẩm/tổ chức tuân thủ.
 - Khi mở một lượt public Facebook mới, worker chụp ID/no/version và thời hạn yêu cầu của policy revision mới nhất vào `WebCrawlRun.config_json`. Đây là provenance bất biến theo lượt; chỉnh policy về sau không sửa lịch sử lượt cũ. Nếu lượt không có policy, API trả trường revision rỗng. Cả hai trường hợp vẫn giữ `privacy_hold`/`not_enforced`.
 - Campaign tạo từ hướng viết của báo cáo giữ `report_id`, evidence version, observation, content hash và metrics cụ thể. Worker dùng pin đó; nếu report không có pin hoặc source đã tắt/xóa thì dừng để người dùng chọn lại. Comment text không được đưa vào Content Agent.
-- Báo cáo DeepSeek mới dùng hồ sơ `manual_text_v1` của Owner chỉ khi đó là revision hiện hành đã áp dụng; report JSON và coverage giữ `brand_id`, `revision_id` và số revision. Campaign draft lưu provenance này để giữ đúng ngữ cảnh lịch sử. Hồ sơ legacy/AI cũ không được gửi làm hướng dẫn thương hiệu. Nếu chưa có hồ sơ Owner, báo cáo vẫn có thể phân tích nguồn nhưng phải ghi rõ chưa cá nhân hóa.
+- Báo cáo AI mới dùng hồ sơ `manual_text_v1` của Owner chỉ khi đó là revision hiện hành đã áp dụng; report JSON và coverage giữ `brand_id`, `revision_id` và số revision. Campaign draft lưu provenance này để giữ đúng ngữ cảnh lịch sử. Hồ sơ legacy/AI cũ không được gửi làm hướng dẫn thương hiệu. Nếu chưa có hồ sơ Owner, báo cáo vẫn có thể phân tích nguồn nhưng phải ghi rõ chưa cá nhân hóa.
 - Các giá trị nội bộ `Chưa xác định`, `unknown`, `not specified` và `n/a` không được biến thành audience hay market scope. Nếu chưa khai báo ngành/vùng rõ ràng, brief tạo từ report để audience rỗng thay vì bịa chân dung khách hàng.
 - Snapshot website được chọn cũng phải thuộc cùng report/tenant và source còn active; worker chuyển phần dữ liệu đã allowlist (không kèm URL ảnh ký tạm) vào Content Agent, rồi xác minh lại các pin trước khi lưu draft.
 - Lỗi nguồn mới không được xóa kết quả nguồn thành công trước đó.
 - Raw research payload nếu cần quarantine được gắn hạn xóa tối đa 24 giờ; scheduler thử xóa object đến hạn và chỉ gỡ DB pointer sau khi storage xác nhận xóa. Nếu storage lỗi, pointer giữ lại để lần scheduler sau thử lại. Nội dung nghiên cứu chuẩn hóa 90 ngày, media 30 ngày và propagation khi có yêu cầu xóa vẫn chưa được triển khai đầy đủ; không coi raw TTL hoặc trường thời hạn trong policy form là cơ chế xóa dữ liệu cá nhân hoàn chỉnh.
 
-## Adapter Qwen đang ở trạng thái fixture-only
+## Adapter Qwen — lịch sử, không được chọn
 
 Adapter text yêu cầu `QWEN_API_KEY`, `QWEN_MODEL` và `QWEN_BASE_URL` do quản trị viên cung cấp từ secret store/runtime. `QWEN_BASE_URL` phải là HTTPS endpoint Model Studio đúng region/workspace; không dùng endpoint giả định. Có thể cấu hình `QWEN_MAX_TOKENS`, còn giới hạn input dùng `LLM_MAX_INPUT_CHARS`. Qwen chỉ có method `summarize_screened_comments(PrivacyApprovedCommentBatch)`; đường `generate` tổng quát bị khóa. Batch cần policy decision/version và run-scoped evidence refs, không có trường author/profile; decision ID/version chỉ dùng nội bộ, không gửi model. Adapter kiểm tra mọi citation trả về có trong batch và tắt repair/retry để tránh lời gọi chưa reserve chi phí. Hiện chưa có route gọi adapter từ pipeline bình luận, chưa có Qwen pricing entry trong ledger và chưa có key/region đã nghiệm thu. Không bật bằng cách chỉ đặt ba biến; trước hết cần privacy-approved comment batch và mức giá phù hợp model/region. Xem [endpoint OpenAI-compatible chính thức](https://www.alibabacloud.com/help/en/model-studio/qwen-api-via-openai-chat-completions) và [quy tắc JSON output](https://docs.modelstudio.console.alibabacloud.com/en/model-studio/qwen-structured-output); model/region/pricing phải được xác nhận cho đúng tài khoản.
 
-## Adapter Gemini đang ở trạng thái fixture-only
+## Adapter Gemini media — fixture-only, khác text adapter đang dùng
 
 Media adapter yêu cầu `GEMINI_API_KEY` và `GEMINI_MODEL` tường minh; không có model mặc định hoặc fallback. Chỉ nhận byte ảnh/video đã được service gọi đánh dấu privacy-approved, có SHA-256, source/evidence IDs và MIME allowlist; cờ đó là kiểm tra phòng thủ, không thay thế quyết định pháp lý/căn cứ xử lý của tầng sở hữu dữ liệu. Adapter không nhận URL, không tải asset, không gọi Files API, không tự sửa output và không retry. Asset tối đa mặc định 10 MiB, tổng JSON request không quá 20 MiB; video lớn/dài bị từ chối chờ tích hợp upload/deletion/budget phù hợp. `estimated_cost_usd` chưa có giá trị thực, `cost_estimate_available=false`; không nối vào pipeline tự động trước khi ledger giữ reservation theo model/usage. Tài liệu Google mô tả giới hạn inline và Files API cho asset lớn/tái sử dụng: [video](https://ai.google.dev/gemini-api/docs/video-understanding), [ảnh](https://ai.google.dev/gemini-api/docs/image-understanding), [structured output](https://ai.google.dev/gemini-api/docs/structured-output).
 
-## Trạng thái ban đầu
+## Trạng thái khảo sát ban đầu — lịch sử
 
 - Account-only registration, Page-based workspace activation và reconnect được triển khai trong nhánh này; vẫn cần kiểm chứng migration trên PostgreSQL thật.
 - UI Nghiên cứu không yêu cầu người dùng chọn nhóm. Cấu trúc lưu trữ legacy vẫn group-scoped.
@@ -122,8 +196,8 @@ Không bật xử lý comment/media từ cờ thủ công. Trước khi mở cá
 
 ## Phần chưa sẵn sàng
 
-- Gemini và Qwen chưa có model ID/region/key được xác minh hoặc routing production; DeepSeek hiện là adapter cho báo cáo Nghiên cứu. Không tự fallback giữa provider.
-- Ledger hiện ghi chi phí tự động cho báo cáo Nghiên cứu DeepSeek và ghi riêng từng lời gọi DeepSeek do người dùng chủ động chạy trong campaign planning, tạo bài và sửa bài. Lời gọi tương tác dùng `budget_class=interactive`, không trừ hạn mức tự động 2 USD/ngày. Gemini/Qwen, media và các callsite khác chưa được route vào ledger. Trang Nghiên cứu đọc riêng hạn mức tự động qua `GET .../market-research/ai-budget`; tổng chi phí tương tác chưa có màn hình tổng hợp.
+- Gemini model/key và routing text đã được xác minh/cấu hình; live generation chưa đạt vì HTTP503. Media/comment pipeline chưa nối. Không fallback sang DeepSeek/Qwen.
+- Ledger ghi tác vụ Gemini tự động cho research và tương tác cho planning/generate/revise/review. Lời gọi tương tác dùng `budget_class=interactive`, không trừ hạn mức tự động2 USD/ngày. Media/comment production chưa route. Trang Nghiên cứu đọc hạn mức tự động qua `GET .../market-research/ai-budget`; tổng chi phí tương tác chưa có màn hình tổng hợp.
 - Chưa tải hay gửi ảnh/video đến provider; không tuyên bố media analysis đã chạy.
 - Không có full comment pagination/replies hoặc database checkpoint mới. Coverage là `privacy_hold`/Tier 0 partial.
 - Không tự nhận hệ thống tuân thủ đầy đủ Luật 91/2025/QH15 hoặc Nghị định 356/2025/NĐ-CP.
@@ -150,7 +224,7 @@ Chạy `python scripts/local_preview_runtime.py status` bằng virtualenv của 
 - Backend API: dùng lệnh service/test đã cấu hình của checkout, không bật `AUTO_CREATE_SCHEMA` hay inline jobs để nghiệm thu.
 - Migration phải chạy `alembic upgrade head` trên database test riêng trước rollout; không chạy rollback phá lịch sử.
 - Đừng thay API/workers đang phục vụ preview. Drain worker cũ trước khi thay backend và giữ snapshot/rollback tương thích Page gate.
-- Cấu hình key dạng placeholder trong secret store: `DEEPSEEK_API_KEY=<secret>`, `GEMINI_API_KEY=<secret>`, `QWEN_API_KEY=<secret>`; hiện chỉ adapter DeepSeek đang được dùng.
+- Cấu hình active ở đầu tài liệu: `GEMINI_API_KEY=<secret>` và model3.8; giữ secret legacy, không forward chúng vào process active.
 
 ### Ngân sách AI tự động hiện có
 
@@ -160,14 +234,27 @@ Chạy `python scripts/local_preview_runtime.py status` bằng virtualenv của 
 - DeepSeek dùng giá peak/cache-miss và upper bound cho đầu vào cùng một lần repair. Bảng đã ghi nhận `deepseek-flash`, `deepseek-v4-pro`, `gemini-3.8-flash` và `qwen3.8-27b`; phiên hiện tại là `provider-public-pricing-2026-09-30-v2`.
 - Gemini `gemini-3.8-flash`: $0.75/1M input và $3.75/1M output theo giá Standard introductory, chỉ đến hết 2026-12-31; sau ngày đó helper từ chối giá cũ cho tới khi được rà soát lại. Nguồn: [Google Gemini model update](https://ai.google.dev/gemini-api/docs/latest-model) và [bảng giá Gemini](https://ai.google.dev/gemini-api/docs/pricing).
 - Qwen `qwen3.8-27b`: $0.50/1M input và $3/1M output theo deployment International tại Singapore; dùng full list price, không trừ free quota/khuyến mại. `price_for` bắt buộc `region=singapore`; region khác trả `pricing_region_unverified`. Nguồn: [Alibaba Model Studio pricing](https://www.alibabacloud.com/help/en/model-studio/model-pricing) và [trang model Qwen3.8-27B](https://docs.modelstudio.console.alibabacloud.com/en/model-studio/qwen3-8-27b).
-- Gemini/Qwen vẫn chưa được gọi từ worker. Reservation của provider ngoài DeepSeek yêu cầu caller truyền giới hạn token tường minh; với media, character count không phải upper bound an toàn. Tích hợp phải tính cả retry/attempt trước khi mở pipeline.
-- Hạn mức 2 USD/ngày áp dụng cho lượt tự động. Lời gọi tương tác được ghi ở ledger riêng để đối soát, không bị âm thầm đổi model hoặc tính vào quota tự động. Các provider Gemini/Qwen, media và các tác vụ tự động khác vẫn chưa được route qua ledger.
+- Gemini text được route trong worker/review; reserve dùng trần input/output thật của model và không retry/repair. Media vẫn chưa có bound/ledger production; character count không phải upper bound an toàn cho media. Qwen không active.
+- Hạn mức2 USD/ngày áp dụng cho lượt tự động. Lời gọi tương tác ghi ở ledger riêng, không bị âm thầm đổi model hoặc tính vào quota tự động. Comment/media pipeline tự động chưa nối.
 - Với campaign plan và content generate/revise, kết quả provider được cache trong ledger để retry cùng job không gọi lại. Khi job thành công, cache được xóa cùng transaction lưu bản chính; nếu job lỗi, cache được giữ để retry an toàn. Chưa có TTL tự dọn cache của job lỗi, vì vậy không xóa các ledger rows thủ công trước khi đối soát job.
 - Chi phí interactive hiện có trong job result và `ContentGenerationRun.run_metadata_json`; trang Ngân sách chưa hiển thị tổng interactive. API `/market-research/ai-budget` chỉ trả trạng thái hạn mức tự động.
 - DeepSeek rates: [bảng giá DeepSeek chính thức](https://api-docs.deepseek.com/quick_start/pricing/). Giá là snapshot đã ghi nhận; model/rate ngoài bảng fail closed.
 - Nếu usage thiếu hoặc không xác định được model trả về, ledger giữ reservation ở `unknown`; không tự nhả ngân sách hay gọi lặp. Đối soát hiện chưa có giao diện.
 
-### PostgreSQL/Redis test cách ly của lần xác minh này
+### PostgreSQL/Redis test cách ly hiện tại
+
+Lượt gần nhất dùng PostgreSQL18.3 cổng15559, datadir
+`/private/tmp/page-workspace-ai-budget-pg-20260930`; database `page_budget_test` và database restore riêng.
+Redis queue16481/cache16482, DB7 cho integration. Không dùng preview DB/queue4 hoặc user services.
+Lưu bằng chứng/dump test riêng nếu cần trước khi dừng; không purge queue preview.
+
+```bash
+/opt/homebrew/bin/redis-cli -h 127.0.0.1 -p 16481 shutdown nosave
+/opt/homebrew/bin/redis-cli -h 127.0.0.1 -p 16482 shutdown nosave
+/opt/homebrew/bin/pg_ctl -D /private/tmp/page-workspace-ai-budget-pg-20260930 -m fast -w stop
+```
+
+### Hạ tầng test các lượt trước — đã dừng
 
 Các lần test integration dùng cluster tạm dưới `/private/tmp/agentic-page-workspaces-it-20260930`, chỉ bind loopback; không dùng database/queue của preview. PostgreSQL nghe cổng `15433`; cluster riêng cho đường upgrade `0021 → 0022` nghe cổng `15543`; Redis queue `26379` và cache `26380`. Redis test không bật persistence và không chạy worker. Các tiến trình này đã được dừng sau kiểm thử.
 

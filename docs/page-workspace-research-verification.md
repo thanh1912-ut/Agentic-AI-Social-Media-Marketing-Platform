@@ -1,5 +1,52 @@
 # Kiểm chứng Page workspace và Nghiên cứu
 
+## Kết quả mới nhất — 2026-09-30 23:48 Asia/Ho_Chi_Minh
+
+Backend kiểm thử/deploy: `8640d266546ee83e976b225ff26631231ae0ba12`.
+Frontend source/release: `2fe9d0a16f6ad43e2d7683a10782dccaff7265dc` / `codex-page-workspaces-research-2fe9d0a16f6a-20260930T160314Z`.
+Preview real: `http://127.0.0.1:13104`, API `8001`, migration `0026_research_source_erasure`.
+Các bảng theo timestamp phía dưới là lịch sử.
+
+| Kiểm tra | Trạng thái | Bằng chứng và giới hạn |
+|---|---|---|
+| Page activation từ form Owner | PASS live Meta/UI-to-PostgreSQL | Sau lần gửi lại, DB có một workspace active, tên đúng metadata Meta, avatar, encrypted token và owned source meta_api. Schedule disabled. Đọc lại với implementation hiện hành xác nhận identity/category/ID và minimal posts edge. Không đưa Page ID/tên/token vào Git. Chưa kiểm tra reload Page workspace bằng context QA riêng. |
+| Phân loại lỗi Meta | PASS fixture + live | Lần sai identity trước thành công trả meta_page_identity_mismatch với request ID tương ứng. Fixture kiểm tra create/reconnect, Page category thiếu/sai, permission/rate/network, không lộ token và failed reconnect không đổi binding cũ. Local validation không gán HTTP status giả của Meta. |
+| Backend regression | PASS có giới hạn | 353 passed, 27 skipped, 1 deselected, 21 dependency warnings. Lệnh bên dưới bỏ Docling parser module và một PDF runtime test; các skip gồm legacy profile, provider opt-in và PG tests chạy riêng. |
+| PostgreSQL/Redis integration | PASS | 20 passed trên PG18.3:15559, Redis8.6.3:16481/16482, database test riêng. Meta/AI adapter fixture; không phải live crawl/provider generation. |
+| Lint/OpenAPI | PASS | Ruff cho source/tests đã sửa; export_openapi --check đạt, HTTP schema không đổi trong bản sửa identity. |
+| API/worker sau restart | PASS | Readiness PG/schema/queue/cache/storage ready, key Gemini present/model3.8 và khóa Page bền vững. Không có job queued/running tại kiểm tra; ingestion/Beat không nhận key AI. |
+| Final maintenance backup restore | PASS có giới hạn | Bundle page-workspace-maintenance-20260930T154320Z checksum khớp; restore riêng, nâng schema0026, counts55 bảng lịch sử và hash3 file storage khớp. Chưa chạy browser/login ứng dụng restored; bundle trước Page activation mới. |
+| Frontend/account browser | PASS | Real account QA đăng ký/reload/logout/login/reload; SQL user-only và session1→0→1. Mobile390 không tràn, desktop1440. Frontend lint/typecheck52 tests/build trên source2fe9 giữ nguyên. |
+| Gemini generation | BLOCKED_EXTERNAL | Hai synthetic smoke trước đó, lần thứ hai HTTP503. Model GET available không chứng minh generation thành công. Reservation giữ ở unknown; không gọi thêm/đổi model. |
+| Bình luận/media/retention và live backfill | NOT_IMPLEMENTED / NOT_RUN | Guards/adapters không thay pipeline, privacy/erasure hoàn chỉnh hoặc live backfill90 ngày. Không crawl/publish trên Page thật trong lát cắt activation này. |
+
+Lệnh backend thực tế (virtualenv/runtime theo runbook):
+
+```bash
+python -m pytest -p no:cacheprovider tests --ignore=tests/test_ingestion_parsers.py -k 'not test_parser_returns_locators_and_rejects_scan_pdf' -q --tb=short
+# POSTGRES_TEST_URL=DATABASE_URL và hai Redis test tách biệt đã được cấp cho lệnh này.
+python -m pytest -p no:cacheprovider tests/test_postgres_application_modules.py tests/test_postgres_database_integration.py -q --tb=short
+```
+
+## Rollout và browser thật — 2026-09-30 23:15 Asia/Ho_Chi_Minh
+
+Backend/Gemini source: `dd236009d1fc27dec58abd1d93acd3c67464cff6`.
+Frontend onboarding source: `2fe9d0a16f6ad43e2d7683a10782dccaff7265dc`.
+Các phần theo timestamp phía dưới là lịch sử, không thay thế kết quả mới nhất.
+
+| Kiểm tra | Trạng thái | Bằng chứng và giới hạn |
+|---|---|---|
+| Preview migration/rollout | PASS | Maintenance backup riêng trước upgrade0020→0026; 55 bảng gốc giữ counts. API8001 + workers/Beat dùng checkout mới; không purge queue hay đổi JWT/tài khoản. |
+| Backup/restore | PASS rehearsal; final bundle chưa restore lại | Preflight database/storage copy có SHA256, restore/upgrade trên PG disposable đạt. Final consistent maintenance bundle riêng `page-workspace-maintenance-20260930T154320Z`; không gọi preflight online là maintenance backup. |
+| Readiness/secret sau restart | PASS | PG/schema/queue/cache/storage ready; Gemini key present/model3.8; Page encryption key present. Giá trị key không in/commit. |
+| Browser register/login/reload | PASS live UI/API/PostgreSQL | Account QA riêng: UI đăng ký, reload, Đăng xuất, login lại, reload. SQL một user,0 membership; refresh active1→0→1. Chưa tạo Page workspace hoặc xác minh Meta thật. |
+| Onboarding UX | PASS | Thêm logout trước Page activation; xóa cache chỉ sau logout thành công; giữ selector dù chỉ một workspace. Mobile390px contentWidth390, desktop1440px chụp bằng account QA, không token. |
+| Frontend checks | PASS | ESLint, TypeScript,52 Vitest tests, production real build; release13104 `codex-page-workspaces-research-2fe9d0a16f6a-20260930T160314Z`. |
+| Integration mở rộng | PASS |20 tests trong `test_postgres_application_modules.py` + `test_postgres_database_integration.py`, PostgreSQL18.3/Redis8.6.3 riêng; provider/Meta fixture, không phải provider live. |
+| Page reconnect live | BLOCKED, đang điều tra | Owner nhận `meta_page_permission_missing`, request `req_e897c8c1c43847948035e091d176cc6a`. Mã cũ không phân biệt identity/fields/posts; chưa có căn cứ kết luận thiếu quyền cụ thể. |
+| Gemini live analysis | BLOCKED_EXTERNAL | Job `d6bcd035-e456-404f-a634-8ce582e5b303`, cycle `0d4084e6-bea9-4ee5-ac15-e4365f555aef` trong DB test: HTTP503, analysis `provider_outcome_unknown`. Data collection synthetic; không claim live website/Meta hoặc report AI thành công. Không chạy lượt thứ ba. |
+| Full comments/media/legal processing | NOT_RUN/NOT_IMPLEMENTED | Adapters/guards fixture không thay thế checkpoint, media worker, screening/erasure toàn luồng hoặc legal review. |
+
 ## Gemini cho mọi tác vụ AI — 2026-09-30 22:40 Asia/Ho_Chi_Minh
 
 Code kiểm thử: working tree trên nền `d2801fdfcdaf1d552155586626b461c0cd314c88`, nhánh `codex/page-workspaces-research`.

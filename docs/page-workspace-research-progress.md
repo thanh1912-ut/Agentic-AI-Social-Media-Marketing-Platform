@@ -4,6 +4,30 @@ Ngày bắt đầu: 2026-09-30 (Asia/Ho_Chi_Minh)
 Nhánh: `codex/page-workspaces-research`
 Base đã kiểm tra: `codex/creative-studio-ui` @ `b769097bfdb3568889d974c6def95bb944559113`
 
+## 2026-09-30 23:48 — Page thật kết nối thành công và kiểm tra bản sửa cuối
+
+- DONE: Backend `8640d266546ee83e976b225ff26631231ae0ba12` phân biệt token sai Page, token không phải Page, lỗi identity và lỗi đọc bài. Kích hoạt chỉ đọc identity có Page category và `posts?fields=id&limit=1`; không yêu cầu media/metrics hoặc đăng thử. Error/log chỉ có mã số và bước kiểm tra, không chứa token hay raw Meta response.
+- PASS live Meta/UI-to-database: Sau khi Owner gửi lại form, preview có một workspace Page active, tên khớp metadata Meta, avatar đã lưu, token mã hóa và một nguồn Page công ty `meta_api`. Lịch nguồn vẫn tắt. Đọc lại bằng implementation xác minh hiện hành đạt; không crawl bài/bình luận/media hoặc publish trong bước này.
+- PASS: API/worker đã restart trên source mới; readiness PostgreSQL/schema/queue/cache/storage đạt và Gemini key/model được nạp từ secret store. Key mã hóa Page hiện có được giữ nguyên; không có job queued/running tại thời điểm kiểm tra.
+- PASS: Regression backend trên source cuối: 353 passed, 27 skipped, 1 deselected, 21 dependency warnings. Bỏ riêng module Docling parser và một scan-PDF runtime test; không gọi kết quả này là nghiệm thu năm định dạng Docling.
+- PASS: PostgreSQL18.3/Redis8.6.3 disposable: 20 passed, không skip, provider/Meta fixture. Ruff và OpenAPI unchanged check đạt; frontend source `2fe9d0a` vẫn là release real đã kiểm tra52 tests/lint/typecheck/build.
+- PASS restore rehearsal: Restore final maintenance bundle `page-workspace-maintenance-20260930T154320Z` vào database/storage riêng; checksum bundle, counts55 bảng lịch sử và hash3 file storage khớp, schema0026. Chưa đăng nhập ứng dụng trên bản restore; backup này được tạo trước lần Page activation mới.
+- BLOCKED_EXTERNAL: Hai smoke Gemini trước đó chưa tạo được report, lượt thứ hai HTTP503. Không gọi lượt thứ ba hoặc tự đổi provider/model.
+- TODO: Pipeline bình luận/replies, media worker, privacy/retention/deletion toàn luồng và nghiệm thu thu thập live. Page activation PASS không đồng nghĩa luồng crawl/phân tích tổng thể đã hoàn thành.
+
+Các mục theo timestamp phía dưới là lịch sử kiểm tra, không thay thế trạng thái mới nhất.
+
+## 2026-09-30 23:15 — Rollout và nghiệm thu tài khoản bằng browser thật
+
+- DONE: Backup maintenance database/storage trước upgrade tại `backups/page-workspace-maintenance-20260930T154320Z`, ngoài Git, quyền hạn chế. Upgrade preview0020→0026, 55 bảng lịch sử giữ nguyên counts; API, worker, ingestion và Beat chuyển sang worktree nhiệm vụ. Preflight restore riêng trước đó đã đạt.
+- DONE: API8001/readiness tất cả dependency ready; API/worker nạp Gemini3.8 từ secret store sau restart. Queue/cache `/4`, JWT, tài khoản và storage giữ nguyên. Không gọi lại Gemini sau HTTP503.
+- DONE: Frontend real13104 release `codex-page-workspaces-research-2fe9d0a16f6a-20260930T160314Z`; bản trước/plist được giữ. Sửa thiếu nút Đăng xuất ở onboarding và bỏ tự mở workspace duy nhất, để người dùng chọn Page.
+- PASS live UI/API/PostgreSQL: Account QA riêng đăng ký → reload → đăng xuất → đăng nhập lại → reload. SQL xác nhận một user, không membership/workspace; active refresh session 1→0→1. Không reset tài khoản người dùng hoặc dùng Page fixture trên preview.
+- PASS: Onboarding390px không tràn ngang, nút đăng xuất và Page form nhìn thấy; desktop1440px được chụp riêng. Token để trống trên ảnh.
+- PASS: Frontend lint/typecheck, Vitest52/52 và real production build trên source `2fe9d0a16f6ad43e2d7683a10782dccaff7265dc`.
+- IN_PROGRESS: Owner thử reconnect Page thật, lỗi `meta_page_permission_missing`. Lỗi cũ gộp identity/posts/field permissions nên chưa đủ xác định nguyên nhân. Thay access check bằng `posts?fields=id&limit=1`, tách identity mismatch/expired/permission/rate/network và thêm numeric diagnostics không raw body/token. 102 focused tests đạt; đang chạy regression và PostgreSQL/Redis trước deploy.
+- NOT_RUN/BLOCKED: Page activation live chưa đạt; Gemini live generation HTTP503; comments/media/privacy pipeline chưa hoàn chỉnh. Không tuyên bố pilot toàn bộ hoàn tất.
+
 ## 2026-09-30 22:40 — Gemini theo quyết định mới của Owner
 
 - DONE: Thay mọi tác vụ LLM đang hoạt động sang Gemini `gemini-3.8-flash`: planning, content generate/revise, semantic review và research report. DeepSeek/Qwen giữ adapter lịch sử, không fallback.
@@ -26,14 +50,14 @@ Base đã kiểm tra: `codex/creative-studio-ui` @ `b769097bfdb3568889d974c6def9
 - [PARTIAL] Page sở hữu lưu bài và chỉ số mà Meta trả. Nội dung bình luận đang `privacy_hold`; chỉ số đếm bình luận vẫn có thể được lưu.
 - [PARTIAL] Nguồn Page sở hữu có checkpoint và tự nối các lô tối đa 100 bài/5 phút qua cùng job/cycle; báo cáo chỉ tạo cuối lượt, sau đó lịch 12 giờ tùy Owner. Pipeline PostgreSQL/Redis/Celery đã kiểm thử bằng Meta fixture; live backfill 90 ngày chưa chạy.
 - [PARTIAL] Public Facebook Page dùng collector Tier 0. Nhóm hiện xác minh/lưu metadata công khai ở trạng thái `partial`; không lấy bài thảo luận.
-- [PARTIAL] Ledger ngân sách tự động PostgreSQL và mức trần $2/workspace/ngày đã được thêm cho báo cáo Nghiên cứu chạy DeepSeek; API và UI hiển thị số đã dùng/giữ chỗ/còn lại. Bảng giá đã ghi nhận model Gemini/Qwen đã chọn, nhưng chưa route call của hai provider hoặc media vào ledger.
+- [PARTIAL] Ledger PostgreSQL và mức trần $2/workspace/ngày áp dụng báo cáo Nghiên cứu Gemini; tác vụ tương tác ghi chi phí riêng, review cũng có ledger. API/UI đọc số đã dùng/giữ chỗ/còn lại. Comments/media chưa có pipeline hoặc settlement production.
 - [PARTIAL] Worker không gửi comment text cũ/mới cho agent. Chưa có pipeline nhận dạng/redact toàn diện, retention/deletion ledger hoặc quy trình pháp lý; không được coi là chứng nhận tuân thủ.
 - [PARTIAL] Nội dung bài Facebook và manual import được che email, số điện thoại và cụm địa chỉ nhà rõ ràng trước khi lưu bằng `facebook-contact-patterns-v1`; bộ lọc không phát hiện tên và không phải cơ chế ẩn danh.
-- [PARTIAL] Ranh giới gọi DeepSeek loại nội dung bài Facebook chưa qua rà soát đầy đủ; report chỉ có Facebook được ghi `deferred_privacy_review`, không gọi provider. Với nguồn web đủ điều kiện, Facebook cùng report chỉ gửi số liệu và nhãn nội dung đang giữ.
+- [PARTIAL] Ranh giới gọi Gemini loại nội dung bài Facebook chưa qua rà soát đầy đủ; report chỉ có Facebook được ghi `deferred_privacy_review`, không gọi provider. Với nguồn web đủ điều kiện, Facebook cùng report chỉ gửi số liệu và nhãn nội dung đang giữ.
 - [PARTIAL] Owner có thể ghi nhận mục đích, tham chiếu căn cứ, phiên bản chính sách và thời hạn dự kiến theo từng nguồn; nguồn Facebook mới bị chặn tới khi đủ trường cấu hình. Đây không phải xác minh căn cứ; retention chưa thi hành, comment/media tiếp tục `privacy_hold`.
 - [PARTIAL] OpenAPI và TypeScript declarations đã được regenerate. Frontend lint, typecheck, 52 unit tests và production build đạt; real browser đã mở route Nghiên cứu với API thật, nhưng chưa chạy luồng ghi UI-to-worker.
-- [PARTIAL] API/worker fixtures và PostgreSQL + Redis/Celery integration đã chạy trên môi trường disposable; Meta/provider live và worker crawl chưa chạy.
-- [TODO] Cursor bình luận/replies, media analysis, deletion/retention propagation và routing Gemini/Qwen chưa triển khai.
+- [PARTIAL] API/worker fixtures và PostgreSQL + Redis/Celery integration đã chạy trên môi trường disposable; Meta Page activation live đạt. Provider generation và worker crawl live chưa đạt/chưa chạy.
+- [TODO] Cursor bình luận/replies, media analysis và deletion/retention propagation đầy đủ. Gemini text routing đã triển khai; Qwen không còn được chọn theo quyết định Owner.
 
 ### Trạng thái hiện tại — 2026-09-30 20:32 Asia/Ho_Chi_Minh
 
