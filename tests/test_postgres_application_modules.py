@@ -38,7 +38,7 @@ from services.api.db import SessionLocal, engine
 from services.api.main import app
 from tests.helpers.page_workspace import activate_test_page
 from services.api.meta_client import MetaPage
-from services.worker import tasks
+from services.worker import content_tasks, tasks
 from services.worker.model_provider import AIConfigurationError
 
 
@@ -105,7 +105,7 @@ def test_postgres_api_persists_existing_product_modules(monkeypatch: pytest.Monk
     def no_deepseek_key():
         raise AIConfigurationError("DEEPSEEK_API_KEY is not configured for this local test.")
 
-    monkeypatch.setattr(tasks, "configured_structured_model", no_deepseek_key)
+    monkeypatch.setattr(content_tasks, "configured_structured_model", no_deepseek_key)
 
     async def record_document_dispatch(_job_id: str, _document_id: str, _document_ids=None) -> bool:
         return True
@@ -159,7 +159,7 @@ def test_postgres_api_persists_existing_product_modules(monkeypatch: pytest.Monk
             "company_name": f"Integration workspace {uuid.uuid4().hex[:8]}",
         })
         assert registered.status_code == 201, registered.text
-        workspace_id = activate_test_page(client)["id"]
+        workspace_id = activate_test_page(client, page_id=page_id)["id"]
         headers = {"X-CSRF-Token": client.cookies["agentic_csrf"]}
 
         profile = client.get(f"/api/v1/workspaces/{workspace_id}/brand-profile")
@@ -167,35 +167,26 @@ def test_postgres_api_persists_existing_product_modules(monkeypatch: pytest.Monk
         confirmed = client.patch(
             f"/api/v1/workspaces/{workspace_id}/brand-profile",
             headers=headers,
-            json={"version": profile.json()["version"], "fields": [
-                {"key": "business_name", "value": "PostgreSQL smoke brand"},
-                {"key": "industry", "value": "Retail"},
-                {"key": "description", "value": "Local database integration coverage."},
-                {"key": "products", "value": [{"name": "Fixture product"}]},
-                {"key": "target_audience", "value": ["Local customers"]},
-                {"key": "brand_voice", "value": "Clear"},
-                {"key": "tone_keywords", "value": ["clear"]},
-            ], "confirm": True},
+            json={
+                "version": profile.json()["version"],
+                "profile_text": (
+                    "PostgreSQL smoke brand sells a fixture product. "
+                    "Write clearly for local customers."
+                ),
+            },
         )
         assert confirmed.status_code == 200, confirmed.text
 
-        group_response = client.post(
-            f"/api/v1/workspaces/{workspace_id}/market-research/groups",
-            headers=headers,
-            json={"name": "PG integration group", "industry": "Retail", "region": "Local",
-                  "locale": "vi-VN", "keywords": ["products"]},
-        )
-        assert group_response.status_code == 201, group_response.text
-        group_id = group_response.json()["id"]
+        group_response = client.get(f"/api/v1/workspaces/{workspace_id}/market-research/groups")
+        assert group_response.status_code == 200, group_response.text
+        assert group_response.json()
+        group_id = group_response.json()[0]["id"]
 
-        connected_page = client.post(
-            f"/api/v1/workspaces/{workspace_id}/market-research/groups/{group_id}/pages",
-            headers=headers,
-            json={"page_id": page_id, "page_access_token": "fixture-page-token-never-sent-outside-test"},
-        )
-        assert connected_page.status_code == 201, connected_page.text
-        assert "page_access_token" not in connected_page.json()
-        connection_id = connected_page.json()["id"]
+        connected_pages = client.get(f"/api/v1/workspaces/{workspace_id}/market-research/pages")
+        assert connected_pages.status_code == 200, connected_pages.text
+        assert len(connected_pages.json()) == 1
+        assert connected_pages.json()[0]["page_id"] == page_id
+        connection_id = connected_pages.json()[0]["id"]
 
         competitor = client.post(
             f"/api/v1/workspaces/{workspace_id}/market-research/sources",
@@ -206,6 +197,18 @@ def test_postgres_api_persists_existing_product_modules(monkeypatch: pytest.Monk
         )
         assert competitor.status_code == 201, competitor.text
         competitor_id = competitor.json()["id"]
+        policy = client.put(
+            f"/api/v1/workspaces/{workspace_id}/market-research/sources/{competitor_id}/privacy-policy",
+            headers=headers,
+            json={
+                "purpose": "Integration test with synthetic fixture content only.",
+                "processing_basis_reference": "Synthetic data; no personal data is included.",
+                "policy_version": "postgres-integration-v1",
+                "requested_retention_days": 1,
+            },
+        )
+        assert policy.status_code == 200, policy.text
+        assert policy.json()["legal_basis_verified"] is False
 
         async def reject_invalid_latest_snapshot():
             async with SessionLocal() as db:

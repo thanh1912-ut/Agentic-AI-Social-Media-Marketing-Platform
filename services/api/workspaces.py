@@ -288,10 +288,14 @@ async def create_workspace_from_page(
         page_connection_state="active",
     )
     owner = Membership(id=new_id(), company_id=company.id, user_id=user.id, role="owner", is_active=True)
-    db.add(company)
-    db.add(owner)
-    db.add(Brand(id=new_id(), company_id=company.id, profile={}, version=1))
     try:
+        db.add(company)
+        # These models intentionally do not declare ORM relationships. Flush
+        # the Page-owned workspace row first so PostgreSQL never receives a
+        # Brand/Membership INSERT before its companies FK target.
+        await db.flush()
+        db.add(owner)
+        db.add(Brand(id=new_id(), company_id=company.id, profile={}, version=1))
         await db.flush()
         await _bind_verified_page(db, company, page, encrypted, payload.page_access_token, user)
         await db.commit()

@@ -444,3 +444,12 @@ Base đã kiểm tra: `codex/creative-studio-ui` @ `b769097bfdb3568889d974c6def9
 - LIMITATION: Adapter object storage được thay bằng recording fake trong test; không kết nối storage ngoài. Chỉ `pgvector` import shim ngoài repo được dùng.
 - PASS: Ruff, Python compile và `git diff --check`; cụm test đã dừng.
 - NOT_RUN: Redis/Celery dispatch/recovery, HTTP API, browser, Meta/provider live, multi-worker race và object storage thật.
+
+### 2026-09-30 17:57 Asia/Ho_Chi_Minh — PostgreSQL API và Docling smoke
+
+- FIXED: PostgreSQL API smoke phát hiện Page activation flush `Brand` trước `Company` do các model không khai báo ORM relationships. Activation giờ flush Company trước khi insert Membership/Brand trong cùng transaction.
+- DONE: Cập nhật PostgreSQL smoke theo contract mới: profile_text do Owner tự viết, Page workspace chỉ gắn một Page, dùng nhóm Nghiên cứu nội bộ, và policy fixture ghi rõ dữ liệu tổng hợp (không coi là xác minh căn cứ pháp lý).
+- PASS: `test_postgres_api_persists_existing_product_modules` — `1 passed` trên PostgreSQL 18.3 disposable. Bao phủ đăng ký → xác minh Page mock → workspace/Brand/Owner → nguồn nghiên cứu → review/approval → analytics/conversion → upload và lưu kiến thức; sau job, API GET và session PostgreSQL đọc lại trạng thái đã lưu.
+- PASS (Docling thật): Chạy test bằng `/private/tmp/docling-ingestion-venv` với Docling `2.130.0`, model local đã verify 66 files, OCR disabled; upload TXT được xử lý bởi Docling child process. `pgvector` chỉ cần shim import trong test process.
+- LIMITATION: Meta Graph, DeepSeek, embedding và object storage production không được gọi; storage dùng thư mục tạm. Worker được gọi trực tiếp trong test, không qua Redis/Celery. Chưa phải browser/UI hoặc live Page nghiệm thu.
+- PASS: Cụm PostgreSQL disposable đã dừng sau test.
