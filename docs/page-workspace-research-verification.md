@@ -1,5 +1,38 @@
 # Kiểm chứng Page workspace và Nghiên cứu
 
+## Kết quả mới nhất — 2026-10-01 01:47 Asia/Ho_Chi_Minh
+
+Code kiểm thử/deploy: `3bfd1b8fcb6aab7ac6abb0b05fcaaea960803a6e`.
+Preview schema `0028_comment_quarantine`; frontend vẫn release `2fe9d0a`, real13104/API8001.
+Các bảng dưới theo timestamp cũ là lịch sử, không thay thế kết quả này.
+
+| Kiểm tra | Trạng thái | Bằng chứng và giới hạn |
+|---|---|---|
+| Page đang kết nối | PASS live trước đó + persistence | Sau rollout vẫn active và có một nguồn Page công ty, lịch tắt. Lượt này không gọi Meta xác minh/crawl/publish lại. |
+| Comment/reply executor | PASS synthetic fixture + real pipeline | Job commit PostgreSQL → dispatch Redis/Celery → root/reply worker → encrypted versions/receipts/checkpoints. Adapter Meta dùng dữ liệu tổng hợp, không gọi comments Facebook live. |
+| Replay/edit/coverage | PASS | Hai transaction giao cùng cursor chỉ commit một receipt; overlapping IDs không tăng received_count; text đổi tạo version. Replies có frontier riêng; edge exhaustion không chứng minh bình luận ẩn/xóa hoặc toàn bộ lịch sử. |
+| Quarantine | PASS fixture/PostgreSQL | Không author/profile/avatar; ứng viên contact/mention/labelled-name masked rồi mã hóa; binding chống copy ciphertext sang tenant/observation khác. Tên không nhãn chưa nhận diện, không có plaintext output/AI approval. |
+| TTL/revocation | PASS | SQL chặn expiry>24h; scheduler cleanup đến hạn/thu hồi chỉ bỏ ciphertext và audit số lượng; replay không phục hồi. Chưa xóa riêng từng cá nhân/provider/backups hoặc retention toàn bộ normalized/media. |
+| Worker ownership/config | PASS | Stale claim bị chặn trước ghi; version/policy/decision đổi dừng commit; retry có backoff, trần attempts và không nhận task trùng sớm. Token cũ hết hạn không làm mất token mới vừa reconnect. |
+| Fresh/upgrade | PASS PostgreSQL | Fresh0001→head và upgrade0027→0028; columns/type/default/nullability/checks/unique/FK/index ba bảng mới và tenant key policy khớp. Không chứng nhận mọi schema legacy đều đồng nhất. |
+| Backend regression | PASS có giới hạn |380 passed,32 skipped,1 deselected,21 warnings; loại Docling parser module và một scan-PDF runtime test. Opt-in PG/provider tests được chạy riêng hoặc chưa live. |
+| PostgreSQL/Redis regression | PASS |25 passed, không skip: application modules, database integration, frontier và quarantine trên15559/16481/16482. |
+| Quality | PASS | Ruff changed paths, Python3.11 compile, OpenAPI unchanged check và whitespace/secret-pattern scan. Frontend không đổi; không gọi kết quả build cũ là build mới. |
+| Rollout/restore | PASS có giới hạn | Backup maintenance `page-comment-quarantine-maintenance-20260930T184019Z`; preview0028 và counts61 bảng cũ giữ nguyên. Restore riêng checksum/counts61/hash3 storage files khớp; browser/login restored NOT_RUN. |
+| Preview runtime | PASS có giới hạn | API/frontend/font ready, Gemini3.8/encryption key present, Page active/lịch tắt,0 active comment decision/candidate/busy job. Task mới registered; Celery control cảnh báo duplicate nodename, cần chuẩn hóa tên worker. |
+| UI review/comments + provider analysis | NOT_IMPLEMENTED / NOT_RUN | Chưa có giao diện assessment/review hoặc comment/media analysis worker. Nội dung tiếp tục privacy_hold, không gửi Gemini. |
+| Gemini generation live | BLOCKED_EXTERNAL | HTTP503 từ smoke trước; không có call thứ ba, không fallback/model change hoặc gửi dữ liệu Page thật. |
+
+Lượt đầu sau thêm audit cleanup thất bại do sai field `actor_id`; đã sửa thành `actor_user_id` và chạy lại suite, không giảm/bỏ assertion.
+Kiểm thử PG/Redis source cuối:
+
+```bash
+python -m pytest -p no:cacheprovider tests/test_postgres_application_modules.py tests/test_postgres_database_integration.py tests/test_postgres_comment_checkpoints.py tests/test_postgres_comment_quarantine.py -q --tb=short
+```
+
+Env test dùng PostgreSQL15559 hai DB upgrade/fresh và Redis queue16481/cache16482 DB7 riêng; `AUTO_CREATE_SCHEMA=0`, `INLINE_JOBS=0`.
+Không dùng SQLite/inline jobs làm bằng chứng pipeline ở bảng này; các unit fixtures chạy riêng vẫn được ghi nhãn.
+
 ## Kết quả mới nhất — 2026-10-01 00:28 Asia/Ho_Chi_Minh
 
 Code kiểm thử/deploy: `918ffeb464d61f0f664743af385f2c6515861d92`.

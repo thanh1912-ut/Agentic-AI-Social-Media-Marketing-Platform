@@ -4,6 +4,19 @@ Ngày bắt đầu: 2026-09-30 (Asia/Ho_Chi_Minh)
 Nhánh: `codex/page-workspaces-research`
 Base đã kiểm tra: `codex/creative-studio-ui` @ `b769097bfdb3568889d974c6def95bb944559113`
 
+## 2026-10-01 01:47 — Worker bình luận/replies và vùng xử lý mã hóa
+
+- DONE: Code `3bfd1b8fcb6aab7ac6abb0b05fcaaea960803a6e` bổ sung migration `0028_comment_quarantine`, ba bảng decision/version/receipt và worker `research_comments`. Thay đổi thuộc backend/database/tests; frontend/HTTP schema/agent prompt không đổi.
+- DONE/PARTIAL: Worker đọc từng edge tối đa100 bản ghi, tổng500 bản ghi/20 requests/5 phút mỗi batch. Receipt, phiên bản ứng viên và cursor/reply frontier được commit nguyên tử, có tenant/version FK và job fencing. Hết batch giữ checkpoint, trả durable job về queued; batch thành công không tính thành retry. Không gọi provider.
+- DONE: Ứng viên chỉ lưu dạng mã hóa bằng khóa dẫn xuất riêng miền từ key token bền vững; không chứa author/profile/avatar hoặc plaintext column. Che pattern liên hệ, mention và tên có nhãn trước quarantine; tên không nhãn và PII khác vẫn có thể còn, nên trạng thái luôn privacy_hold. Không được gọi đây là vô danh/đã rà soát pháp lý.
+- DONE: TTL tối đa24 giờ có check SQL PostgreSQL; Beat xóa ciphertext đến hạn hoặc decision đã bị thu hồi/hết hạn, ghi audit chỉ số lượng. Replay không phục hồi ciphertext đã xóa. Purge nguồn hiện có xóa thêm các bảng mới trong phạm vi nguồn được yêu cầu; chưa có cơ chế xóa từng cá nhân/provider/backup đầy đủ.
+- DONE: Policy notes không tạo decision. Decision mặc định pending, chỉ dành cho local quarantine; worker kiểm tra decision mới nhất, Owner còn quyền, policy revision, Page/token/source và lease trước read/commit. Decision mới revoked/pending không làm fallback về assessment cũ. Không tạo decision active trên preview.
+- PASS: Source cuối: backend380 passed/32 skipped/1 deselected,21 dependency warnings; vẫn bỏ module Docling parser và một scan-PDF runtime test. PostgreSQL18.3/Redis8.6.3 riêng:25 passed, không skip; gồm Celery nhận job thật qua Redis, root/reply fixture, queue dispatch lỗi sau commit, SQL tenant/24h guards, stale worker, concurrent replay và đối chiếu schema fresh/upgrade. Ruff, Python3.11 compile và OpenAPI unchanged check đạt.
+- FIXED: Lượt test cleanup đầu phát hiện sai tên field audit (`actor_id`); sửa theo model thành `actor_user_id`, giữ nguyên assertion TTL và chạy lại các suite trên. Không ảnh hưởng dữ liệu preview vì chưa rollout khi test lỗi.
+- PASS rollout: Drain0 queued/running, backup `page-comment-quarantine-maintenance-20260930T184019Z`, nâng0027→0028; counts61 bảng cũ giữ nguyên, ba bảng mới trống. API/workers/ingestion/Beat restart đúng label; frontend real13104, Page active, một owned source/lịch tắt và Gemini/encryption key presence giữ nguyên. Task mới có trong registry; control inspect cảnh báo trùng nodename của workers hiện có, cần chuẩn hóa tên vận hành ở bước tiếp theo.
+- PASS restore có giới hạn: Backup mới restore vào PG15559/database và storage riêng; checksum bundle/counts61 bảng/hash3 file khớp, schema0028. Chưa mở/login ứng dụng restored.
+- TODO: API/UI cho assessment/review ứng viên, dữ liệu bình luận đã screening cho Gemini, media worker và erasure/retention đầy đủ. Meta comments live chưa chạy; decision/quarantine fixture không phải bằng chứng có căn cứ xử lý dữ liệu thật. Gemini live generation vẫn HTTP503 từ hai smoke trước; không gọi lần thứ ba. Goal tổng thể còn active.
+
 ## 2026-10-01 00:28 — Phân trang bình luận và checkpoint metadata
 
 - DONE: Code `918ffeb464d61f0f664743af385f2c6515861d92` thêm client đọc từng trang comments/replies bằng cursor. Không đi theo URL next trả về; kiểm tra host/path, ID, cursor đứng yên, response lỗi và record trùng. Không yêu cầu tên/ID/avatar tác giả hoặc nội dung attachment; private/hidden records bị loại. Nội dung quá20.000 ký tự có cờ truncated; wrapper legacy giữ tương thích.

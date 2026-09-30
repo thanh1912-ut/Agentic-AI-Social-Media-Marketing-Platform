@@ -37,8 +37,9 @@ hai job smoke cũ được tạo trước thay đổi này nên không được 
 Text adapter reserve tạm theo toàn bộ trần đầu vào 1.048.576 token và output đã cấu hình,
 không ước lượng token từ ký tự. Settlement dùng usage thật, gồm thinking tokens, rồi nhả phần
 chưa dùng. Cách này an toàn nhưng có thể hoãn sớm các tác vụ chạy đồng thời; chưa tích hợp countTokens.
-Comment adapter đã chuyển sang Gemini và kiểm tra privacy/citation bằng fixture. Chưa nối
-comment/replies/media worker, vì vậy không được coi là phân tích Facebook đầy đủ.
+Comment adapter đã chuyển sang Gemini và kiểm tra privacy/citation bằng fixture. Worker
+comment/replies đã có cho local quarantine có decision phù hợp; chưa nối review/approved
+batch sang Gemini hoặc media worker, nên chưa phải phân tích Facebook đầy đủ.
 
 Page encryption key nằm trong `secrets/page-connection.env`, quyền `0600`, tách khỏi AI key.
 Key được tạo một lần sau khi xác minh preview chưa có token mã hóa; giữ bền vững qua restart.
@@ -48,7 +49,7 @@ Không tạo lại key khi có token đã lưu. Backup key riêng với database
 
 Checkout: `/Users/lethanh/.codex/worktrees/page-workspaces-research/agent`.
 Frontend real: `http://127.0.0.1:13104`; API/readiness: `http://127.0.0.1:8001/readyz`.
-Schema preview đã nâng lên `0027_comment_frontier`. PostgreSQL15432, queue16379/4,
+Schema preview đã nâng lên `0028_comment_quarantine`. PostgreSQL15432, queue16379/4,
 cache16380/4 và storage bền vững của preview giữ nguyên.
 
 Launcher API/worker trong LaunchAgent dùng Python tại
@@ -74,9 +75,9 @@ launchctl bootout "gui/$(id -u)/com.agentic-marketing.auth-preview-worker"
 launchctl bootstrap "gui/$(id -u)" "$HOME/Library/LaunchAgents/com.agentic-marketing.auth-preview-worker.plist"
 ```
 
-Maintenance backup database/storage gần nhất trước migration0027:
-`/Users/lethanh/.local/share/agentic-marketing/backups/page-comment-maintenance-20260930T172557Z`.
-Restore riêng đã kiểm tra checksum, counts60 bảng lịch sử và hash3 storage files sau upgrade0027.
+Maintenance backup database/storage gần nhất trước migration0028:
+`/Users/lethanh/.local/share/agentic-marketing/backups/page-comment-quarantine-maintenance-20260930T184019Z`.
+Restore riêng đã kiểm tra checksum, counts61 bảng lịch sử và hash3 storage files sau upgrade0028.
 Bundle này đã có dữ liệu Page Owner vừa kết nối; khóa mã hóa vẫn cần backup riêng.
 Chưa chạy browser/login ứng dụng restored. Không restore đè preview.
 
@@ -98,7 +99,7 @@ python3 apps/web/scripts/creative-studio-preview.py rollback
 ```
 
 Chỉ activate build real mới đã đạt checks. Frontend rollback không đổi backend hoặc schema.
-Sau schema0027 không restore backend cũ thiếu Page gate hoặc thiếu tương thích frontier; nếu lỗi, dùng bản mới giữ gate hoặc
+Sau schema0028 không restore backend cũ thiếu Page gate hoặc thiếu tương thích frontier/quarantine; nếu lỗi, dùng bản mới giữ gate hoặc
 tắt phần collector/AI trong khi sửa. Không downgrade migration hoặc restore đè database người dùng.
 
 ## Onboarding doanh nghiệp
@@ -168,7 +169,7 @@ Không đưa token vào tài liệu, ticket, browser storage, query string hoặ
 - Bấm Crawl ngay cho nguồn hoặc nhóm nội bộ. Lịch nguồn có thể bật/tắt riêng; mở trang không tự chạy crawl.
 - Public Page chạy collector `facebook-cli` Tier 0 hiện có; không đăng nhập. Public Group chỉ có thể trả thông tin nhóm, không có thảo luận Tier 1. Không báo hoàn thành toàn bộ lịch sử.
 - Với Group mới, nhập URL trang chủ `https://www.facebook.com/groups/{id-or-slug}`. Bật/tắt lịch trên thẻ nguồn; Crawl ngay chạy dù lịch tắt. Runner chỉ đọc shell metadata công khai qua Tier 0, không gọi feed; run được lưu `partial`, `history_complete=false`, không sinh report từ metadata đơn lẻ. Nếu privacy không xác nhận public, trạng thái là `group_not_public` và lịch không tiếp tục tự thử. Nguồn public Group cần binary tại `FACEBOOK_CLI_RUNNER_PATH` đã build từ bản upstream ghim.
-- Bình luận hiện ở trạng thái `privacy_hold`: chỉ số tổng hợp có thể lưu, nhưng text bình luận mới không tải/lưu/gửi cho agent. Endpoint nhập thủ công cũng bỏ qua comment text và trả `comments_withheld_count`. Văn bản bài Facebook và manual import chạy qua `facebook-contact-patterns-v1`, che email, điện thoại và cụm địa chỉ nhà có nhãn rõ; observation ghi số lượng/phiên bản bộ lọc. Bộ lọc không phát hiện tên hoặc mọi kiểu PII, không phải cơ chế ẩn danh. Media chưa có pipeline tải/phân tích.
+- Bình luận hiện ở trạng thái `privacy_hold`: mặc định không tải text và không gửi agent. Worker mới chỉ có thể đọc vào vùng quarantine mã hóa sau decision local được ghi nhận phù hợp; preview chưa có decision active. Endpoint nhập thủ công vẫn bỏ comment text. Văn bản bài Facebook và manual import chạy qua `facebook-contact-patterns-v1`; bộ lọc không phát hiện tên hoặc mọi kiểu PII và không phải ẩn danh. Media chưa có pipeline tải/phân tích.
 - Vì vậy, evidence Facebook chưa được gửi dạng tiêu đề/nội dung vào provider đang chọn (Gemini). Report chỉ có Facebook trả `deferred_privacy_review` và không gọi model; report lẫn website chỉ gửi metrics/IDs và nhãn giữ nội dung từ Facebook. Kết quả cache chỉ được phát lại khi fingerprint evidence/version/trạng thái Facebook khớp với lượt hiện tại. Chưa có đường chuyển trạng thái sang `approved_for_provider`.
 - Owner có thể xem/ghi nhận cấu hình theo nguồn tại `GET/PUT /api/v1/workspaces/{workspace_id}/market-research/sources/{source_id}/privacy-policy`: mục đích, tham chiếu hồ sơ căn cứ, phiên bản chính sách và thời hạn lưu dự kiến (1–365 ngày, mặc định UI 90). Thao tác yêu cầu Owner + CSRF; các revision giữ lịch sử, gửi lại đúng cùng nội dung idempotent.
 - Nguồn Facebook mới ở `needs_privacy_policy`; worker và manual import kiểm tra lại mục đích/tham chiếu trước khi xử lý. Khi đủ trường cấu hình, nguồn được mở lại cho collector theo lịch đã chọn. `collection_ready` chỉ có nghĩa là đủ trường; `legal_basis_verified` luôn `false`. Đây không xác minh quyền xử lý, sự đồng ý hay tuân thủ. Nếu tổ chức chưa xác định được căn cứ áp dụng, giữ nguồn tạm dừng thay vì nhập dữ liệu giả để vượt gate.
@@ -182,7 +183,7 @@ Không đưa token vào tài liệu, ticket, browser storage, query string hoặ
 - Lỗi nguồn mới không được xóa kết quả nguồn thành công trước đó.
 - Raw research payload nếu cần quarantine được gắn hạn xóa tối đa 24 giờ; scheduler thử xóa object đến hạn và chỉ gỡ DB pointer sau khi storage xác nhận xóa. Nếu storage lỗi, pointer giữ lại để lần scheduler sau thử lại. Nội dung nghiên cứu chuẩn hóa 90 ngày, media 30 ngày và propagation khi có yêu cầu xóa vẫn chưa được triển khai đầy đủ; không coi raw TTL hoặc trường thời hạn trong policy form là cơ chế xóa dữ liệu cá nhân hoàn chỉnh.
 
-### Checkpoint bình luận — metadata hiện có, execution chưa mở
+### Bình luận/replies — executor local quarantine, chưa có review/provider UI
 
 `research_comment_checkpoints` giữ frontier theo observation và version của bài Page sở hữu.
 Root được tạo cùng transaction lưu observation, status `privacy_hold`; không chứa message, author,
@@ -195,11 +196,60 @@ Text trả cho caller tối đa20.000 ký tự kèm truncated flag; đây là d�
 không được serialize/persist/gửi AI trực tiếp. `pagination_exhausted` chỉ là edge đã hết cursor,
 không chứng minh đã có bình luận ẩn/xóa hoặc toàn bộ replies.
 
-Chưa có production executor/receipt/comment version/approval pipeline. Không đổi status bằng SQL
-để bật lấy bình luận và không dùng policy note của Owner như sự đồng ý của người bình luận.
+Migration0028 bổ sung:
+
+| Bảng | Phạm vi |
+|---|---|
+| research_comment_processing_decisions | Assessment reference, actor Owner, policy revision, expiry và scope local_comment_quarantine_v1; mặc định pending. Không phải sự đồng ý của người bình luận hoặc chứng nhận pháp lý. |
+| research_comment_versions | Candidate ciphertext, hash, metadata redaction, likes/reply_count, captured/expiry và observation/version nguồn chính xác; không plaintext/author/profile. |
+| research_comment_page_receipts | Cursor fingerprint, received/withheld counts và timestamp; receipt và progress ghi cùng transaction. |
+
+```mermaid
+flowchart LR
+  P[Policy revision] --> D[Scoped processing decision]
+  O[Post observation/version] --> F[Root/reply checkpoint]
+  F --> R[Cursor receipt]
+  F --> V[Encrypted comment version]
+  D --> V
+  V --> T[Expiry/revocation: ciphertext removed]
+```
+
+Worker `services.worker.research_comments.research_comments_task` vào queue agent; job kind research_comments.
+Batch tối đa500 bản ghi,20 requests,5 phút,100 bản ghi/request. Còn frontier thì job queued sau commit,
+Beat dispatch trong tick kế tiếp; không chờ12 giờ giữa batch. Retry/backoff và successful batches tách riêng.
+Reply ID phải xuất phát từ cùng observation/post; cursor cycle, đổi source/token/policy/decision và mất lease bị chặn.
+Nội dung sửa tạo fingerprint/version mới, overlapping IDs không tăng count; report cũ không đọc candidate latest.
+
+Cipher dùng HKDF miền riêng từ META_TOKEN_ENCRYPTION_KEY, hỗ trợ key previous hiện có.
+Giữ key cũ đủ thời gian giải mã dữ liệu còn hạn; không tái sinh key khi đã có token/quarantine.
+Ciphertext ràng buộc tenant/source/observation/comment. TTL SQL PostgreSQL tối đa24 giờ; Beat chỉ xóa
+ciphertext đến hạn/thu hồi và audit số lượng, không dựng lại plaintext. Purge nguồn xóa thêm các record mới.
+Backup có ciphertext cũ vẫn cần deletion/expiry ledger khi phục hồi trước khi phục vụ; phần này chưa triển khai đầy đủ.
+
+`comment-contact-mentions-v1` che liên hệ, @handle và tên có nhãn; tên không nhãn/PII khác chưa bao phủ.
+Mọi candidate vẫn privacy_hold, không anonymous, không có route approved_for_provider hoặc text response công khai.
+Assessment mới pending/revoked không fallback về decision cũ. Policy notes không tạo decision và migration không bật quyền.
+Chưa có API/UI nhập assessment/review; không bật bằng SQL/cờ giả hoặc lấy assessment fixture làm quyền xử lý live.
 Legacy observation chưa pin version không được gán version hồi tố chỉ để tạo root mới.
-Trước bước execution cần hoàn thiện căn cứ/phạm vi xử lý, screening/quarantine, retention/erasure,
-transaction page checkpoint và lấy replies từ frontier cùng source/post đã xác minh.
+Tiếp theo: workflow assessment/review, normalized screened comments, erasure/retention toàn luồng và Gemini budgeted analysis.
+
+Kiểm thử pipeline phải dùng hạ tầng test riêng đã được tạo, không URL preview:
+
+```bash
+export DATABASE_URL=postgresql+asyncpg://postgres@127.0.0.1:15559/page_budget_test
+export POSTGRES_TEST_URL="$DATABASE_URL"
+export POSTGRES_FRESH_TEST_URL=postgresql+asyncpg://postgres@127.0.0.1:15559/page_comment_quarantine_fresh_20261001
+export REDIS_URL=redis://127.0.0.1:16481/7
+export REDIS_QUEUE_TEST_URL="$REDIS_URL"
+export REDIS_CACHE_URL=redis://127.0.0.1:16482/7
+export REDIS_CACHE_TEST_URL="$REDIS_CACHE_URL"
+export AUTO_CREATE_SCHEMA=0 INLINE_JOBS=0
+python -m pytest -p no:cacheprovider tests/test_postgres_application_modules.py tests/test_postgres_database_integration.py tests/test_postgres_comment_checkpoints.py tests/test_postgres_comment_quarantine.py -q --tb=short
+```
+
+DB fresh phải được tạo mới và chạy migrations độc lập; không dùng DB upgrade làm cả hai vế.
+Assessment trong tests được gắn nhãn synthetic-only, không copy row/decision sang preview.
+Các process test đã dừng sau nghiệm thu; lệnh start/stop ở phần hạ tầng disposable dưới đây chỉ dùng đúng datadir/ports đó.
 
 ## Adapter Qwen — lịch sử, không được chọn
 
@@ -224,7 +274,8 @@ Không bật xử lý comment/media từ cờ thủ công. Trước khi mở cá
 - Gemini model/key và routing text đã được xác minh/cấu hình; live generation chưa đạt vì HTTP503. Media/comment pipeline chưa nối. Không fallback sang DeepSeek/Qwen.
 - Ledger ghi tác vụ Gemini tự động cho research và tương tác cho planning/generate/revise/review. Lời gọi tương tác dùng `budget_class=interactive`, không trừ hạn mức tự động2 USD/ngày. Media/comment production chưa route. Trang Nghiên cứu đọc hạn mức tự động qua `GET .../market-research/ai-budget`; tổng chi phí tương tác chưa có màn hình tổng hợp.
 - Chưa tải hay gửi ảnh/video đến provider; không tuyên bố media analysis đã chạy.
-- Comment/reply client và root metadata checkpoint đã có; production traversal/versioned comment persistence chưa có. Coverage tiếp tục `privacy_hold`/Tier 0 partial.
+- Comment/reply traversal, receipts và encrypted versions đã có; live processing chưa mở, review/normalized content/provider workflow chưa có. Coverage tiếp tục `privacy_hold`/Tier0 partial; không coi hết cursor là lấy hết Facebook.
+- Control inspect hiện cảnh báo workers trùng nodename; task registry đã thấy implementation mới nhưng cần đặt tên riêng cho worker default/agent và ingestion để tránh trộn phản hồi vận hành.
 - Không tự nhận hệ thống tuân thủ đầy đủ Luật 91/2025/QH15 hoặc Nghị định 356/2025/NĐ-CP.
 
 ### Cấu hình Gemini/Qwen trước quyết định thay provider — lịch sử
