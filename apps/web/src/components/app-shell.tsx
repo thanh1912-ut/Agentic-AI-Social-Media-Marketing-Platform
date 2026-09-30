@@ -42,6 +42,17 @@ export function AppShell({ children }: { children: ReactNode }) {
   const menuButton = useRef<HTMLButtonElement>(null);
   const workspace = workspaces.find((item) => item.id === workspaceId) ?? null;
   const base = `/w/${workspaceId}`;
+  const pageConnectionIssue = workspace?.page_connection_state === 'connection_required'
+    ? {
+        title: 'Cần kết nối Fanpage doanh nghiệp',
+        description: 'Dữ liệu hiện có vẫn xem được. Các tác vụ Agentic, thu thập và xuất bản đang tạm khóa cho tới khi Owner xác minh Page.',
+      }
+    : workspace?.page_connection_state === 'needs_reconnect'
+      ? {
+          title: 'Page Access Token cần được kết nối lại',
+          description: 'Dữ liệu hiện có vẫn xem được. Agent, thu thập và xuất bản đang tạm khóa; Owner cần xác minh lại đúng Page.',
+        }
+      : null;
   const mocksOn = useMocks();
   const envLabel = environmentLabel();
   const active = (href: string) => href ? pathname.startsWith(`${base}${href}`) : pathname === base;
@@ -133,6 +144,15 @@ export function AppShell({ children }: { children: ReactNode }) {
       <main id="main-content" tabIndex={-1} className="app-main">
         {logoutError ? <p role="alert" className="mb-4 rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-800">{logoutError}</p> : null}
         {selectWorkspace.error ? <p role="alert" className="mb-4 rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-800">{selectWorkspace.error instanceof ApiError ? selectWorkspace.error.message : 'Không chuyển được doanh nghiệp. Hãy thử lại.'}</p> : null}
+        {pageConnectionIssue ? (
+          <section role="status" aria-live="polite" className="mb-5 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-950">
+            <div>
+              <p className="font-semibold">{pageConnectionIssue.title}</p>
+              <p className="mt-1">{pageConnectionIssue.description}</p>
+            </div>
+            <Link href={`${base}/settings`} className="shrink-0 font-semibold underline underline-offset-2">Mở Cài đặt doanh nghiệp</Link>
+          </section>
+        ) : null}
         {children}
       </main>
       <footer className="app-footer"><span>Agentic Marketing</span><span>Nội dung của bạn. Quyết định của bạn.</span></footer>

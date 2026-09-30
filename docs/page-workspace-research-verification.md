@@ -1,5 +1,14 @@
 # Kiểm chứng Page workspace và Nghiên cứu
 
+## Hiển thị Page gate toàn ứng dụng — 2026-09-30
+
+| Kiểm tra | Trạng thái | Bằng chứng và giới hạn |
+|---|---|---|
+| `connection_required`/`needs_reconnect` hiển thị hướng xử lý trên mọi trang | PASS (code/build) | AppShell có thông báo dùng chung, giữ dữ liệu đọc được và link tới Cài đặt doanh nghiệp. |
+| Gate backend, worker và scheduler | PASS ở các kiểm tra trước trên cùng nhánh | `PAGE_GATED_PERMISSIONS`, `services/worker/page_gate.py`, scheduler yêu cầu workspace/Page active; cần chạy lại integration sau khi rollout runtime. |
+| Frontend checks | PASS | ESLint, TypeScript `--noEmit --incremental false`, Vitest 50/50, production build. |
+| Hiển thị trực tiếp với token/page state hết hạn | NOT_RUN | Preview 13104 chưa được thay bằng build này; sandbox không truy cập local API. |
+
 ## UI Page identity và điều hướng Nghiên cứu — 2026-09-30
 
 | Kiểm tra | Trạng thái | Bằng chứng và giới hạn |

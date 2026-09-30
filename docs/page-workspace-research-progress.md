@@ -219,6 +219,12 @@ Base đã kiểm tra: `codex/creative-studio-ui` @ `b769097bfdb3568889d974c6def9
 
 ## Nhật ký
 
+### 2026-09-30 15:44 Asia/Ho_Chi_Minh — Trạng thái kết nối Page dùng chung
+
+- DONE: Workspace `connection_required` và `needs_reconnect` hiện cảnh báo bền vững trên mọi trang trong AppShell, nêu dữ liệu vẫn xem được, thao tác Agentic/thu thập/xuất bản đang tạm khóa và liên kết đến Cài đặt doanh nghiệp.
+- PASS: ESLint, TypeScript, Vitest 50/50 và production build trong managed worktree.
+- PARTIAL: Chưa kiểm tra trạng thái cảnh báo trong browser real API; preview hiện phục vụ bundle cũ và kết nối local từ sandbox chưa dùng được.
+
 ### 2026-09-30 15:38 Asia/Ho_Chi_Minh — Khép đường dẫn Nghiên cứu và nhận diện Page
 
 - DONE: Các shortcut Tổng quan dùng `/research`; route legacy `/fanpages` vẫn redirect bảo toàn query/hash.
