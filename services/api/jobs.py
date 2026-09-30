@@ -8,11 +8,12 @@ from fastapi import APIRouter, Depends, Query
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from database.models import Campaign, Job, JobEvent, JobStep, User, utcnow
+from database.models import Campaign, Job, JobEvent, JobStep, ResearchCycle, User, utcnow
 from .config import settings
 from .db import get_db
 from .dependencies import current_user, membership_for, require_csrf
 from .errors import ApiProblem
+from .permissions import has_permission
 from .job_service import (
     _record_dispatch,
     accepted_response,
@@ -27,8 +28,8 @@ from .schemas import AcceptedResponse, JobEventOut, JobOut
 router = APIRouter(prefix="/jobs", tags=["jobs"])
 
 
-async def _tenant_job(job_id: str, user: User, db: AsyncSession) -> Job:
-    job = await db.get(Job, job_id)
+async def _tenant_job(job_id: str, user: User, db: AsyncSession, *, lock: bool = False) -> Job:
+    job = await db.scalar(select(Job).where(Job.id == job_id).with_for_update()) if lock else await db.get(Job, job_id)
     if job is None:
         raise ApiProblem(404, "not_found", "Không tìm thấy job.")
     await membership_for(job.company_id, user, db)
@@ -49,7 +50,11 @@ async def get_job_events(job_id: str, after_seq: int = Query(default=0, ge=0), u
 
 @router.post("/{job_id}/cancel", response_model=JobOut, dependencies=[Depends(require_csrf)])
 async def cancel_job(job_id: str, user: User = Depends(current_user), db: AsyncSession = Depends(get_db)):
-    job = await _tenant_job(job_id, user, db)
+    job = await _tenant_job(job_id, user, db, lock=True)
+    if job.kind == "market_research":
+        membership = await membership_for(job.company_id, user, db)
+        if not has_permission(membership.role, "market:manage"):
+            raise ApiProblem(403, "forbidden", "Bạn không có quyền dừng lượt nghiên cứu.")
     if job.kind in {"meta_publish", "meta_publish_scheduled", "meta_metrics_sync"}:
         raise ApiProblem(409, "state_conflict", "Job Fanpage không hỗ trợ huỷ; hãy chờ kết quả hoặc đối soát lần đăng.")
     if job.status not in {"queued", "running"}:
@@ -57,6 +62,13 @@ async def cancel_job(job_id: str, user: User = Depends(current_user), db: AsyncS
     job.status = "cancelled"
     job.finished_at = utcnow()
     job.lease_until = None
+    if job.kind == "market_research":
+        cycle = await db.scalar(select(ResearchCycle).where(
+            ResearchCycle.company_id == job.company_id, ResearchCycle.job_id == job.id,
+        ).with_for_update())
+        if cycle is not None:
+            cycle.status = "cancelled"
+            cycle.completed_at = job.finished_at
     result = dict(job.result or {})
     request = result.get("request") or {}
     slot_id = request.get("slot_id") if job.kind == "content_generation" else None

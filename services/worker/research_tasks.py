@@ -12,7 +12,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
-from sqlalchemy import or_, select, text
+from sqlalchemy import func, or_, select, text
 
 from database.evidence_versions import ensure_evidence_version
 from database.job_fencing import active_job_fence, claim_job_fence, isolated_job_fence
@@ -146,7 +146,7 @@ async def _claim(job_id: str) -> bool:
             await db.commit()
             return False
         job.status = "running"
-        job.started_at = utcnow()
+        job.started_at = job.started_at or utcnow()
         job.lease_until = utcnow() + timedelta(minutes=settings.job_lease_minutes)
         job.claim_token = claim_token
         job.attempts += 1
@@ -757,7 +757,10 @@ async def _save_owned_page_backfill_state(
         return processed
 
 
-async def _collect_page(company_id: str, group_id: str, source: ResearchSource, observed_at: datetime) -> tuple[int, dict[str, Any]]:
+async def _collect_page(
+    company_id: str, group_id: str, source: ResearchSource, observed_at: datetime,
+    *, continuation: bool = False,
+) -> tuple[int, dict[str, Any]]:
     async with SessionLocal() as db:
         connection = await db.scalar(select(MetaPageConnection).where(
             MetaPageConnection.company_id == company_id, MetaPageConnection.id == source.connection_id,
@@ -780,6 +783,7 @@ async def _collect_page(company_id: str, group_id: str, source: ResearchSource, 
     oldest_post_at: datetime | None = None
     views_observed = False
     metric_counts: dict[str, int] = {}
+    seen_post_ids: set[str] = set()
     # Comment text can identify private individuals. Until the workspace has
     # an approved purpose/retention/erasure configuration and a reviewed
     # pseudonymization pipeline, collect only Meta's aggregate count.
@@ -804,10 +808,13 @@ async def _collect_page(company_id: str, group_id: str, source: ResearchSource, 
             async def persist_posts(posts, *, collect_views: bool) -> tuple[int, bool, int]:
                 nonlocal stored, posts_seen, posts_in_window, unknown_publish_dates
                 nonlocal oldest_post_at, views_available, views_observed
-                window_boundary_seen = False
+                older_posts = 0
                 unknown_in_batch = 0
                 saved_in_batch = 0
                 for post in posts:
+                    if post.external_post_id in seen_post_ids:
+                        continue
+                    seen_post_ids.add(post.external_post_id)
                     posts_seen += 1
                     post_time = _aware(post.created_time, observed_at) if post.created_time else None
                     if post_time is None:
@@ -816,7 +823,7 @@ async def _collect_page(company_id: str, group_id: str, source: ResearchSource, 
                     else:
                         oldest_post_at = min(oldest_post_at, post_time) if oldest_post_at else post_time
                         if post_time < window_start:
-                            window_boundary_seen = True
+                            older_posts += 1
                             continue
                     posts_in_window += 1
                     post_url = post.permalink_url or f"https://www.facebook.com/{post.external_post_id}"
@@ -860,6 +867,10 @@ async def _collect_page(company_id: str, group_id: str, source: ResearchSource, 
                     )
                     stored += 1
                     saved_in_batch += 1
+                # A single old/pinned post is not a chronological boundary.
+                # Keep paging until an entire nonempty response is older and
+                # every publish timestamp is known.
+                window_boundary_seen = bool(posts) and older_posts == len(posts)
                 return saved_in_batch, window_boundary_seen, unknown_in_batch
 
             # During the initial 90-day backfill, divide the 100-post budget
@@ -867,22 +878,32 @@ async def _collect_page(company_id: str, group_id: str, source: ResearchSource, 
             # provider history is exhausted, use the full budget to refresh
             # recent Page posts on each scheduled run.
             backfill_complete = bool(state["complete"])
-            newest_limit = 100 if backfill_complete else 50
-            newest = await client.list_page_posts(limit=newest_limit)
-            newest_saved, boundary_seen, _ = await persist_posts(
-                newest.posts, collect_views=True,
-            )
+            newest_saved = 0
+            boundary_seen = False
+            newest_cursor = None
+            if not continuation:
+                newest_limit = 100 if backfill_complete else 50
+                newest = await client.list_page_posts(limit=newest_limit)
+                newest_saved, boundary_seen, _ = await persist_posts(
+                    newest.posts, collect_views=True,
+                )
+                newest_cursor = newest.next_cursor
             posts_budget_remaining = 100 - newest_saved
-            next_cursor = state["cursor"] or newest.next_cursor
+            next_cursor = state["cursor"] or newest_cursor
             stop_reason = "provider_exhausted" if not next_cursor else "batch_limit"
             window_complete = bool(state["window_complete"]) or boundary_seen
 
             if not backfill_complete and not window_complete and next_cursor and posts_budget_remaining > 0:
-                history = await client.list_page_posts(limit=min(50, posts_budget_remaining), after=next_cursor)
+                previous_cursor = next_cursor
+                history = await client.list_page_posts(
+                    limit=min(100 if continuation else 50, posts_budget_remaining), after=next_cursor,
+                )
                 _, history_boundary_seen, _ = await persist_posts(history.posts, collect_views=False)
                 next_cursor = history.next_cursor
                 window_complete = history_boundary_seen
-                if not next_cursor:
+                if next_cursor == previous_cursor:
+                    stop_reason = "pagination_stalled"
+                elif not next_cursor:
                     stop_reason = "provider_exhausted"
                 elif window_complete:
                     stop_reason = "window_start_reached"
@@ -951,7 +972,9 @@ async def _collect_page(company_id: str, group_id: str, source: ResearchSource, 
         "window_coverage_complete": window_complete,
         "coverage_status": coverage_status,
         "stop_reason": stop_reason,
-        "next_checkpoint_available": bool(next_cursor and not backfill_complete),
+        "next_checkpoint_available": bool(
+            next_cursor and not backfill_complete and stop_reason != "pagination_stalled"
+        ),
         "backfill_pages_processed": pages_processed,
     }
 
@@ -1044,14 +1067,115 @@ async def _latest_privacy_policy_snapshot(db, company_id: str, source_id: str) -
 
 
 def _checkpointed_research_source_ids(source_results: list[dict[str, Any]]) -> set[str]:
-    """Only re-run source results explicitly marked retryable after recovery."""
+    """Skip terminal sources, but continue a durable owned-Page batch."""
     return {
         source_id for item in source_results
         if isinstance(item, dict)
         and isinstance((source_id := item.get("source_id")), str)
         and source_id
         and item.get("retryable") is not True
+        and item.get("continuation_pending") is not True
     }
+
+
+async def _owned_page_observation_count(
+    company_id: str, source_id: str, observed_at: datetime,
+) -> int:
+    """Use committed snapshots, including pages replayed after worker death."""
+    async with SessionLocal() as db:
+        return int(await db.scalar(
+            select(func.count(MarketObservation.id))
+            .join(MarketEvidence, (MarketEvidence.company_id == MarketObservation.company_id)
+                  & (MarketEvidence.id == MarketObservation.evidence_id))
+            .where(MarketObservation.company_id == company_id,
+                   MarketEvidence.source_id == source_id,
+                   MarketObservation.observed_at == observed_at)
+        ) or 0)
+
+
+async def _queue_owned_page_continuation(
+    job_id: str, source_results: list[dict[str, Any]],
+) -> bool:
+    if not any(item.get("continuation_pending") is True for item in source_results):
+        return False
+    async with SessionLocal() as db:
+        job = await db.scalar(select(Job).where(Job.id == job_id).with_for_update())
+        cycle = await db.scalar(select(ResearchCycle).where(
+            ResearchCycle.job_id == job_id,
+        ).with_for_update())
+        if job is None or cycle is None or job.status != "running":
+            return False
+        if job.attempts >= settings.max_job_attempts:
+            for item in source_results:
+                if item.get("continuation_pending") and item.get("retryable"):
+                    item.update({
+                        "continuation_pending": False, "retryable": False,
+                        "status": "failed", "code": "source_batch_retry_limit",
+                        "message": "Lô thu thập đã hết số lần thử; dữ liệu đã lưu vẫn được giữ.",
+                    })
+                    source = await db.scalar(select(ResearchSource).where(
+                        ResearchSource.company_id == job.company_id,
+                        ResearchSource.id == item.get("source_id"),
+                    ).with_for_update())
+                    if source is not None:
+                        source.status = "error"
+                        source.collection_status = "source_batch_retry_limit"
+                        source.next_due_at = None
+                        source.error_json = {
+                            "code": item["code"], "message": item["message"], "retryable": False,
+                        }
+            if not any(item.get("continuation_pending") is True for item in source_results):
+                cycle.source_results_json = source_results
+                await db.commit()
+                return False
+        cycle.source_results_json = source_results
+        cycle.status = "running"
+        # Successful batches are progress, not retries. Reset only after their
+        # checkpoint commits; interrupted deliveries still use max_job_attempts.
+        batch_retry = any(item.get("continuation_pending") and item.get("retryable") for item in source_results)
+        if not batch_retry:
+            job.attempts = 0
+        job.status = "queued"
+        job.lease_until = None
+        job.claim_token = new_id()
+        job.error = None
+        job.result = {
+            **(job.result or {}), "source_results": source_results,
+            "source_ids": (job.result or {}).get("source_ids") or [item["source_id"] for item in source_results],
+            "collection_batches_completed": int((job.result or {}).get("collection_batches_completed", 0)) + int(not batch_retry),
+            "collection_batch_retries": int((job.result or {}).get("collection_batch_retries", 0)) + int(batch_retry),
+            "analysis_status": "waiting_for_collection",
+        }
+        await _event(db, job, "Đã lưu lô bài viết; đang chuyển lô lịch sử tiếp theo vào hàng đợi.", job.progress or 10)
+        await db.commit()
+    return True
+
+
+@isolated_job_fence
+async def _dispatch_owned_page_continuation(job_id: str) -> None:
+    """Only dispatch this committed job, independently of its revoked lease."""
+    from services.api.job_service import dispatch_research_job
+
+    async with SessionLocal() as db:
+        job = await db.scalar(select(Job).where(Job.id == job_id).with_for_update())
+        now = utcnow()
+        if job is None or job.status != "queued" or (
+            job.lease_until is not None and _aware(job.lease_until, now) > now
+        ):
+            return
+        job.lease_until = now + timedelta(minutes=settings.job_lease_minutes)
+        await db.commit()
+    sent = await dispatch_research_job(job_id)
+    async with SessionLocal() as db:
+        job = await db.scalar(select(Job).where(Job.id == job_id).with_for_update())
+        if job is not None:
+            job.dispatch_attempts += 1
+            job.last_dispatch_at = utcnow()
+            job.last_dispatch_error = None if sent else "queue_unavailable"
+            # Failed delivery is immediately eligible for durable recovery.
+            if not sent and job.status == "queued":
+                job.lease_until = None
+            await db.commit()
 
 
 FACEBOOK_CLI_LOCK_KEY = 0x4642434C49
@@ -1968,7 +2092,7 @@ async def _audience_for_report(company_id: str, group_id: str) -> list[dict[str,
     return output
 
 
-async def _run(job_id: str) -> None:
+async def _run(job_id: str) -> bool | None:
     async with SessionLocal() as db:
         job = await db.scalar(select(Job).where(Job.id == job_id).with_for_update())
         if job is None or job.status != "running":
@@ -2016,7 +2140,11 @@ async def _run(job_id: str) -> None:
                 ResearchSource.company_id == company_id, ResearchSource.id == source_id,
             ))
             if source is None or not source.active:
+                source_results = [item for item in source_results if item.get("source_id") != source_id]
                 continue
+            previous_result = next(
+                (item for item in source_results if item.get("source_id") == source_id), {},
+            )
             source_type = source.source_type
             privacy_policy_snapshot = (
                 await _latest_privacy_policy_snapshot(db, company_id, source.id)
@@ -2056,8 +2184,21 @@ async def _run(job_id: str) -> None:
                     )
                     outcome = {"status": "collected", **details}
                 elif source_type == "owned_facebook_page":
-                    _count, details = await _collect_page(company_id, group_id, source, observed_at)
-                    outcome = {"status": "collected", **details}
+                    async with asyncio.timeout(300):
+                        _count, details = await _collect_page(
+                            company_id, group_id, source, observed_at,
+                            continuation=previous_result.get("continuation_pending") is True,
+                        )
+                    outcome = {
+                        "status": "collected", **details,
+                        "batch_items_saved": details.get("items_saved", 0),
+                        "items_saved": await _owned_page_observation_count(company_id, source.id, observed_at),
+                        "collection_batches_completed": int(previous_result.get("collection_batches_completed", 0)) + 1,
+                        "continuation_pending": details.get("next_checkpoint_available") is True,
+                        "metrics_scope": "latest_batch",
+                        "items_seen_scope": "latest_batch",
+                        "items_saved_scope": "cycle_unique_observations",
+                    }
                 elif source_type == "competitor_facebook_page":
                     _count, details = await _collect_competitor_page(
                         company_id, group_id, source, observed_at,
@@ -2105,7 +2246,10 @@ async def _run(job_id: str) -> None:
                     source.collection_last_method = "meta_api"
                     if int(outcome.get("items_saved", 0) or 0) > 0:
                         source.last_collection_success_at = utcnow()
-                    source.next_due_at = utcnow() + timedelta(hours=12) if source.schedule_enabled else None
+                    source.next_due_at = (
+                        utcnow() + timedelta(hours=12)
+                        if source.schedule_enabled and not outcome.get("continuation_pending") else None
+                    )
                 else:
                     source.next_due_at = (
                         utcnow() + timedelta(hours=12)
@@ -2143,6 +2287,16 @@ async def _run(job_id: str) -> None:
                     "page_public_content_access_not_configured", "page_public_access_denied", "page_public_access_token_invalid",
                     } else "error"
                 source.error_json = {"code": error.code, "message": str(error), "retryable": error.retryable}
+            except TimeoutError:
+                outcome = {"status": "partial", "code": "source_batch_timeout",
+                           "message": "Lô thu thập đã hết 5 phút; giữ checkpoint và dữ liệu đã lưu.",
+                           "items_saved": await _owned_page_observation_count(company_id, source.id, observed_at)
+                           if source_type == "owned_facebook_page" else 0,
+                           "collection_batches_completed": previous_result.get("collection_batches_completed", 0),
+                           "retryable": True, "continuation_pending": source_type == "owned_facebook_page"}
+                source.collection_status = "source_batch_timeout"
+                source.next_due_at = None
+                source.error_json = {"code": "source_batch_timeout", "message": outcome["message"], "retryable": True}
             except Exception:
                 logger.exception(
                     "Unexpected error while collecting a research source",
@@ -2178,7 +2332,7 @@ async def _run(job_id: str) -> None:
             if cycle is not None:
                 cycle.source_results_json = list(source_results)
             await db.commit()
-            if not source_result.get("retryable"):
+            if not source_result.get("retryable") and not source_result.get("continuation_pending"):
                 checkpointed_source_ids.add(source.id)
         async with SessionLocal() as db:
             job = await db.get(Job, job_id)
@@ -2190,6 +2344,9 @@ async def _run(job_id: str) -> None:
                     step.progress = progress
                     step.message = f"Đã xử lý {position}/{len(source_snapshot)} nguồn."
                 await db.commit()
+
+    if await _queue_owned_page_continuation(job_id, source_results):
+        return True
 
     evidence_rows = await _evidence_for_report(company_id, group_id)
     audience_rows = await _audience_for_report(company_id, group_id)
@@ -2360,7 +2517,8 @@ async def _run(job_id: str) -> None:
 @isolated_job_fence
 async def market_research_task_async(job_id: str) -> None:
     if await _claim(job_id):
-        await _run(job_id)
+        if await _run(job_id):
+            await _dispatch_owned_page_continuation(job_id)
 
 
 @celery_app.task(name="services.worker.research_tasks.market_research_task", acks_late=True, time_limit=1500, soft_time_limit=1400)

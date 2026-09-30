@@ -15,7 +15,7 @@ from sqlalchemy.pool import StaticPool
 
 from database.models import (
     AIUsageBudgetDay, AIUsageLedger, Base, Brand, BrandProfileRevision, Campaign, Job, MarketEvidence, MarketEvidenceVersion, MarketObservation, MetaPageConnection,
-    MarketReport, MarketReportEvidence, MetaPageGroup, ResearchCycle, ResearchSource, Company, new_id,
+    MarketReport, MarketReportEvidence, MetaPageGroup, ResearchCycle, ResearchSource, Company, new_id, utcnow,
     Membership, ResearchPrivacyPolicyRevision, User, WebCrawlRun,
 )
 from services.api import market_research as market_research_routes
@@ -1860,11 +1860,233 @@ def test_research_source_checkpoint_retries_only_retryable_outcomes() -> None:
         {"source_id": "done", "status": "collected"},
         {"source_id": "blocked", "status": "blocked", "retryable": False},
         {"source_id": "retry", "status": "failed", "retryable": True},
+        {"source_id": "next-batch", "status": "collected", "continuation_pending": True},
         {"status": "failed"},
         None,
     ])
 
     assert checkpointed == {"done", "blocked"}
+
+
+@pytest.mark.parametrize("stalled", [False, True])
+def test_owned_page_backfill_keeps_paging_past_one_old_post_and_stops_repeated_cursor(
+    market_api, monkeypatch, stalled,
+) -> None:
+    client, sessions, _key = market_api
+    workspace_id, _headers = _owner(client, f"old-post-{stalled}@example.com")
+    monkeypatch.setattr(research_tasks, "SessionLocal", sessions)
+    monkeypatch.setattr(research_tasks, "decrypt_page_token", lambda _value: "synthetic-token")
+    monkeypatch.setattr(research_tasks, "settings", SimpleNamespace(meta_graph_version="v26.0"))
+    observed_at = utcnow()
+    calls = []
+
+    async def source_context():
+        async with sessions() as db:
+            source = await db.scalar(select(ResearchSource).where(
+                ResearchSource.company_id == workspace_id, ResearchSource.source_type == "owned_facebook_page",
+            ))
+            connection = await db.get(MetaPageConnection, source.connection_id)
+            return source, connection.page_id
+
+    source, page_id = asyncio.run(source_context())
+
+    class MetaFixture:
+        def __init__(self, *_args):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *_args):
+            return False
+
+        async def read_page_followers_count(self):
+            return None
+
+        async def read_post_media_views(self, _post_id):
+            return None
+
+        async def list_post_comments(self, *_args):
+            raise AssertionError("Comment text must remain on privacy hold")
+
+        async def list_page_posts(self, limit=100, after=None):
+            calls.append(after)
+            def post(index, age):
+                return MetaPagePost(external_post_id=f"{page_id}_{index}", message=f"Fixture post {index}",
+                                    created_time=observed_at - timedelta(days=age),
+                                    permalink_url=f"https://www.facebook.com/{page_id}/posts/{index}",
+                                    reactions=0, comments=None, shares=None)
+            if after is None:
+                return MetaPagePostsPage((post(1, 100), post(2, 5)), "c1")
+            if after == "c1":
+                return MetaPagePostsPage((post(3, 10),), "c1" if stalled else "c2")
+            assert after == "c2" and limit == 100
+            return MetaPagePostsPage((post(4, 91), post(5, 92)), "c3")
+
+    monkeypatch.setattr(research_tasks, "MetaGraphClient", MetaFixture)
+    saved, details = asyncio.run(research_tasks._collect_page(
+        workspace_id, source.group_id, source, observed_at,
+    ))
+    assert saved == 2
+    assert details["window_coverage_complete"] is False
+    assert calls == [None, "c1"]
+    if stalled:
+        assert details["stop_reason"] == "pagination_stalled"
+        assert details["next_checkpoint_available"] is False
+        assert details["history_complete"] is False
+    else:
+        assert details["next_checkpoint_available"] is True
+        saved, details = asyncio.run(research_tasks._collect_page(
+            workspace_id, source.group_id, source, observed_at, continuation=True,
+        ))
+        assert calls == [None, "c1", "c2"]  # No repeated newest-page request.
+        assert saved == 0
+        assert details["window_coverage_complete"] is True
+        assert details["history_complete"] is True
+        assert details["stop_reason"] == "window_start_reached"
+
+
+@pytest.mark.parametrize("retryable,attempts,queued", [(False, 3, True), (True, 1, True), (True, 3, False)])
+def test_owned_page_batch_dispatch_failure_preserves_durable_checkpoint(
+    market_api, monkeypatch, retryable, attempts, queued,
+) -> None:
+    from services.api import job_service
+
+    client, sessions, _key = market_api
+    workspace_id, _headers = _owner(client, f"batch-{retryable}-{attempts}@example.com")
+    async def find_source():
+        async with sessions() as db:
+            source = await db.scalar(select(ResearchSource).where(
+                ResearchSource.company_id == workspace_id,
+                ResearchSource.source_type == "owned_facebook_page",
+            ))
+            return source.id, source.group_id
+
+    source_id, group_id = asyncio.run(find_source())
+    monkeypatch.setattr(research_tasks, "SessionLocal", sessions)
+    monkeypatch.setattr(research_tasks, "settings", SimpleNamespace(job_lease_minutes=5, max_job_attempts=3))
+    dispatched = []
+    job_id = new_id()
+    cycle_id = new_id()
+    results = [{"source_id": source_id, "status": "partial", "items_saved": 9,
+                "continuation_pending": True, "retryable": retryable}]
+
+    async def broker_down(actual_job_id):
+        dispatched.append(actual_job_id)
+        # The next task must never be sent before its checkpoint/requeue commits.
+        async with sessions() as db:
+            job = await db.get(Job, actual_job_id)
+            cycle = await db.get(ResearchCycle, cycle_id)
+            assert job.status == "queued"
+            assert cycle.source_results_json == results
+        return False
+
+    monkeypatch.setattr(job_service, "dispatch_research_job", broker_down)
+
+    async def run():
+        async with sessions() as db:
+            actor = await db.scalar(select(Membership.user_id).where(Membership.company_id == workspace_id))
+            db.add(Job(id=job_id, company_id=workspace_id, created_by=actor, kind="market_research",
+                       title="Fixture checkpoint", status="running", attempts=attempts,
+                       claim_token="old-claim", result={"group_id": group_id}))
+            await db.flush()
+            db.add(ResearchCycle(id=cycle_id, company_id=workspace_id, group_id=group_id, job_id=job_id,
+                                 cycle_key=f"checkpoint:{job_id}", status="running", source_results_json=[]))
+            await db.commit()
+        assert await research_tasks._queue_owned_page_continuation(job_id, results) is queued
+        if queued:
+            await research_tasks._dispatch_owned_page_continuation(job_id)
+        async with sessions() as db:
+            job = await db.get(Job, job_id)
+            cycle = await db.get(ResearchCycle, cycle_id)
+            assert cycle.source_results_json == results
+            assert job.lease_until is None
+            if queued:
+                assert job.status == "queued"
+                assert job.attempts == (attempts if retryable else 0)
+                assert job.claim_token != "old-claim"
+                assert job.dispatch_attempts == 1
+                assert job.last_dispatch_error == "queue_unavailable"
+                assert job.result["analysis_status"] == "waiting_for_collection"
+                assert job.result["collection_batches_completed"] == int(not retryable)
+                assert job.result["collection_batch_retries"] == int(retryable)
+                assert dispatched == [job_id]
+            else:
+                assert job.status == "running"  # The caller now finalizes the partial result.
+                assert results[0]["code"] == "source_batch_retry_limit"
+                assert results[0]["continuation_pending"] is False
+                assert results[0]["retryable"] is False
+                source = await db.get(ResearchSource, source_id)
+                assert source.collection_status == "source_batch_retry_limit"
+                assert source.error_json["retryable"] is False
+                assert dispatched == []
+
+    asyncio.run(run())
+
+
+@pytest.mark.parametrize("status", ["queued", "running"])
+def test_cancelling_research_cycle_allows_a_new_crawl_and_preserves_page_cursor(
+    market_api, monkeypatch, status,
+) -> None:
+    client, sessions, _key = market_api
+    workspace_id, headers = _owner(client, f"cancel-{status}@example.com")
+    owner_access = client.cookies["agentic_access"]
+
+    async def no_dispatch(_job_id):
+        return False
+
+    monkeypatch.setattr(market_research_routes, "dispatch_research_job", no_dispatch)
+    viewer_id = new_id()
+
+    async def setup():
+        async with sessions() as db:
+            source = await db.scalar(select(ResearchSource).where(
+                ResearchSource.company_id == workspace_id, ResearchSource.source_type == "owned_facebook_page",
+            ))
+            source.owned_page_backfill_cursor = "checkpoint-after-batch-1"
+            viewer = User(id=viewer_id, email=f"viewer-cancel-{status}@example.com", full_name="Viewer",
+                          password_hash="not-a-login")
+            db.add(viewer)
+            await db.flush()
+            db.add(Membership(company_id=workspace_id, user_id=viewer_id, role="viewer"))
+            await db.commit()
+            return source.id, create_access_token(viewer)[0]
+
+    source_id, viewer_access = asyncio.run(setup())
+    url = f"/api/v1/workspaces/{workspace_id}/market-research/sources/{source_id}/crawl"
+    accepted = client.post(url, headers=headers)
+    assert accepted.status_code == 202, accepted.text
+    job_id = accepted.json()["job_id"]
+
+    async def mark_status():
+        async with sessions() as db:
+            job = await db.get(Job, job_id)
+            cycle = await db.scalar(select(ResearchCycle).where(ResearchCycle.job_id == job_id))
+            job.status = status
+            cycle.status = status
+            await db.commit()
+
+    asyncio.run(mark_status())
+    client.cookies.set("agentic_access", viewer_access)
+    rejected = client.post(f"/api/v1/jobs/{job_id}/cancel", headers=headers)
+    assert rejected.status_code == 403, rejected.text
+    client.cookies.set("agentic_access", owner_access)
+    cancelled = client.post(f"/api/v1/jobs/{job_id}/cancel", headers=headers)
+    assert cancelled.status_code == 200, cancelled.text
+    assert cancelled.json()["status"] == "cancelled"
+    restarted = client.post(url, headers=headers)
+    assert restarted.status_code == 202, restarted.text
+    assert restarted.json()["job_id"] != job_id
+
+    async def verify():
+        async with sessions() as db:
+            cycle = await db.scalar(select(ResearchCycle).where(ResearchCycle.job_id == job_id))
+            source = await db.get(ResearchSource, source_id)
+            assert cycle.status == "cancelled"
+            assert cycle.completed_at is not None
+            assert source.owned_page_backfill_cursor == "checkpoint-after-batch-1"
+
+    asyncio.run(verify())
 
 
 def test_research_policy_snapshot_is_explicitly_not_enforced() -> None:

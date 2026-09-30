@@ -6,6 +6,9 @@ import asyncio
 import base64
 import json
 import os
+import shutil
+import socket
+import subprocess
 import uuid
 from datetime import datetime, timedelta, timezone
 
@@ -13,11 +16,13 @@ import pytest
 from sqlalchemy import delete, inspect, select, update
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from redis.asyncio import Redis
+from redis.exceptions import ConnectionError as RedisConnectionError
 
 from database.job_fencing import JobLeaseLost, _current_job_fence
 from database.models import (
     AIUsageBudgetDay, AIUsageLedger, Base, Company, Job, JobEvent, JobStep, MarketObservation,
-    MarketEvidence, MarketEvidenceVersion, Membership, MetaPageGroup, ResearchCycle, ResearchSource,
+    MarketEvidence, MarketEvidenceVersion, MarketReport, Membership, MetaPageConnection,
+    MetaPageGroup, ResearchCycle, ResearchPrivacyPolicyRevision, ResearchSource,
     ResearchSourceErasure, ResearchSourceErasureObject, User, new_id, utcnow,
 )
 from services.api import db as api_db
@@ -1320,6 +1325,258 @@ def test_postgres_celery_worker_consumes_committed_research_job() -> None:
                 job = await db.get(Job, job_id)
                 if job is not None:
                     await db.delete(job)
+                company = await db.get(Company, company_id)
+                if company is not None:
+                    await db.delete(company)
+                user = await db.get(User, user_id)
+                if user is not None:
+                    await db.delete(user)
+                await db.commit()
+            await engine.dispose()
+
+    asyncio.run(run())
+
+
+def test_owned_page_backfill_continues_through_redis_and_finalizes_once(monkeypatch) -> None:
+    """Real PG/Redis/Celery; external Meta responses are labeled fixtures."""
+    queue_url = os.getenv("REDIS_QUEUE_TEST_URL")
+    if not queue_url or os.getenv("REDIS_URL") != queue_url:
+        pytest.skip("an isolated Redis broker is required")
+    from celery.contrib.testing.worker import start_worker
+    from sqlalchemy.pool import NullPool
+    from services.api.meta_client import MetaPagePost, MetaPagePostsPage
+    from services.worker.celery_app import celery_app
+
+    observed_at = utcnow()
+    page_id = "812345670099"
+    calls: list[str | None] = []
+
+    class MetaFixture:
+        def __init__(self, actual_page_id, _token, _version):
+            assert actual_page_id == page_id
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *_args):
+            return False
+
+        async def read_page_followers_count(self):
+            return 100
+
+        async def read_post_media_views(self, _post_id):
+            return None
+
+        async def list_page_posts(self, limit=100, after=None):
+            calls.append(after)
+            index = int(after[1:]) if after else 0
+            assert limit == (50 if index < 2 else 100)
+            # Six pages require more successful batches than the retry limit.
+            return MetaPagePostsPage((MetaPagePost(
+                external_post_id=f"{page_id}_{index + 1}",
+                message=f"Synthetic owned Page post {index + 1}",
+                created_time=observed_at - timedelta(days=index),
+                permalink_url=f"https://www.facebook.com/{page_id}/posts/{index + 1}",
+                reactions=index, comments=None, shares=0,
+            ),), f"c{index + 1}" if index < 5 else None)
+
+    monkeypatch.setattr(research_tasks, "MetaGraphClient", MetaFixture)
+    monkeypatch.setattr(research_tasks, "decrypt_page_token", lambda _value: "synthetic-token-no-live-access")
+
+    async def run():
+        assert POSTGRES_TEST_URL
+        engine = create_async_engine(POSTGRES_TEST_URL, poolclass=NullPool)
+        sessions = async_sessionmaker(engine, expire_on_commit=False)
+        worker_sessions = async_sessionmaker(engine, expire_on_commit=False, class_=FencedAsyncSession)
+        monkeypatch.setattr(research_tasks, "SessionLocal", worker_sessions)
+        marker = uuid.uuid4().hex
+        company_id, user_id, group_id, connection_id, source_id, job_id = [new_id() for _ in range(6)]
+        try:
+            async with sessions() as db:
+                db.add_all([
+                    Company(id=company_id, name="Meta fixture batching", slug=f"batches-{marker}",
+                            page_id=page_id, page_connection_state="active"),
+                    User(id=user_id, email=f"batches-{marker}@example.invalid", full_name="Fixture Owner",
+                         password_hash="not-a-login"),
+                ])
+                await db.flush()
+                db.add(MetaPageGroup(id=group_id, company_id=company_id, name="Research batch fixture",
+                                    industry="Unknown", region="Unknown", locale="vi-VN", keywords_json=[]))
+                await db.flush()
+                db.add(MetaPageConnection(id=connection_id, company_id=company_id, group_id=group_id,
+                                         page_id=page_id, page_name="Meta fixture batching",
+                                         encrypted_token="fixture-not-usable", active=True, status="verified",
+                                         token_fingerprint="test-only-fingerprint"))
+                await db.flush()
+                db.add(ResearchSource(id=source_id, company_id=company_id, group_id=group_id,
+                                      connection_id=connection_id, source_type="owned_facebook_page",
+                                      collection_mode="meta_api", name="Owned Page fixture",
+                                      url=f"https://www.facebook.com/{page_id}",
+                                      normalized_url=f"https://www.facebook.com/{page_id}",
+                                      active=True, schedule_enabled=False, created_by=user_id))
+                await db.flush()
+                db.add(ResearchPrivacyPolicyRevision(company_id=company_id, source_id=source_id,
+                    revision_no=1, purpose="Synthetic test content only", processing_basis_reference="fixture",
+                    policy_version="test-only", requested_retention_days=90, configured_by=user_id))
+                db.add(Job(id=job_id, company_id=company_id, created_by=user_id, kind="market_research",
+                           title="Owned Page batch fixture", status="queued", progress=0,
+                           result={"group_id": group_id, "source_ids": [source_id]}))
+                await db.flush()
+                db.add(ResearchCycle(company_id=company_id, group_id=group_id, job_id=job_id,
+                                     cycle_key=f"batches:{marker}", status="queued", source_results_json=[],
+                                     collection_observed_at=observed_at))
+                await db.commit()
+
+            with start_worker(celery_app, pool="solo", concurrency=1, queues=("agent",),
+                              perform_ping_check=False, shutdown_timeout=10):
+                assert await job_service.dispatch_research_job(job_id) is True
+                deadline = asyncio.get_running_loop().time() + 25
+                while asyncio.get_running_loop().time() < deadline:
+                    async with sessions() as db:
+                        job = await db.get(Job, job_id)
+                        if job is not None and job.status in {"succeeded", "failed"}:
+                            assert job.status == "succeeded", job.error
+                            break
+                    await asyncio.sleep(0.1)
+                else:
+                    pytest.fail("Owned Page batching did not finish through Redis/Celery")
+            async with sessions() as db:
+                job = await db.get(Job, job_id)
+                cycle = await db.scalar(select(ResearchCycle).where(ResearchCycle.job_id == job_id))
+                reports = (await db.scalars(select(MarketReport).where(MarketReport.cycle_id == cycle.id))).all()
+                observations = (await db.scalars(select(MarketObservation).where(
+                    MarketObservation.company_id == company_id))).all()
+                source = await db.get(ResearchSource, source_id)
+                assert calls == [None, "c1", "c2", "c3", "c4", "c5"]
+                assert job.attempts == 1
+                assert len(reports) == 1
+                assert len(observations) == 6
+                assert all(row.observed_at == observed_at for row in observations)
+                assert all(row.comments_json == [] for row in observations)
+                assert cycle.source_results_json[0]["collection_batches_completed"] == 5
+                assert cycle.source_results_json[0]["items_saved"] == 6
+                assert cycle.source_results_json[0]["continuation_pending"] is False
+                assert source.owned_page_backfill_complete is True
+                assert source.owned_page_backfill_cursor is None
+                assert source.next_due_at is None  # A manual crawl never enables scheduling.
+                # Replayed deliveries cannot create a second report/snapshot.
+                await research_tasks.market_research_task_async(job_id)
+                assert len((await db.scalars(select(MarketReport).where(MarketReport.cycle_id == cycle.id))).all()) == 1
+        finally:
+            async with sessions() as db:
+                company = await db.get(Company, company_id)
+                if company is not None:
+                    await db.delete(company)
+                user = await db.get(User, user_id)
+                if user is not None:
+                    await db.delete(user)
+                await db.commit()
+            await engine.dispose()
+
+    asyncio.run(run())
+
+
+def test_owned_page_continuation_recovers_after_real_disposable_redis_outage(monkeypatch, tmp_path) -> None:
+    """Stop only a Redis process started by this test; retain its committed job."""
+    from celery import Celery
+    from services.worker import celery_app as celery_module
+
+    redis_binary = shutil.which("redis-server")
+    if not redis_binary:
+        pytest.skip("local Redis binary is required for an owned disposable fault test")
+    with socket.socket() as reservation:
+        reservation.bind(("127.0.0.1", 0))
+        port = reservation.getsockname()[1]
+    broker_url = f"redis://127.0.0.1:{port}/0"
+    fault_app = Celery("disposable_research_fault", broker=broker_url)
+    fault_app.conf.update(task_serializer="json", task_publish_retry=False,
+                          broker_transport_options={"socket_connect_timeout": 0.2, "socket_timeout": 0.2,
+                                                    "max_retries": 0})
+    monkeypatch.setattr(celery_module, "celery_app", fault_app)
+    process = None
+
+    def start_redis():
+        return subprocess.Popen([
+            redis_binary, "--bind", "127.0.0.1", "--port", str(port), "--protected-mode", "yes",
+            "--save", "", "--appendonly", "no", "--dir", str(tmp_path),
+        ], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
+    async def ready(redis, owned_process):
+        deadline = asyncio.get_running_loop().time() + 5
+        while asyncio.get_running_loop().time() < deadline:
+            assert owned_process.poll() is None, "test Redis process exited"
+            try:
+                info = await redis.info("server")
+                assert int(info["process_id"]) == owned_process.pid
+                return
+            except (RedisConnectionError, OSError):
+                pass
+            await asyncio.sleep(0.05)
+        pytest.fail("disposable Redis did not become ready")
+
+    async def run():
+        nonlocal process
+        assert POSTGRES_TEST_URL
+        engine = create_async_engine(POSTGRES_TEST_URL)
+        sessions = async_sessionmaker(engine, expire_on_commit=False)
+        monkeypatch.setattr(research_tasks, "SessionLocal", sessions)
+        marker = uuid.uuid4().hex
+        company_id, user_id, group_id, job_id = [new_id() for _ in range(4)]
+        checkpoint = [{"source_id": "synthetic-source", "continuation_pending": True,
+                       "status": "collected", "items_saved": 7}]
+        redis = Redis.from_url(broker_url)
+        try:
+            async with sessions() as db:
+                db.add_all([Company(id=company_id, name="Redis fault fixture", slug=f"redis-fault-{marker}"),
+                            User(id=user_id, email=f"redis-fault-{marker}@example.invalid", full_name="Fixture",
+                                 password_hash="not-a-login")])
+                await db.flush()
+                db.add(MetaPageGroup(id=group_id, company_id=company_id, name="Fault fixture",
+                                    industry="Unknown", region="Unknown", locale="vi-VN", keywords_json=[]))
+                await db.flush()
+                db.add(Job(id=job_id, company_id=company_id, created_by=user_id, kind="market_research",
+                           title="Fault fixture batch", status="running", attempts=1,
+                           result={"group_id": group_id}))
+                await db.flush()
+                db.add(ResearchCycle(company_id=company_id, group_id=group_id, job_id=job_id,
+                                     cycle_key=f"fault:{marker}", status="running", source_results_json=[]))
+                await db.commit()
+
+            process = start_redis()
+            await ready(redis, process)
+            assert await research_tasks._queue_owned_page_continuation(job_id, checkpoint) is True
+            process.terminate()
+            process.wait(timeout=5)
+            await research_tasks._dispatch_owned_page_continuation(job_id)
+            async with sessions() as db:
+                job = await db.get(Job, job_id)
+                cycle = await db.scalar(select(ResearchCycle).where(ResearchCycle.job_id == job_id))
+                assert job.status == "queued"
+                assert job.last_dispatch_error == "queue_unavailable"
+                assert job.lease_until is None
+                assert cycle.source_results_json == checkpoint
+
+            process = start_redis()
+            await ready(redis, process)
+            await research_tasks._dispatch_owned_page_continuation(job_id)
+            raw = await redis.lpop("agent")
+            assert raw is not None
+            message = json.loads(raw)
+            body = json.loads(base64.b64decode(message["body"]))
+            assert body[0] == [job_id]
+            assert await redis.llen("agent") == 0
+            async with sessions() as db:
+                job = await db.get(Job, job_id)
+                assert job.status == "queued"  # Recovered delivery is awaiting a worker.
+                assert job.last_dispatch_error is None
+                assert job.dispatch_attempts == 2
+        finally:
+            if process is not None and process.poll() is None:
+                process.terminate()
+                process.wait(timeout=5)
+            await redis.aclose()
+            fault_app.close()
+            async with sessions() as db:
                 company = await db.get(Company, company_id)
                 if company is not None:
                     await db.delete(company)

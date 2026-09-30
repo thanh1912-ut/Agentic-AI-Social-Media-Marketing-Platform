@@ -469,3 +469,18 @@ Commit triển khai: `0d95d9b5704ee6fa37f31ae237d522795a08a304` trên `codex/pag
 | PostgreSQL integration smoke | PASS | `1 passed`; PostgreSQL 18.3 disposable port `15559`, migration schema đến `0026`; test cluster đã dừng. Ruff, `py_compile`, `git diff --check` đạt. |
 | Cạnh tranh đồng thời hai request kích hoạt | PASS (PostgreSQL API) | `test_postgres_concurrent_page_activation_creates_one_workspace` — `1 passed`; barrier test buộc cả hai request đọc “chưa có Page” trước khi insert. Một request tạo workspace; request unique-conflict được ánh xạ về 409, không lỗi ORM và không thêm membership. Đây là race regression có điều phối, không phải stress/load test. |
 | Root cause/fix | PASS | Test ban đầu tái hiện `MissingGreenlet` trong IntegrityError handler vì đọc thuộc tính ORM sau rollback. Endpoint lưu `requester_id` trước transaction và dùng lại sau rollback; race test sau fix đạt. |
+
+## Backfill Page tự nối lô — 2026-09-30 21:14 Asia/Ho_Chi_Minh
+
+Source được kiểm thử: working tree trên `452061b259c54083cf88e4e8a702e11a7686ecec` với thay đổi worker/tests trong đợt này. HTTP schema và migration head `0026` giữ nguyên; không thay frontend hoặc runtime preview.
+
+| Kiểm tra | Trạng thái | Bằng chứng và giới hạn |
+|---|---|---|
+| Tự tiếp tục qua Redis/Celery | PASS (pipeline thật, Meta fixture) | `test_owned_page_backfill_continues_through_redis_and_finalizes_once`: Celery solo worker nhận job đã commit, đọc sáu trang Meta tổng hợp qua năm lô, các lô tiếp đi từ cursor và không fetch lại trang mới nhất. Không có HTTP request tới Meta. |
+| Snapshot/report không trùng | PASS (PostgreSQL 18.3) | Sáu observation cùng cycle timestamp, đúng một report; duplicate delivery sau khi job hoàn tất không thêm report. Năm lô không bị max retry attempts dừng ở lô thứ ba. |
+| Lịch và retry | PASS (pipeline/fixture) | Crawl thủ công tự nối lô dù schedule tắt, source không có next due. Timeout/dispatch fixture phân biệt successful batch với retry và dừng khi hết số lần thử. Lịch 12 giờ chỉ đặt sau lượt hoàn tất nếu đang bật. |
+| Redis chết sau checkpoint commit | PASS (broker fault thật) | `test_owned_page_continuation_recovers_after_real_disposable_redis_outage` tạo Redis riêng, xác minh PID rồi dừng đúng process. Job vẫn queued, `queue_unavailable`, checkpoint/counter còn nguyên. Sau restart, helper gửi lại qua production Celery dispatcher; message chứa đúng job ID, dispatch attempts là 2. Không phải kiểm thử Beat tự chạy theo phút. |
+| Bài cũ xen bài mới/cursor lặp | PASS (SQLite API fixture) | Hai case mới không dừng vì một bài quá 90 ngày xen bài mới; cursor không tiến trả `pagination_stalled` và không nối lô vô hạn. Comment text không được fetch. |
+| Hủy và Crawl lại | PASS (SQLite API fixture) | Hai trạng thái queued/running: Viewer bị từ chối, Owner hủy job và cycle nguyên tử; source cursor vẫn giữ, lần Crawl sau nhận job mới. Không đổi publishing/Meta job cancellation. PostgreSQL/API race riêng cho cancel chưa chạy. |
+| Regression | PASS | `tests/test_market_research_api.py tests/test_meta_client.py tests/test_research_privacy.py tests/test_campaign_workflows.py`: **89 passed** sau sửa cancellation. `tests/test_postgres_database_integration.py`: **17 passed**, không skip. Ruff và whitespace check đạt. PostgreSQL/Redis disposable đã dừng. |
+| Meta live và toàn bộ phạm vi | NOT_RUN / INCOMPLETE | Không xác minh backfill Facebook thật, comments/replies, media/Gemini/Qwen hoặc browser-to-worker trong đợt này. Comments/media vẫn privacy hold. Worker preview chưa được rollout; UI real preview hiện hữu không bị đổi. |

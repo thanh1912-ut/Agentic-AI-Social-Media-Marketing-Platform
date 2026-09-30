@@ -11,7 +11,7 @@ Base đã kiểm tra: `codex/creative-studio-ui` @ `b769097bfdb3568889d974c6def9
 - [DONE] Page identity/avatar fields, unique workspace binding, activation gate và reconnect cùng Page.
 - [DONE] UI Nghiên cứu không hỏi tạo/chọn nhóm; backend giữ nhóm legacy nội bộ và facade workspace cho báo cáo.
 - [PARTIAL] Page sở hữu lưu bài và chỉ số mà Meta trả. Nội dung bình luận đang `privacy_hold`; chỉ số đếm bình luận vẫn có thể được lưu.
-- [PARTIAL] Nguồn Page sở hữu trong Nghiên cứu có checkpoint bài đăng trong cửa sổ mục tiêu 90 ngày, tối đa 100 bài/lượt và lịch 12 giờ tùy Owner; coverage báo thiếu nếu Meta hết lịch sử sớm.
+- [PARTIAL] Nguồn Page sở hữu có checkpoint và tự nối các lô tối đa 100 bài/5 phút qua cùng job/cycle; báo cáo chỉ tạo cuối lượt, sau đó lịch 12 giờ tùy Owner. Pipeline PostgreSQL/Redis/Celery đã kiểm thử bằng Meta fixture; live backfill 90 ngày chưa chạy.
 - [PARTIAL] Public Facebook Page dùng collector Tier 0. Nhóm hiện xác minh/lưu metadata công khai ở trạng thái `partial`; không lấy bài thảo luận.
 - [PARTIAL] Ledger ngân sách tự động PostgreSQL và mức trần $2/workspace/ngày đã được thêm cho báo cáo Nghiên cứu chạy DeepSeek; API và UI hiển thị số đã dùng/giữ chỗ/còn lại. Bảng giá đã ghi nhận model Gemini/Qwen đã chọn, nhưng chưa route call của hai provider hoặc media vào ledger.
 - [PARTIAL] Worker không gửi comment text cũ/mới cho agent. Chưa có pipeline nhận dạng/redact toàn diện, retention/deletion ledger hoặc quy trình pháp lý; không được coi là chứng nhận tuân thủ.
@@ -588,3 +588,16 @@ Base đã kiểm tra: `codex/creative-studio-ui` @ `b769097bfdb3568889d974c6def9
 - PASS: Ruff, `py_compile`, `git diff --check`.
 - DONE: Cụm test cổng `15559` đã dừng. Không gọi mạng ngoài, Meta, AI hoặc preview.
 - LIMITATION: Đây là scheduler function trực tiếp trên PostgreSQL, chưa chạy Celery Beat/Redis hoặc UI để quan sát reconnect → lịch được phục hồi.
+
+### 2026-09-30 21:14 Asia/Ho_Chi_Minh — Tự nối lô Page công ty và phục hồi broker
+
+- FIXED: Backfill trước đây lưu cursor rồi chờ lịch 12 giờ cho lô kế tiếp. Worker mới requeue cùng job/cycle ngay sau commit; lô tiếp đọc cursor, không đọc lại trang mới nhất. Báo cáo chỉ được finalize sau khi không còn lô tiếp.
+- DONE: Thời điểm quan sát giữ nguyên; `items_saved` đếm observation duy nhất trong PostgreSQL. Lô thành công không tiêu hao retry attempts; timeout 5 phút có số lần thử giới hạn, giữ dữ liệu đã lưu. Một bài cũ xen bài mới không kết thúc cửa sổ; cursor lặp dừng với `pagination_stalled`.
+- PASS: `tests/test_postgres_database_integration.py` — **17 passed**, không skip, trên PostgreSQL 18.3 / Redis 8.6.3 disposable. Test Celery mới đọc sáu trang phản hồi Meta fixture qua năm lô, lưu sáu observation cùng timestamp, tạo đúng một report, replay không tạo report thứ hai; lịch vẫn tắt.
+- PASS: Fault test tạo Redis riêng trên cổng tạm, xác minh PID sở hữu, dừng đúng process đó sau khi checkpoint commit, rồi xác nhận queued job/checkpoint còn nguyên. Khởi động lại broker và gửi được đúng job qua production dispatcher. Đây chưa phải thử Celery Beat tự phục hồi theo lịch.
+- PASS: `tests/test_market_research_api.py tests/test_meta_client.py tests/test_research_privacy.py` — **76 passed**; trong đó năm case mới kiểm tra bài cũ xen bài mới, cursor lặp, dispatch lỗi và giới hạn retry. API tests dùng SQLite fixture; bằng chứng pipeline thật nằm ở suite PostgreSQL/Redis riêng.
+- PASS: Ruff, `git diff --check`; không thay HTTP schema, không có migration mới hoặc thay đổi frontend.
+- DONE: Các dịch vụ test cổng `15559`, `16481`, `16482` đã dừng; fault Redis riêng kết thúc theo handle của test. API/frontend/workers preview không bị restart.
+- NOT_RUN: Meta live, bình luận/replies, media, Gemini/Qwen routing, UI-to-worker và rollout worker mới. Các phần này vẫn còn trong phạm vi nhiệm vụ; không đánh dấu pilot hoàn tất.
+- FIXED: Hủy research job giờ khóa bản ghi job, kết thúc research cycle trong cùng transaction và giữ cursor/bằng chứng. Viewer không được hủy; Owner/Editor dùng quyền `market:manage`. Hai case queued/running qua API fixture xác nhận có thể gửi Crawl mới sau khi hủy thay vì bị trả về job cũ.
+- PASS: Regression cuối có thêm `tests/test_campaign_workflows.py` đạt **89 passed**; luồng hủy reservation của content generation vẫn đạt sau khi thêm khóa job.
