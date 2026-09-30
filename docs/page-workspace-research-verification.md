@@ -388,3 +388,12 @@ Commit triển khai: `0d95d9b5704ee6fa37f31ae237d522795a08a304` trên `codex/pag
 | PostgreSQL persistence boundary | PASS (PostgreSQL 18.3 disposable) | Fresh migration tới `0026_research_source_erasure`; `test_postgres_facebook_evidence_persistence_enforces_privacy_boundary` — 1 passed trên cổng test `15558`. Cụm đã dừng; không dùng database preview. |
 | Redis/Celery/browser/Meta/provider live | NOT_RUN | Không phát request ra Facebook/AI provider trong lát cắt này. |
 | Nhận diện tên người và retention nội dung chuẩn hóa | NOT_IMPLEMENTED / BLOCKED FOR LEGAL REVIEW | Redactor hiện chỉ bắt một số pattern liên hệ; bình luận/media vẫn privacy hold. `requested_retention_days` chưa được scheduler thi hành. Cần đánh giá pháp lý và thiết kế retention/deletion lan truyền riêng. |
+
+## Regression backend sau persistence privacy guard — 2026-09-30
+
+| Kiểm tra | Trạng thái | Bằng chứng và giới hạn |
+|---|---|---|
+| Regression backend trong phạm vi dependency khả dụng | PASS (fixtures) | Trên SHA `158e44e9dbc22395a87d26090092f28090214095`, `tests` bỏ `test_ingestion_parsers.py` và test scan-PDF cần Docling đạt **300 passed, 18 skipped, 1 deselected**. |
+| Privacy, Research API và AI budget | PASS (fixtures) | `tests/test_research_privacy.py tests/test_market_research_api.py tests/test_ai_budget.py` đạt **47 passed**. |
+| Phạm vi chưa chạy | NOT_RUN | Docling parser runtime, một số PostgreSQL integration cần `POSTGRES_TEST_URL`, Redis/Celery source-run, browser thật, Meta, DeepSeek, Gemini và Qwen live. PostgreSQL persistence guard riêng đã PASS ở mục trước. |
+| Kết luận | PARTIAL | Đây không phải nghiệm thu account/Page → Research → provider → UI. Bình luận/media vẫn bị giữ và chưa có khẳng định tuân thủ pháp lý. |

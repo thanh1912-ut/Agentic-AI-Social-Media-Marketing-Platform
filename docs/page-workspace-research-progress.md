@@ -508,3 +508,10 @@ Base đã kiểm tra: `codex/creative-studio-ui` @ `b769097bfdb3568889d974c6def9
 - PASS: `test_postgres_facebook_evidence_persistence_enforces_privacy_boundary` — 1 passed; test gọi `_persist_evidence` trên PostgreSQL thật và đọc lại title/body đã lọc, comment/raw bị giữ, metrics privacy còn lưu.
 - DONE: Dừng đúng cụm disposable `page-workspace-privacy-pg-20260930`; không chạm database/Redis preview.
 - NOT_RUN: Redis/Celery, object storage thật, Browser UI, Meta và các provider AI.
+
+### 2026-09-30 — Regression backend sau persistence privacy guard
+
+- PASS: Trên commit `158e44e9dbc22395a87d26090092f28090214095`, `PYTHONPATH=/private/tmp/page-workspace-python-deps python -m pytest -p no:cacheprovider tests --ignore=tests/test_ingestion_parsers.py -k 'not test_parser_returns_locators_and_rejects_scan_pdf' -q` — **300 passed, 18 skipped, 1 deselected**.
+- PASS: Bộ tập trung `tests/test_research_privacy.py tests/test_market_research_api.py tests/test_ai_budget.py` — **47 passed**.
+- LIMITATION: Các lượt này dùng fixture; không phải kiểm thử PostgreSQL/Redis/browser/Meta/provider live. Một số test parser và integration được bỏ/skip do runtime hoặc service test không cấu hình.
+- IN_PROGRESS: Chưa mở Qwen/Gemini cho comments/media. Tiếp tục giữ dữ liệu ở `privacy_hold` cho tới khi có điều kiện xử lý, retention và quyền xóa được xác định đủ rõ.
