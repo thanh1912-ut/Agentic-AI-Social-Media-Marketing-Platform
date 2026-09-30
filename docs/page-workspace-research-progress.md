@@ -19,7 +19,7 @@ Base đã kiểm tra: `codex/creative-studio-ui` @ `b769097bfdb3568889d974c6def9
 - [PARTIAL] Ranh giới gọi DeepSeek loại nội dung bài Facebook chưa qua rà soát đầy đủ; report chỉ có Facebook được ghi `deferred_privacy_review`, không gọi provider. Với nguồn web đủ điều kiện, Facebook cùng report chỉ gửi số liệu và nhãn nội dung đang giữ.
 - [PARTIAL] Owner có thể ghi nhận mục đích, tham chiếu căn cứ, phiên bản chính sách và thời hạn dự kiến theo từng nguồn; nguồn Facebook mới bị chặn tới khi đủ trường cấu hình. Đây không phải xác minh căn cứ; retention chưa thi hành, comment/media tiếp tục `privacy_hold`.
 - [PARTIAL] OpenAPI và TypeScript declarations đã được regenerate. Frontend lint, typecheck, 52 unit tests và production build đạt; real browser đã mở route Nghiên cứu với API thật, nhưng chưa chạy luồng ghi UI-to-worker.
-- [PARTIAL] API/worker fixtures và PostgreSQL integration đã chạy trên môi trường disposable; Redis-specific tests bị skip, Meta/provider live và worker crawl chưa chạy.
+- [PARTIAL] API/worker fixtures và PostgreSQL + Redis/Celery integration đã chạy trên môi trường disposable; Meta/provider live và worker crawl chưa chạy.
 - [TODO] Cursor bình luận/replies, media analysis, deletion/retention propagation và routing Gemini/Qwen chưa triển khai.
 
 ### Trạng thái hiện tại — 2026-09-30 20:32 Asia/Ho_Chi_Minh
@@ -30,6 +30,21 @@ Base đã kiểm tra: `codex/creative-studio-ui` @ `b769097bfdb3568889d974c6def9
 - PASS: `tests/e2e/creative-studio-preview.real.spec.ts` — `1 passed`; chỉ mở/chụp màn hình đăng nhập, không nhập tài khoản. Chromium cần quyền runtime macOS bên ngoài sandbox; lần chạy có quyền đọc browser runtime đạt.
 - PASS: Frontend ESLint, `tsc --noEmit --incremental false`, Vitest `52/52`, Next production build.
 - LIMITATION: Tab cũ còn giữ bundle trong bộ nhớ; refresh/reopen mới tải release hiện tại. Không có Page reconnect, crawl, provider, publish hoặc thao tác ghi nào được thực hiện trong smoke browser.
+
+### 2026-09-30 20:40 Asia/Ho_Chi_Minh — Browser thật kiểm tra chọn doanh nghiệp và Page gate
+
+- PASS: In-app browser trên frontend real mode mở `/` bằng phiên đã đăng nhập và gọi API phiên thật; màn hình liệt kê workspace hiện có, vai trò Owner và trạng thái chưa kết nối Page.
+- PASS: Form kết nối hiện đúng Page ID + Page Access Token, giải thích xác minh chỉ đọc và mã hóa backend. Chỉ quan sát; không nhập hoặc gửi token, không tạo Page workspace.
+- PASS: Nghiên cứu vẫn ở trạng thái gate; thao tác thêm Page là bắt buộc trước khi agentic được mở cho workspace.
+- NOT_RUN: Đăng ký tài khoản thật từ UI, gửi Page token thật, Meta verification live, tạo workspace từ Page và truy cập sau reload chưa thực hiện trong browser.
+
+### 2026-09-30 20:38 Asia/Ho_Chi_Minh — PostgreSQL + Redis/Celery tích hợp cùng lúc
+
+- PASS: Toàn `tests/test_postgres_database_integration.py` — `15 passed`, không skip, trên PostgreSQL 18.3 và hai Redis 8.6.3 disposable tách biệt (`16481` queue, `16482` cache).
+- PASS: Các test Redis đã chạy thật: queue/cache có TTL riêng; production dispatcher ghi job đã commit vào Celery queue; worker nhận job, claim durable record và lưu kết quả về PostgreSQL.
+- PASS: Worker test xử lý job nghiên cứu không có nguồn thành `completed_no_data`; đây không phải bằng chứng crawl website/Facebook hoặc gọi model.
+- DONE: Dừng đúng PostgreSQL cổng `15559` và Redis test `16481/16482`; xác nhận các cổng test không còn listener. Không chạm Redis `16381/16382`, preview queue/cache, API hoặc frontend.
+- NOT_RUN: Redis process outage thật giữa commit/dispatch, Redis đầy, worker chết/mất lease khi đang crawl, Celery Beat scheduler, Meta/provider live và browser ghi dữ liệu.
 
 ### 2026-09-30 — Rà nguồn pháp luật và retry xóa raw quarantine
 

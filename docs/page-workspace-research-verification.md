@@ -11,6 +11,27 @@
 | Health và release | PASS | `creative-studio-preview.py status`: API, login, font và LaunchAgent đều ready. Release `codex-page-workspaces-research-2acabb13ae48-20260930T132926Z`; release trước được lưu cùng backup plist. |
 | End-to-end đăng ký → Page → crawl → báo cáo | NOT_RUN | Smoke hiện chỉ đọc trạng thái; không tạo tài khoản/workspace, gửi Page token, crawl, gọi AI hoặc đăng Facebook. Tab cũ có thể cần refresh để tải JS release mới. |
 
+## PostgreSQL + Redis/Celery integration — 2026-09-30 20:38 Asia/Ho_Chi_Minh
+
+| Kiểm tra | Trạng thái | Bằng chứng và giới hạn |
+|---|---|---|
+| PostgreSQL, Redis queue/cache riêng | PASS | PostgreSQL 18.3 disposable `127.0.0.1:15559`; Redis 8.6.3 disposable queue `16481` và cache `16482`, cùng bind localhost. Cả ba service đã dừng sau test. |
+| Queue/cache TTL | PASS | `test_queue_and_cache_use_distinct_redis_instances_with_ttl` kết nối hai Redis khác nhau và xác nhận key/TTL trên đúng từng instance. |
+| Durable job dispatch | PASS | `test_production_dispatcher_places_durable_job_on_isolated_redis_queue` dùng production dispatcher, đối chiếu Celery envelope với job ID đã lưu PostgreSQL. |
+| Worker consume → PostgreSQL | PASS | `test_postgres_celery_worker_consumes_committed_research_job` chạy Celery worker trên Redis, claim job PostgreSQL và ghi trạng thái/result cuối. Job không có nguồn, không gọi crawler hay AI. |
+| Toàn bộ integration module | PASS | `tests/test_postgres_database_integration.py` — `15 passed`, không skip khi cấu hình đúng ba dịch vụ test. |
+| Faults chưa thử | NOT_RUN | Không dừng Redis sau commit trong lúc có job thật, không làm đầy Redis, không kill worker giữa crawl, không chạy Beat hoặc Meta/AI live. |
+
+## Browser real mode: chọn doanh nghiệp và Page gate — 2026-09-30 20:40 Asia/Ho_Chi_Minh
+
+| Kiểm tra | Trạng thái | Bằng chứng và giới hạn |
+|---|---|---|
+| Chọn doanh nghiệp sau đăng nhập | PASS (read-only live UI/API) | In-app browser mở `/` trên `13104`; session thật tải danh sách workspace và hiển thị vai trò cùng trạng thái Page. Không ghi dữ liệu. |
+| Bắt buộc xác minh Page trước khi dùng agentic | PASS (read-only live UI/API) | Workspace chưa có Page hiển thị Page ID + Page Access Token form và nút xác minh; Nghiên cứu bị khóa với link Cài đặt. Token không được nhập trong smoke. |
+| Bảo vệ token ở giao diện | PARTIAL | Form nói token được gửi tới backend và mã hóa; do không submit nên chưa xác minh network request, response, audit hoặc Meta live. |
+| Tạo workspace từ Page qua UI thật | NOT_RUN | Chưa dùng Page ID/token thật hoặc gọi Meta; test PostgreSQL/API trước đó dùng Meta fixture. |
+| Tài khoản đăng ký mới qua UI | NOT_RUN | PostgreSQL TestClient/API test xác nhận registration tạo user/session không workspace; browser real signup chưa chạy để tránh tạo thêm account test không được yêu cầu. |
+
 ## Chuẩn hóa nhãn Nghiên cứu — 2026-09-30
 
 | Kiểm tra | Trạng thái | Bằng chứng và giới hạn |
