@@ -22,6 +22,15 @@ Base đã kiểm tra: `codex/creative-studio-ui` @ `b769097bfdb3568889d974c6def9
 - [PARTIAL] API/worker fixtures và PostgreSQL/Redis/Celery integration test đã chạy trên môi trường disposable; browser real mode, Meta/provider live và worker crawl chưa chạy.
 - [TODO] Cursor bình luận/replies, media analysis, deletion/retention propagation và routing Gemini/Qwen chưa triển khai.
 
+### 2026-09-30 — Rà nguồn pháp luật và retry xóa raw quarantine
+
+- DONE: Đối chiếu metadata và ngày hiệu lực trên Cổng Thông tin điện tử Chính phủ/Công báo cho Luật 91/2025/QH15 và Nghị định 356/2025/NĐ-CP. Đây chỉ là xác minh nguồn và metadata văn bản, không phải phân tích pháp lý hoặc kết luận tuân thủ.
+- DONE: Làm rõ retention: raw payload có lịch xóa kỹ thuật sau tối đa 24 giờ; thời hạn policy nhập theo nguồn cho dữ liệu chuẩn hóa chưa được thi hành. Comments vẫn `privacy_hold`; media pipeline chưa có.
+- DONE: Cleanup raw chỉ đếm object storage xóa thành công; lỗi storage giữ DB pointer/expiry để scheduler retry. Unit regression và Ruff đạt.
+- DONE: Nguồn chính thức và giới hạn của lần kiểm tra pháp luật được ghi trong runbook/verification.
+- TODO: Thực thi retention cho dữ liệu chuẩn hóa/media và xóa lan truyền; cần thiết kế giữ tombstone, report provenance và xử lý bản sao ngoài ứng dụng.
+- BLOCKED: Chưa có rà soát pháp lý/tổ chức đủ để bật xử lý comment/media hoặc gửi chúng tới provider ngoài Việt Nam.
+
 ### 2026-09-30 15:28 Asia/Ho_Chi_Minh — Gate cấu hình privacy trước thu thập Facebook
 
 - DONE: Nguồn Page công ty, Page công khai và Group công khai mới khởi tạo `needs_privacy_policy`; worker kiểm tra mục đích/tham chiếu trước collector, nên gọi API/worker trực tiếp cũng không bỏ qua gate.

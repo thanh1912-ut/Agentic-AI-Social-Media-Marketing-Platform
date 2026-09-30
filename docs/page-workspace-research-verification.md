@@ -355,3 +355,13 @@ Commit triển khai: `0d95d9b5704ee6fa37f31ae237d522795a08a304` trên `codex/pag
 | Celery worker consume → PostgreSQL result | PASS (empty-source research job) | `test_postgres_celery_worker_consumes_committed_research_job`: worker thật nhận task trên Redis `agent`, claim durable job bằng lease/fencing, chạy chu kỳ không có nguồn và lưu `succeeded`/`completed_no_data` vào PostgreSQL. Không gọi crawler/provider; không phải crawl thành công. |
 | Kết quả nhóm test | PASS | Sáu test trên chạy cùng lượt bằng `/private/tmp/docling-ingestion-venv/bin/python -m pytest ...` — `6 passed in 2.02s`. Hạ tầng disposable được dừng sau test. |
 | Beat recovery, API/browser end-to-end, storage thật và provider live | NOT_RUN | Chưa kiểm tra Celery Beat recovery, UI → API, storage production, Meta, DeepSeek, Gemini hoặc Qwen. |
+
+## Rà metadata văn bản pháp luật và retry raw retention — 2026-09-30
+
+| Kiểm tra | Trạng thái | Bằng chứng và giới hạn |
+|---|---|---|
+| Metadata Luật 91/2025/QH15 | PASS (official-source metadata only) | Cổng Thông tin điện tử Chính phủ ghi ngày ban hành 26-06-2025, hiệu lực 01-01-2026: [trang văn bản](https://vanban.chinhphu.vn/?classid=1&docid=214590&pageid=27160&typegroupid=3). Không rà soát toàn bộ điều khoản hoặc đưa kết luận pháp lý. |
+| Metadata Nghị định 356/2025/NĐ-CP | PASS (official-source metadata only) | Cổng Chính phủ ghi ngày ban hành 31-12-2025, hiệu lực 01-01-2026: [trang văn bản](https://vanban.chinhphu.vn/?classid=1&docid=216387&orggroupid=2&pageid=27160). Không rà soát toàn bộ điều khoản hoặc đưa kết luận pháp lý. |
+| Xóa raw thành công/storage lỗi | PASS (unit fixture) | `tests/test_scheduled_raw_retention.py` xác nhận chỉ object xóa thành công mới bị gỡ DB pointer và được tính vào kết quả; lỗi storage giữ key/expiry để scheduler retry. Không thay thế kiểm thử adapter object storage thật. |
+| Retention nội dung chuẩn hóa/media và xóa lan truyền | NOT_RUN / NOT_IMPLEMENTED | Policy retention do Owner nhập vẫn chưa được scheduler thi hành; comment/media tiếp tục privacy hold. Xóa nguồn hiện có phạm vi ứng dụng hạn chế đã nêu ở phần Purge. |
+| Kết luận tuân thủ luật | BLOCKED | Chưa có đánh giá pháp lý/tổ chức, xác định căn cứ xử lý/chuyển dữ liệu theo tình huống thật hoặc deletion propagation đầy đủ. Metadata ngày hiệu lực không phải chứng nhận tuân thủ. |

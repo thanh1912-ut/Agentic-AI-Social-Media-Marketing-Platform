@@ -251,6 +251,7 @@ async def _purge_expired_raw(db, now: datetime) -> int:
         .limit(100)
         .with_for_update(skip_locked=True)
     )).all()
+    deleted = 0
     for row in rows:
         key = row.raw_object_key
         if key:
@@ -261,9 +262,10 @@ async def _purge_expired_raw(db, now: datetime) -> int:
                 continue
             row.raw_object_key = None
             row.raw_expires_at = None
-    if rows:
+            deleted += 1
+    if deleted:
         await db.flush()
-    return len(rows)
+    return deleted
 
 
 @celery_app.task
