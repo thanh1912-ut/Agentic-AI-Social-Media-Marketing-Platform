@@ -475,6 +475,21 @@ def test_competitor_source_runs_without_page_token_and_keeps_collection_settings
     assert job.result["source_ids"] == [source["id"]]
 
 
+def test_page_read_verification_does_not_claim_publish_permission(market_api) -> None:
+    client, _session_factory, _encryption_key = market_api
+    workspace_id, _headers = _owner(client, "page-capability-owner@example.com")
+
+    response = client.get(f"/api/v1/workspaces/{workspace_id}/meta/connection")
+
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["status"] == "verified"
+    assert body["read_posts_capability"] == "verified"
+    assert body["publish_capability"] == "not_tested"
+    assert body["can_publish"] is False
+    assert "chưa được thử" in body["message"]
+
+
 def test_public_facebook_collection_requires_built_runner(market_api, monkeypatch) -> None:
     _client, _session_factory, _encryption_key = market_api
     monkeypatch.setattr(research_tasks, "settings", SimpleNamespace(

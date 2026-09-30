@@ -4594,6 +4594,25 @@
             ],
             "title": "Page Name"
           },
+          "publish_capability": {
+            "default": "not_tested",
+            "enum": [
+              "not_tested",
+              "verified"
+            ],
+            "title": "Publish Capability",
+            "type": "string"
+          },
+          "read_posts_capability": {
+            "default": "not_tested",
+            "enum": [
+              "not_tested",
+              "verified",
+              "needs_reconnect"
+            ],
+            "title": "Read Posts Capability",
+            "type": "string"
+          },
           "status": {
             "enum": [
               "unconfigured",

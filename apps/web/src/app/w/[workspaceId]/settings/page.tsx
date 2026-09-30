@@ -452,8 +452,9 @@ export default function TrangCaiDat() {
                 <FieldRow label="Fanpage">{connection.page_name || 'Chưa có tên Page'}</FieldRow>
                 <FieldRow label="Page ID"><code>{connection.page_id}</code></FieldRow>
                 <FieldRow label="Quyền hiện có">
-                  {connection.can_publish ? 'Có thể gửi yêu cầu đăng; Meta kiểm tra quyền lúc gửi' : 'Chưa thể gửi yêu cầu đăng'} ·{' '}
-                  {connection.can_sync_metrics ? 'có thể đồng bộ số liệu' : 'chưa thể đồng bộ số liệu'}
+                  {connection.read_posts_capability === 'verified' ? 'Quyền đọc bài: đã xác minh' : 'Quyền đọc bài: chưa xác minh'} ·{' '}
+                  {connection.publish_capability === 'verified' ? 'đã có lần đăng thành công với token hiện tại' : 'quyền đăng chưa được thử'} ·{' '}
+                  {connection.can_sync_metrics ? 'có thể yêu cầu đồng bộ số liệu' : 'chưa thể yêu cầu đồng bộ số liệu'}
                 </FieldRow>
               </dl>
             ) : null}

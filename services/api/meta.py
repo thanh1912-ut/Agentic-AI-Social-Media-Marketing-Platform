@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import datetime, timedelta
 
 from fastapi import APIRouter, Depends, Query
-from sqlalchemy import func, select
+from sqlalchemy import and_, func, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -136,13 +136,30 @@ async def get_meta_connection(
     if connections:
         verified = [row for row in connections if row.status == "verified" and row.verified_at]
         single = connections[0] if len(connections) == 1 else None
+        publish_conditions = [and_(
+            MetaPublication.connection_id == row.id,
+            MetaPublication.page_id == row.page_id,
+            MetaPublication.published_at >= row.verified_at,
+        ) for row in verified]
+        published_with_current_token = bool(publish_conditions and await db.scalar(select(
+            MetaPublication.id
+        ).where(
+            MetaPublication.company_id == company_id,
+            MetaPublication.status == "published",
+            MetaPublication.published_at.is_not(None),
+            or_(*publish_conditions),
+        ).limit(1)))
         return MetaConnectionOut(
             status="verified" if verified else "configured",
             page_id=single.page_id if single else None,
             page_name=single.page_name if single else f"{len(verified)} Fanpage đã kết nối",
-            can_publish=bool(verified), can_sync_metrics=bool(verified),
-            message=("Chọn Page đích khi gửi từng bài. Meta kiểm tra quyền đăng ở thời điểm gửi."
-                     if verified else "Có Fanpage đã lưu nhưng cần xác minh lại trong Fanpage & thị trường."),
+            read_posts_capability="verified" if verified else "needs_reconnect",
+            publish_capability="verified" if published_with_current_token else "not_tested",
+            can_publish=published_with_current_token, can_sync_metrics=bool(verified),
+            message=("Đã xác minh quyền đọc bài. Quyền đăng đã được quan sát qua lần gửi thành công với token hiện tại."
+                     if published_with_current_token else
+                     "Đã xác minh quyền đọc bài. Quyền đăng chưa được thử; Meta sẽ kiểm tra khi Owner gửi bài đã duyệt."
+                     if verified else "Có Fanpage đã lưu nhưng cần xác minh lại."),
         )
     if not _configured_for(company_id):
         return MetaConnectionOut(status="unconfigured", page_id=None, page_name=None,
@@ -150,11 +167,24 @@ async def get_meta_connection(
                                  message="Chưa cấu hình Fanpage trên backend.")
     state = await _state(db, company_id)
     verified = bool(state and state.verified_at)
+    published_with_current_token = False
+    if verified and state and state.verified_at:
+        published_with_current_token = bool(await db.scalar(select(MetaPublication.id).where(
+            MetaPublication.company_id == company_id,
+            MetaPublication.page_id == settings.meta_page_id,
+            MetaPublication.connection_id.is_(None),
+            MetaPublication.status == "published",
+            MetaPublication.published_at >= state.verified_at,
+        ).limit(1)))
     return MetaConnectionOut(
         status="verified" if verified else "configured", page_id=settings.meta_page_id,
         page_name=state.page_name if state else None,
-        can_publish=verified, can_sync_metrics=verified,
-        message=("Đã xác minh Page và quyền đọc bài. Meta vẫn kiểm tra quyền đăng khi gửi từng bài."
+        read_posts_capability="verified" if verified else "not_tested",
+        publish_capability="verified" if published_with_current_token else "not_tested",
+        can_publish=published_with_current_token, can_sync_metrics=verified,
+        message=("Đã xác minh quyền đọc bài. Quyền đăng đã được quan sát qua lần gửi thành công với token hiện tại."
+                 if published_with_current_token else
+                 "Đã xác minh quyền đọc bài. Quyền đăng chưa được thử; Meta sẽ kiểm tra khi Owner gửi bài đã duyệt."
                  if verified else "Đã cấu hình token; hãy xác minh Fanpage."),
     )
 
@@ -189,8 +219,9 @@ async def verify_meta_connection(
                       metadata_json={"page_id": page.id}))
     await db.commit()
     return MetaConnectionOut(status="verified", page_id=page.id, page_name=page.name,
-                             can_publish=True, can_sync_metrics=True,
-                             message="Đã xác minh Page và quyền đọc bài. Meta vẫn kiểm tra quyền đăng khi gửi từng bài.")
+                             read_posts_capability="verified", publish_capability="not_tested",
+                             can_publish=False, can_sync_metrics=True,
+                             message="Đã xác minh quyền đọc bài. Quyền đăng chưa được thử; Meta sẽ kiểm tra khi Owner gửi bài đã duyệt.")
 
 
 @router.get("/publications", response_model=list[MetaPublicationOut])

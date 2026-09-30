@@ -126,7 +126,7 @@ export default function PublishingPage() {
     [...(publications.data ?? [])].sort((a, b) => b.created_at.localeCompare(a.created_at)), [publications.data]);
   const canPublish = workspace?.role === 'owner' && hasPermission(workspace, ACTION_REQUIREMENTS.publish);
   const verifiedPages = pageConnections.data?.filter((page) => page.status === 'verified') ?? [];
-  const ready = verifiedPages.length > 0 || (connection.data?.status === 'verified' && connection.data.can_publish);
+  const ready = verifiedPages.length > 0 || connection.data?.status === 'verified';
 
   function submitReconciliation(publicationId: string) {
     setReconcileError(null);
@@ -171,7 +171,7 @@ export default function PublishingPage() {
           <div className="flex flex-wrap items-center justify-between gap-3 text-sm text-slate-700">
             <p><strong>{connection.data.status === 'unconfigured' ? 'Chưa kết nối Meta' : connection.data.page_name || 'Fanpage chưa được xác minh'}</strong>{connection.data.page_id ? ` · Page ID ${connection.data.page_id}` : ''}</p>
             <p>{connection.data.message}</p>
-            {ready ? <StatusBadge label="Có thể gửi yêu cầu" tone="success" /> : (
+            {ready ? <StatusBadge label={connection.data.publish_capability === 'verified' ? 'Đã quan sát lần đăng thành công' : 'Quyền đăng kiểm tra khi gửi'} tone={connection.data.publish_capability === 'verified' ? 'success' : 'warning'} /> : (
               <UnavailableNotice title="Chưa thể đăng trực tiếp" reason={connection.data.message}
                 remedy="Mở Cài đặt để kiểm tra cấu hình và xác minh Fanpage trước khi đăng."
                 action={<Link href={`/w/${workspaceId}/settings`} className="font-medium underline">Mở Cài đặt</Link>} />

@@ -14,6 +14,8 @@
 | Xác minh Page token → workspace | PARTIAL; live Meta NOT_RUN | Fixture xác nhận Page activation; `/me` identity phải trùng Page ID và read-only post call; chưa gọi Meta live |
 | Chống Page token tự cấp membership | PASS (SQLite API fixture) | `test_page_activation_owns_workspace_and_token_does_not_grant_membership` trả 409 cho non-member |
 | Token reconnect giữ cùng Page/data | PASS (SQLite API fixture) | `test_page_token_is_encrypted_and_same_page_can_reconnect`; reconnect cùng Page, token mã hóa thật trong test |
+| Page read và publish capabilities tách riêng | PASS (SQLite API fixture) | `test_page_read_verification_does_not_claim_publish_permission`: đọc bài `verified`; quyền đăng `not_tested`; `can_publish=false` cho tới khi có publish thành công sau lần xác minh token. Live Meta chưa chạy |
+| Frontend sau thay đổi capability | PASS | Typecheck, ESLint, 50 Vitest tests và `next build` trong worktree riêng; không restart preview hoặc gửi bài thật. |
 | API Page activation gate | PASS (SQLite API fixture) | `test_legacy_workspace_requires_page_before_agentic_writes` trả 409 khi workspace chưa có Page |
 | Worker/scheduler Page activation gate | PARTIAL | PostgreSQL test thật xác nhận worker claim chỉ thành công với workspace có Page active; Redis/Celery được thử riêng trên instance tạm; browser end-to-end NOT_RUN |
 | Nghiên cứu không cần người dùng chọn nhóm | PARTIAL | UI facade workspace; nhóm legacy vẫn là FK persistence/report |

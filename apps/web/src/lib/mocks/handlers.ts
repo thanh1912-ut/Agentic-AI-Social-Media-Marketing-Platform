@@ -1605,6 +1605,8 @@ export const handlers = [
       status: 'unconfigured',
       page_id: null,
       page_name: null,
+      read_posts_capability: 'not_tested',
+      publish_capability: 'not_tested',
       can_publish: false,
       can_sync_metrics: false,
       message: 'Bản demo chưa cấu hình Fanpage thật.',

@@ -32,6 +32,8 @@ Không đưa token vào tài liệu, ticket, browser storage, query string hoặ
 - Owner mở Cài đặt doanh nghiệp, nhập token mới và giữ nguyên Page ID. Backend xác minh lại trước khi thay token mã hóa.
 - Nếu một nguồn đang chạy khi mất kết nối, kết quả dở dang không được coi là hoàn thành. Sau kết nối lại, scheduler có thể phục hồi lịch theo idempotency.
 - Lịch đăng đã quá hạn tuân thủ trạng thái missed hiện có; không gửi bù hàng loạt.
+- Xác minh Page bằng metadata và đọc bài chỉ xác nhận danh tính/quyền đọc bài. API trả `publish_capability=not_tested` cho tới khi có lần xuất bản thành công gắn với token hiện tại; chưa thử đăng không đồng nghĩa chắc chắn Meta sẽ từ chối. Giao diện vẫn cần Owner xác nhận bài đã duyệt, còn Meta quyết định tại lần gửi.
+- `can_sync_metrics` trong API cho biết ứng dụng có thể gửi yêu cầu đồng bộ; đây không phải cam kết mọi permission/metric đều có sẵn. UI gọi đây là khả năng “yêu cầu đồng bộ”; trạng thái dữ liệu và metric thiếu vẫn lấy từ kết quả sync thực tế.
 
 ## Nghiên cứu
 

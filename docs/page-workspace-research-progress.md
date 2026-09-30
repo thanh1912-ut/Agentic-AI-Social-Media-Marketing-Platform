@@ -216,6 +216,15 @@ Base đã kiểm tra: `codex/creative-studio-ui` @ `b769097bfdb3568889d974c6def9
 - PARTIAL: Provenance hiện gắn vào source-run Facebook công khai dùng `WebCrawlRun`; owned Page, website và group chưa có cùng pipeline comment policy.
 - NOT_RUN: Không xử lý comment body/media, không kiểm thử retention/deletion end-to-end, không crawl Facebook live và không gọi provider.
 
+### 2026-09-30 — Tách quyền đọc Page khỏi khả năng đăng
+
+- DONE: Phát hiện API cũ đánh dấu `can_publish=true` sau khi chỉ xác minh Page metadata và đọc một bài. Điều này đã bị sửa vì không chứng minh quyền xuất bản.
+- DONE: Meta connection contract phân biệt `read_posts_capability` và `publish_capability`. Publish chỉ được ghi `verified` khi có lần đăng thành công gắn cùng connection/token sau lần xác minh gần nhất; nếu chưa có, response là `not_tested`.
+- DONE: Giao diện xuất bản vẫn cho Owner bắt đầu quy trình với Page đọc được, nhưng nói rõ Meta sẽ kiểm tra quyền khi gửi; không hiện nhãn “đã có quyền đăng” trước khi có bằng chứng.
+- PASS: API fixture `test_page_read_verification_does_not_claim_publish_permission` xác nhận read=`verified`, publish=`not_tested`, `can_publish=false` sau Page activation fixture.
+- PASS: Frontend production build sau khi đổi trạng thái và nhãn capability đạt trong managed worktree riêng.
+- NOT_RUN: Không thử đăng thật hoặc kiểm tra live Meta; chưa có Page do Owner xác nhận để xuất bản.
+
 ### 2026-09-30 10:02 Asia/Ho_Chi_Minh — PostgreSQL/Redis integration và raw retention
 
 - PASS: Tạo PostgreSQL 18.3 riêng trong `/private/tmp`, hai Redis riêng trên loopback; chạy migration từ database rỗng tới `0022_ai_usage_budget`.

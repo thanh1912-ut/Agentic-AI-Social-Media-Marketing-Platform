@@ -3266,6 +3266,18 @@ export interface components {
             /** Page Name */
             readonly page_name: string | null;
             /**
+             * Publish Capability
+             * @default not_tested
+             * @enum {string}
+             */
+            readonly publish_capability: "not_tested" | "verified";
+            /**
+             * Read Posts Capability
+             * @default not_tested
+             * @enum {string}
+             */
+            readonly read_posts_capability: "not_tested" | "verified" | "needs_reconnect";
+            /**
              * Status
              * @enum {string}
              */

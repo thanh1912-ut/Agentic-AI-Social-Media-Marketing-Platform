@@ -16,6 +16,8 @@ class MetaConnectionOut(StrictModel):
     status: Literal["unconfigured", "configured", "verified", "error"]
     page_id: str | None
     page_name: str | None
+    read_posts_capability: Literal["not_tested", "verified", "needs_reconnect"] = "not_tested"
+    publish_capability: Literal["not_tested", "verified"] = "not_tested"
     can_publish: bool
     can_sync_metrics: bool
     message: str
