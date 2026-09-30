@@ -130,6 +130,8 @@ Không dùng các lệnh này nếu đã tái sử dụng các cổng cho tiến
 - Job result ghi `history_complete`, `window_coverage_complete`, `coverage_status`, `oldest_post_at`, `unknown_published_at_count`, `stop_reason` và cờ có checkpoint kế tiếp. `provider_history_exhausted_before_90_days` là kết quả một phần, không được báo đủ 90 ngày; ngày đăng thiếu vẫn được tính riêng.
 - Lịch của nguồn Page công ty bật/tắt trong Nghiên cứu qua `collection-settings`; collector bị khóa ở `meta_api`. Crawl ngay vẫn dùng được khi lịch tắt. Bình luận/replies chưa có cursor và vẫn `privacy_hold`; media binary/AI chưa được triển khai.
 - Lượt Facebook công khai ghi policy revision được quan sát khi bắt đầu nguồn, cùng `comments_content_status=privacy_hold` và `retention_enforcement_status=not_enforced`. Snapshot là provenance, không phải bằng chứng có căn cứ xử lý hoặc xóa dữ liệu tự động.
+- `_persist_evidence` là ranh giới bảo vệ cuối trước database cho mọi nguồn Facebook: lọc lại title/body, bỏ comment text và raw payload nếu adapter truyền nhầm. Metrics có thể ghi `comments_privacy=privacy_hold`/`raw_payload_privacy=not_retained` khi có dữ liệu bị loại. Đây là lọc theo pattern, không nhận diện đầy đủ tên người, không phải ẩn danh và không xác nhận căn cứ xử lý.
+- Không gỡ `privacy_hold` cho comments hoặc media chỉ vì Owner đã nhập mục đích/tham chiếu căn cứ. Cần quy trình pháp lý/tổ chức riêng và test provider-data boundary trước khi bật truyền sang Gemini/Qwen/DeepSeek.
 
 ### Đồng bộ tên và ảnh Page
 

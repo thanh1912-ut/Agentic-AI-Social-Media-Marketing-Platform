@@ -6,6 +6,7 @@ from services.research.privacy import (
     FACEBOOK_REDACTOR_VERSION,
     MAX_RAW_QUARANTINE,
     hold_comment_text,
+    protect_facebook_evidence,
     raw_quarantine_expiry,
     redact_facebook_text,
 )
@@ -50,3 +51,28 @@ def test_facebook_text_masks_obvious_contacts_and_reports_incomplete_coverage() 
         "redacted_fields": {"home_address": 1, "email": 1, "phone": 1},
         "limitations": ["names_not_detected", "not_anonymization", "manual_review_may_be_required"],
     }
+
+
+def test_facebook_persistence_boundary_redacts_text_and_holds_comments_and_raw_payload() -> None:
+    metrics = {"reactions": 3}
+    title, text, safe_metrics, comments, raw_body = protect_facebook_evidence(
+        title="Bài viết",
+        text="Gọi 0901 234 567 hoặc gửi mail tới person@example.test",
+        metrics=metrics,
+        comments=["Tôi ở 12/5 Đường Cá Nhân, Quận 1"],
+        raw_body=b"unredacted provider response",
+    )
+
+    assert title == "Bài viết"
+    assert "0901 234 567" not in text
+    assert "person@example.test" not in text
+    assert comments == []
+    assert raw_body is None
+    assert safe_metrics["reactions"] == 3
+    assert safe_metrics["comments_privacy"] == {
+        "status": "privacy_hold",
+        "withheld_text_count": 1,
+    }
+    assert safe_metrics["raw_payload_privacy"] == {"status": "not_retained"}
+    assert safe_metrics["privacy_redaction"]["status"] == "pattern_redacted_review_incomplete"
+    assert metrics == {"reactions": 3}

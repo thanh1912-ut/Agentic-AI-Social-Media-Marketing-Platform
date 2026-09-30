@@ -73,3 +73,57 @@ def redact_facebook_text(value: str) -> tuple[str, dict[str, object]]:
         },
         "limitations": ["names_not_detected", "not_anonymization", "manual_review_may_be_required"],
     }
+
+
+def protect_facebook_evidence(
+    *,
+    title: str,
+    text: str,
+    metrics: dict[str, object],
+    comments: Sequence[str],
+    raw_body: bytes | None,
+) -> tuple[str, str, dict[str, object], list[str], None]:
+    """Apply the Facebook storage boundary even when a collector forgot to.
+
+    This is defense in depth, not a legal-basis check or anonymization. Facebook
+    evidence may keep only pattern-redacted post text and public metrics here;
+    comment bodies and raw responses stay out of persistent storage.
+    """
+
+    safe_title, title_redaction = redact_facebook_text(title)
+    safe_text, text_redaction = redact_facebook_text(text)
+    safe_metrics = dict(metrics)
+
+    previous_redaction = safe_metrics.get("privacy_redaction")
+    if isinstance(previous_redaction, dict) and previous_redaction.get("redactor_version") == FACEBOOK_REDACTOR_VERSION:
+        # Collectors may already have applied this same redactor. Preserve its
+        # original counts and add any additional findings from this boundary.
+        merged = dict(previous_redaction)
+        previous_fields = previous_redaction.get("redacted_fields")
+        current_fields = text_redaction.get("redacted_fields")
+        if isinstance(previous_fields, dict) and isinstance(current_fields, dict):
+            merged["redacted_fields"] = {
+                key: int(previous_fields.get(key, 0)) + int(current_fields.get(key, 0))
+                for key in {**previous_fields, **current_fields}
+            }
+        merged["redaction_count"] = (
+            int(previous_redaction.get("redaction_count", 0))
+            + int(text_redaction["redaction_count"])
+        )
+        safe_metrics["privacy_redaction"] = merged
+    else:
+        safe_metrics["privacy_redaction"] = text_redaction
+
+    if int(title_redaction["redaction_count"]) > 0:
+        safe_metrics["title_privacy_redaction"] = title_redaction
+    if comments:
+        safe_metrics["comments_privacy"] = {
+            "status": "privacy_hold",
+            "withheld_text_count": len(comments),
+        }
+    if raw_body is not None:
+        safe_metrics["raw_payload_privacy"] = {"status": "not_retained"}
+
+    # Do not persist comment text or raw HTML/provider payloads from Facebook,
+    # even if a future adapter accidentally passes them through.
+    return safe_title, safe_text, safe_metrics, [], None

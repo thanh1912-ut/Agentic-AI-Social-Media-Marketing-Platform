@@ -376,3 +376,14 @@ Commit triển khai: `0d95d9b5704ee6fa37f31ae237d522795a08a304` trên `codex/pag
 | Regression workflow và API | PASS (fixture) | `tests/test_ai_budget.py tests/test_interactive_ai_accounting.py tests/test_mailguard_pilot.py tests/test_campaign_workflows.py tests/test_market_research_api.py` — 65 passed. Không có provider live call. |
 | Pricing / provider availability | PARTIAL | Chỉ model DeepSeek có giá được kiểm tra ở các callsite này; provider/model ngoài bảng bị chặn trước request. Gemini/Qwen chưa được route qua worker. |
 | Tổng hợp chi phí interactive cho người dùng | NOT_RUN | API `/ai-budget` hiện chỉ phản ánh hạn mức và usage tự động; chi phí tương tác nằm ở durable job/`ContentGenerationRun`, chưa có tổng hợp UI/API độc lập. |
+
+## Chốt privacy tại persistence Facebook — 2026-09-30 19:08 Asia/Ho_Chi_Minh
+
+| Kiểm tra | Trạng thái | Bằng chứng và giới hạn |
+|---|---|---|
+| Tái lọc text/title trước khi ghi evidence | PASS (SQLite API-worker fixture) | `protect_facebook_evidence` được gọi tại `_persist_evidence` cho Page công ty, Page công khai và Group. Test truyền trực tiếp email, số điện thoại và địa chỉ vào persistence, rồi xác nhận các chuỗi không còn trong `MarketEvidence`. |
+| Bình luận/raw payload không lưu | PASS (SQLite API-worker fixture) | Test xác nhận comment text không vào `comments_json`, metadata giữ `privacy_hold`, raw body không gọi storage adapter và không có `raw_object_key`. |
+| Ghi rõ giới hạn nhận diện | PASS (unit + persistence fixture) | Metadata vẫn đánh dấu `names_not_detected`, `not_anonymization` và `manual_review_may_be_required`. Không tuyên bố dữ liệu đã ẩn danh hay có căn cứ xử lý. |
+| Regression tests | PASS | `tests/test_research_privacy.py tests/test_market_research_api.py` — 33 passed; Ruff, Python compile và `git diff --check` đạt. |
+| PostgreSQL/Redis/browser/Meta/provider live | NOT_RUN | Không dùng dịch vụ preview và không phát request ra Facebook/AI provider trong lát cắt này. |
+| Nhận diện tên người và retention nội dung chuẩn hóa | NOT_IMPLEMENTED / BLOCKED FOR LEGAL REVIEW | Redactor hiện chỉ bắt một số pattern liên hệ; bình luận/media vẫn privacy hold. `requested_retention_days` chưa được scheduler thi hành. Cần đánh giá pháp lý và thiết kế retention/deletion lan truyền riêng. |

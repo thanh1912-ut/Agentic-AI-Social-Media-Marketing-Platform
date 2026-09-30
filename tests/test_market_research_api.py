@@ -224,6 +224,70 @@ def test_raw_research_upload_lease_is_cleared_after_storage_put(market_api, monk
     assert fake_storage.keys == [object_key]
 
 
+def test_facebook_evidence_persistence_reapplies_redaction_and_withholds_comments(market_api, monkeypatch) -> None:
+    client, session_factory, _encryption_key = market_api
+    workspace_id, headers = _owner(client, "facebook-storage-privacy@example.com")
+    group_id = _create_group(client, workspace_id, headers)
+    created = client.post(
+        f"/api/v1/workspaces/{workspace_id}/market-research/sources",
+        headers=headers,
+        json={
+            "group_id": group_id,
+            "source_type": "competitor_facebook_page",
+            "name": "Public Page privacy fixture",
+            "url": "https://www.facebook.com/privacy-fixture",
+        },
+    )
+    assert created.status_code == 201, created.text
+    source_id = created.json()["id"]
+    monkeypatch.setattr(research_tasks, "SessionLocal", session_factory)
+
+    class NoFacebookStorage:
+        async def put(self, *_args, **_kwargs):
+            raise AssertionError("Facebook raw payload must not be stored")
+
+    monkeypatch.setattr(research_tasks, "storage", NoFacebookStorage())
+
+    async def persist_and_read():
+        async with session_factory() as db:
+            source = await db.get(ResearchSource, source_id)
+            assert source is not None
+        evidence_id = await research_tasks._persist_evidence(
+            company_id=workspace_id,
+            group_id=group_id,
+            source=source,
+            url="https://www.facebook.com/privacy-fixture/posts/42",
+            title="Liên hệ 0901 234 567",
+            text="Email person@example.test; địa chỉ nhà riêng: 12/5 Đường Cá Nhân, Quận 1",
+            published_at=None,
+            metrics={"comments": 1},
+            comments=["Bình luận có email comment@example.test"],
+            raw_body=b"raw Facebook response with personal data",
+            observed_at=datetime.now(timezone.utc),
+        )
+        async with session_factory() as db:
+            evidence = await db.get(MarketEvidence, evidence_id)
+            observation = await db.scalar(select(MarketObservation).where(
+                MarketObservation.evidence_id == evidence_id,
+            ))
+            assert evidence is not None and observation is not None
+            return evidence, observation
+
+    evidence, observation = asyncio.run(persist_and_read())
+    assert "0901 234 567" not in evidence.title
+    assert "person@example.test" not in evidence.text
+    assert "12/5 Đường Cá Nhân" not in evidence.text
+    assert observation.comments_json == []
+    assert observation.raw_object_key is None
+    assert observation.raw_expires_at is None
+    assert observation.metrics_json["comments_privacy"] == {
+        "status": "privacy_hold",
+        "withheld_text_count": 1,
+    }
+    assert observation.metrics_json["raw_payload_privacy"] == {"status": "not_retained"}
+    assert "names_not_detected" in observation.metrics_json["privacy_redaction"]["limitations"]
+
+
 def test_source_purge_removes_collected_rows_raw_object_and_tombstones_report(market_api, monkeypatch) -> None:
     from database.models import (
         AnalyticsRecommendationRecord,

@@ -491,3 +491,13 @@ Base đã kiểm tra: `codex/creative-studio-ui` @ `b769097bfdb3568889d974c6def9
 - NOT_RUN: Không gọi DeepSeek/Gemini/Qwen live, không kiểm tra UI/API hiển thị chi phí, không chạy Redis/Celery cho các job AI.
 - PARTIAL: Gemini/Qwen chưa được nối worker; chưa có tổng hợp interactive trên trang Ngân sách. DeepSeek report tự động và interactive planning/content hiện mới được ledger; chưa khẳng định mọi agent/callsite đều được tính.
 - DONE: Dừng PostgreSQL và hai Redis test riêng; preview và Redis dùng chung không bị thay đổi.
+
+### 2026-09-30 19:08 Asia/Ho_Chi_Minh — Chốt bảo vệ dữ liệu tại lớp lưu evidence Facebook
+
+- DONE: Thêm lớp bảo vệ ngay trong `_persist_evidence`; collector Facebook nào gọi tới cũng bị lọc lại email/số điện thoại/địa chỉ theo redactor hiện có trước khi tạo hash, phiên bản evidence và bài Page.
+- DONE: Bình luận truyền nhầm vào persistence bị loại bỏ và chỉ giữ số lượng nội dung đã giữ ở trạng thái `privacy_hold`; raw payload Facebook bị loại trước khi storage adapter được gọi.
+- DONE: Giữ provenance cho lần lọc bổ sung và title riêng; metadata tiếp tục ghi rõ `names_not_detected`, `not_anonymization` và cần rà soát thủ công. Đây là defense-in-depth, không phải xác nhận căn cứ xử lý hoặc ẩn danh.
+- PASS: `tests/test_research_privacy.py tests/test_market_research_api.py` — 33 passed; test mới gọi trực tiếp persistence để xác nhận title/body đã lọc, comment text không vào DB và raw response không vào storage.
+- PASS: Ruff trên 4 file Python thay đổi, `py_compile` với cache ở `/private/tmp`, và `git diff --check`.
+- NOT_RUN: Chưa chạy PostgreSQL/Redis/Celery hoặc Meta/provider live cho lát cắt này; không thay preview.
+- PARTIAL: Redactor vẫn không nhận diện tên người tự do và không bảo đảm đã loại hết dữ liệu cá nhân. Bình luận/media vẫn `privacy_hold`; retention nội dung chuẩn hóa chưa được thực thi.

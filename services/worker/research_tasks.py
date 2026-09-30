@@ -48,7 +48,11 @@ from services.research.web_crawler import CrawlError, crawl_public_site
 from services.research.facebook_cli_collector import (
     ENGINE_VERSION, collect_public_facebook_group, collect_public_facebook_page,
 )
-from services.research.privacy import raw_quarantine_expiry, redact_facebook_text
+from services.research.privacy import (
+    protect_facebook_evidence,
+    raw_quarantine_expiry,
+    redact_facebook_text,
+)
 from services.research.website_entities import PARSER_VERSION
 from services.worker.ai_budget import (
     PricingUnavailable,
@@ -174,6 +178,14 @@ async def _persist_evidence(
     public_external_id: str | None = None, parser_version: str = "market-extract-v1",
 ) -> str:
     now = utcnow()
+    if source.source_type in {"owned_facebook_page", "competitor_facebook_page", "facebook_group"}:
+        title, text, metrics, comments, raw_body = protect_facebook_evidence(
+            title=title,
+            text=text,
+            metrics=metrics,
+            comments=comments,
+            raw_body=raw_body,
+        )
     text = " ".join(text.split())[:12000]
     content_hash = hashlib.sha256(text.encode("utf-8")).hexdigest()
     async with SessionLocal() as db:
