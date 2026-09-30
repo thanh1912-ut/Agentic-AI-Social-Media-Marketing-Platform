@@ -116,7 +116,7 @@ export default function WorkspaceOverviewPage() {
 
     <nav aria-label="Lối tắt" className="flex flex-wrap gap-x-6 gap-y-3 border-t border-slate-200 pt-5">
       <Link href={`/w/${workspaceId}/publishing`} className="inline-flex items-center gap-2 text-sm font-medium text-slate-700 hover:text-teal-800"><Icon name="publish" size={17} /> Xuất bản</Link>
-      <Link href={`/w/${workspaceId}/fanpages`} className="inline-flex items-center gap-2 text-sm font-medium text-slate-700 hover:text-teal-800"><Icon name="globe" size={17} /> Fanpage & thị trường</Link>
+      <Link href={`/w/${workspaceId}/research`} className="inline-flex items-center gap-2 text-sm font-medium text-slate-700 hover:text-teal-800"><Icon name="globe" size={17} /> Nghiên cứu</Link>
       <Link href={`/w/${workspaceId}/analytics`} className="inline-flex items-center gap-2 text-sm font-medium text-slate-700 hover:text-teal-800"><Icon name="chart" size={17} /> Hiệu quả</Link>
     </nav>
   </div>;

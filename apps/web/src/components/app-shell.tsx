@@ -1,6 +1,7 @@
 'use client';
 
 import Link from 'next/link';
+import Image from 'next/image';
 import { useParams, usePathname, useRouter } from 'next/navigation';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
@@ -73,7 +74,19 @@ export function AppShell({ children }: { children: ReactNode }) {
         {mobile ? <button type="button" className="sidebar-icon-button" aria-label="Đóng menu" onClick={() => menu.current?.close()}><Icon name="close" /></button> : null}
       </div>
       {workspace ? <div className="sidebar-workspace">
-        <span className="workspace-avatar">{workspace.name.trim().slice(0, 1).toUpperCase()}</span>
+        {workspace.page_avatar_url ? (
+          <Image
+            src={workspace.page_avatar_url}
+            alt=""
+            width={34}
+            height={34}
+            unoptimized
+            referrerPolicy="no-referrer"
+            className="workspace-avatar object-cover"
+          />
+        ) : (
+          <span className="workspace-avatar">{workspace.name.trim().slice(0, 1).toUpperCase()}</span>
+        )}
         <div className="min-w-0 flex-1">
           {workspaces.length > 1 ? <select aria-label="Chọn doanh nghiệp" value={workspace.id} disabled={selectWorkspace.isPending} onChange={(event) => {
             const nextWorkspaceId = event.currentTarget.value;

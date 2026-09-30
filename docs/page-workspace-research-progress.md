@@ -219,6 +219,14 @@ Base đã kiểm tra: `codex/creative-studio-ui` @ `b769097bfdb3568889d974c6def9
 
 ## Nhật ký
 
+### 2026-09-30 15:38 Asia/Ho_Chi_Minh — Khép đường dẫn Nghiên cứu và nhận diện Page
+
+- DONE: Các shortcut Tổng quan dùng `/research`; route legacy `/fanpages` vẫn redirect bảo toàn query/hash.
+- DONE: Kết nối Page từ Xuất bản/Analytics mở Cài đặt doanh nghiệp, nơi có thao tác reconnect; Nghiên cứu không còn là chỗ quản lý token công ty.
+- DONE: Sidebar hiển thị ảnh Page đã xác minh khi API trả `page_avatar_url`, giữ chữ cái đầu làm fallback.
+- PASS: Frontend ESLint, TypeScript (`tsc --noEmit --incremental false`), Vitest 50/50 và production build đạt.
+- PARTIAL: Browser đang đăng nhập còn tải preview cũ (menu ghi “Fanpage & thị trường”); sandbox không kết nối được `13104`/`8001`, nên chưa xác minh bản mới trên API/browser thật hoặc thay preview.
+
 ### 2026-09-30 — Baseline
 
 - TODO → IN_PROGRESS: tạo worktree riêng từ nhánh UI đã chọn và đọc AGENTS.md/skills áp dụng.

@@ -1,5 +1,15 @@
 # Kiểm chứng Page workspace và Nghiên cứu
 
+## UI Page identity và điều hướng Nghiên cứu — 2026-09-30
+
+| Kiểm tra | Trạng thái | Bằng chứng và giới hạn |
+|---|---|---|
+| Sidebar dùng avatar URL từ workspace đã xác minh | PASS (build/typecheck) | `AppShell` hiển thị `page_avatar_url` với fallback chữ cái; không lấy ảnh từ người dùng khác. |
+| Shortcut tới Nghiên cứu | PASS (code/build) | Tổng quan dùng `/research`; đường dẫn `/fanpages` còn redirect để tương thích. |
+| Quản lý kết nối Page | PASS (code/build) | CTA Xuất bản và thông báo Analytics mở Cài đặt doanh nghiệp, nơi có reconnect Page. |
+| Frontend checks | PASS | ESLint, `tsc --noEmit --incremental false`, Vitest 50/50, production build. |
+| Preview hiện tại / real API | NOT_RUN | Tab browser có phiên người dùng nhưng đang chạy bundle cũ. Curl từ sandbox tới `13104`/`8001` bị từ chối; không coi đó là bằng chứng service đã tắt, và bản mới chưa được triển khai. |
+
 ## Baseline
 
 - SHA: `b769097bfdb3568889d974c6def95bb944559113`

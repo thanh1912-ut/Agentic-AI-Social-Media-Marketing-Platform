@@ -385,8 +385,8 @@ export default function AnalyticsPage() {
         ) : null}
         {metaConnection.data && !metaPageId && verifiedPages.length === 0 ? (
           <UnavailableNotice title="Chưa có Fanpage để đồng bộ" reason={metaConnection.data.message}
-            remedy="Kết nối Page ID và Page Access Token trong Fanpage & thị trường."
-            action={<Link href={'/w/' + workspaceId + '/fanpages'} className="font-medium underline">Mở Fanpage & thị trường</Link>} />
+            remedy="Kiểm tra kết nối Fanpage trong Cài đặt doanh nghiệp."
+            action={<Link href={'/w/' + workspaceId + '/settings'} className="font-medium underline">Mở Cài đặt doanh nghiệp</Link>} />
         ) : null}
         {metaPageId ? (
           <>

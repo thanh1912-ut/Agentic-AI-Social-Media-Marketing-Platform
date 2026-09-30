@@ -164,7 +164,7 @@ export default function PublishingPage() {
         idPrefix="publishing"
       />
 
-      <Card title="Kết nối Fanpage" description="Kiểm tra Fanpage trước khi xác nhận đăng." actions={<Link href={`/w/${workspaceId}/fanpages`} className="inline-flex items-center gap-1 text-sm font-semibold text-teal-800 hover:underline">Quản lý kết nối <Icon name="arrow-right" size={15} /></Link>}>
+      <Card title="Kết nối Fanpage" description="Kiểm tra Fanpage trước khi xác nhận đăng." actions={<Link href={`/w/${workspaceId}/settings`} className="inline-flex items-center gap-1 text-sm font-semibold text-teal-800 hover:underline">Cài đặt doanh nghiệp <Icon name="arrow-right" size={15} /></Link>}>
         {connection.isPending ? <LoadingBlock label="Đang tải kết nối…" /> : null}
         {connection.isError ? <ErrorPanel title="Không tải được kết nối" message={connection.error instanceof ApiError ? connection.error.message : 'Vui lòng tải lại trang.'} retryable onRetry={() => void connection.refetch()} /> : null}
         {connection.data ? (
