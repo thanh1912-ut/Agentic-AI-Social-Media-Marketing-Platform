@@ -38,7 +38,7 @@ def test_postgres_migrations_constraints_vector_and_job_fencing() -> None:
                 revision = await connection.exec_driver_sql(
                     "SELECT version_num FROM alembic_version ORDER BY version_num LIMIT 1"
                 )
-                assert revision.scalar_one() == "0023_research_privacy_policy_records"
+                assert revision.scalar_one() == "0025_owned_page_research_backfill"
                 extension = await connection.exec_driver_sql(
                     "SELECT extversion FROM pg_extension WHERE extname='vector'"
                 )
@@ -63,6 +63,19 @@ def test_postgres_migrations_constraints_vector_and_job_fencing() -> None:
                         column["name"] for column in inspector.get_columns("market_report_evidence")
                     }
                     assert "created_at" in report_evidence_columns
+                    owned_source_columns = {
+                        column["name"] for column in inspector.get_columns("research_sources")
+                    }
+                    assert {
+                        "owned_page_backfill_cursor", "owned_page_backfill_page_id",
+                        "owned_page_backfill_window_start", "owned_page_backfill_complete",
+                        "owned_page_backfill_window_complete",
+                        "owned_page_backfill_pages_processed",
+                    }.issubset(owned_source_columns)
+                    research_cycle_columns = {
+                        column["name"] for column in inspector.get_columns("research_cycles")
+                    }
+                    assert "collection_observed_at" in research_cycle_columns
                     run_fks = inspector.get_foreign_keys("web_crawl_runs")
                     assert any(
                         fk["name"] == "fk_web_crawl_run_job_tenant"
@@ -432,11 +445,12 @@ def test_queue_and_cache_use_distinct_redis_instances_with_ttl() -> None:
     asyncio.run(run())
 
 
-def test_postgres_competing_workers_only_claim_a_research_job_once() -> None:
+def test_postgres_competing_workers_only_claim_a_research_job_once(monkeypatch: pytest.MonkeyPatch) -> None:
     async def run() -> None:
         assert POSTGRES_TEST_URL
         engine = create_async_engine(POSTGRES_TEST_URL)
         sessions = async_sessionmaker(engine, expire_on_commit=False)
+        monkeypatch.setattr(research_tasks, "SessionLocal", sessions)
         try:
             async with sessions() as db:
                 page_id = f"test-{uuid.uuid4().hex[:20]}"

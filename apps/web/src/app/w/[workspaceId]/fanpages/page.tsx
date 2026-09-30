@@ -399,10 +399,11 @@ export default function FanpagesMarketResearchPage() {
               {sources.map((source) => {
                 const isCompetitor = source.source_type === 'competitor_facebook_page';
                 const isGroup = source.source_type === 'facebook_group';
+                const isOwnedPage = source.source_type === 'owned_facebook_page';
                 const isPublicFacebook = isCompetitor || isGroup;
-                const statusKey = isPublicFacebook ? (source.collection_status || source.status) : source.status;
+                const statusKey = isPublicFacebook || isOwnedPage ? (source.collection_status || source.status) : source.status;
                 const status = SOURCE_STATUS[statusKey] ?? SOURCE_STATUS[source.status] ?? { label: statusKey, tone: 'neutral' as const };
-                const schedulePaused = ['login_required', 'access_denied', 'challenge', 'challenge_required', 'group_not_public'].includes(source.collection_status ?? '');
+                const schedulePaused = ['login_required', 'access_denied', 'challenge', 'challenge_required', 'group_not_public', 'page_needs_reconnect', 'page_token_unavailable', 'page_token_expired', 'page_permission_missing'].includes(source.collection_status ?? '');
                 return (
                   <div key={source.id} className="rounded-2xl border border-slate-200 bg-white p-4">
                     <div className="flex flex-wrap items-start justify-between gap-3">
@@ -410,11 +411,12 @@ export default function FanpagesMarketResearchPage() {
                         <div className="flex flex-wrap items-center gap-2"><p className="font-medium text-slate-900">{source.name}</p><StatusBadge label={status.label} tone={status.tone} /></div>
                         <p className="mt-1 break-all text-xs text-slate-600">{source.url}</p>
                         <p className="mt-1 text-xs text-slate-500">{SOURCE_LABELS[source.source_type]}{source.last_crawled_at ? ' · lần đọc gần nhất ' + formatDateTime(source.last_crawled_at) : ''}</p>
-                        {isPublicFacebook ? <p className="mt-1 text-xs text-slate-500">Engine: {source.collection_mode === 'public_web' ? 'facebook-cli · Tier 0' : source.collection_mode ?? 'chưa chọn'} · Lần thử: {source.last_collection_attempt_at ? formatDateTime(source.last_collection_attempt_at) : 'chưa có'} · Lần đọc thành công: {source.last_collection_success_at ? formatDateTime(source.last_collection_success_at) : 'chưa có'} · Lịch: {source.schedule_enabled ? schedulePaused ? 'đang tạm dừng sau khi Facebook từ chối/yêu cầu đăng nhập' : '12 giờ' : 'đã tắt'}</p> : null}
+                        {isPublicFacebook || isOwnedPage ? <p className="mt-1 text-xs text-slate-500">Engine: {isOwnedPage ? 'Meta API · Page đã kết nối' : source.collection_mode === 'public_web' ? 'facebook-cli · Tier 0' : source.collection_mode ?? 'chưa chọn'} · Lần thử: {source.last_collection_attempt_at ? formatDateTime(source.last_collection_attempt_at) : 'chưa có'} · Lần đọc thành công: {source.last_collection_success_at ? formatDateTime(source.last_collection_success_at) : 'chưa có'} · Lịch: {source.schedule_enabled ? schedulePaused ? 'đang tạm dừng sau khi Facebook từ chối/yêu cầu đăng nhập' : '12 giờ' : 'đã tắt'}</p> : null}
                         {source.error?.message ? <p className="mt-1 text-xs text-rose-800">{source.error.message}</p> : null}
                       </div>
                       <div className="flex flex-wrap items-center gap-2">
                         {!isCompetitor && canManageMarket ? <Button size="sm" variant="secondary" loading={crawlCompetitorNow.isPending && crawlCompetitorNow.variables === source.id} onClick={() => crawlCompetitorNow.mutate(source.id)}>Crawl ngay</Button> : null}
+                        {isOwnedPage && canManageMarket ? <Button size="sm" variant="secondary" loading={updateCollectionSettings.isPending} onClick={() => updateCollectionSettings.mutate({ sourceId: source.id, settings: { collector: 'meta_api', schedule_enabled: !(source.schedule_enabled ?? false), post_limit: source.collection_post_limit ?? 100 } })}>{source.schedule_enabled ? 'Tắt lịch 12 giờ' : 'Bật lịch 12 giờ'}</Button> : null}
                         {isCompetitor && canManageMarket ? (
                           <>
                             <label className="sr-only" htmlFor={'collector-' + source.id}>Phương thức thu thập</label>
@@ -484,7 +486,7 @@ export default function FanpagesMarketResearchPage() {
                       </p>
                     ) : null}
                     {lastSourceCrawl?.sourceId === source.id && crawlCompetitorNow.error ? <p role="alert" className="mt-2 text-xs text-rose-800">{readableError(crawlCompetitorNow.error, 'Không tạo được lượt crawl.')}</p> : null}
-                    {isPublicFacebook && updateCollectionSettings.error ? <p role="alert" className="mt-2 text-xs text-rose-800">{readableError(updateCollectionSettings.error, 'Không cập nhật được cấu hình thu thập.')}</p> : null}
+                    {(isPublicFacebook || isOwnedPage) && updateCollectionSettings.error ? <p role="alert" className="mt-2 text-xs text-rose-800">{readableError(updateCollectionSettings.error, 'Không cập nhật được cấu hình thu thập.')}</p> : null}
                     {isPublicFacebook && expandedCompetitorId === source.id ? (
                       <div className="mt-4 space-y-4 border-t border-slate-200 pt-4">
                         <div className="flex flex-wrap gap-2 text-xs text-slate-600">

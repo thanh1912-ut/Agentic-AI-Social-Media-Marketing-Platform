@@ -148,6 +148,7 @@ async def _claim(job_id: str) -> bool:
         cycle = await db.scalar(select(ResearchCycle).where(ResearchCycle.job_id == job.id).with_for_update())
         if cycle:
             cycle.status = "running"
+            cycle.collection_observed_at = cycle.collection_observed_at or utcnow()
         step = await db.scalar(select(JobStep).where(JobStep.job_id == job.id, JobStep.step_key == "collect_sources"))
         if step:
             step.status = "running"
@@ -556,6 +557,63 @@ async def _record_research_source_audience(
         await db.commit()
 
 
+async def _owned_page_backfill_state(
+    company_id: str, source_id: str, page_id: str, observed_at: datetime,
+) -> dict[str, Any]:
+    async with SessionLocal() as db:
+        source = await db.scalar(select(ResearchSource).where(
+            ResearchSource.company_id == company_id,
+            ResearchSource.id == source_id,
+            ResearchSource.source_type == "owned_facebook_page",
+        ).with_for_update())
+        if source is None:
+            raise CrawlError("research_source_missing", "Không tìm thấy nguồn Fanpage doanh nghiệp.")
+        if source.owned_page_backfill_page_id not in {None, page_id}:
+            # A source can only follow its currently bound Page. Never reuse an
+            # opaque Graph cursor after the Page identity changes.
+            source.owned_page_backfill_cursor = None
+            source.owned_page_backfill_complete = False
+            source.owned_page_backfill_window_complete = False
+            source.owned_page_backfill_pages_processed = 0
+            source.owned_page_backfill_window_start = observed_at - timedelta(days=90)
+        elif source.owned_page_backfill_window_start is None:
+            source.owned_page_backfill_window_start = observed_at - timedelta(days=90)
+        source.owned_page_backfill_page_id = page_id
+        window_start = _aware(source.owned_page_backfill_window_start, observed_at)
+        state = {
+            "cursor": source.owned_page_backfill_cursor,
+            "complete": source.owned_page_backfill_complete,
+            "window_complete": source.owned_page_backfill_window_complete,
+            "window_start": window_start,
+            "pages_processed": source.owned_page_backfill_pages_processed,
+        }
+        await db.commit()
+        return state
+
+
+async def _save_owned_page_backfill_state(
+    company_id: str, source_id: str, page_id: str, *, cursor: str | None,
+    complete: bool, window_complete: bool, window_start: datetime, page_processed: bool,
+) -> int:
+    async with SessionLocal() as db:
+        source = await db.scalar(select(ResearchSource).where(
+            ResearchSource.company_id == company_id,
+            ResearchSource.id == source_id,
+            ResearchSource.source_type == "owned_facebook_page",
+        ).with_for_update())
+        if source is None or source.owned_page_backfill_page_id != page_id:
+            raise CrawlError("page_connection_changed", "Fanpage đã thay đổi trong lúc thu thập; hãy chạy lại.")
+        source.owned_page_backfill_cursor = cursor if not complete else None
+        source.owned_page_backfill_complete = complete
+        source.owned_page_backfill_window_complete = window_complete
+        source.owned_page_backfill_window_start = window_start
+        if page_processed:
+            source.owned_page_backfill_pages_processed += 1
+        processed = source.owned_page_backfill_pages_processed
+        await db.commit()
+        return processed
+
+
 async def _collect_page(company_id: str, group_id: str, source: ResearchSource, observed_at: datetime) -> tuple[int, dict[str, Any]]:
     async with SessionLocal() as db:
         connection = await db.scalar(select(MetaPageConnection).where(
@@ -574,15 +632,17 @@ async def _collect_page(company_id: str, group_id: str, source: ResearchSource, 
         raise CrawlError("page_needs_reconnect", "Fanpage đã ngắt kết nối; chủ workspace cần kết nối lại.")
     stored = 0
     posts_seen = 0
-    cursor = None
+    posts_in_window = 0
+    unknown_publish_dates = 0
+    oldest_post_at: datetime | None = None
+    views_observed = False
+    metric_counts: dict[str, int] = {}
     # Comment text can identify private individuals. Until the workspace has
     # an approved purpose/retention/erasure configuration and a reviewed
     # pseudonymization pipeline, collect only Meta's aggregate count.
     comments_content_status = "privacy_hold"
     page_followers: int | None = None
     views_available = True
-    views_observed = False
-    metric_counts: dict[str, int] = {}
     try:
         async with MetaGraphClient(page_id, token, settings.meta_graph_version) as client:
             try:
@@ -595,13 +655,30 @@ async def _collect_page(company_id: str, group_id: str, source: ResearchSource, 
                 page_followers = None
             except MetaGraphReadError:
                 page_followers = None
-            for _page in range(3):
-                page = await client.list_page_posts(limit=100, after=cursor)
-                for post in page.posts:
+            state = await _owned_page_backfill_state(company_id, source.id, page_id, observed_at)
+            window_start: datetime = state["window_start"]
+
+            async def persist_posts(posts, *, collect_views: bool) -> tuple[int, bool, int]:
+                nonlocal stored, posts_seen, posts_in_window, unknown_publish_dates
+                nonlocal oldest_post_at, views_available, views_observed
+                window_boundary_seen = False
+                unknown_in_batch = 0
+                saved_in_batch = 0
+                for post in posts:
                     posts_seen += 1
+                    post_time = _aware(post.created_time, observed_at) if post.created_time else None
+                    if post_time is None:
+                        unknown_publish_dates += 1
+                        unknown_in_batch += 1
+                    else:
+                        oldest_post_at = min(oldest_post_at, post_time) if oldest_post_at else post_time
+                        if post_time < window_start:
+                            window_boundary_seen = True
+                            continue
+                    posts_in_window += 1
                     post_url = post.permalink_url or f"https://www.facebook.com/{post.external_post_id}"
                     views = None
-                    if posts_seen <= 25 and views_available:
+                    if collect_views and saved_in_batch < 25 and views_available:
                         try:
                             views = await client.read_post_media_views(post.external_post_id)
                             views_observed = views_observed or views is not None
@@ -610,12 +687,8 @@ async def _collect_page(company_id: str, group_id: str, source: ResearchSource, 
                         except MetaGraphRejected as error:
                             if error.retryable:
                                 raise CrawlError("meta_rate_limited", "Meta đang giới hạn yêu cầu; hãy chạy lại sau.", retryable=True) from error
-                            # A permission or metric-version mismatch should not fail
-                            # otherwise readable Page content or repeat bad calls.
                             views_available = False
                         except MetaGraphReadError:
-                            # A permission or metric-version mismatch should not fail
-                            # otherwise readable Page content or repeat 25 bad calls.
                             views_available = False
                     metrics = {
                         "reactions": post.reactions, "comments": post.comments, "shares": post.shares,
@@ -632,19 +705,69 @@ async def _collect_page(company_id: str, group_id: str, source: ResearchSource, 
                     for key, value in metrics.items():
                         if value is not None:
                             metric_counts[key] = metric_counts.get(key, 0) + 1
-                    comments: list[str] = []
                     await _persist_evidence(
                         company_id=company_id, group_id=group_id, source=source, url=post_url,
                         title=(post.message or "")[:1000],
                         text=post.message or "Bài viết Fanpage không có nội dung văn bản.",
-                        published_at=post.created_time, metrics=metrics, comments=comments, raw_body=None,
+                        published_at=post.created_time, metrics=metrics, comments=[], raw_body=None,
                         observed_at=observed_at, page_id=page_id,
                         external_post_id=post.external_post_id,
                     )
                     stored += 1
-                cursor = page.next_cursor
-                if not cursor:
-                    break
+                    saved_in_batch += 1
+                return saved_in_batch, window_boundary_seen, unknown_in_batch
+
+            # During the initial 90-day backfill, divide the 100-post budget
+            # between fresh posts and the durable historical cursor. Once the
+            # provider history is exhausted, use the full budget to refresh
+            # recent Page posts on each scheduled run.
+            backfill_complete = bool(state["complete"])
+            newest_limit = 100 if backfill_complete else 50
+            newest = await client.list_page_posts(limit=newest_limit)
+            newest_saved, boundary_seen, _ = await persist_posts(
+                newest.posts, collect_views=True,
+            )
+            posts_budget_remaining = 100 - newest_saved
+            next_cursor = state["cursor"] or newest.next_cursor
+            stop_reason = "provider_exhausted" if not next_cursor else "batch_limit"
+            window_complete = bool(state["window_complete"]) or boundary_seen
+
+            if not backfill_complete and not window_complete and next_cursor and posts_budget_remaining > 0:
+                history = await client.list_page_posts(limit=min(50, posts_budget_remaining), after=next_cursor)
+                _, history_boundary_seen, _ = await persist_posts(history.posts, collect_views=False)
+                next_cursor = history.next_cursor
+                window_complete = history_boundary_seen
+                if not next_cursor:
+                    stop_reason = "provider_exhausted"
+                elif window_complete:
+                    stop_reason = "window_start_reached"
+                else:
+                    stop_reason = "batch_limit"
+                backfill_complete = window_complete or not next_cursor
+                pages_processed = await _save_owned_page_backfill_state(
+                    company_id, source.id, page_id, cursor=next_cursor,
+                    complete=backfill_complete, window_complete=window_complete,
+                    window_start=window_start, page_processed=True,
+                )
+            elif not backfill_complete:
+                backfill_complete = window_complete or not next_cursor
+                if window_complete:
+                    stop_reason = "window_start_reached"
+                pages_processed = await _save_owned_page_backfill_state(
+                    company_id, source.id, page_id, cursor=next_cursor,
+                    complete=backfill_complete, window_complete=window_complete,
+                    window_start=window_start, page_processed=False,
+                )
+            else:
+                pages_processed = int(state["pages_processed"])
+                stop_reason = "recent_refresh"
+
+            if window_complete:
+                coverage_status = "window_boundary_reached"
+            elif backfill_complete:
+                coverage_status = "provider_history_exhausted_before_90_days"
+            else:
+                coverage_status = "backfill_in_progress"
     except MetaGraphTokenExpired as error:
         async with SessionLocal() as db:
             connection = await db.scalar(select(MetaPageConnection).where(
@@ -673,6 +796,18 @@ async def _collect_page(company_id: str, group_id: str, source: ResearchSource, 
         **_metric_coverage(metric_counts, stored),
         "views_observed": views_observed,
         "comments_content": comments_content_status,
+        "requested_post_budget": 100,
+        "posts_in_window": posts_in_window,
+        "window_days": 90,
+        "window_start_at": window_start.isoformat(),
+        "oldest_post_at": oldest_post_at.isoformat() if oldest_post_at else None,
+        "unknown_published_at_count": unknown_publish_dates,
+        "history_complete": backfill_complete,
+        "window_coverage_complete": window_complete,
+        "coverage_status": coverage_status,
+        "stop_reason": stop_reason,
+        "next_checkpoint_available": bool(next_cursor and not backfill_complete),
+        "backfill_pages_processed": pages_processed,
     }
 
 
@@ -1620,10 +1755,14 @@ async def _run(job_id: str) -> None:
             id=group.id, company_id=group.company_id, name=group.name, industry=group.industry,
             region=group.region, locale=group.locale, keywords_json=group.keywords_json,
         )
+        cycle_observed_at = cycle.collection_observed_at
         saved_results = cycle.source_results_json if isinstance(cycle.source_results_json, list) else []
         source_results = [dict(item) for item in saved_results if isinstance(item, dict)]
         checkpointed_source_ids = _checkpointed_research_source_ids(source_results)
-    observed_at = utcnow()
+    # Reusing the cycle timestamp makes a recovered source page idempotent:
+    # evidence, observations, and metric snapshots from the same job retain
+    # one observation identity when its durable page cursor is replayed.
+    observed_at = _aware(cycle_observed_at, utcnow())
 
     for position, source_id in enumerate(source_snapshot, start=1):
         if source_id in checkpointed_source_ids:
@@ -1640,9 +1779,11 @@ async def _run(job_id: str) -> None:
                 if source_type in {"owned_facebook_page", "competitor_facebook_page", "facebook_group"}
                 else None
             )
-            if source_type in {"competitor_facebook_page", "facebook_group"}:
+            if source_type in {"owned_facebook_page", "competitor_facebook_page", "facebook_group"}:
                 source.last_collection_attempt_at = utcnow()
-                source.collection_last_method = "facebook-cli"
+                source.collection_last_method = (
+                    "meta_api" if source_type == "owned_facebook_page" else "facebook-cli"
+                )
             # Do not keep a database transaction open while collectors make network calls.
             await db.commit()
             try:
@@ -1702,6 +1843,14 @@ async def _run(job_id: str) -> None:
                     source.collection_last_method = "facebook-cli"
                     source.last_collection_success_at = utcnow()
                     source.next_due_at = utcnow() + timedelta(hours=12) if source.schedule_enabled else None
+                elif source_type == "owned_facebook_page":
+                    source.collection_status = (
+                        "completed" if outcome.get("window_coverage_complete") else "partial"
+                    )
+                    source.collection_last_method = "meta_api"
+                    if int(outcome.get("items_saved", 0) or 0) > 0:
+                        source.last_collection_success_at = utcnow()
+                    source.next_due_at = utcnow() + timedelta(hours=12) if source.schedule_enabled else None
                 else:
                     source.next_due_at = (
                         utcnow() + timedelta(hours=12)
@@ -1716,9 +1865,11 @@ async def _run(job_id: str) -> None:
                 outcome = {"status": "blocked" if is_public_block else "failed",
                            "code": error.code, "message": str(error), "items_saved": 0,
                            "retryable": error.retryable}
-                if source_type in {"competitor_facebook_page", "facebook_group"}:
+                if source_type in {"owned_facebook_page", "competitor_facebook_page", "facebook_group"}:
                     source.collection_status = error.code
-                    source.collection_last_method = "facebook-cli"
+                    source.collection_last_method = (
+                        "meta_api" if source_type == "owned_facebook_page" else "facebook-cli"
+                    )
                     source.status = "active" if is_public_block or is_nonpublic_group else (
                         "needs_access" if error.code in {
                             "page_needs_reconnect", "page_token_unavailable", "page_token_expired",

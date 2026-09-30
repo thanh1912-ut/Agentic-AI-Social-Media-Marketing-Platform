@@ -817,6 +817,12 @@ class ResearchSource(Base, IdMixin, TimestampMixin):
     active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     next_due_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), index=True)
     last_crawled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    owned_page_backfill_cursor: Mapped[str | None] = mapped_column(Text)
+    owned_page_backfill_page_id: Mapped[str | None] = mapped_column(String(100))
+    owned_page_backfill_window_start: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    owned_page_backfill_complete: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    owned_page_backfill_window_complete: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    owned_page_backfill_pages_processed: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     latest_job_id: Mapped[str | None] = mapped_column(ForeignKey("jobs.id", ondelete="SET NULL"))
     error_json: Mapped[dict[str, Any] | None] = mapped_column(JSON)
     created_by: Mapped[str] = mapped_column(ForeignKey("users.id"), nullable=False)
@@ -874,6 +880,7 @@ class ResearchCycle(Base, IdMixin, TimestampMixin):
     cycle_key: Mapped[str] = mapped_column(String(100), nullable=False)
     status: Mapped[str] = mapped_column(String(32), default="queued", nullable=False)
     source_results_json: Mapped[list[dict[str, Any]]] = mapped_column(JSON, default=list, nullable=False)
+    collection_observed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 

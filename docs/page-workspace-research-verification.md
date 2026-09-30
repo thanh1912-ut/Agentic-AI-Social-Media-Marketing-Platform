@@ -191,6 +191,18 @@ Lát cắt này không đáp ứng thu thập nội dung Group discussions, bài
 | Frontend quality | PASS | OpenAPI export/type generation, typecheck, lint, Vitest 50 passed, production build. |
 | Privacy deletion/retention propagation | NOT_RUN | Chưa chứng minh purge raw/media, cascade xóa provider/cache/index hoặc deletion ledger. |
 
+## Owned Page research pagination — 2026-09-30
+
+| Kiểm tra | Trạng thái | Bằng chứng và giới hạn |
+|---|---|---|
+| Checkpoint schema | PASS (SQLite/API fixture) | `ResearchSource` giữ cursor, Page ID, cửa sổ 90 ngày, completion và page count; `ResearchCycle` pin observed-at cho retry. Migration mới `0025_owned_page_research_backfill`. |
+| Tiếp tục lịch sử | PASS (fixture) | `tests/test_market_research_api.py -k owned_page`: lượt kế tiếp nhận `history-2`, tiến số trang và dừng khi provider hết cursor. Fixture kết thúc ở bài 89 ngày nên kết quả ghi `provider_history_exhausted_before_90_days`, `window_coverage_complete=false`. |
+| Giới hạn và trạng thái lịch | PASS (SQLite/API fixture) | Mỗi lượt giới hạn 100 bài; during backfill 50+50; nguồn chỉ chấp nhận `meta_api`. Owner bật/tắt lịch 12 giờ bằng API hiện có; schedule mặc định vẫn tắt cho Page mới. |
+| Chất lượng code | PASS | API/privacy suites: 24 passed; Ruff, whitespace, typecheck, ESLint và Vitest 50 passed. |
+| PostgreSQL migration fresh/upgrade | PASS | PostgreSQL 18.3 riêng trên loopback 15435: database mới migrate từ đầu tới `0025`; database thứ hai migrate tới `0024`, sau đó nâng lên `0025`. Import shim `pgvector` chỉ nằm trong `/private/tmp`; không kết nối preview. |
+| PostgreSQL integration schema/fencing | PASS | `tests/test_postgres_database_integration.py`: 6 passed, 2 skipped do Redis integration URL không được cấu hình. Test kiểm tra cột cursor/window và timestamp schema 0025. |
+| Page thật, Redis worker, UI reload, comments/media/providers | NOT_RUN | Không gọi Meta, không chạy worker thật hoặc browser; comments còn `privacy_hold`, media chưa tải/phân tích. |
+
 ## Owner profile context trong Research report — 2026-09-30
 
 | Kiểm tra | Trạng thái | Bằng chứng và giới hạn |

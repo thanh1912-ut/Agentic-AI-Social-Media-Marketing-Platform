@@ -318,12 +318,14 @@ async def update_collection_settings(
 ):
     source = await db.scalar(select(ResearchSource).where(
         ResearchSource.company_id == company_id, ResearchSource.id == source_id,
-        ResearchSource.source_type.in_(["competitor_facebook_page", "facebook_group"]),
+        ResearchSource.source_type.in_(["owned_facebook_page", "competitor_facebook_page", "facebook_group"]),
         ResearchSource.active.is_(True),
     ).with_for_update())
     if source is None:
-        raise ApiProblem(404, "not_found", "Không tìm thấy nguồn Facebook công khai.")
+        raise ApiProblem(404, "not_found", "Không tìm thấy nguồn Facebook.")
     previous_mode = source.collection_mode
+    if source.source_type == "owned_facebook_page" and request.collector != "meta_api":
+        raise ApiProblem(422, "owned_page_collector_fixed", "Fanpage doanh nghiệp chỉ dùng Meta API của Page đã kết nối.")
     if source.source_type == "facebook_group" and request.collector != "public_web":
         raise ApiProblem(422, "group_collector_fixed", "Nhóm công khai chỉ dùng facebook-cli Tier 0 metadata.")
     source.collection_mode = request.collector
@@ -335,6 +337,7 @@ async def update_collection_settings(
         source.status = "active"
     blocked = source.collection_status in {
         "login_required", "access_denied", "challenge", "challenge_required", "group_not_public",
+        "page_needs_reconnect", "page_token_unavailable", "page_token_expired", "page_permission_missing",
     }
     source.next_due_at = (
         utcnow() if request.schedule_enabled and request.collector != "manual" and not blocked else None

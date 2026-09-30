@@ -117,7 +117,10 @@ Không dùng các lệnh này nếu đã tái sử dụng các cổng cho tiến
 ### Phục hồi chu kỳ nghiên cứu
 
 - Kết quả từng nguồn trong `research_cycles.source_results_json` được commit sau khi xử lý xong nguồn. Nếu job vẫn ở trạng thái đang chạy khi worker bị gián đoạn, lần nhận lại bỏ qua nguồn đã checkpoint; nguồn đang dở hoặc có kết quả retryable được thử lại.
-- Đây mới là checkpoint cấp nguồn. Crawl theo cursor từng post/comment/reply, resume phân trang và media chưa được triển khai; xem `page-workspace-research-verification.md` trước khi hứa coverage.
+- Với nguồn `owned_facebook_page`, migration `0025_owned_page_research_backfill` bổ sung cursor và coverage 90 ngày. Mỗi source-run xử lý tối đa 100 bài; trong lúc backfill dùng 50 bài mới nhất và 50 bài theo cursor lịch sử. Khi còn cursor, lượt đến hạn sau 12 giờ tiếp tục từ cursor đó. Sau khi hết lịch sử, lượt sau làm mới 100 bài mới nhất. Page ID được lưu cùng cursor; khi danh tính Page khác đi thì cursor cũ bị reset. Cờ `owned_page_backfill_window_complete` giữ lại kết quả coverage 90 ngày sau các lượt refresh.
+- `research_cycles.collection_observed_at` được ghi trước khi worker bắt đầu thu thập và dùng lại khi job cùng cycle được phục hồi, để replay giữ cùng identity cho evidence/observation. Bản ghi cursor chỉ cập nhật sau khi các bài ở batch đã persist.
+- Job result ghi `history_complete`, `window_coverage_complete`, `coverage_status`, `oldest_post_at`, `unknown_published_at_count`, `stop_reason` và cờ có checkpoint kế tiếp. `provider_history_exhausted_before_90_days` là kết quả một phần, không được báo đủ 90 ngày; ngày đăng thiếu vẫn được tính riêng.
+- Lịch của nguồn Page công ty bật/tắt trong Nghiên cứu qua `collection-settings`; collector bị khóa ở `meta_api`. Crawl ngay vẫn dùng được khi lịch tắt. Bình luận/replies chưa có cursor và vẫn `privacy_hold`; media binary/AI chưa được triển khai.
 - Lượt Facebook công khai ghi policy revision được quan sát khi bắt đầu nguồn, cùng `comments_content_status=privacy_hold` và `retention_enforcement_status=not_enforced`. Snapshot là provenance, không phải bằng chứng có căn cứ xử lý hoặc xóa dữ liệu tự động.
 
 ### Đồng bộ tên và ảnh Page

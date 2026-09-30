@@ -766,6 +766,21 @@ def test_owned_page_collection_saves_views_and_followers_when_meta_returns_them(
             return source.id
 
     source_id = asyncio.run(find_owned_source_id())
+    source_settings = client.patch(
+        f"/api/v1/workspaces/{workspace_id}/market-research/sources/{source_id}/collection-settings",
+        headers=headers,
+        json={"collector": "meta_api", "schedule_enabled": True, "post_limit": 100},
+    )
+    assert source_settings.status_code == 200, source_settings.text
+    assert source_settings.json()["schedule_enabled"] is True
+    assert source_settings.json()["collection_mode"] == "meta_api"
+    rejected_collector = client.patch(
+        f"/api/v1/workspaces/{workspace_id}/market-research/sources/{source_id}/collection-settings",
+        headers=headers,
+        json={"collector": "public_web", "schedule_enabled": True, "post_limit": 100},
+    )
+    assert rejected_collector.status_code == 422
+    assert rejected_collector.json()["error"]["code"] == "owned_page_collector_fixed"
 
     expected_page_id = page_id
 
@@ -786,19 +801,37 @@ def test_owned_page_collection_saves_views_and_followers_when_meta_returns_them(
             return 5400
 
         async def list_page_posts(self, limit: int = 100, after: str | None = None):
-            assert limit == 100 and after is None
-            return MetaPagePostsPage((MetaPagePost(
-                external_post_id=f"{self.page_id}_42", message="Bài viết mới", created_time=None,
-                permalink_url=f"https://www.facebook.com/{self.page_id}/posts/42",
-                reactions=22, comments=5, shares=3,
-                link_url="https://example.com/landing?utm_source=facebook",
-                attachments=({
-                    "kind": "image", "provider_type": "photo", "title": "Ảnh minh họa",
-                    "description": None, "target_url": None,
-                    "content_status": "metadata_only_privacy_hold",
-                },),
-                attachment_metadata_status="returned",
-            ),), None)
+            if after is None:
+                assert limit in {50, 100}
+                return MetaPagePostsPage((MetaPagePost(
+                    external_post_id=f"{self.page_id}_42", message="Bài viết mới", created_time=observed_at,
+                    permalink_url=f"https://www.facebook.com/{self.page_id}/posts/42",
+                    reactions=22, comments=5, shares=3,
+                    link_url="https://example.com/landing?utm_source=facebook",
+                    attachments=({
+                        "kind": "image", "provider_type": "photo", "title": "Ảnh minh họa",
+                        "description": None, "target_url": None,
+                        "content_status": "metadata_only_privacy_hold",
+                    },),
+                    attachment_metadata_status="returned",
+                ),), "history-1" if limit == 50 else None)
+            if after == "history-1":
+                assert limit == 50
+                return MetaPagePostsPage((MetaPagePost(
+                    external_post_id=f"{self.page_id}_41", message="Bài viết tháng trước",
+                    created_time=observed_at - timedelta(days=30),
+                    permalink_url=f"https://www.facebook.com/{self.page_id}/posts/41",
+                    reactions=4, comments=1, shares=0,
+                ),), "history-2")
+            if after == "history-2":
+                assert limit == 50
+                return MetaPagePostsPage((MetaPagePost(
+                    external_post_id=f"{self.page_id}_40", message="Bài viết cũ trong cửa sổ",
+                    created_time=observed_at - timedelta(days=89),
+                    permalink_url=f"https://www.facebook.com/{self.page_id}/posts/40",
+                    reactions=2, comments=0, shares=0,
+                ),), None)
+            raise AssertionError(f"unexpected Meta cursor: {after}")
 
         async def read_post_media_views(self, external_post_id: str):
             assert external_post_id == f"{page_id}_42"
@@ -819,10 +852,38 @@ def test_owned_page_collection_saves_views_and_followers_when_meta_returns_them(
         return await research_tasks._collect_page(workspace_id, group_id, source, observed_at)
 
     saved, details = asyncio.run(collect())
-    assert saved == 1
+    assert saved == 2
     assert details["metrics_available"] == ["reactions", "comments", "shares", "interactions", "views"]
     assert details["metrics_unavailable"] == []
     assert details["comments_content"] == "privacy_hold"
+    assert details["requested_post_budget"] == 100
+    assert details["history_complete"] is False
+    assert details["window_coverage_complete"] is False
+    assert details["coverage_status"] == "backfill_in_progress"
+    assert details["next_checkpoint_available"] is True
+
+    async def read_backfill_checkpoint():
+        async with session_factory() as db:
+            source = await db.get(ResearchSource, source_id)
+            assert source is not None
+            return (source.owned_page_backfill_cursor, source.owned_page_backfill_page_id,
+                    source.owned_page_backfill_complete, source.owned_page_backfill_window_complete,
+                    source.owned_page_backfill_pages_processed)
+
+    assert asyncio.run(read_backfill_checkpoint()) == ("history-2", page_id, False, False, 1)
+
+    # A later source run resumes the old-history cursor while refreshing the
+    # newest page, and stops when the provider says there is no more history.
+    second_saved, second_details = asyncio.run(collect())
+    assert second_saved == 2
+    assert second_details["history_complete"] is True
+    assert second_details["window_coverage_complete"] is False
+    assert second_details["coverage_status"] == "provider_history_exhausted_before_90_days"
+    assert second_details["stop_reason"] == "provider_exhausted"
+    assert asyncio.run(read_backfill_checkpoint()) == (None, page_id, True, False, 2)
+    _, refresh_details = asyncio.run(collect())
+    assert refresh_details["coverage_status"] == "provider_history_exhausted_before_90_days"
+    assert refresh_details["window_coverage_complete"] is False
 
     async def read_observation():
         async with session_factory() as db:
@@ -929,12 +990,13 @@ def test_owned_page_collection_saves_views_and_followers_when_meta_returns_them(
 
     asyncio.run(seed_previous_snapshot())
     report_evidence = asyncio.run(research_tasks._evidence_for_report(workspace_id, group_id))
-    assert len(report_evidence) == 1
-    assert report_evidence[0]["metric_delta"] == {
+    assert len(report_evidence) == 3
+    latest_post = next(item for item in report_evidence if item["url"].endswith("/posts/42"))
+    assert latest_post["metric_delta"] == {
         "reactions": 12, "comments": 2, "shares": 1, "interactions": 15, "views": 654,
     }
-    assert report_evidence[0]["comments"] == []
-    assert report_evidence[0]["comments_content_status"] == "privacy_hold"
+    assert latest_post["comments"] == []
+    assert latest_post["comments_content_status"] == "privacy_hold"
 
 
 def test_due_market_research_enqueues_one_durable_cycle(market_api) -> None:
