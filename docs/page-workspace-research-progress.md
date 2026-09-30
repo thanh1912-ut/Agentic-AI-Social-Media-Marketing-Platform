@@ -240,10 +240,18 @@ Base đã kiểm tra: `codex/creative-studio-ui` @ `b769097bfdb3568889d974c6def9
 - DONE: Thêm Owner-only `POST /api/v1/workspaces/{id}/page-connection/refresh-metadata`; server giải mã token đã lưu, xác minh lại cùng Page và thực hiện read-only post request trước khi cập nhật tên/ảnh.
 - DONE: Tên được đồng bộ vào Company, kết nối Meta, nguồn Page công ty và trạng thái Meta sync; ảnh lấy từ Page metadata. Brand Profile/revision không bị thay đổi.
 - DONE: So khớp lại Page và ciphertext sau request mạng để từ chối ghi nhận nếu Owner thay kết nối đồng thời. Token không trả về client.
-- DONE: Token hết hạn/thu hồi chuyển workspace sang `needs_reconnect`, tắt lịch Page và giữ dữ liệu cũ. Giao diện Cài đặt có nút đồng bộ và lỗi có mã xử lý.
-- PASS: API fixture xác nhận tên/ảnh đổi, token được lấy từ backend đã lưu, không xuất hiện trong response, Brand Profile giữ nguyên; fixture token hết hạn xác nhận lịch Page bị tạm dừng.
+- DONE: Token hết hạn/thu hồi chuyển workspace sang `needs_reconnect` và dừng thực thi bằng cách xóa thời điểm đến hạn; giữ nguyên lựa chọn bật lịch của Owner và giữ dữ liệu cũ. Giao diện Cài đặt có nút đồng bộ và lỗi có mã xử lý.
+- PASS: API fixture xác nhận tên/ảnh đổi, token được lấy từ backend đã lưu, không xuất hiện trong response, Brand Profile giữ nguyên; reconnect đặt lại lượt nghiên cứu và đồng bộ metrics theo lịch đã lưu.
 - PASS: OpenAPI export/check, TypeScript generation, 28 backend focused tests sau fixture mới, frontend typecheck/lint/50 unit tests và production build.
 - NOT_RUN: Không gọi Meta thật hoặc thay preview; kiểm thử bằng Meta adapter fixture.
+
+### 2026-09-30 11:21 Asia/Ho_Chi_Minh — Khôi phục lịch Page sau khi Owner kết nối lại
+
+- DONE: Khi token mất hiệu lực, hệ thống giữ `schedule_enabled`/`metrics_schedule_enabled` theo lựa chọn Owner nhưng xóa `next_due_at`; Page gate vẫn chặn mọi lần chạy khi workspace chưa active.
+- DONE: Khi Owner xác minh lại đúng Page, lịch Page đã bật được đặt đến hạn ngay để scheduler phục hồi một lượt nghiên cứu; lịch metrics được đặt theo interval đã cấu hình. Lịch chưa bật vẫn tắt.
+- PASS: `tests/test_account_lifecycle.py -k metadata_refresh`: 1 passed; bao gồm expiry, dữ liệu được giữ, schedule intent còn nguyên, reconnect cùng Page và due time được phục hồi.
+- PASS: Ruff và `git diff --check`.
+- NOT_RUN: Không gọi Meta live, PostgreSQL/Redis production hoặc thay preview. Đây là API lifecycle test với Meta fixture/SQLite.
 
 ### 2026-09-30 10:02 Asia/Ho_Chi_Minh — PostgreSQL/Redis integration và raw retention
 

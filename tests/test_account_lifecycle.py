@@ -14,7 +14,7 @@ from fastapi.testclient import TestClient
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
-from database.models import Base, Brand, Company, MetaPageConnection, ResearchSource
+from database.models import Base, Brand, Company, MetaPageConnection, MetaPageGroup, ResearchSource
 from services.api import auth as auth_module
 from services.api import email as email_module
 from services.api import workspaces as workspaces_module
@@ -269,7 +269,7 @@ def test_refresh_page_metadata_uses_stored_token_without_touching_brand(
 def test_metadata_refresh_expired_token_pauses_page_work_but_keeps_workspace(
     account_client: TestClient, monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from services.api.meta_client import MetaGraphTokenExpired
+    from services.api.meta_client import MetaGraphTokenExpired, MetaPage
     from database.models import utcnow
 
     workspace_id, csrf = register_owner(account_client, "metadata-expired@example.com")
@@ -327,6 +327,7 @@ def test_metadata_refresh_expired_token_pauses_page_work_but_keeps_workspace(
             ))
             assert company is not None and connection is not None and source is not None
             return (
+                company.page_id,
                 company.name,
                 company.page_connection_state,
                 connection.status,
@@ -337,10 +338,62 @@ def test_metadata_refresh_expired_token_pauses_page_work_but_keeps_workspace(
             )
 
     saved = asyncio.run(read_paused_state())
-    assert saved[0].startswith("Test Page ")
-    assert saved[1:4] == ("needs_reconnect", "needs_reconnect", False)
-    assert saved[4] is None
-    assert saved[5:] == (False, None)
+    assert saved[1].startswith("Test Page ")
+    assert saved[2:5] == ("needs_reconnect", "needs_reconnect", True)
+    assert saved[5] is None
+    assert saved[6:] == (True, None)
+
+    class ReconnectedMetaClient:
+        def __init__(self, page_id, *_args):
+            self.page_id = page_id
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *_args):
+            return False
+
+        async def verify_page(self):
+            return MetaPage(id=self.page_id, name="Page sau kết nối lại", picture_url=None)
+
+        async def list_page_posts(self, **_kwargs):
+            return SimpleNamespace(posts=[], next_cursor=None)
+
+    monkeypatch.setattr(workspaces_module, "MetaGraphClient", ReconnectedMetaClient)
+    reconnected = account_client.patch(
+        f"/api/v1/workspaces/{workspace_id}/page-connection",
+        headers={"X-CSRF-Token": csrf},
+        json={"page_id": saved[0], "page_access_token": "new-page-token-for-the-same-page"},
+    )
+    assert reconnected.status_code == 200, reconnected.text
+    assert reconnected.json()["page_connection_state"] == "active"
+
+    async def read_restored_schedules():
+        async with account_client.app.state.test_session_factory() as db:
+            connection = await db.scalar(select(MetaPageConnection).where(
+                MetaPageConnection.company_id == workspace_id,
+            ))
+            group = await db.scalar(select(MetaPageGroup).where(
+                MetaPageGroup.company_id == workspace_id,
+                MetaPageGroup.active.is_(True),
+            ))
+            source = await db.scalar(select(ResearchSource).where(
+                ResearchSource.company_id == workspace_id,
+                ResearchSource.source_type == "owned_facebook_page",
+            ))
+            assert connection is not None and group is not None and source is not None
+            return (
+                connection.metrics_schedule_enabled,
+                connection.next_metrics_sync_at,
+                source.schedule_enabled,
+                source.next_due_at,
+                group.next_due_at,
+            )
+
+    restored = asyncio.run(read_restored_schedules())
+    assert restored[0] is True and restored[1] is not None
+    assert restored[2] is True and restored[3] is not None
+    assert restored[4] == restored[3]
 
 
 def test_legacy_workspace_requires_page_before_agentic_writes(account_client: TestClient) -> None:

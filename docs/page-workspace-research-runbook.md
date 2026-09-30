@@ -28,9 +28,9 @@ Không đưa token vào tài liệu, ticket, browser storage, query string hoặ
 
 ## Kết nối lại Page
 
-- Khi token hết hạn/thu hồi, workspace chuyển `needs_reconnect`; dữ liệu lịch sử vẫn đọc được, tác vụ mới bị chặn.
+- Khi token hết hạn/thu hồi, workspace chuyển `needs_reconnect`; dữ liệu lịch sử vẫn đọc được, tác vụ mới bị chặn. Thời điểm chạy bị xóa nhưng `schedule_enabled` giữ nguyên ý định của Owner.
 - Owner mở Cài đặt doanh nghiệp, nhập token mới và giữ nguyên Page ID. Backend xác minh lại trước khi thay token mã hóa.
-- Nếu một nguồn đang chạy khi mất kết nối, kết quả dở dang không được coi là hoàn thành. Sau kết nối lại, scheduler có thể phục hồi lịch theo idempotency.
+- Nếu một nguồn đang chạy khi mất kết nối, kết quả dở dang không được coi là hoàn thành. Sau khi Owner xác minh lại đúng Page, lịch nguồn đang bật được đặt đến hạn để scheduler phục hồi; idempotency ngăn chạy trùng. Lịch đã tắt không tự bật.
 - Lịch đăng đã quá hạn tuân thủ trạng thái missed hiện có; không gửi bù hàng loạt.
 - Xác minh Page bằng metadata và đọc bài chỉ xác nhận danh tính/quyền đọc bài. API trả `publish_capability=not_tested` cho tới khi có lần xuất bản thành công gắn với token hiện tại; chưa thử đăng không đồng nghĩa chắc chắn Meta sẽ từ chối. Giao diện vẫn cần Owner xác nhận bài đã duyệt, còn Meta quyết định tại lần gửi.
 - `can_sync_metrics` trong API cho biết ứng dụng có thể gửi yêu cầu đồng bộ; đây không phải cam kết mọi permission/metric đều có sẵn. UI gọi đây là khả năng “yêu cầu đồng bộ”; trạng thái dữ liệu và metric thiếu vẫn lấy từ kết quả sync thực tế.
@@ -121,5 +121,5 @@ Không dùng các lệnh này nếu đã tái sử dụng các cổng cho tiến
 
 - Owner mở Cài đặt doanh nghiệp → Fanpage → **Đồng bộ tên và ảnh từ Fanpage**. API chỉ dùng token đã mã hóa phía server, xác minh lại Page ID và gọi đọc bài ở chế độ chỉ đọc.
 - Nếu thành công, tên được cập nhật cho workspace, Meta connection và nguồn Page; ảnh đại diện cập nhật theo metadata Meta. Brand Profile do Owner viết không đổi.
-- Nếu Meta báo token hết hạn/thiếu quyền, workspace chuyển sang `needs_reconnect`; lịch Page bị tạm dừng và dữ liệu cũ vẫn để đọc. Owner dùng biểu mẫu **Xác minh lại Fanpage** với token mới của đúng Page.
+- Nếu Meta báo token hết hạn/thiếu quyền, workspace chuyển sang `needs_reconnect`; tác vụ bị tạm dừng, thời điểm đến hạn được xóa nhưng lịch đã bật của Owner vẫn được giữ để phục hồi sau reconnect. Dữ liệu cũ vẫn đọc được. Owner dùng biểu mẫu **Xác minh lại Fanpage** với token mới của đúng Page.
 - API không trả token và không thử đăng bài. Metadata refresh không chứng minh Page có quyền publish.

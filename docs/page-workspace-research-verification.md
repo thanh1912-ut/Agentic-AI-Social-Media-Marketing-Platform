@@ -150,7 +150,16 @@ Giá lấy từ [Google Gemini model update](https://ai.google.dev/gemini-api/do
 | Owner đồng bộ tên/ảnh bằng token đã lưu | PASS (API fixture) | `test_refresh_page_metadata_uses_stored_token_without_touching_brand`: token chỉ materialize ở backend; Meta fixture trả Page identity mới; Company, connection, source Page và avatar được cập nhật. |
 | Hồ sơ thương hiệu không bị sửa | PASS (API fixture) | Test lưu `profile_text`/version trước thao tác và xác nhận giữ nguyên sau refresh metadata. |
 | Token không lộ qua HTTP response | PASS (API fixture) | Response `WorkspaceOut` không chứa plaintext Page token. |
-| Token hết hạn | PASS (API fixture) | `test_metadata_refresh_expired_token_pauses_page_work_but_keeps_workspace`: workspace còn dữ liệu, state thành `needs_reconnect`, lịch Page/sync bị tắt. |
+| Token hết hạn | PASS (API fixture) | `test_metadata_refresh_expired_token_pauses_page_work_but_keeps_workspace`: workspace còn dữ liệu, state thành `needs_reconnect`, lịch được dừng bằng cách bỏ due time trong khi giữ lại lựa chọn bật/tắt của Owner. |
 | Auth, permission, contract | PASS | Route dùng `connection:manage`, CSRF và rate limit; OpenAPI được xuất lại từ FastAPI, TypeScript được sinh bằng `openapi-typescript`. |
 | Chất lượng code | PASS | Account/market focused pytest sau test mới: 28 passed; frontend typecheck, ESLint, Vitest (50 passed), production build, Ruff và `git diff --check` đạt. |
 | Meta live / preview deployment | NOT_RUN | Adapter được fixture; không dùng Page token thật và không thay preview đang chạy. |
+
+## Khôi phục lịch sau reconnect — 2026-09-30
+
+| Kiểm tra | Trạng thái | Bằng chứng và giới hạn |
+|---|---|---|
+| Giữ lịch khi Page token mất hiệu lực | PASS (API lifecycle fixture) | `tests/test_account_lifecycle.py -k metadata_refresh`: schedule intent vẫn bật, còn due time bị xóa khi `needs_reconnect`; Page gate tiếp tục chặn chạy. |
+| Reconnect đúng Page phục hồi lịch | PASS (API lifecycle fixture) | Test xác minh cùng Page, đặt lại research due time và metrics sync theo interval; group due time theo source. Lịch vốn tắt không tự bật. |
+| Chất lượng code | PASS | Ruff và `git diff --check`; adapter Meta là fixture và DB của test là SQLite. |
+| PostgreSQL/Redis, scheduler thật, Meta live | NOT_RUN | Chưa chứng minh recovery ở hạ tầng chạy thật; không thay preview. |

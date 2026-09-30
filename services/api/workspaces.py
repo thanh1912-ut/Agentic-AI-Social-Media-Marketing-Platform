@@ -146,8 +146,10 @@ async def _bind_verified_page(
         source.url = source.normalized_url = page_url
         source.active = True
         source.status = "active"
-        source.schedule_enabled = False
-        source.next_due_at = None
+        # schedule_enabled records the Owner's intent. A token outage pauses
+        # execution by clearing next_due_at; reconnecting restores the saved
+        # schedule without requiring the Owner to configure it again.
+        source.next_due_at = utcnow() if source.schedule_enabled else None
     next_due = await db.scalar(select(ResearchSource.next_due_at).where(
         ResearchSource.company_id == company.id,
         ResearchSource.active.is_(True),
@@ -485,7 +487,6 @@ async def _mark_workspace_page_needs_reconnect(
         connection.status = "needs_reconnect"
         connection.last_error_code = error_code
         connection.verified_at = None
-        connection.metrics_schedule_enabled = False
         connection.next_metrics_sync_at = None
     if company is not None:
         company.page_connection_state = "needs_reconnect"
@@ -496,7 +497,6 @@ async def _mark_workspace_page_needs_reconnect(
         ResearchSource.active.is_(True),
     ).with_for_update())).all()
     for source in sources:
-        source.schedule_enabled = False
         source.next_due_at = None
         source.status = "needs_access"
     await db.commit()
