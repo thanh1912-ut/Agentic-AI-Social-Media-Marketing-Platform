@@ -3,11 +3,11 @@
 import Image from 'next/image';
 import { useEffect, useState, type FormEvent } from 'react';
 import { useRouter } from 'next/navigation';
-import { useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
 
 import { ROLE_LABELS } from '@agentic/contracts';
 import { SessionGate, useSession } from '@/components/session-gate';
-import { Button, ErrorPanel, LoadingBlock } from '@/components/ui';
+import { Button, ErrorPanel } from '@/components/ui';
 import { ApiError, api, workspaceApi } from '@/lib/api';
 import { queryKeys } from '@/lib/query-keys';
 import { useSelectWorkspace } from '@/lib/hooks';
@@ -23,6 +23,15 @@ function ChonDoanhNghiep() {
   const selectWorkspace = useSelectWorkspace();
   const [selectedId, setSelectedId] = useState(session.active_workspace_id ?? workspaces[0]?.id ?? '');
   const [connectNew, setConnectNew] = useState(workspaces.length === 0);
+  const [logoutError, setLogoutError] = useState<unknown>(null);
+  const logout = useMutation({
+    mutationFn: () => api.auth.logout(),
+    onSuccess: () => {
+      queryClient.clear();
+      router.replace('/login');
+    },
+    onError: (error) => setLogoutError(error),
+  });
 
   useEffect(() => {
     if (session.active_workspace_id) setSelectedId(session.active_workspace_id);
@@ -30,23 +39,23 @@ function ChonDoanhNghiep() {
   }, [session.active_workspace_id, workspaces]);
 
   const selected = workspaces.find((workspace) => workspace.id === selectedId) ?? null;
-  const onlyWorkspace = workspaces.length === 1 ? workspaces[0] : undefined;
-  const onlyActiveWorkspace = onlyWorkspace?.page_connection_state === 'active';
-  useEffect(() => {
-    if (onlyActiveWorkspace && onlyWorkspace) router.replace(`/w/${onlyWorkspace.id}/brand`);
-  }, [onlyActiveWorkspace, onlyWorkspace, router]);
-
-  if (onlyActiveWorkspace && onlyWorkspace) return <div className="mx-auto max-w-3xl px-4 py-10"><LoadingBlock label={`Đang mở ${onlyWorkspace.name}…`} /></div>;
+  const logoutApiError = logoutError instanceof ApiError ? logoutError : null;
 
   return (
     <main className="mx-auto min-h-screen max-w-5xl px-5 py-10 sm:px-8 sm:py-16">
-      <header className="max-w-2xl">
-        <p className="text-sm font-semibold text-pink-800">AGENTIC MARKETING</p>
-        <h1 className="mt-3 text-3xl font-semibold tracking-tight text-slate-950">Chọn doanh nghiệp để bắt đầu</h1>
-        <p className="mt-3 text-base leading-7 text-slate-600">
-          Xin chào {user.full_name}. Mỗi Fanpage doanh nghiệp có một không gian riêng; thành viên khác chỉ tham gia qua lời mời.
-        </p>
-      </header>
+      <div className="flex flex-wrap items-start justify-between gap-6">
+        <header className="max-w-2xl">
+          <p className="text-sm font-semibold text-pink-800">AGENTIC MARKETING</p>
+          <h1 className="mt-3 text-3xl font-semibold tracking-tight text-slate-950">Chọn doanh nghiệp để bắt đầu</h1>
+          <p className="mt-3 text-base leading-7 text-slate-600">
+            Xin chào {user.full_name}. Mỗi Fanpage doanh nghiệp có một không gian riêng; thành viên khác chỉ tham gia qua lời mời.
+          </p>
+        </header>
+        <Button variant="secondary" loading={logout.isPending} onClick={() => { setLogoutError(null); logout.mutate(); }}>
+          Đăng xuất
+        </Button>
+      </div>
+      {logoutError ? <div className="mt-6"><ErrorPanel title="Chưa đăng xuất được" message={logoutApiError?.message ?? 'Không thể kết thúc phiên. Hãy thử lại.'} code={logoutApiError?.code} requestId={logoutApiError?.requestId} /></div> : null}
 
       {workspaces.length > 0 ? (
         <section className="mt-10">
