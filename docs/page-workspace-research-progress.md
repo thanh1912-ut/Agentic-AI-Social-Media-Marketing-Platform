@@ -454,3 +454,11 @@ Base đã kiểm tra: `codex/creative-studio-ui` @ `b769097bfdb3568889d974c6def9
 - LIMITATION: Meta Graph, DeepSeek, embedding và object storage production không được gọi; storage dùng thư mục tạm. Worker được gọi trực tiếp trong test, không qua Redis/Celery. Chưa phải browser/UI hoặc live Page nghiệm thu.
 - PASS: Cụm PostgreSQL disposable đã dừng sau test.
 - PASS (follow-up 18:00): Lặp lại PostgreSQL smoke sau khi bổ sung assertion đăng ký trả danh sách workspace rỗng, Page activation trả đúng tên/Page ID/state/ảnh placeholder — `1 passed`. SQLite auth/tenant regression `test_auth_and_tenant_isolation` — `1 passed`.
+
+### 2026-09-30 18:05 Asia/Ho_Chi_Minh — PostgreSQL và Redis queue dispatcher
+
+- PASS: Dùng PostgreSQL 18.3 disposable riêng tại `127.0.0.1:15447` và hai Redis 8.6.3 riêng tại `16389` (queue) / `16390` (cache); queue/cache không trỏ tới Redis preview dùng chung.
+- PASS: Năm test integration — schema/job fencing, queue-cache TTL/isolation, hai worker cùng claim một job, job PostgreSQL còn queued sau dispatch outage và được dispatch lại, cùng production Celery dispatcher gửi job đã commit vào Redis `agent` queue — `5 passed`.
+- LIMITATION: Test dispatcher xác nhận message thật vào Redis, nhưng không chạy Celery worker consume message để hoàn tất một source-run; test outage dùng dispatcher giả để kiểm tra recovery ledger. Đây chưa phải luồng UI → API → Redis → worker → kết quả hoàn chỉnh.
+- DONE: Đã dừng cả PostgreSQL và hai Redis disposable sau test; không restart hay sửa preview `13104` hoặc Redis dùng chung.
+- NOT_RUN: Browser UI, Meta/Page live, DeepSeek/Gemini/Qwen live, object storage production và worker consume qua Redis vẫn chưa nghiệm thu.
