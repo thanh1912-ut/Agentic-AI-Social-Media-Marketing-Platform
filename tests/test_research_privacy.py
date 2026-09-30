@@ -2,7 +2,13 @@ from datetime import datetime, timedelta, timezone
 
 import pytest
 
-from services.research.privacy import MAX_RAW_QUARANTINE, hold_comment_text, raw_quarantine_expiry
+from services.research.privacy import (
+    FACEBOOK_REDACTOR_VERSION,
+    MAX_RAW_QUARANTINE,
+    hold_comment_text,
+    raw_quarantine_expiry,
+    redact_facebook_text,
+)
 
 
 def test_raw_research_payload_quarantine_expires_within_24_hours() -> None:
@@ -24,3 +30,23 @@ def test_comment_text_is_withheld_but_count_is_preserved() -> None:
 
     assert comments == []
     assert withheld_count == 2
+
+
+def test_facebook_text_masks_obvious_contacts_and_reports_incomplete_coverage() -> None:
+    redacted, metadata = redact_facebook_text(
+        "Liên hệ admin@example.invalid hoặc +84 901 234 567. "
+        "Địa chỉ nhà riêng: 12/5 Đường Cá Nhân, Quận 1. Ngày 2026-09-30, giá 1 000 000 VND."
+    )
+
+    assert "admin@example.invalid" not in redacted
+    assert "+84 901 234 567" not in redacted
+    assert "12/5 Đường Cá Nhân" not in redacted
+    assert "2026-09-30" in redacted
+    assert "1 000 000 VND" in redacted
+    assert metadata == {
+        "redactor_version": FACEBOOK_REDACTOR_VERSION,
+        "status": "pattern_redacted_review_incomplete",
+        "redaction_count": 3,
+        "redacted_fields": {"home_address": 1, "email": 1, "phone": 1},
+        "limitations": ["names_not_detected", "not_anonymization", "manual_review_may_be_required"],
+    }

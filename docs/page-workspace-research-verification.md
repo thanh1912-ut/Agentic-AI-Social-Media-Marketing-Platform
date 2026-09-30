@@ -214,3 +214,14 @@ Lát cắt này không đáp ứng thu thập nội dung Group discussions, bài
 | Backend focused | PASS | `tests/test_ai_budget.py tests/test_market_research_api.py`: 33 passed; Ruff và `git diff --check` đạt. Tests API dùng SQLite fixture, không phải PostgreSQL integration. |
 | Frontend quality | PASS | TypeScript typecheck với incremental tắt, ESLint và Vitest: 50 passed. Chưa chạy production build cho thay đổi này. |
 | DeepSeek/Gemini/Qwen live, browser và PostgreSQL/Redis | NOT_RUN | Không gọi provider, không dùng nguồn/Page thật, không triển khai preview; Gemini/Qwen routing và chi phí dùng chung vẫn chưa được nối. |
+
+## Bộ lọc tiếp xúc cá nhân rõ ràng trong văn bản Facebook — 2026-09-30
+
+| Kiểm tra | Trạng thái | Bằng chứng và giới hạn |
+|---|---|---|
+| Bộ lọc pattern trước lưu | PASS (unit/API fixture) | `facebook-contact-patterns-v1` che email, số điện thoại và các cụm địa chỉ nhà được gắn nhãn rõ; áp dụng cho Page công ty, Page công khai Meta API, Page Tier 0 và manual import. |
+| Nội dung lưu và provenance | PASS (SQLite/API fixture) | Evidence/version và owned Page post giữ bản đã che; observation ghi phiên bản, loại trường và số lượng đã che, không lưu nguyên giá trị bị thay. |
+| Comment và media | BLOCKED / privacy_hold | Comment text vẫn không được thu/lưu/gửi Qwen; media chỉ còn metadata và không gửi Gemini. |
+| Phạm vi bộ lọc | PARTIAL | Không nhận diện tên hoặc mọi dạng địa chỉ/PII; metadata ghi `not_anonymization` và `names_not_detected`. Không phải kết luận dữ liệu đã vô danh hoặc tuân thủ luật. |
+| Backend focused | PASS | `tests/test_research_privacy.py tests/test_market_research_api.py`: 25 passed. Ruff và `git diff --check` chạy lại trước commit. |
+| Live sources/providers and erasure | NOT_RUN | Không có Page/Meta/provider live; chưa triển khai retention/deletion propagation hoặc quy trình pháp lý. |

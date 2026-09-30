@@ -493,7 +493,11 @@ def test_manual_competitor_import_holds_comment_text_and_keeps_aggregate_counts(
     assert "[đã ẩn email]" in evidence.text
     assert "[đã ẩn số điện thoại]" in evidence.text
     assert observation.comments_json == []
-    assert observation.metrics_json == {"reactions": 45, "comments": 7, "shares": 3, "views": 1000}
+    assert {key: value for key, value in observation.metrics_json.items() if key != "privacy_redaction"} == {
+        "reactions": 45, "comments": 7, "shares": 3, "views": 1000,
+    }
+    assert observation.metrics_json["privacy_redaction"]["content"]["redaction_count"] == 2
+    assert observation.metrics_json["privacy_redaction"]["content"]["status"] == "pattern_redacted_review_incomplete"
     assert version is not None
     assert version.text == evidence.text
     assert version.parser_version == "manual-import-v1"
@@ -698,7 +702,7 @@ def test_competitor_page_uses_approved_public_api_token_when_configured(market_a
 
     evidence, observation = asyncio.run(read_observation())
     assert evidence.text == "Ưu đãi mùa mới"
-    assert observation.metrics_json == {
+    assert {key: value for key, value in observation.metrics_json.items() if key != "privacy_redaction"} == {
         "reactions": 17, "comments": 4, "shares": 2, "interactions": 23,
         "views": None,
         "link_url": "https://news.example/story",
@@ -709,6 +713,8 @@ def test_competitor_page_uses_approved_public_api_token_when_configured(market_a
         }],
         "attachment_metadata_status": "returned",
     }
+    assert observation.metrics_json["privacy_redaction"]["redactor_version"] == "facebook-contact-patterns-v1"
+    assert observation.metrics_json["privacy_redaction"]["status"] == "pattern_redacted_review_incomplete"
     assert observation.comments_json == []
     posts = client.get(
         f"/api/v1/workspaces/{workspace_id}/market-research/sources/{source_id}/posts",
@@ -804,7 +810,10 @@ def test_owned_page_collection_saves_views_and_followers_when_meta_returns_them(
             if after is None:
                 assert limit in {50, 100}
                 return MetaPagePostsPage((MetaPagePost(
-                    external_post_id=f"{self.page_id}_42", message="Bài viết mới", created_time=observed_at,
+                    external_post_id=f"{self.page_id}_42",
+                    message=("Bài viết mới; liên hệ owner@example.invalid hoặc 0901 234 567. "
+                             "Địa chỉ nhà riêng: 12/5 Đường Cá Nhân, Quận 1."),
+                    created_time=observed_at,
                     permalink_url=f"https://www.facebook.com/{self.page_id}/posts/42",
                     reactions=22, comments=5, shares=3,
                     link_url="https://example.com/landing?utm_source=facebook",
@@ -888,13 +897,25 @@ def test_owned_page_collection_saves_views_and_followers_when_meta_returns_them(
     async def read_observation():
         async with session_factory() as db:
             evidence = await db.scalar(select(MarketEvidence).where(MarketEvidence.source_id == source_id))
-            return await db.scalar(select(MarketObservation).where(MarketObservation.evidence_id == evidence.id))
+            observation = await db.scalar(select(MarketObservation).where(MarketObservation.evidence_id == evidence.id))
+            return evidence, observation
 
-    observation = asyncio.run(read_observation())
+    evidence, observation = asyncio.run(read_observation())
     assert observation is not None
+    assert "owner@example.invalid" not in evidence.text
+    assert "0901 234 567" not in evidence.text
+    assert "12/5 Đường Cá Nhân" not in evidence.text
+    assert "not_anonymization" in observation.metrics_json["privacy_redaction"]["limitations"]
     assert observation.metrics_json == {
         "reactions": 22, "comments": 5, "shares": 3, "interactions": 30,
         "views": 7654,
+        "privacy_redaction": {
+            "redactor_version": "facebook-contact-patterns-v1",
+            "status": "pattern_redacted_review_incomplete",
+            "redaction_count": 3,
+            "redacted_fields": {"home_address": 1, "email": 1, "phone": 1},
+            "limitations": ["names_not_detected", "not_anonymization", "manual_review_may_be_required"],
+        },
         "link_url": "https://example.com/landing",
         "attachments": [{
             "kind": "image", "provider_type": "photo", "title": None,
@@ -923,6 +944,7 @@ def test_owned_page_collection_saves_views_and_followers_when_meta_returns_them(
 
     page_snapshot, page_post, post_snapshot = asyncio.run(read_page_and_post_history())
     assert page_post.link_url == "https://example.com/landing"
+    assert "owner@example.invalid" not in page_post.message
     assert page_post.attachments_json[0]["kind"] == "image"
     assert page_post.attachment_metadata_status == "returned"
     assert page_snapshot.followers == 5400

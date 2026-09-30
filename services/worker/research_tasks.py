@@ -47,7 +47,7 @@ from services.research.web_crawler import CrawlError, crawl_public_site
 from services.research.facebook_cli_collector import (
     ENGINE_VERSION, collect_public_facebook_group, collect_public_facebook_page,
 )
-from services.research.privacy import raw_quarantine_expiry
+from services.research.privacy import raw_quarantine_expiry, redact_facebook_text
 from services.research.website_entities import PARSER_VERSION
 from services.worker.ai_budget import (
     PricingUnavailable,
@@ -690,11 +690,13 @@ async def _collect_page(company_id: str, group_id: str, source: ResearchSource, 
                             views_available = False
                         except MetaGraphReadError:
                             views_available = False
+                    text, redaction = redact_facebook_text(post.message or "")
                     metrics = {
                         "reactions": post.reactions, "comments": post.comments, "shares": post.shares,
                         "interactions": sum((post.reactions, post.comments, post.shares))
                         if all(value is not None for value in (post.reactions, post.comments, post.shares)) else None,
                         "views": views,
+                        "privacy_redaction": redaction,
                     }
                     if post.attachment_metadata_status != "not_returned" or post.link_url or post.attachments:
                         metrics.update({
@@ -707,8 +709,8 @@ async def _collect_page(company_id: str, group_id: str, source: ResearchSource, 
                             metric_counts[key] = metric_counts.get(key, 0) + 1
                     await _persist_evidence(
                         company_id=company_id, group_id=group_id, source=source, url=post_url,
-                        title=(post.message or "")[:1000],
-                        text=post.message or "Bài viết Fanpage không có nội dung văn bản.",
+                        title=text[:1000],
+                        text=text or "Bài viết Fanpage không có nội dung văn bản.",
                         published_at=post.created_time, metrics=metrics, comments=[], raw_body=None,
                         observed_at=observed_at, page_id=page_id,
                         external_post_id=post.external_post_id,
@@ -1085,14 +1087,17 @@ async def _collect_public_competitor_page(
                 "missing_reason": None if value is not None else "provider_value_ambiguous",
                 "locator": "facebook-cli/counts." + key,
             }
-        post_text = str(post.get("text") or "")[:12000]
+        original_post_text = str(post.get("text") or "")
+        redacted_post_text, redaction = redact_facebook_text(original_post_text)
+        post_text = redacted_post_text[:12000]
         post_url = str(post.get("url") or "")
         external_id = post.get("id") if isinstance(post.get("id"), str) else None
         metrics: dict[str, Any] = {
             **metric_values,
             "_provenance": metric_provenance,
+            "privacy_redaction": redaction,
             "content_truncated": bool(post.get("text_truncated"))
-            or len(str(post.get("text") or "")) > len(post_text),
+            or len(redacted_post_text) > len(post_text),
         }
         if external_id:
             metrics["public_post_id"] = external_id
@@ -1333,10 +1338,12 @@ async def _collect_competitor_page_via_meta(
                     posts_seen += 1
                     post_url = post.permalink_url or f"https://www.facebook.com/{post.external_post_id}"
                     counts = [post.reactions, post.comments, post.shares]
+                    text, redaction = redact_facebook_text(post.message or "")
                     metrics = {
                         "reactions": post.reactions, "comments": post.comments, "shares": post.shares,
                         "interactions": sum(counts) if all(value is not None for value in counts) else None,
                         "views": None,
+                        "privacy_redaction": redaction,
                     }
                     if post.attachment_metadata_status != "not_returned" or post.link_url or post.attachments:
                         metrics.update({
@@ -1350,8 +1357,8 @@ async def _collect_competitor_page_via_meta(
                     comments: list[str] = []
                     await _persist_evidence(
                         company_id=company_id, group_id=group_id, source=source, url=post_url,
-                        title=(post.message or "")[:1000],
-                        text=post.message or "Bài viết Fanpage đối thủ không có nội dung văn bản.",
+                        title=text[:1000],
+                        text=text or "Bài viết Fanpage đối thủ không có nội dung văn bản.",
                         published_at=post.created_time, metrics=metrics, comments=comments,
                         raw_body=None, observed_at=observed_at,
                         page_id=page.id, external_post_id=post.external_post_id,

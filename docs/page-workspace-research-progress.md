@@ -15,6 +15,7 @@ Base đã kiểm tra: `codex/creative-studio-ui` @ `b769097bfdb3568889d974c6def9
 - [PARTIAL] Public Facebook Page dùng collector Tier 0. Nhóm hiện xác minh/lưu metadata công khai ở trạng thái `partial`; không lấy bài thảo luận.
 - [PARTIAL] Ledger ngân sách tự động PostgreSQL và mức trần $2/workspace/ngày đã được thêm cho báo cáo Nghiên cứu chạy DeepSeek; API và UI hiển thị số đã dùng/giữ chỗ/còn lại. Bảng giá đã ghi nhận model Gemini/Qwen đã chọn, nhưng chưa route call của hai provider hoặc media vào ledger.
 - [PARTIAL] Worker không gửi comment text cũ/mới cho agent. Chưa có pipeline nhận dạng/redact toàn diện, retention/deletion ledger hoặc quy trình pháp lý; không được coi là chứng nhận tuân thủ.
+- [PARTIAL] Nội dung bài Facebook và manual import được che email, số điện thoại và cụm địa chỉ nhà rõ ràng trước khi lưu bằng `facebook-contact-patterns-v1`; bộ lọc không phát hiện tên và không phải cơ chế ẩn danh.
 - [PARTIAL] Owner có thể ghi nhận mục đích, tham chiếu căn cứ, phiên bản chính sách và thời hạn dự kiến theo từng nguồn; bản ghi bất biến có số revision. Đây chỉ là hồ sơ cấu hình, chưa thi hành retention và không mở `privacy_hold`.
 - [PARTIAL] OpenAPI và TypeScript declarations đã được regenerate. Frontend lint, typecheck, unit tests và desktop/mobile fixture E2E hiện đạt; các test này không thay cho nghiệm thu real API/browser.
 - [PARTIAL] API/worker fixtures và PostgreSQL/Redis/Celery integration test đã chạy trên môi trường disposable; browser real mode, Meta/provider live và worker crawl chưa chạy.
@@ -43,6 +44,14 @@ Base đã kiểm tra: `codex/creative-studio-ui` @ `b769097bfdb3568889d974c6def9
 - DONE: Không lấy text bình luận mới cho đến khi có điều kiện xử lý phù hợp; report bỏ qua comment text legacy, trả coverage `privacy_hold`.
 - TODO: Playwright thật, nối Qwen/Gemini vào comment/media pipeline, privacy/retention/deletion và mở rộng ledger cho mọi AI tự động.
 - BLOCKED: Không có căn cứ trong repo cho phép kết luận việc xử lý dữ liệu cá nhân đã đáp ứng đầy đủ luật; cần đánh giá tổ chức/pháp lý và triển khai retention/erasure trước khi mở comment/media processing.
+
+### 2026-09-30 14:24 Asia/Ho_Chi_Minh — Redaction giới hạn cho văn bản Facebook
+
+- DONE: Page doanh nghiệp, Page công khai qua Meta API, Page Tier 0 và manual import đều áp dụng cùng bộ lọc `facebook-contact-patterns-v1` trước khi ghi evidence/version; Page doanh nghiệp cũng ghi nội dung đã lọc vào bản Page post.
+- DONE: Observation lưu số lượng trường đã che và giới hạn bộ lọc; không lưu giá trị gốc bị thay thế. Bình luận tiếp tục `privacy_hold`.
+- PASS: `tests/test_research_privacy.py tests/test_market_research_api.py` — 25 passed; regression kiểm tra email, điện thoại, cụm “địa chỉ nhà riêng” không còn trong nội dung Page đã lưu, đồng thời giữ ngày ISO và số tiền không giống số điện thoại.
+- PARTIAL: Bộ lọc không nhận diện tên, không bao phủ hết cách viết địa chỉ hoặc dữ liệu cá nhân; chỉ xử lý rõ các mẫu đã kiểm tra, không được mô tả là ẩn danh hoặc chứng nhận tuân thủ.
+- NOT_RUN: Meta live, Qwen/Gemini/DeepSeek live, browser real, deletion/retention propagation.
 
 ### 2026-09-30 10:21 Asia/Ho_Chi_Minh — Ghi nhận policy theo nguồn
 

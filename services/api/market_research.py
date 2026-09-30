@@ -75,15 +75,13 @@ from .rate_limits import rate_limit
 from .schemas import AcceptedResponse
 from services.research.web_crawler import CrawlError, canonicalize_url
 from services.research.facebook_public_crawler import normalize_facebook_page_url
-from services.research.privacy import hold_comment_text
+from services.research.privacy import hold_comment_text, redact_facebook_text
 
 
 router = APIRouter(prefix="/workspaces/{company_id}/market-research", tags=["market-research"])
 MAX_ACTIVE_PAGES = 1
 MAX_SOURCES_PER_WORKSPACE = 20
 VN_TZ = ZoneInfo("Asia/Ho_Chi_Minh")
-EMAIL_RE = re.compile(r"\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b", re.IGNORECASE)
-PHONE_RE = re.compile(r"(?<!\w)(?:\+?\d[\d ().-]{7,}\d)(?!\w)")
 FACEBOOK_GROUP_PATH_RE = re.compile(r"^/groups/([A-Za-z0-9._-]{1,128})/?$", re.IGNORECASE)
 
 
@@ -1136,10 +1134,6 @@ async def crawl_group_now(
     return await accepted_response(db, job)
 
 
-def _mask_private_text(value: str) -> str:
-    return PHONE_RE.sub("[đã ẩn số điện thoại]", EMAIL_RE.sub("[đã ẩn email]", value))[:12000]
-
-
 @router.post("/sources/{source_id}/import", status_code=201, dependencies=[Depends(require_csrf)])
 async def import_source_observations(
     company_id: str, source_id: str, request: ManualImportIn,
@@ -1162,7 +1156,10 @@ async def import_source_observations(
             canonical = canonicalize_url(item.url)
         except CrawlError as error:
             raise ApiProblem(422, error.code, str(error)) from None
-        text = _mask_private_text(item.text)
+        text, content_redaction = redact_facebook_text(item.text)
+        text = text[:12000]
+        title, title_redaction = redact_facebook_text(item.title)
+        title = title[:1000]
         fingerprint = hashlib.sha256(text.encode("utf-8")).hexdigest()
         evidence = await db.scalar(select(MarketEvidence).where(
             MarketEvidence.company_id == company_id, MarketEvidence.source_id == source.id,
@@ -1171,27 +1168,31 @@ async def import_source_observations(
         if evidence is None:
             evidence = MarketEvidence(
                 id=new_id(), company_id=company_id, group_id=source.group_id, source_id=source.id,
-                canonical_url=canonical, title=item.title, published_at=item.published_at,
+                canonical_url=canonical, title=title, published_at=item.published_at,
                 text=text, content_hash=fingerprint, trust_level="manual_external_unverified",
                 first_seen_at=now, last_seen_at=now,
             )
             db.add(evidence)
             await db.flush()
         else:
-            evidence.title = item.title or evidence.title
+            evidence.title = title or evidence.title
             evidence.text = text
             evidence.content_hash = fingerprint
             evidence.last_seen_at = now
             if item.published_at:
                 evidence.published_at = item.published_at
         version = await ensure_evidence_version(
-            db, evidence, title=item.title or evidence.title, text=text,
+            db, evidence, title=title or evidence.title, text=text,
             published_at=item.published_at or evidence.published_at, captured_at=item.observed_at or now,
             parser_version="manual-import-v1",
         )
         metrics = {
             key: value for key, value in item.metrics.items()
             if value is None or (type(value) in {int, float} and math.isfinite(value) and value >= 0)
+        }
+        metrics["privacy_redaction"] = {
+            "content": content_redaction,
+            "title": title_redaction,
         }
         observed = item.observed_at or now
         # Manual imports have no verified processing basis or complete
