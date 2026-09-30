@@ -17,12 +17,13 @@ from redis.asyncio import Redis
 from database.job_fencing import JobLeaseLost, _current_job_fence
 from database.models import (
     AIUsageBudgetDay, AIUsageLedger, Base, Company, Job, MarketObservation,
-    MetaPageGroup, ResearchSource, User,
+    MarketEvidence, MarketEvidenceVersion, MetaPageGroup, ResearchSource,
+    ResearchSourceErasure, ResearchSourceErasureObject, User, new_id, utcnow,
 )
 from services.api import db as api_db
 from services.api import job_service
 from services.api.db import FencedAsyncSession
-from services.worker import research_tasks
+from services.worker import research_erasure_tasks, research_tasks
 
 
 POSTGRES_TEST_URL = os.getenv("POSTGRES_TEST_URL")
@@ -184,6 +185,109 @@ def test_postgres_migrations_constraints_vector_and_job_fencing() -> None:
                 assert current.title == "keep the replacement worker value"
                 assert current.claim_token == "current-claim"
         finally:
+            await engine.dispose()
+
+    asyncio.run(run())
+
+
+def test_postgres_research_source_erasure_worker_deletes_raw_and_source_rows(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def run() -> None:
+        assert POSTGRES_TEST_URL
+        engine = create_async_engine(POSTGRES_TEST_URL)
+        sessions = async_sessionmaker(engine, expire_on_commit=False)
+
+        class RecordingStorage:
+            deleted: list[str] = []
+
+            async def delete(self, key: str) -> None:
+                self.deleted.append(key)
+
+        storage = RecordingStorage()
+        monkeypatch.setattr(research_erasure_tasks, "SessionLocal", sessions)
+        monkeypatch.setattr(research_erasure_tasks, "storage", storage)
+
+        company_id, user_id, group_id = new_id(), new_id(), new_id()
+        source_id, job_id, erasure_id = new_id(), new_id(), new_id()
+        evidence_id, version_id, observation_id = new_id(), new_id(), new_id()
+        raw_key = f"research-purge-integration/{new_id()}.json"
+        observed_at = utcnow()
+        slug = f"research-purge-{uuid.uuid4().hex[:16]}"
+
+        try:
+            async with sessions() as db:
+                db.add_all([
+                    Company(id=company_id, name="Research purge integration", slug=slug),
+                    User(
+                        id=user_id, email=f"purge-{uuid.uuid4().hex}@example.invalid",
+                        full_name="Disposable integration user", password_hash="not-a-login",
+                    ),
+                ])
+                await db.flush()
+                db.add(MetaPageGroup(
+                    id=group_id, company_id=company_id, name="Integration source",
+                    industry="test", region="test",
+                ))
+                db.add(ResearchSource(
+                    id=source_id, company_id=company_id, group_id=group_id,
+                    source_type="website", name="Disposable source",
+                    url="https://example.invalid/research", normalized_url="https://example.invalid/research",
+                    created_by=user_id, active=False, schedule_enabled=False,
+                ))
+                db.add(Job(
+                    id=job_id, company_id=company_id, created_by=user_id,
+                    kind="research_source_erasure", title="Purge disposable source", status="queued",
+                ))
+                await db.flush()
+                db.add(ResearchSourceErasure(
+                    id=erasure_id, company_id=company_id, source_id=source_id,
+                    job_id=job_id, requested_by=user_id, status="queued",
+                ))
+                db.add(MarketEvidence(
+                    id=evidence_id, company_id=company_id, group_id=group_id,
+                    source_id=source_id, canonical_url="https://example.invalid/research/item",
+                    title="Disposable evidence", text="fixture only", content_hash="a" * 64,
+                    first_seen_at=observed_at, last_seen_at=observed_at,
+                ))
+                await db.flush()
+                db.add(MarketEvidenceVersion(
+                    id=version_id, company_id=company_id, evidence_id=evidence_id,
+                    content_hash="a" * 64, parser_version="integration-v1",
+                    title="Disposable evidence", text="fixture only", captured_at=observed_at,
+                ))
+                await db.flush()
+                db.add(MarketObservation(
+                    id=observation_id, company_id=company_id, evidence_id=evidence_id,
+                    evidence_version_id=version_id, observed_at=observed_at,
+                    raw_object_key=raw_key, raw_sha256="b" * 64,
+                ))
+                await db.commit()
+
+            await research_erasure_tasks.research_source_erasure_task_async(job_id)
+
+            async with sessions() as db:
+                source = await db.get(ResearchSource, source_id)
+                job = await db.get(Job, job_id)
+                request = await db.get(ResearchSourceErasure, erasure_id)
+                assert source is not None and source.status == "erased" and not source.active
+                assert job is not None and job.status == "succeeded"
+                assert request is not None and request.status == "completed"
+                assert await db.get(MarketEvidence, evidence_id) is None
+                assert await db.get(MarketEvidenceVersion, version_id) is None
+                assert await db.get(MarketObservation, observation_id) is None
+                assert await db.scalar(select(ResearchSourceErasureObject.id).where(
+                    ResearchSourceErasureObject.erasure_id == erasure_id,
+                )) is None
+                assert storage.deleted == [raw_key]
+        finally:
+            async with sessions() as db:
+                # Keep the disposable PostgreSQL database reusable for later
+                # integration runs and remove only this test's synthetic rows.
+                await db.execute(delete(Job).where(Job.id == job_id))
+                await db.execute(delete(Company).where(Company.id == company_id))
+                await db.execute(delete(User).where(User.id == user_id))
+                await db.commit()
             await engine.dispose()
 
     asyncio.run(run())

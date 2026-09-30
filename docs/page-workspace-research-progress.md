@@ -433,6 +433,14 @@ Base đã kiểm tra: `codex/creative-studio-ui` @ `b769097bfdb3568889d974c6def9
 ### 2026-09-30 17:40 Asia/Ho_Chi_Minh — Kiểm tra schema purge trên PostgreSQL
 
 - DONE: Cập nhật regression `test_postgres_migrations_constraints_vector_and_job_fencing` theo migration head `0026_research_source_erasure`; bổ sung assertion cho bảng purge và composite tenant foreign keys.
-- PASS: Test trên PostgreSQL 18.3 disposable đã migrate thật, xác nhận extension vector, schema, FK và job fencing — `1 passed`. `pgvector` shim chỉ giải quyết import trong test environment.
+- PASS: Test trên PostgreSQL 18.3 disposable đã migrate thật, xác nhận extension vector, schema, FK và job fencing. `pgvector` shim chỉ giải quyết import trong test environment.
 - PASS: Ruff và `git diff --check`; cụm PostgreSQL riêng đã dừng sau test.
 - NOT_RUN: Test này không chạy HTTP API, Redis/Celery, object storage, trình duyệt, race đa-worker hoặc Page/provider live.
+
+### 2026-09-30 17:45 Asia/Ho_Chi_Minh — Chạy purge worker trên PostgreSQL thật
+
+- PASS: `test_postgres_migrations_constraints_vector_and_job_fencing` và `test_postgres_research_source_erasure_worker_deletes_raw_and_source_rows` — `2 passed` trên PostgreSQL 18.3 disposable ở cổng `15447`.
+- PASS: Worker thật trên PostgreSQL claim job, tạo/xóa hàng đợi raw-key, xóa evidence/version/observation, tombstone source và hoàn tất job; test xác nhận trạng thái sau commit.
+- LIMITATION: Adapter object storage được thay bằng recording fake trong test; không kết nối storage ngoài. Chỉ `pgvector` import shim ngoài repo được dùng.
+- PASS: Ruff, Python compile và `git diff --check`; cụm test đã dừng.
+- NOT_RUN: Redis/Celery dispatch/recovery, HTTP API, browser, Meta/provider live, multi-worker race và object storage thật.
