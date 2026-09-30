@@ -15488,6 +15488,65 @@
         ]
       }
     },
+    "/api/v1/workspaces/{company_id}/page-connection/refresh-metadata": {
+      "post": {
+        "description": "Refresh workspace display identity from its already-bound Page token.",
+        "operationId": "refresh_workspace_page_metadata_api_v1_workspaces__company_id__page_connection_refresh_metadata_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "company_id",
+            "required": true,
+            "schema": {
+              "title": "Company Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkspaceOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Refresh Workspace Page Metadata",
+        "tags": [
+          "workspaces"
+        ]
+      }
+    },
     "/api/v1/workspaces/{company_id}/posts": {
       "get": {
         "operationId": "list_posts_api_v1_workspaces__company_id__posts_get",

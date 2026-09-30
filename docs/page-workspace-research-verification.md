@@ -142,3 +142,15 @@ Giá lấy từ [Google Gemini model update](https://ai.google.dev/gemini-api/do
 | Backend focused | PASS | `tests/test_market_research_api.py tests/test_research_privacy.py`: 20 passed; Ruff và `git diff --check` đạt. |
 | PostgreSQL/Redis recovery thật | NOT_RUN | Test phục hồi này dùng SQLite fixture; không chứng minh Redis dispatch hoặc PostgreSQL lease recovery. |
 | Post/comment cursors, media, public Group discussions | NOT_RUN | Chưa có checkpoint cấp post/comment/reply, xử lý media hoặc quyền Tier 0 để đọc thảo luận nhóm. |
+
+## Đồng bộ metadata Page — 2026-09-30
+
+| Kiểm tra | Trạng thái | Bằng chứng và giới hạn |
+|---|---|---|
+| Owner đồng bộ tên/ảnh bằng token đã lưu | PASS (API fixture) | `test_refresh_page_metadata_uses_stored_token_without_touching_brand`: token chỉ materialize ở backend; Meta fixture trả Page identity mới; Company, connection, source Page và avatar được cập nhật. |
+| Hồ sơ thương hiệu không bị sửa | PASS (API fixture) | Test lưu `profile_text`/version trước thao tác và xác nhận giữ nguyên sau refresh metadata. |
+| Token không lộ qua HTTP response | PASS (API fixture) | Response `WorkspaceOut` không chứa plaintext Page token. |
+| Token hết hạn | PASS (API fixture) | `test_metadata_refresh_expired_token_pauses_page_work_but_keeps_workspace`: workspace còn dữ liệu, state thành `needs_reconnect`, lịch Page/sync bị tắt. |
+| Auth, permission, contract | PASS | Route dùng `connection:manage`, CSRF và rate limit; OpenAPI được xuất lại từ FastAPI, TypeScript được sinh bằng `openapi-typescript`. |
+| Chất lượng code | PASS | Account/market focused pytest sau test mới: 28 passed; frontend typecheck, ESLint, Vitest (50 passed), production build, Ruff và `git diff --check` đạt. |
+| Meta live / preview deployment | NOT_RUN | Adapter được fixture; không dùng Page token thật và không thay preview đang chạy. |

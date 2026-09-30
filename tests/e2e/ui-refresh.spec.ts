@@ -87,6 +87,15 @@ test.describe('giao diện thích ứng và điều hướng', () => {
     await expect(currentLinks).toHaveText('Hiệu quả & đề xuất');
   });
 
+  test('Owner thấy thao tác đồng bộ tên và ảnh Fanpage trong cài đặt', async ({ page }) => {
+    await login(page);
+    await page.goto('/w/ws_pho_bac/settings');
+    await expect(page.getByRole('heading', { name: 'Cài đặt' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Fanpage doanh nghiệp' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Đồng bộ tên và ảnh từ Fanpage' })).toBeVisible();
+    await expect(page.getByText(/access token/i)).not.toBeVisible();
+  });
+
   test('tab nội dung được giữ trong URL và khôi phục sau reload', async ({ page }) => {
     await login(page);
     await page.goto('/w/ws_pho_bac/fanpages');

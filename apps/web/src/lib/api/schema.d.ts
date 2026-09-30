@@ -1526,6 +1526,26 @@ export interface paths {
         readonly patch: operations["reconnect_workspace_page_api_v1_workspaces__company_id__page_connection_patch"];
         readonly trace?: never;
     };
+    readonly "/api/v1/workspaces/{company_id}/page-connection/refresh-metadata": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get?: never;
+        readonly put?: never;
+        /**
+         * Refresh Workspace Page Metadata
+         * @description Refresh workspace display identity from its already-bound Page token.
+         */
+        readonly post: operations["refresh_workspace_page_metadata_api_v1_workspaces__company_id__page_connection_refresh_metadata_post"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
     readonly "/api/v1/workspaces/{company_id}/posts": {
         readonly parameters: {
             readonly query?: never;
@@ -8386,6 +8406,39 @@ export interface operations {
                 readonly "application/json": components["schemas"]["PageWorkspaceCreate"];
             };
         };
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["WorkspaceOut"];
+                };
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    readonly refresh_workspace_page_metadata_api_v1_workspaces__company_id__page_connection_refresh_metadata_post: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: {
+                readonly authorization?: string | null;
+            };
+            readonly path: {
+                readonly company_id: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
         readonly responses: {
             /** @description Successful Response */
             readonly 200: {

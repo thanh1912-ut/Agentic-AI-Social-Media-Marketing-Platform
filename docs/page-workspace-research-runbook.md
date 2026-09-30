@@ -116,3 +116,10 @@ Không dùng các lệnh này nếu đã tái sử dụng các cổng cho tiến
 - Kết quả từng nguồn trong `research_cycles.source_results_json` được commit sau khi xử lý xong nguồn. Nếu job vẫn ở trạng thái đang chạy khi worker bị gián đoạn, lần nhận lại bỏ qua nguồn đã checkpoint; nguồn đang dở hoặc có kết quả retryable được thử lại.
 - Đây mới là checkpoint cấp nguồn. Crawl theo cursor từng post/comment/reply, resume phân trang và media chưa được triển khai; xem `page-workspace-research-verification.md` trước khi hứa coverage.
 - Lượt Facebook công khai ghi policy revision được quan sát khi bắt đầu nguồn, cùng `comments_content_status=privacy_hold` và `retention_enforcement_status=not_enforced`. Snapshot là provenance, không phải bằng chứng có căn cứ xử lý hoặc xóa dữ liệu tự động.
+
+### Đồng bộ tên và ảnh Page
+
+- Owner mở Cài đặt doanh nghiệp → Fanpage → **Đồng bộ tên và ảnh từ Fanpage**. API chỉ dùng token đã mã hóa phía server, xác minh lại Page ID và gọi đọc bài ở chế độ chỉ đọc.
+- Nếu thành công, tên được cập nhật cho workspace, Meta connection và nguồn Page; ảnh đại diện cập nhật theo metadata Meta. Brand Profile do Owner viết không đổi.
+- Nếu Meta báo token hết hạn/thiếu quyền, workspace chuyển sang `needs_reconnect`; lịch Page bị tạm dừng và dữ liệu cũ vẫn để đọc. Owner dùng biểu mẫu **Xác minh lại Fanpage** với token mới của đúng Page.
+- API không trả token và không thử đăng bài. Metadata refresh không chứng minh Page có quyền publish.

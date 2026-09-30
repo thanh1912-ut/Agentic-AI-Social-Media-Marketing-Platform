@@ -11,9 +11,10 @@ from urllib.parse import parse_qs, urlsplit
 
 import pytest
 from fastapi.testclient import TestClient
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
-from database.models import Base
+from database.models import Base, Brand, Company, MetaPageConnection, ResearchSource
 from services.api import auth as auth_module
 from services.api import email as email_module
 from services.api import workspaces as workspaces_module
@@ -180,6 +181,166 @@ def test_page_activation_owns_workspace_and_token_does_not_grant_membership(
     assert conflict.status_code == 409
     assert conflict.json()["error"]["code"] == "page_already_connected"
     assert account_client.get("/api/v1/workspaces").json() == []
+
+
+def test_refresh_page_metadata_uses_stored_token_without_touching_brand(
+    account_client: TestClient, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from services.api.meta_client import MetaPage
+
+    workspace_id, csrf = register_owner(account_client, "metadata-refresh@example.com")
+    stored_token: list[str] = []
+    list_calls: list[int] = []
+
+    class RefreshedMetaClient:
+        def __init__(self, page_id, token, _version):
+            self.page_id = page_id
+            stored_token.append(token)
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *_args):
+            return False
+
+        async def verify_page(self):
+            return MetaPage(
+                id=self.page_id,
+                name="Tên Fanpage mới",
+                picture_url="https://cdn.example.test/page-avatar.png",
+            )
+
+        async def list_page_posts(self, **_kwargs):
+            list_calls.append(1)
+            return SimpleNamespace(posts=[], next_cursor=None)
+
+    monkeypatch.setattr(workspaces_module, "decrypt_page_token", lambda _value: "stored-page-token")
+    monkeypatch.setattr(workspaces_module, "MetaGraphClient", RefreshedMetaClient)
+
+    async def seed_brand_profile() -> None:
+        async with account_client.app.state.test_session_factory() as db:
+            company = await db.get(Company, workspace_id)
+            brand = await db.scalar(select(Brand).where(Brand.company_id == workspace_id))
+            connection = await db.scalar(select(MetaPageConnection).where(
+                MetaPageConnection.company_id == workspace_id,
+            ))
+            source = await db.scalar(select(ResearchSource).where(
+                ResearchSource.company_id == workspace_id,
+                ResearchSource.source_type == "owned_facebook_page",
+            ))
+            assert company is not None and brand is not None and connection is not None and source is not None
+            brand.profile = {"profile_text": "Hồ sơ do Owner tự viết."}
+            brand.version = 4
+            await db.commit()
+
+    asyncio.run(seed_brand_profile())
+    response = account_client.post(
+        f"/api/v1/workspaces/{workspace_id}/page-connection/refresh-metadata",
+        headers={"X-CSRF-Token": csrf},
+    )
+
+    assert response.status_code == 200, response.text
+    assert response.json()["name"] == "Tên Fanpage mới"
+    assert response.json()["page_avatar_url"] == "https://cdn.example.test/page-avatar.png"
+    assert "stored-page-token" not in response.text
+    assert stored_token == ["stored-page-token"]
+    assert list_calls == [1]
+
+    async def read_saved_identity():
+        async with account_client.app.state.test_session_factory() as db:
+            company = await db.get(Company, workspace_id)
+            brand = await db.scalar(select(Brand).where(Brand.company_id == workspace_id))
+            connection = await db.scalar(select(MetaPageConnection).where(
+                MetaPageConnection.company_id == workspace_id,
+            ))
+            source = await db.scalar(select(ResearchSource).where(
+                ResearchSource.company_id == workspace_id,
+                ResearchSource.source_type == "owned_facebook_page",
+            ))
+            assert company is not None and brand is not None and connection is not None and source is not None
+            return company.name, company.page_avatar_url, connection.page_name, source.name, brand.profile, brand.version
+
+    assert asyncio.run(read_saved_identity()) == (
+        "Tên Fanpage mới", "https://cdn.example.test/page-avatar.png",
+        "Tên Fanpage mới", "Tên Fanpage mới", {"profile_text": "Hồ sơ do Owner tự viết."}, 4,
+    )
+
+
+def test_metadata_refresh_expired_token_pauses_page_work_but_keeps_workspace(
+    account_client: TestClient, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from services.api.meta_client import MetaGraphTokenExpired
+    from database.models import utcnow
+
+    workspace_id, csrf = register_owner(account_client, "metadata-expired@example.com")
+    monkeypatch.setattr(workspaces_module, "decrypt_page_token", lambda _value: "stored-page-token")
+
+    class ExpiredMetaClient:
+        def __init__(self, *_args):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *_args):
+            return False
+
+        async def verify_page(self):
+            raise MetaGraphTokenExpired(401, 190)
+
+    monkeypatch.setattr(workspaces_module, "MetaGraphClient", ExpiredMetaClient)
+
+    async def enable_test_schedules() -> None:
+        async with account_client.app.state.test_session_factory() as db:
+            connection = await db.scalar(select(MetaPageConnection).where(
+                MetaPageConnection.company_id == workspace_id,
+            ))
+            source = await db.scalar(select(ResearchSource).where(
+                ResearchSource.company_id == workspace_id,
+                ResearchSource.source_type == "owned_facebook_page",
+            ))
+            assert connection is not None and source is not None
+            connection.metrics_schedule_enabled = True
+            connection.next_metrics_sync_at = utcnow()
+            source.schedule_enabled = True
+            source.next_due_at = utcnow()
+            await db.commit()
+
+    asyncio.run(enable_test_schedules())
+    response = account_client.post(
+        f"/api/v1/workspaces/{workspace_id}/page-connection/refresh-metadata",
+        headers={"X-CSRF-Token": csrf},
+    )
+
+    assert response.status_code == 409
+    assert response.json()["error"]["code"] == "page_needs_reconnect"
+
+    async def read_paused_state():
+        async with account_client.app.state.test_session_factory() as db:
+            company = await db.get(Company, workspace_id)
+            connection = await db.scalar(select(MetaPageConnection).where(
+                MetaPageConnection.company_id == workspace_id,
+            ))
+            source = await db.scalar(select(ResearchSource).where(
+                ResearchSource.company_id == workspace_id,
+                ResearchSource.source_type == "owned_facebook_page",
+            ))
+            assert company is not None and connection is not None and source is not None
+            return (
+                company.name,
+                company.page_connection_state,
+                connection.status,
+                connection.metrics_schedule_enabled,
+                connection.next_metrics_sync_at,
+                source.schedule_enabled,
+                source.next_due_at,
+            )
+
+    saved = asyncio.run(read_paused_state())
+    assert saved[0].startswith("Test Page ")
+    assert saved[1:4] == ("needs_reconnect", "needs_reconnect", False)
+    assert saved[4] is None
+    assert saved[5:] == (False, None)
 
 
 def test_legacy_workspace_requires_page_before_agentic_writes(account_client: TestClient) -> None:

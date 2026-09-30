@@ -118,6 +118,16 @@ export default function TrangCaiDat() {
       await metaConnectionQuery.refetch();
     },
   });
+  const refreshPageMetadataMutation = useMutation({
+    mutationFn: () => workspaceApi.refreshPageMetadata(activeId),
+    onSuccess: async (result) => {
+      queryClient.setQueryData(queryKeys.workspace(activeId), result);
+      const refreshed = await api.auth.me();
+      queryClient.setQueryData(queryKeys.me, refreshed);
+      queryClient.setQueryData(queryKeys.workspaces, refreshed.workspaces);
+      await metaConnectionQuery.refetch();
+    },
+  });
 
   if (!workspace) {
     return (
@@ -488,6 +498,15 @@ export default function TrangCaiDat() {
               />
             ) : null}
             <div className="flex flex-wrap items-center gap-2">
+              {workspace.page_connection_state === 'active' && canManageConnection ? (
+                <Button
+                  variant="secondary"
+                  onClick={() => refreshPageMetadataMutation.mutate()}
+                  loading={refreshPageMetadataMutation.isPending}
+                >
+                  {refreshPageMetadataMutation.isPending ? 'Đang đồng bộ…' : 'Đồng bộ tên và ảnh từ Fanpage'}
+                </Button>
+              ) : null}
               <Button variant="secondary" onClick={() => void metaConnectionQuery.refetch()} loading={metaConnectionQuery.isFetching}>
                 Tải lại trạng thái
               </Button>
@@ -495,6 +514,16 @@ export default function TrangCaiDat() {
                 Mở Nghiên cứu
               </Link>
             </div>
+            {refreshPageMetadataMutation.error instanceof ApiError ? (
+              <ErrorPanel
+                title="Không đồng bộ được nhận diện Fanpage"
+                message={refreshPageMetadataMutation.error.message}
+                code={refreshPageMetadataMutation.error.code}
+                requestId={refreshPageMetadataMutation.error.requestId}
+                retryable={refreshPageMetadataMutation.error.retryable}
+                onRetry={() => refreshPageMetadataMutation.mutate()}
+              />
+            ) : null}
           </div>
         ) : null}
       </Card>

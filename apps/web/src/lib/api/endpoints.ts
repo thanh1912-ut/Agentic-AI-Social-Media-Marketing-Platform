@@ -154,6 +154,11 @@ export const workspaceApi = {
       method: 'PATCH', body,
     }),
 
+  refreshPageMetadata: (workspaceId: string) =>
+    apiRequest<ApiWorkspace>(v1(`/workspaces/${encodeURIComponent(workspaceId)}/page-connection/refresh-metadata`), {
+      method: 'POST',
+    }),
+
   list: () => apiRequest<readonly ApiWorkspace[]>(v1('/workspaces')),
 
   get: (workspaceId: string) =>

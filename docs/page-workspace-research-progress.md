@@ -235,6 +235,16 @@ Base đã kiểm tra: `codex/creative-studio-ui` @ `b769097bfdb3568889d974c6def9
 - LIMIT: Đây là checkpoint cấp nguồn trong một research cycle, chưa phải cursor bền cho từng post/comment/reply. Worker hiện chưa tiếp tục phân trang comment hoặc thu thập media.
 - NOT_RUN: PostgreSQL/Redis recovery thật, live crawl, provider live và browser real chưa chạy trong lát cắt này.
 
+### 2026-09-30 — Đồng bộ lại nhận diện Page trong Cài đặt
+
+- DONE: Thêm Owner-only `POST /api/v1/workspaces/{id}/page-connection/refresh-metadata`; server giải mã token đã lưu, xác minh lại cùng Page và thực hiện read-only post request trước khi cập nhật tên/ảnh.
+- DONE: Tên được đồng bộ vào Company, kết nối Meta, nguồn Page công ty và trạng thái Meta sync; ảnh lấy từ Page metadata. Brand Profile/revision không bị thay đổi.
+- DONE: So khớp lại Page và ciphertext sau request mạng để từ chối ghi nhận nếu Owner thay kết nối đồng thời. Token không trả về client.
+- DONE: Token hết hạn/thu hồi chuyển workspace sang `needs_reconnect`, tắt lịch Page và giữ dữ liệu cũ. Giao diện Cài đặt có nút đồng bộ và lỗi có mã xử lý.
+- PASS: API fixture xác nhận tên/ảnh đổi, token được lấy từ backend đã lưu, không xuất hiện trong response, Brand Profile giữ nguyên; fixture token hết hạn xác nhận lịch Page bị tạm dừng.
+- PASS: OpenAPI export/check, TypeScript generation, 28 backend focused tests sau fixture mới, frontend typecheck/lint/50 unit tests và production build.
+- NOT_RUN: Không gọi Meta thật hoặc thay preview; kiểm thử bằng Meta adapter fixture.
+
 ### 2026-09-30 10:02 Asia/Ho_Chi_Minh — PostgreSQL/Redis integration và raw retention
 
 - PASS: Tạo PostgreSQL 18.3 riêng trong `/private/tmp`, hai Redis riêng trên loopback; chạy migration từ database rỗng tới `0022_ai_usage_budget`.

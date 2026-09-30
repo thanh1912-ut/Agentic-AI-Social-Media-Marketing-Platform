@@ -28,7 +28,9 @@ from .security import is_expired, new_opaque_token, token_hash
 from .auth import make_session
 from .rate_limits import rate_limit
 from .meta_client import MetaGraphClient, MetaGraphReadError, MetaGraphRejected, MetaGraphTokenExpired, MetaPage
-from .meta_tokens import TokenEncryptionUnavailable, encrypt_page_token, token_fingerprint
+from .meta_tokens import (
+    TokenEncryptionUnavailable, decrypt_page_token, encrypt_page_token, token_fingerprint,
+)
 
 
 router = APIRouter(tags=["workspaces"])
@@ -361,6 +363,143 @@ async def reconnect_workspace_page(
         await db.rollback()
         raise ApiProblem(409, "page_already_connected", "Fanpage này đã được kết nối với workspace khác.") from None
     return _workspace_out(company, membership)
+
+
+@router.post(
+    "/workspaces/{company_id}/page-connection/refresh-metadata",
+    response_model=WorkspaceOut,
+    dependencies=[
+        Depends(require_csrf),
+        Depends(rate_limit("workspace_page_metadata_refresh", max_requests=20, window_seconds=3600)),
+    ],
+)
+async def refresh_workspace_page_metadata(
+    company_id: str,
+    user: User = Depends(current_user),
+    membership: Membership = Depends(require_permission("connection:manage")),
+    db: AsyncSession = Depends(get_db),
+) -> WorkspaceOut:
+    """Refresh workspace display identity from its already-bound Page token."""
+    company = await db.scalar(select(Company).where(Company.id == company_id))
+    if company is None:
+        raise ApiProblem(404, "not_found", "Không tìm thấy doanh nghiệp.")
+    if not company.page_id or company.page_connection_state != "active":
+        raise ApiProblem(409, "page_needs_reconnect", "Hãy kết nối lại Fanpage trước khi đồng bộ nhận diện.")
+    page_id = company.page_id
+    connection = await db.scalar(select(MetaPageConnection).where(
+        MetaPageConnection.company_id == company_id,
+        MetaPageConnection.page_id == page_id,
+        MetaPageConnection.active.is_(True),
+        MetaPageConnection.status == "verified",
+    ))
+    if connection is None:
+        raise ApiProblem(409, "page_needs_reconnect", "Không tìm thấy kết nối đã xác minh của Fanpage.")
+    connection_id = connection.id
+    encrypted_token = connection.encrypted_token
+    await db.commit()  # Do not hold a database transaction across the Meta request.
+
+    try:
+        token = decrypt_page_token(encrypted_token)
+    except TokenEncryptionUnavailable:
+        raise ApiProblem(503, "token_encryption_unavailable", "Backend chưa thể giải mã token Fanpage.") from None
+    except ValueError:
+        await _mark_workspace_page_needs_reconnect(
+            db, company_id, connection_id, "token_decryption_failed",
+        )
+        raise ApiProblem(409, "page_token_unavailable", "Không giải mã được token Fanpage. Owner cần kết nối lại.") from None
+    if not token:
+        await _mark_workspace_page_needs_reconnect(db, company_id, connection_id, "token_empty")
+        raise ApiProblem(409, "page_token_unavailable", "Không có token Fanpage khả dụng. Owner cần kết nối lại.")
+
+    try:
+        async with MetaGraphClient(page_id, token, settings.meta_graph_version) as client:
+            page = await client.verify_page()
+            if page.id != page_id:
+                raise ValueError("verified Page identity changed")
+            await client.list_page_posts(limit=1)
+    except MetaGraphTokenExpired:
+        await _mark_workspace_page_needs_reconnect(db, company_id, connection_id, "token_expired")
+        raise ApiProblem(409, "page_needs_reconnect", "Page Access Token hết hạn hoặc bị thu hồi. Owner cần kết nối lại.") from None
+    except MetaGraphRejected as error:
+        if error.retryable:
+            raise ApiProblem(429, "meta_rate_limited", "Meta đang giới hạn yêu cầu. Hãy thử đồng bộ lại sau.", retryable=True) from None
+        await _mark_workspace_page_needs_reconnect(db, company_id, connection_id, "read_permission_missing")
+        raise ApiProblem(409, "page_permission_missing", "Meta từ chối quyền đọc Page. Owner cần xác minh lại kết nối.") from None
+    except (MetaGraphReadError, ValueError):
+        raise ApiProblem(502, "meta_verification_failed", "Chưa đồng bộ được thông tin Fanpage từ Meta. Hãy thử lại.", retryable=True) from None
+
+    page_name = page.name.strip()
+    if not page_name:
+        raise ApiProblem(502, "meta_verification_failed", "Meta không trả tên Fanpage hợp lệ.", retryable=True)
+    company = await db.scalar(select(Company).where(Company.id == company_id).with_for_update())
+    connection = await db.scalar(select(MetaPageConnection).where(
+        MetaPageConnection.company_id == company_id,
+        MetaPageConnection.id == connection_id,
+    ).with_for_update())
+    if (
+        company is None or connection is None or company.page_id != page_id
+        or connection.page_id != page_id or connection.encrypted_token != encrypted_token
+        or not connection.active or connection.status != "verified"
+    ):
+        raise ApiProblem(409, "page_connection_changed", "Kết nối Fanpage đã thay đổi trong lúc đồng bộ. Hãy tải lại trang.")
+
+    company.name = page_name[:200]
+    company.page_avatar_url = page.picture_url
+    connection.page_name = page_name[:200]
+    sync = await db.scalar(select(MetaSyncState).where(
+        MetaSyncState.company_id == company_id,
+        MetaSyncState.page_id == page_id,
+    ).with_for_update())
+    if sync is not None:
+        sync.page_name = page_name[:200]
+        sync.updated_at = utcnow()
+    sources = (await db.scalars(select(ResearchSource).where(
+        ResearchSource.company_id == company_id,
+        ResearchSource.connection_id == connection_id,
+        ResearchSource.source_type == "owned_facebook_page",
+        ResearchSource.active.is_(True),
+    ).with_for_update())).all()
+    for source in sources:
+        source.name = page_name[:200]
+    db.add(AuditEvent(
+        company_id=company_id,
+        actor_user_id=user.id,
+        action="workspace.page_metadata.refresh",
+        entity_type="meta_page",
+        entity_id=page_id,
+        metadata_json={"page_id": page_id, "avatar_available": bool(page.picture_url)},
+    ))
+    await db.commit()
+    return _workspace_out(company, membership)
+
+
+async def _mark_workspace_page_needs_reconnect(
+    db: AsyncSession, company_id: str, connection_id: str, error_code: str,
+) -> None:
+    company = await db.scalar(select(Company).where(Company.id == company_id).with_for_update())
+    connection = await db.scalar(select(MetaPageConnection).where(
+        MetaPageConnection.company_id == company_id,
+        MetaPageConnection.id == connection_id,
+    ).with_for_update())
+    if connection is not None:
+        connection.status = "needs_reconnect"
+        connection.last_error_code = error_code
+        connection.verified_at = None
+        connection.metrics_schedule_enabled = False
+        connection.next_metrics_sync_at = None
+    if company is not None:
+        company.page_connection_state = "needs_reconnect"
+    sources = (await db.scalars(select(ResearchSource).where(
+        ResearchSource.company_id == company_id,
+        ResearchSource.connection_id == connection_id,
+        ResearchSource.source_type == "owned_facebook_page",
+        ResearchSource.active.is_(True),
+    ).with_for_update())).all()
+    for source in sources:
+        source.schedule_enabled = False
+        source.next_due_at = None
+        source.status = "needs_access"
+    await db.commit()
 
 
 def _member_out(membership: Membership, user: User | None = None, *, invitation: Invitation | None = None) -> MemberOut:
