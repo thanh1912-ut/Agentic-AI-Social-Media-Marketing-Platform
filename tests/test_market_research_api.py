@@ -1820,7 +1820,7 @@ def test_public_group_worker_persists_shell_metadata_as_partial_without_report(m
     assert job.result["source_results"][0]["group_metadata"]["name"] == "Nhóm công khai"
     assert source.status == "active"
     assert source.collection_status == "partial"
-    assert source.last_collection_success_at is not None
+    assert source.last_collection_success_at is None
     assert source.next_due_at is not None
     assert run.status == "partial"
     assert run.counters_json["items_saved"] == 0

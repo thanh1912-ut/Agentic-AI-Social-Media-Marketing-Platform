@@ -1949,7 +1949,11 @@ async def _run(job_id: str) -> None:
                 elif source_type == "facebook_group":
                     source.collection_status = outcome.get("status", "partial")
                     source.collection_last_method = "facebook-cli"
-                    source.last_collection_success_at = utcnow()
+                    # Tier 0 currently reads only the public group shell. Keep
+                    # the attempt timestamp/run coverage, but do not represent
+                    # metadata-only discovery as a successful content crawl.
+                    if outcome.get("status") == "collected" and int(outcome.get("items_saved", 0) or 0) > 0:
+                        source.last_collection_success_at = utcnow()
                     source.next_due_at = utcnow() + timedelta(hours=12) if source.schedule_enabled else None
                 elif source_type == "owned_facebook_page":
                     source.collection_status = (

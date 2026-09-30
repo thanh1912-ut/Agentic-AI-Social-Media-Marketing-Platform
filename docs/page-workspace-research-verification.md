@@ -313,3 +313,13 @@ Lát cắt này không đáp ứng thu thập nội dung Group discussions, bài
 | Frontend quality | PASS | ESLint, TypeScript `--noEmit --incremental false`, Vitest 52/52, Next production build, `git diff --check`. |
 | Python lint/syntax | PASS | Ruff và `py_compile` đạt cho API/test files liên quan. |
 | Backend integration / real browser | NOT_RUN | Python syntax đạt; PostgreSQL/API/browser preview không chạy trong lượt này. |
+
+## Không coi Group Tier 0 metadata là nội dung thu thập thành công — 2026-09-30 16:40 Asia/Ho_Chi_Minh
+
+| Kiểm tra | Trạng thái | Bằng chứng và giới hạn |
+|---|---|---|
+| Trạng thái Group metadata-only | PASS (code change) | Worker giữ `collection_status=partial`, lưu coverage/lần thử và không cập nhật `last_collection_success_at` khi `items_saved=0`. |
+| Regression and collector fixtures | PASS (SQLite/fixture only) | `tests/test_market_research_api.py tests/test_facebook_cli_collector.py` — 30 passed với shim `pgvector` tạm ở `/private/tmp`, không được dùng làm bằng chứng cho vector behavior hay PostgreSQL. Regression kiểm tra `last_collection_success_at is None`. |
+| Static checks | PASS | Ruff cho `services/worker/research_tasks.py` và test; `py_compile`; `git diff --check`. |
+| PostgreSQL integration | BLOCKED | Python hiện hành không có package `pgvector` thật; `POSTGRES_TEST_URL` chưa xác minh. Không chạy test PostgreSQL/Redis bằng shim SQLite. |
+| Live Group discussions | NOT_RUN / không hỗ trợ ở Tier 0 hiện tại | Không có bài/bình luận nhóm được thu thập; fixture hay metadata shell không được tính là crawl nội dung nhóm. |

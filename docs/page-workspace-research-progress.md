@@ -407,3 +407,12 @@ Base đã kiểm tra: `codex/creative-studio-ui` @ `b769097bfdb3568889d974c6def9
 - BLOCKED: PostgreSQL test xác nhận lịch Meta khi mất kết nối dừng lúc collection vì thiếu `pgvector`; cần cài bộ dependency dự án và cấu hình database test riêng trước khi chạy.
 - PASS: Ruff check trên `services/api/meta.py` và `tests/test_postgres_application_modules.py` với cache chuyển sang `/private/tmp`.
 - NOT_RUN: Browser/API real và preview `13104` chưa được thay.
+
+### 2026-09-30 16:40 Asia/Ho_Chi_Minh — Phân biệt metadata Group với nội dung crawl thành công
+
+- DONE: Group Facebook Tier 0 chỉ đọc được metadata shell; worker vẫn lưu trạng thái lượt `partial`, coverage và lần thử, nhưng không ghi `last_collection_success_at` khi không có bài viết/bình luận.
+- DONE: Cập nhật regression test để metadata-only không bị tính là lần thu thập nội dung thành công.
+- PASS: Ruff cho worker/test, Python `py_compile` và `git diff --check`.
+- PASS (SQLite/fixture): `tests/test_market_research_api.py tests/test_facebook_cli_collector.py` — 30 passed khi dùng shim `pgvector` tạm ngoài repo; test kiểm tra hành vi logic, không xác nhận kiểu vector/PostgreSQL.
+- BLOCKED: Không chạy được PostgreSQL integration trong môi trường hiện tại vì thiếu package `pgvector` thật và chưa xác nhận `POSTGRES_TEST_URL`.
+- NOT_RUN: Không gọi facebook-cli live, PostgreSQL/Redis, browser/API thật hoặc provider AI; preview `13104` giữ nguyên.
