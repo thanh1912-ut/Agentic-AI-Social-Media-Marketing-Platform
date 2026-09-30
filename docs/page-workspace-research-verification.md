@@ -326,7 +326,7 @@ Lát cắt này không đáp ứng thu thập nội dung Group discussions, bài
 
 ## Purge dữ liệu nghiên cứu theo nguồn — 2026-09-30 17:23 Asia/Ho_Chi_Minh
 
-Commit đang kiểm tra: worktree branch `codex/page-workspaces-research`; thay đổi chưa commit.
+Commit triển khai: `0d95d9b5704ee6fa37f31ae237d522795a08a304` trên `codex/page-workspaces-research`; `git ls-remote` xác nhận remote ref khớp SHA này.
 
 | Kiểm tra | Trạng thái | Bằng chứng và giới hạn |
 |---|---|---|
