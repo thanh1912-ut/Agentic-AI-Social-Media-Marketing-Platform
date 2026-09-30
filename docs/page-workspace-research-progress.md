@@ -18,9 +18,18 @@ Base đã kiểm tra: `codex/creative-studio-ui` @ `b769097bfdb3568889d974c6def9
 - [PARTIAL] Nội dung bài Facebook và manual import được che email, số điện thoại và cụm địa chỉ nhà rõ ràng trước khi lưu bằng `facebook-contact-patterns-v1`; bộ lọc không phát hiện tên và không phải cơ chế ẩn danh.
 - [PARTIAL] Ranh giới gọi DeepSeek loại nội dung bài Facebook chưa qua rà soát đầy đủ; report chỉ có Facebook được ghi `deferred_privacy_review`, không gọi provider. Với nguồn web đủ điều kiện, Facebook cùng report chỉ gửi số liệu và nhãn nội dung đang giữ.
 - [PARTIAL] Owner có thể ghi nhận mục đích, tham chiếu căn cứ, phiên bản chính sách và thời hạn dự kiến theo từng nguồn; nguồn Facebook mới bị chặn tới khi đủ trường cấu hình. Đây không phải xác minh căn cứ; retention chưa thi hành, comment/media tiếp tục `privacy_hold`.
-- [PARTIAL] OpenAPI và TypeScript declarations đã được regenerate. Frontend lint, typecheck, unit tests và desktop/mobile fixture E2E hiện đạt; các test này không thay cho nghiệm thu real API/browser.
-- [PARTIAL] API/worker fixtures và PostgreSQL/Redis/Celery integration test đã chạy trên môi trường disposable; browser real mode, Meta/provider live và worker crawl chưa chạy.
+- [PARTIAL] OpenAPI và TypeScript declarations đã được regenerate. Frontend lint, typecheck, 52 unit tests và production build đạt; real browser đã mở route Nghiên cứu với API thật, nhưng chưa chạy luồng ghi UI-to-worker.
+- [PARTIAL] API/worker fixtures và PostgreSQL integration đã chạy trên môi trường disposable; Redis-specific tests bị skip, Meta/provider live và worker crawl chưa chạy.
 - [TODO] Cursor bình luận/replies, media analysis, deletion/retention propagation và routing Gemini/Qwen chưa triển khai.
+
+### Trạng thái hiện tại — 2026-09-30 20:32 Asia/Ho_Chi_Minh
+
+- DONE: Feature branch `codex/page-workspaces-research` @ `2acabb13ae48975f4f4f66614f81429bddfa919a` được đóng gói real mode và kích hoạt trên `http://127.0.0.1:13104` bằng LaunchAgent mục tiêu; release cũ và plist được giữ để rollback.
+- PASS: Script health sau rollout báo LaunchAgent, API `/readyz`, `/login` và font local đều sẵn sàng. Metadata release: `codex-page-workspaces-research-2acabb13ae48-20260930T132926Z`.
+- PASS: In-app browser dùng API thật mở route `/w/{workspace}/research`; menu và trang hiển thị “Nghiên cứu”, không yêu cầu tạo/chọn nhóm. Workspace hiện tại chưa có kết nối Page nên giao diện giữ dữ liệu cũ để xem và khóa thu thập, hướng Owner tới cài đặt kết nối.
+- PASS: `tests/e2e/creative-studio-preview.real.spec.ts` — `1 passed`; chỉ mở/chụp màn hình đăng nhập, không nhập tài khoản. Chromium cần quyền runtime macOS bên ngoài sandbox; lần chạy có quyền đọc browser runtime đạt.
+- PASS: Frontend ESLint, `tsc --noEmit --incremental false`, Vitest `52/52`, Next production build.
+- LIMITATION: Tab cũ còn giữ bundle trong bộ nhớ; refresh/reopen mới tải release hiện tại. Không có Page reconnect, crawl, provider, publish hoặc thao tác ghi nào được thực hiện trong smoke browser.
 
 ### 2026-09-30 — Rà nguồn pháp luật và retry xóa raw quarantine
 

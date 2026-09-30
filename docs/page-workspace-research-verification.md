@@ -1,5 +1,16 @@
 # Kiểm chứng Page workspace và Nghiên cứu
 
+## Rollout frontend real mode — 2026-09-30 20:32 Asia/Ho_Chi_Minh
+
+| Kiểm tra | Trạng thái | Bằng chứng và giới hạn |
+|---|---|---|
+| Production build của feature branch | PASS | `NEXT_PUBLIC_USE_MOCKS=0`, API origin `http://127.0.0.1:8001`; Next.js 15.5.26 hoàn tất, có route `/research` và compatibility route `/fanpages`. |
+| Frontend lint/typecheck/unit | PASS | ESLint đạt; `tsc --noEmit --incremental false` đạt; Vitest `52 passed`. Typecheck thường và build thường trong sandbox vướng ghi cache `.next`/`tsbuildinfo`, chạy lại đúng worktree với quyền build cần thiết. |
+| Real browser login view | PASS (read-only smoke) | `tests/e2e/creative-studio-preview.real.spec.ts` — 1 passed qua external server `13104`; chỉ chụp login, không submit. |
+| Real API research route | PASS (read-only browser inspection) | In-app browser trên `13104` hiển thị navigation/page “Nghiên cứu”, tab thu thập/phân tích; workspace đang mở yêu cầu Owner kết nối Page trước khi dùng agentic. Không tạo dữ liệu hoặc crawl. |
+| Health và release | PASS | `creative-studio-preview.py status`: API, login, font và LaunchAgent đều ready. Release `codex-page-workspaces-research-2acabb13ae48-20260930T132926Z`; release trước được lưu cùng backup plist. |
+| End-to-end đăng ký → Page → crawl → báo cáo | NOT_RUN | Smoke hiện chỉ đọc trạng thái; không tạo tài khoản/workspace, gửi Page token, crawl, gọi AI hoặc đăng Facebook. Tab cũ có thể cần refresh để tải JS release mới. |
+
 ## Chuẩn hóa nhãn Nghiên cứu — 2026-09-30
 
 | Kiểm tra | Trạng thái | Bằng chứng và giới hạn |
