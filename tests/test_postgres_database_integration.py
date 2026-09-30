@@ -17,7 +17,7 @@ from redis.asyncio import Redis
 from database.job_fencing import JobLeaseLost, _current_job_fence
 from database.models import (
     AIUsageBudgetDay, AIUsageLedger, Base, Company, Job, MarketObservation,
-    MarketEvidence, MarketEvidenceVersion, MetaPageGroup, ResearchSource,
+    MarketEvidence, MarketEvidenceVersion, MetaPageGroup, ResearchCycle, ResearchSource,
     ResearchSourceErasure, ResearchSourceErasureObject, User, new_id, utcnow,
 )
 from services.api import db as api_db
@@ -776,6 +776,123 @@ def test_production_dispatcher_places_durable_job_on_isolated_redis_queue() -> N
                     user = await db.get(User, user_id)
                     if user is not None:
                         await db.delete(user)
+                await db.commit()
+            await engine.dispose()
+
+    asyncio.run(run())
+
+
+def test_postgres_celery_worker_consumes_committed_research_job() -> None:
+    queue_url = os.getenv("REDIS_QUEUE_TEST_URL")
+    broker_url = os.getenv("REDIS_URL")
+    if not queue_url or not broker_url:
+        pytest.skip("REDIS_QUEUE_TEST_URL and REDIS_URL are required")
+    if broker_url != queue_url:
+        pytest.fail("REDIS_URL must point to the isolated REDIS_QUEUE_TEST_URL")
+
+    from celery.contrib.testing.worker import start_worker
+    from services.worker.celery_app import celery_app
+
+    assert celery_app.conf.broker_url == broker_url
+
+    async def run() -> None:
+        assert POSTGRES_TEST_URL
+        engine = create_async_engine(POSTGRES_TEST_URL)
+        sessions = async_sessionmaker(engine, expire_on_commit=False)
+        marker = uuid.uuid4().hex
+        company_id = new_id()
+        user_id = new_id()
+        group_id = new_id()
+        job_id = new_id()
+        try:
+            async with sessions() as db:
+                company = Company(
+                    id=company_id,
+                    name="Celery worker integration",
+                    slug=f"worker-{marker[:16]}",
+                    page_id=f"worker-page-{marker[:16]}",
+                    page_connection_state="active",
+                )
+                user = User(
+                    id=user_id,
+                    email=f"worker-{marker}@example.invalid",
+                    full_name="Worker integration",
+                    password_hash="test-only-not-a-login",
+                )
+                group = MetaPageGroup(
+                    id=group_id,
+                    company_id=company_id,
+                    name="Nghiên cứu integration",
+                    industry="Chưa xác định",
+                    region="Chưa xác định",
+                    locale="vi-VN",
+                    keywords_json=[],
+                    active=True,
+                )
+                job = Job(
+                    id=job_id,
+                    company_id=company_id,
+                    created_by=user_id,
+                    kind="market_research",
+                    title="Consume committed job through Celery",
+                    status="queued",
+                    progress=0,
+                    result={"group_id": group_id},
+                    idempotency_key=f"celery-worker:{marker}",
+                )
+                cycle = ResearchCycle(
+                    id=new_id(),
+                    company_id=company_id,
+                    group_id=group_id,
+                    job_id=job_id,
+                    cycle_key=f"celery-worker:{marker}",
+                    status="queued",
+                    source_results_json=[],
+                    collection_observed_at=utcnow(),
+                )
+                db.add_all([company, user])
+                await db.flush()
+                db.add(group)
+                await db.flush()
+                db.add(job)
+                await db.flush()
+                db.add(cycle)
+                await db.commit()
+
+            with start_worker(
+                celery_app,
+                pool="solo",
+                concurrency=1,
+                queues=("agent",),
+                perform_ping_check=False,
+                shutdown_timeout=10,
+            ):
+                assert await job_service.dispatch_research_job(job_id) is True
+                deadline = asyncio.get_running_loop().time() + 20
+                while asyncio.get_running_loop().time() < deadline:
+                    async with sessions() as db:
+                        job = await db.get(Job, job_id)
+                        if job is not None and job.status in {"succeeded", "failed"}:
+                            assert job.status == "succeeded", job.error
+                            assert job.attempts == 1
+                            assert job.result["analysis_status"] == "not_run_no_new_evidence"
+                            cycle = await db.scalar(select(ResearchCycle).where(ResearchCycle.job_id == job_id))
+                            assert cycle is not None and cycle.status == "completed_no_data"
+                            break
+                    await asyncio.sleep(0.2)
+                else:
+                    pytest.fail("Celery worker did not complete the committed no-source research job")
+        finally:
+            async with sessions() as db:
+                job = await db.get(Job, job_id)
+                if job is not None:
+                    await db.delete(job)
+                company = await db.get(Company, company_id)
+                if company is not None:
+                    await db.delete(company)
+                user = await db.get(User, user_id)
+                if user is not None:
+                    await db.delete(user)
                 await db.commit()
             await engine.dispose()
 

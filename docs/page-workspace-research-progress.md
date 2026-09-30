@@ -462,3 +462,10 @@ Base đã kiểm tra: `codex/creative-studio-ui` @ `b769097bfdb3568889d974c6def9
 - LIMITATION: Test dispatcher xác nhận message thật vào Redis, nhưng không chạy Celery worker consume message để hoàn tất một source-run; test outage dùng dispatcher giả để kiểm tra recovery ledger. Đây chưa phải luồng UI → API → Redis → worker → kết quả hoàn chỉnh.
 - DONE: Đã dừng cả PostgreSQL và hai Redis disposable sau test; không restart hay sửa preview `13104` hoặc Redis dùng chung.
 - NOT_RUN: Browser UI, Meta/Page live, DeepSeek/Gemini/Qwen live, object storage production và worker consume qua Redis vẫn chưa nghiệm thu.
+
+### 2026-09-30 18:15 Asia/Ho_Chi_Minh — Celery worker consume job đã commit
+
+- PASS: Bổ sung `test_postgres_celery_worker_consumes_committed_research_job`: test tạo durable research job/cycle trong PostgreSQL, production dispatcher gửi qua Redis `agent`, Celery test worker thật nhận job, claim lease/fencing và ghi `succeeded` + `completed_no_data` trở lại PostgreSQL.
+- PASS: Chạy lại nhóm PG/Redis — schema/fencing, queue-cache isolation, competing claims, dispatch outage recovery, dispatcher Redis và worker consume — `6 passed in 2.02s` trên PostgreSQL 18.3 + Redis 8.6.3 disposable.
+- SCOPE: Job không có nguồn nghiên cứu; đây là kiểm thử queue/worker/persistence, không phải crawl nguồn, API/browser thật hoặc phân tích AI. DeepSeek tắt, không gọi Meta, Gemini hay Qwen.
+- DONE: Dừng PostgreSQL và hai Redis test riêng; preview và Redis dùng chung không bị thay đổi.
