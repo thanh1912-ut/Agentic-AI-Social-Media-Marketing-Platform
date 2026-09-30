@@ -6,7 +6,10 @@ rejection are deliberately marked unknown so callers reconcile before retrying.
 
 from __future__ import annotations
 
+import asyncio
+import json
 import re
+import zlib
 from dataclasses import dataclass, field
 from datetime import datetime
 from ipaddress import ip_address
@@ -21,6 +24,9 @@ _COMMENT_ID = re.compile(r"[0-9]{1,32}(?:_[0-9]{1,32}){0,2}\Z")
 _COMMENT_CURSOR = re.compile(r"[A-Za-z0-9_+/=.-]{1,2048}\Z")
 _VERSION = re.compile(r"v[1-9][0-9]{0,2}\.0\Z")
 _IMAGE_MIME_TYPES = frozenset({"image/jpeg", "image/png"})
+_MAX_GRAPH_RESPONSE_BYTES = 2 * 1024 * 1024
+_GRAPH_STREAM_CHUNK_BYTES = 64 * 1024
+_GRAPH_REQUEST_DEADLINE_SECONDS = 30
 
 
 @dataclass(frozen=True, slots=True)
@@ -131,6 +137,59 @@ class MetaGraphOutcomeUnknown(MetaGraphError):
 
 class MetaGraphReadError(MetaGraphError):
     """A read failed without an explicit Graph 4xx rejection."""
+
+
+class _GraphResponseError(Exception):
+    """Internal, sanitized response limit/encoding error."""
+
+
+async def _bounded_graph_body(response: httpx.Response) -> bytes:
+    """Bound both wire bytes and decoded bytes before parsing provider JSON.
+
+    Do not use httpx's automatic decompression here: one compressed chunk can
+    otherwise expand without a bound before a caller can check its length.
+    """
+    length = response.headers.get("content-length")
+    if length is not None:
+        try:
+            declared = int(length)
+        except ValueError:
+            raise _GraphResponseError("Meta Graph returned an invalid response length.") from None
+        if declared < 0:
+            raise _GraphResponseError("Meta Graph returned an invalid response length.")
+        if declared > _MAX_GRAPH_RESPONSE_BYTES:
+            raise _GraphResponseError("Meta Graph response exceeded the 2 MiB limit.")
+
+    # Mock/custom transports may provide already-read decoded bytes. Production
+    # AsyncHTTPTransport leaves the response stream unread until the loop below.
+    if response.is_stream_consumed:
+        body = response.content
+        if len(body) > _MAX_GRAPH_RESPONSE_BYTES:
+            raise _GraphResponseError("Meta Graph response exceeded the 2 MiB limit.")
+        return body
+
+    encoding = response.headers.get("content-encoding", "identity").strip().casefold()
+    if encoding not in {"identity", "gzip", "deflate"}:
+        raise _GraphResponseError("Meta Graph returned an unsupported response encoding.")
+    decoder = zlib.decompressobj(31 if encoding == "gzip" else zlib.MAX_WBITS) if encoding != "identity" else None
+    body = bytearray()
+    wire_size = 0
+    try:
+        async for chunk in response.aiter_raw(chunk_size=_GRAPH_STREAM_CHUNK_BYTES):
+            wire_size += len(chunk)
+            if wire_size > _MAX_GRAPH_RESPONSE_BYTES:
+                raise _GraphResponseError("Meta Graph response exceeded the 2 MiB limit.")
+            decoded = decoder.decompress(chunk, _MAX_GRAPH_RESPONSE_BYTES - len(body) + 1) if decoder else chunk
+            if len(body) + len(decoded) > _MAX_GRAPH_RESPONSE_BYTES:
+                raise _GraphResponseError("Meta Graph response exceeded the 2 MiB limit.")
+            body.extend(decoded)
+            if decoder and (decoder.unconsumed_tail or decoder.unused_data):
+                raise _GraphResponseError("Meta Graph returned an invalid compressed response.")
+        if decoder and not decoder.eof:
+            raise _GraphResponseError("Meta Graph returned an incomplete compressed response.")
+    except zlib.error:
+        raise _GraphResponseError("Meta Graph returned an invalid compressed response.") from None
+    return bytes(body)
 
 
 def _nonnegative_count(value: object) -> int | None:
@@ -374,7 +433,7 @@ class MetaGraphClient:
         self.graph_version = graph_version
         self._http = httpx.AsyncClient(
             base_url="https://graph.facebook.com",
-            headers={"Authorization": f"Bearer {page_access_token}"},
+            headers={"Authorization": f"Bearer {page_access_token}", "Accept-Encoding": "identity"},
             transport=transport,
             timeout=httpx.Timeout(15.0),
             follow_redirects=False,
@@ -391,34 +450,44 @@ class MetaGraphClient:
         await self._http.aclose()
 
     async def _request(self, method: str, path: str, *, publishing: bool, **kwargs: object) -> dict[str, object]:
+        status_code: int | None = None
         try:
-            response = await self._http.request(method, path, **kwargs)
-        except httpx.RequestError:
+            async with asyncio.timeout(_GRAPH_REQUEST_DEADLINE_SECONDS), self._http.stream(method, path, **kwargs) as response:
+                status_code = response.status_code
+                if status_code == 408 or status_code >= 500 or 300 <= status_code < 400:
+                    if publishing:
+                        raise MetaGraphOutcomeUnknown("Meta publish outcome is unknown after an upstream failure.")
+                    raise MetaGraphReadError("Could not read from Meta Graph.")
+                try:
+                    body = await _bounded_graph_body(response)
+                except _GraphResponseError as error:
+                    if 400 <= status_code < 500:
+                        error_type = MetaGraphTokenExpired if status_code == 401 else MetaGraphRejected
+                        raise error_type(status_code) from None
+                    if publishing:
+                        raise MetaGraphOutcomeUnknown("Meta publish outcome is unknown after an invalid response.") from None
+                    raise MetaGraphReadError(str(error)) from None
+        except (httpx.RequestError, TimeoutError):
+            if status_code is not None and 400 <= status_code < 500 and status_code != 408:
+                error_type = MetaGraphTokenExpired if status_code == 401 else MetaGraphRejected
+                raise error_type(status_code) from None
             if publishing:
                 raise MetaGraphOutcomeUnknown("Meta publish outcome is unknown after a network failure.") from None
             raise MetaGraphReadError("Could not read from Meta Graph.") from None
 
-        if response.status_code == 408 or response.status_code >= 500 or 300 <= response.status_code < 400:
-            if publishing:
-                raise MetaGraphOutcomeUnknown("Meta publish outcome is unknown after an upstream failure.")
-            raise MetaGraphReadError("Could not read from Meta Graph.")
-        if 400 <= response.status_code < 500:
+        try:
+            payload = json.loads(body)
+        except (ValueError, UnicodeError, RecursionError):
+            payload = None
+        if 400 <= status_code < 500:
             graph_code = None
             graph_subcode = None
-            try:
-                error = response.json().get("error")
-                if isinstance(error, dict):
-                    graph_code = error.get("code") if type(error.get("code")) is int else None
-                    graph_subcode = error.get("error_subcode") if type(error.get("error_subcode")) is int else None
-            except (ValueError, AttributeError):
-                pass
-            error_type = MetaGraphTokenExpired if response.status_code == 401 or graph_code == 190 else MetaGraphRejected
-            raise error_type(response.status_code, graph_code, graph_subcode)
-
-        try:
-            payload = response.json()
-        except ValueError:
-            payload = None
+            error = payload.get("error") if isinstance(payload, dict) else None
+            if isinstance(error, dict):
+                graph_code = error.get("code") if type(error.get("code")) is int else None
+                graph_subcode = error.get("error_subcode") if type(error.get("error_subcode")) is int else None
+            error_type = MetaGraphTokenExpired if status_code == 401 or graph_code == 190 else MetaGraphRejected
+            raise error_type(status_code, graph_code, graph_subcode)
         if not isinstance(payload, dict):
             if publishing:
                 raise MetaGraphOutcomeUnknown("Meta publish outcome is unknown after an invalid response.")

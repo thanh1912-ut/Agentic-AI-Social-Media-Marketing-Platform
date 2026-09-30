@@ -9,6 +9,7 @@ from scripts.local_preview_runtime import (
     load_environment,
     parse_env_text,
 )
+from scripts import local_preview_runtime
 
 
 def test_env_parser_keeps_equals_and_does_not_execute_shell_syntax(
@@ -204,3 +205,37 @@ def test_runtime_requires_a_database_and_existing_session_secret(
             ai_values={},
             runtime_root=tmp_path,
         )
+
+
+def test_launching_workers_separates_node_names_queues_and_credentials(monkeypatch, tmp_path: Path) -> None:
+    executions = []
+
+    class Executed(Exception):
+        pass
+
+    def capture_exec(executable, command, environment):
+        executions.append((command, environment))
+        raise Executed
+
+    def load(mode):
+        return build_environment(
+            mode, app_values={"DATABASE_URL": "postgresql://runtime:opaque@127.0.0.1/fresh"},
+            preview_values={"JWT_SECRET": "p" * 40},
+            ai_values={"LLM_PROVIDER": "gemini", "LLM_DEFAULT_MODEL": "gemini-3.8-flash",
+                       "GEMINI_MODEL": "gemini-3.8-flash", "GEMINI_API_KEY": "synthetic-only"},
+            runtime_root=tmp_path,
+        )
+
+    monkeypatch.setattr(local_preview_runtime, "load_environment", load)
+    monkeypatch.setattr(local_preview_runtime.os, "execve", capture_exec)
+    for mode in ("worker", "worker-ingestion"):
+        monkeypatch.setattr(local_preview_runtime.sys, "argv", ["local_preview_runtime.py", mode])
+        with pytest.raises(Executed):
+            local_preview_runtime.main()
+
+    agent, ingestion = executions
+    assert "--hostname=auth-preview-agent@%h" in agent[0]
+    assert "--hostname=auth-preview-ingestion@%h" in ingestion[0]
+    assert "--queues=default,agent" in agent[0] and "--queues=ingestion" in ingestion[0]
+    assert agent[1]["GEMINI_API_KEY"] == "synthetic-only"
+    assert "GEMINI_API_KEY" not in ingestion[1] and "DEEPSEEK_API_KEY" not in ingestion[1]

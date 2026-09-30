@@ -445,6 +445,7 @@ def main() -> int:
             ]
         else:
             queues = "ingestion" if args.mode == "worker-ingestion" else "default,agent"
+            worker_name = "auth-preview-ingestion@%h" if args.mode == "worker-ingestion" else "auth-preview-agent@%h"
             command = [
                 sys.executable,
                 "-m",
@@ -452,6 +453,7 @@ def main() -> int:
                 "-A",
                 "services.worker.celery_app:celery_app",
                 "worker",
+                f"--hostname={worker_name}",
                 "--loglevel=INFO",
                 f"--queues={queues}",
                 "--concurrency=1",
