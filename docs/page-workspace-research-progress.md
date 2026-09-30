@@ -219,6 +219,12 @@ Base đã kiểm tra: `codex/creative-studio-ui` @ `b769097bfdb3568889d974c6def9
 
 ## Nhật ký
 
+### 2026-09-30 15:47 Asia/Ho_Chi_Minh — Chuẩn hóa nhãn Nghiên cứu
+
+- DONE: Bỏ các thông báo/nhãn cũ “Fanpage & thị trường” trong route Nghiên cứu; tab và nhãn nguồn Page công ty thống nhất với mô hình workspace theo Page.
+- PASS: ESLint, TypeScript, Vitest 50/50 và `git diff --check`; production build gần nhất trước chỉnh sửa copy vẫn đạt.
+- NOT_RUN: Chưa triển khai bundle mới lên preview; browser thật còn bundle cũ.
+
 ### 2026-09-30 15:44 Asia/Ho_Chi_Minh — Trạng thái kết nối Page dùng chung
 
 - DONE: Workspace `connection_required` và `needs_reconnect` hiện cảnh báo bền vững trên mọi trang trong AppShell, nêu dữ liệu vẫn xem được, thao tác Agentic/thu thập/xuất bản đang tạm khóa và liên kết đến Cài đặt doanh nghiệp.

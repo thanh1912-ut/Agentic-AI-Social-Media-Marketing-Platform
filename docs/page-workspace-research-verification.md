@@ -1,5 +1,14 @@
 # Kiểm chứng Page workspace và Nghiên cứu
 
+## Chuẩn hóa nhãn Nghiên cứu — 2026-09-30
+
+| Kiểm tra | Trạng thái | Bằng chứng và giới hạn |
+|---|---|---|
+| Loại bỏ copy cũ “Fanpage & thị trường” trên trang nghiên cứu | PASS (code + frontend checks) | Nhãn route, tab và nguồn Page công ty khớp tên “Nghiên cứu”. |
+| Frontend lint/typecheck/unit | PASS | ESLint, TypeScript, Vitest 50/50; không đổi contract. |
+| Production build sau chỉnh sửa copy | NOT_RUN | Build production thành công ngay trước lát cắt copy; bản copy đã qua lint/typecheck/unit. |
+| Browser real preview | NOT_RUN | Bản preview hiện hành chưa được thay. |
+
 ## Hiển thị Page gate toàn ứng dụng — 2026-09-30
 
 | Kiểm tra | Trạng thái | Bằng chứng và giới hạn |

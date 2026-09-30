@@ -26,7 +26,7 @@ const MARKET_HASHES = {
 
 const SOURCE_LABELS: Record<ResearchSourceType, string> = {
   website: 'Website công khai',
-  owned_facebook_page: 'Fanpage của workspace',
+  owned_facebook_page: 'Fanpage công ty',
   competitor_facebook_page: 'Fanpage công khai · đối thủ hoặc tin tức',
   facebook_group: 'Nhóm Facebook công khai · Tier 0 chỉ hỗ trợ thông tin nhóm',
 };
@@ -325,8 +325,8 @@ export default function FanpagesMarketResearchPage() {
   if (!workspace) {
     return (
       <div className="space-y-4">
-        <h1 className="text-lg font-semibold text-slate-900">Không mở được Fanpage và thị trường</h1>
-        <PermissionNotice message="Bạn không thuộc doanh nghiệp này, nên không xem được Page và dữ liệu nghiên cứu." />
+        <h1 className="text-lg font-semibold text-slate-900">Không mở được Nghiên cứu</h1>
+        <PermissionNotice message="Bạn không thuộc doanh nghiệp này, nên không xem được dữ liệu nghiên cứu." />
         <Button variant="secondary" onClick={() => router.push('/')}>Về trang chủ</Button>
       </div>
     );
@@ -340,7 +340,7 @@ export default function FanpagesMarketResearchPage() {
   return (
     <div className="space-y-6">
       <PageHeader
-        eyebrow="Doanh nghiệp & thị trường"
+        eyebrow="Nghiên cứu"
         title="Nghiên cứu"
         description="Thu thập nguồn, xem bằng chứng và chọn hướng nội dung cho doanh nghiệp."
         actions={activeGroupId && canManageMarket ? <Button loading={crawlNow.isPending} onClick={() => crawlNow.mutate(activeGroupId)}><Icon name="globe" size={17} /> Crawl ngay</Button> : undefined}
@@ -364,7 +364,7 @@ export default function FanpagesMarketResearchPage() {
 
       {activeGroupId ? (
         <>
-          <UrlTabs label="Fanpage và thị trường" values={MARKET_TABS} labels={MARKET_TAB_LABELS}
+          <UrlTabs label="Nghiên cứu" values={MARKET_TABS} labels={MARKET_TAB_LABELS}
             active={marketTab} onChange={setMarketTab} idPrefix="market" />
           {marketTab === "pages" ? (
         <div id="market-panel" role="tabpanel" aria-labelledby="market-tab-pages" className="route-tab-panel">
