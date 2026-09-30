@@ -251,6 +251,7 @@ async def create_workspace_from_page(
     db: AsyncSession = Depends(get_db),
 ) -> WorkspaceOut:
     """Verify a Page token and make that Page the identity of a new workspace."""
+    requester_id = user.id
     encrypted = None
     try:
         encrypted = encrypt_page_token(payload.page_access_token)
@@ -275,7 +276,7 @@ async def create_workspace_from_page(
     existing = await db.scalar(select(Company).where(Company.page_id == page.id))
     if existing is not None:
         membership = await db.scalar(select(Membership).where(
-            Membership.company_id == existing.id, Membership.user_id == user.id,
+            Membership.company_id == existing.id, Membership.user_id == requester_id,
             Membership.is_active.is_(True),
         ))
         if membership is None:
@@ -306,7 +307,7 @@ async def create_workspace_from_page(
         existing = await db.scalar(select(Company).where(Company.page_id == page.id))
         if existing is not None:
             membership = await db.scalar(select(Membership).where(
-                Membership.company_id == existing.id, Membership.user_id == user.id,
+                Membership.company_id == existing.id, Membership.user_id == requester_id,
                 Membership.is_active.is_(True),
             ))
             if membership is not None:

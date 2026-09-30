@@ -539,3 +539,10 @@ Base đã kiểm tra: `codex/creative-studio-ui` @ `b769097bfdb3568889d974c6def9
 - PASS: `tests/test_postgres_application_modules.py -k test_postgres_api_persists_existing_product_modules` — `1 passed` trên PostgreSQL 18.3 disposable, toàn bộ API call qua `TestClient`, Meta được thay bằng fixture; không có Meta live request.
 - PASS: Ruff, `py_compile`, `git diff --check`; PostgreSQL cổng `15559` đã dừng.
 - LIMITATION: Đây xác nhận không tự cấp membership qua token trên một request nối tiếp; chưa phải stress test race đồng thời hai request `from-page`.
+
+### 2026-09-30 20:13 Asia/Ho_Chi_Minh — Sửa race kích hoạt cùng Page
+
+- FIXED: Kiểm thử đồng thời phát hiện nhánh `IntegrityError` đọc `user.id` sau rollback; SQLAlchemy có thể làm hết hạn ORM object và gây `MissingGreenlet` thay vì trả conflict có kiểm soát. Endpoint giờ chụp user ID trước giao dịch và dùng scalar ổn định sau rollback.
+- PASS: PostgreSQL 18.3 disposable: `test_postgres_concurrent_page_activation_creates_one_workspace` — `1 passed`; hai request được đồng bộ sau cùng truy vấn “Page đã tồn tại” để buộc tranh chấp unique constraint. Kết quả một `201`, một `409 page_already_connected`, một Company/Page và đúng một Owner membership.
+- PASS: Chạy chung `test_postgres_api_persists_existing_product_modules` và race test — `2 passed`; regression SQLite Page-owner và reconnect — `2 passed`; Ruff, `py_compile`, `git diff --check`.
+- DONE: Cụm PostgreSQL test riêng port `15559` đã dừng. Không có Meta live request hoặc dịch vụ preview bị thay đổi.

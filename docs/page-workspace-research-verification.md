@@ -40,7 +40,7 @@
 |---|---|---|
 | Đăng ký tài khoản không tạo workspace | PASS (SQLite API fixture) | `test_register_creates_user_only_and_preserves_password_exactly` |
 | Xác minh Page token → workspace | PARTIAL; live Meta NOT_RUN | Fixture xác nhận Page activation; `/me` identity phải trùng Page ID và read-only post call; chưa gọi Meta live |
-| Chống Page token tự cấp membership | PASS (SQLite fixture + PostgreSQL API smoke) | PostgreSQL test đăng ký tài khoản thứ hai, gửi lại Page ID/token đã gắn và xác nhận 409 `page_already_connected` cùng danh sách workspace rỗng; token không thêm membership |
+| Chống Page token tự cấp membership / race cùng Page | PASS (SQLite fixture + PostgreSQL API) | API smoke tài khoản thứ hai nhận 409, workspace list rỗng; race test đồng bộ hai request sau cùng truy vấn xác nhận chưa có Page và xác nhận kết quả một workspace/Owner, một non-member nhận 409 |
 | Token reconnect giữ cùng Page/data | PASS (SQLite API fixture) | `test_page_token_is_encrypted_and_same_page_can_reconnect`; reconnect cùng Page, token mã hóa thật trong test |
 | Page read và publish capabilities tách riêng | PASS (SQLite API fixture) | `test_page_read_verification_does_not_claim_publish_permission`: đọc bài `verified`; quyền đăng `not_tested`; `can_publish=false` cho tới khi có publish thành công sau lần xác minh token. Live Meta chưa chạy |
 | Frontend sau thay đổi capability | PASS | Typecheck, ESLint, 50 Vitest tests và `next build` trong worktree riêng; không restart preview hoặc gửi bài thật. |
@@ -424,4 +424,5 @@ Commit triển khai: `0d95d9b5704ee6fa37f31ae237d522795a08a304` trên `codex/pag
 | Đăng ký tài khoản thứ hai | PASS (PostgreSQL/TestClient) | API đăng ký trả danh sách workspace rỗng; không tạo Company khi chưa kích hoạt Page. |
 | Gửi lại Page đã thuộc workspace khác | PASS (PostgreSQL/TestClient) | `test_postgres_api_persists_existing_product_modules` trả `409 page_already_connected`; tài khoản thứ hai vẫn có workspace list rỗng. Fake Meta client, không gọi Meta live. |
 | PostgreSQL integration smoke | PASS | `1 passed`; PostgreSQL 18.3 disposable port `15559`, migration schema đến `0026`; test cluster đã dừng. Ruff, `py_compile`, `git diff --check` đạt. |
-| Cạnh tranh đồng thời hai request kích hoạt | NOT_RUN | Test mới xác nhận isolation tuần tự; chưa chạy stress/race test hai request cùng Page. |
+| Cạnh tranh đồng thời hai request kích hoạt | PASS (PostgreSQL API) | `test_postgres_concurrent_page_activation_creates_one_workspace` — `1 passed`; barrier test buộc cả hai request đọc “chưa có Page” trước khi insert. Một request tạo workspace; request unique-conflict được ánh xạ về 409, không lỗi ORM và không thêm membership. Đây là race regression có điều phối, không phải stress/load test. |
+| Root cause/fix | PASS | Test ban đầu tái hiện `MissingGreenlet` trong IntegrityError handler vì đọc thuộc tính ORM sau rollback. Endpoint lưu `requester_id` trước transaction và dùng lại sau rollback; race test sau fix đạt. |

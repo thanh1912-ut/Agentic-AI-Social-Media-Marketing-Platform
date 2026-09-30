@@ -449,3 +449,121 @@ def test_postgres_api_persists_existing_product_modules(monkeypatch: pytest.Monk
     assert approval is not None and len(approval.content_sha256) == 64
     assert metric is not None and metric.reach == 100
     assert evidence is not None and observation is not None and version is not None
+
+
+def test_postgres_concurrent_page_activation_creates_one_workspace(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A Page uniqueness race cannot grant the losing account membership."""
+    import asyncio
+
+    from httpx import ASGITransport, AsyncClient
+    from sqlalchemy.ext.asyncio import AsyncSession
+
+    from database.models import Membership
+    from services.api import workspaces as workspace_routes
+
+    page_id = str(2 * 10**14 + uuid.uuid4().int % 10**14)
+    token = "test-page-access-token-concurrent-12345"
+
+    async def run() -> None:
+        assert POSTGRES_TEST_URL
+        barrier = asyncio.Event()
+        requests_at_page_lookup = 0
+        synchronize_lookups = False
+
+        class RacingFakeMetaGraphClient:
+            def __init__(self, request_page_id: str, _token: str, _version: str):
+                self.page_id = request_page_id
+
+            async def __aenter__(self):
+                return self
+
+            async def __aexit__(self, *_args):
+                return None
+
+            async def verify_page(self) -> MetaPage:
+                return MetaPage(id=self.page_id, name="Concurrent activation fixture")
+
+            async def list_page_posts(self, limit: int = 1) -> SimpleNamespace:
+                assert limit == 1
+                return SimpleNamespace(posts=[], next_cursor=None)
+
+        monkeypatch.setattr(workspace_routes, "MetaGraphClient", RacingFakeMetaGraphClient)
+        original_scalar = AsyncSession.scalar
+
+        async def synchronize_page_identity_lookup(self, statement, *args, **kwargs):
+            nonlocal requests_at_page_lookup, synchronize_lookups
+            result = await original_scalar(self, statement, *args, **kwargs)
+            if synchronize_lookups and "companies.page_id" in str(statement):
+                requests_at_page_lookup += 1
+                if requests_at_page_lookup == 2:
+                    barrier.set()
+                    synchronize_lookups = False
+                await asyncio.wait_for(barrier.wait(), timeout=5)
+            return result
+
+        monkeypatch.setattr(AsyncSession, "scalar", synchronize_page_identity_lookup)
+
+        try:
+            transport = ASGITransport(app=app)
+            async with AsyncClient(transport=transport, base_url="http://127.0.0.1") as first, \
+                    AsyncClient(transport=transport, base_url="http://127.0.0.1") as second:
+                first_email = f"concurrent-page-a-{uuid.uuid4().hex}@example.com"
+                second_email = f"concurrent-page-b-{uuid.uuid4().hex}@example.com"
+                registrations = await asyncio.gather(
+                    first.post("/api/v1/auth/register", json={
+                        "email": first_email, "password": "concurrent-page-pass-0001",
+                        "full_name": "Concurrent Page A",
+                    }),
+                    second.post("/api/v1/auth/register", json={
+                        "email": second_email, "password": "concurrent-page-pass-0002",
+                        "full_name": "Concurrent Page B",
+                    }),
+                )
+                assert [response.status_code for response in registrations] == [201, 201], [
+                    response.text for response in registrations
+                ]
+                assert all(response.json()["workspaces"] == [] for response in registrations)
+
+                synchronize_lookups = True
+                activation_responses = await asyncio.gather(
+                    first.post(
+                        "/api/v1/workspaces/from-page",
+                        headers={"X-CSRF-Token": first.cookies["agentic_csrf"]},
+                        json={"page_id": page_id, "page_access_token": token},
+                    ),
+                    second.post(
+                        "/api/v1/workspaces/from-page",
+                        headers={"X-CSRF-Token": second.cookies["agentic_csrf"]},
+                        json={"page_id": page_id, "page_access_token": token},
+                    ),
+                )
+                assert sorted(response.status_code for response in activation_responses) == [201, 409]
+                loser_index = next(
+                    index for index, response in enumerate(activation_responses)
+                    if response.status_code == 409
+                )
+                assert activation_responses[loser_index].json()["error"]["code"] == "page_already_connected"
+                loser = (first, second)[loser_index]
+                winner = (first, second)[1 - loser_index]
+                loser_workspaces = await loser.get("/api/v1/workspaces")
+                assert loser_workspaces.json() == []
+                winner_response = await winner.get("/api/v1/workspaces")
+                winner_workspace = winner_response.json()
+                assert len(winner_workspace) == 1
+                assert winner_workspace[0]["page_id"] == page_id
+
+            async with SessionLocal() as db:
+                workspaces = (await db.scalars(select(Company).where(Company.page_id == page_id))).all()
+                assert len(workspaces) == 1
+                memberships = (await db.scalars(select(Membership).where(
+                    Membership.company_id == workspaces[0].id,
+                ))).all()
+                assert len(memberships) == 1
+                assert memberships[0].role == "owner"
+                assert requests_at_page_lookup == 2
+        finally:
+            await engine.dispose()
+
+    asyncio.run(run())
