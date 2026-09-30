@@ -15,7 +15,7 @@ from sqlalchemy.pool import StaticPool
 
 from database.models import (
     AIUsageBudgetDay, AIUsageLedger, Base, Brand, BrandProfileRevision, Campaign, Job, MarketEvidence, MarketEvidenceVersion, MarketObservation, MetaPageConnection,
-    MarketReport, MarketReportEvidence, MetaPageGroup, ResearchCycle, ResearchSource, new_id,
+    MarketReport, MarketReportEvidence, MetaPageGroup, ResearchCycle, ResearchSource, Company, new_id,
     Membership, ResearchPrivacyPolicyRevision, User, WebCrawlRun,
 )
 from services.api import market_research as market_research_routes
@@ -581,6 +581,124 @@ def test_competitor_source_runs_without_page_token_and_keeps_collection_settings
     job = asyncio.run(read_job())
     assert job is not None
     assert job.result["source_ids"] == [source["id"]]
+
+
+def test_disconnected_page_blocks_research_but_allows_only_cancelling_schedules(market_api) -> None:
+    client, session_factory, _encryption_key = market_api
+    workspace_id, headers = _owner(client, "page-gate-settings@example.com")
+    group_id = _create_group(client, workspace_id, headers)
+    created = client.post(
+        f"/api/v1/workspaces/{workspace_id}/market-research/sources",
+        headers=headers,
+        json={
+            "group_id": group_id,
+            "source_type": "competitor_facebook_page",
+            "name": "Nguồn công khai",
+            "url": "https://www.facebook.com/rival-page-gate",
+        },
+    )
+    assert created.status_code == 201, created.text
+    source = created.json()
+    website_created = client.post(
+        f"/api/v1/workspaces/{workspace_id}/market-research/sources",
+        headers=headers,
+        json={
+            "group_id": group_id,
+            "source_type": "website",
+            "name": "Trang công khai",
+            "url": "https://example.com/news",
+        },
+    )
+    assert website_created.status_code == 201, website_created.text
+    website = website_created.json()
+    website_settings = {
+        "crawl_mode": "site_catalog",
+        "crawl_page_limit": 1000,
+        "render_mode": "http_only",
+        "resource_hosts": [],
+        "schedule_enabled": True,
+    }
+    website_enabled = client.patch(
+        f"/api/v1/workspaces/{workspace_id}/market-research/sources/{website['id']}/crawl-settings",
+        headers=headers,
+        json=website_settings,
+    )
+    assert website_enabled.status_code == 200, website_enabled.text
+
+    async def require_reconnect() -> None:
+        async with session_factory() as db:
+            company = await db.get(Company, workspace_id)
+            assert company is not None
+            company.page_connection_state = "needs_reconnect"
+            await db.commit()
+
+    asyncio.run(require_reconnect())
+    source_path = f"/api/v1/workspaces/{workspace_id}/market-research/sources/{source['id']}"
+
+    paused = client.patch(
+        source_path + "/collection-settings",
+        headers=headers,
+        json={"collector": "public_web", "schedule_enabled": False, "post_limit": source["collection_post_limit"]},
+    )
+    assert paused.status_code == 200, paused.text
+    assert paused.json()["schedule_enabled"] is False
+
+    resumed = client.patch(
+        source_path + "/collection-settings",
+        headers=headers,
+        json={"collector": "public_web", "schedule_enabled": True, "post_limit": source["collection_post_limit"]},
+    )
+    assert resumed.status_code == 409
+    assert resumed.json()["error"]["code"] == "page_needs_reconnect"
+
+    changed_while_paused = client.patch(
+        source_path + "/collection-settings",
+        headers=headers,
+        json={"collector": "public_web", "schedule_enabled": False, "post_limit": source["collection_post_limit"] - 1},
+    )
+    assert changed_while_paused.status_code == 409
+    assert changed_while_paused.json()["error"]["code"] == "page_needs_reconnect"
+
+    website_paused = client.patch(
+        f"/api/v1/workspaces/{workspace_id}/market-research/sources/{website['id']}/crawl-settings",
+        headers=headers,
+        json={**website_settings, "schedule_enabled": False},
+    )
+    assert website_paused.status_code == 200, website_paused.text
+    website_resumed = client.patch(
+        f"/api/v1/workspaces/{workspace_id}/market-research/sources/{website['id']}/crawl-settings",
+        headers=headers,
+        json=website_settings,
+    )
+    assert website_resumed.status_code == 409
+    assert website_resumed.json()["error"]["code"] == "page_needs_reconnect"
+
+    crawl = client.post(source_path + "/crawl", headers=headers)
+    assert crawl.status_code == 409
+    assert crawl.json()["error"]["code"] == "page_needs_reconnect"
+
+    group_crawl = client.post(
+        f"/api/v1/workspaces/{workspace_id}/market-research/groups/{group_id}/crawl",
+        headers=headers,
+    )
+    assert group_crawl.status_code == 409
+    assert group_crawl.json()["error"]["code"] == "page_needs_reconnect"
+
+    added_while_disconnected = client.post(
+        f"/api/v1/workspaces/{workspace_id}/market-research/sources",
+        headers=headers,
+        json={
+            "group_id": group_id,
+            "source_type": "website",
+            "name": "Nguồn mới bị chặn",
+            "url": "https://example.org/news",
+        },
+    )
+    assert added_while_disconnected.status_code == 409
+    assert added_while_disconnected.json()["error"]["code"] == "page_needs_reconnect"
+
+    stopped = client.delete(source_path, headers=headers)
+    assert stopped.status_code == 204, stopped.text
 
 
 def test_page_read_verification_does_not_claim_publish_permission(market_api) -> None:

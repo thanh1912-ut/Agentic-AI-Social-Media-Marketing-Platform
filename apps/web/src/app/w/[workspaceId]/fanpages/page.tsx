@@ -132,6 +132,10 @@ export default function FanpagesMarketResearchPage() {
   const workspace = workspaces.find((item) => item.id === workspaceId) ?? null;
   const canManageMarket = Boolean(workspace?.permissions.includes('market:manage'));
   const canManageConnections = Boolean(workspace?.permissions.includes('connection:manage'));
+  const pageConnectionReady = workspace?.page_connection_state === 'active' && Boolean(workspace.page_id);
+  const pageGateReason = workspace?.page_connection_state === 'needs_reconnect'
+    ? 'Owner cần kết nối lại đúng Fanpage trong Cài đặt doanh nghiệp trước khi tiếp tục.'
+    : 'Owner cần kết nối và xác minh Fanpage doanh nghiệp trong Cài đặt trước khi tiếp tục.';
   const [sourceType, setSourceType] = useState<ResearchSourceType>('website');
   const [lastCrawlJob, setLastCrawlJob] = useState<{ jobId: string; groupId: string } | null>(null);
   const [lastSourceCrawl, setLastSourceCrawl] = useState<{ jobId: string; sourceId: string } | null>(null);
@@ -229,14 +233,17 @@ export default function FanpagesMarketResearchPage() {
   }, [activeGroupId, queryClient, workspaceId]);
 
   const createSource = useMutation({
-    mutationFn: (form: FormData) => marketResearchApi.createSource(workspaceId, {
-      group_id: activeGroupId,
-      source_type: sourceType,
-      name: String(form.get('name') ?? ''),
-      url: String(form.get('url') ?? ''),
-      competitor_name: String(form.get('competitor_name') ?? '') || undefined,
-      connection_id: sourceType === 'owned_facebook_page' ? String(form.get('connection_id') ?? '') : undefined,
-    }),
+    mutationFn: (form: FormData) => {
+      if (!pageConnectionReady) throw new Error(pageGateReason);
+      return marketResearchApi.createSource(workspaceId, {
+        group_id: activeGroupId,
+        source_type: sourceType,
+        name: String(form.get('name') ?? ''),
+        url: String(form.get('url') ?? ''),
+        competitor_name: String(form.get('competitor_name') ?? '') || undefined,
+        connection_id: sourceType === 'owned_facebook_page' ? String(form.get('connection_id') ?? '') : undefined,
+      });
+    },
     onSuccess: async () => {
       await refreshGroupData();
     },
@@ -258,20 +265,29 @@ export default function FanpagesMarketResearchPage() {
     mutationFn: ({ sourceId, settings }: { sourceId: string; settings: {
       crawl_mode: 'legacy' | 'site_catalog'; crawl_page_limit: number; render_mode: 'http_only' | 'javascript';
       resource_hosts: string[]; schedule_enabled: boolean;
-    } }) => marketResearchApi.updateCrawlSettings(workspaceId, sourceId, settings),
+    } }) => {
+      if (!pageConnectionReady && settings.schedule_enabled) throw new Error(pageGateReason);
+      return marketResearchApi.updateCrawlSettings(workspaceId, sourceId, settings);
+    },
     onSuccess: async () => refreshGroupData(),
   });
   const updateCollectionSettings = useMutation({
     mutationFn: ({ sourceId, settings }: { sourceId: string; settings: {
       collector: 'public_web' | 'meta_api' | 'manual'; schedule_enabled: boolean; post_limit: number;
-    } }) => marketResearchApi.updateCollectionSettings(workspaceId, sourceId, settings),
+    } }) => {
+      if (!pageConnectionReady && settings.schedule_enabled) throw new Error(pageGateReason);
+      return marketResearchApi.updateCollectionSettings(workspaceId, sourceId, settings);
+    },
     onSuccess: async (_source, variables) => {
       await refreshGroupData();
       await queryClient.invalidateQueries({ queryKey: marketResearchKeys.competitorRuns(workspaceId, variables.sourceId) });
     },
   });
   const crawlNow = useMutation({
-    mutationFn: (groupId: string) => marketResearchApi.crawlNow(workspaceId, groupId),
+    mutationFn: (groupId: string) => {
+      if (!pageConnectionReady) throw new Error(pageGateReason);
+      return marketResearchApi.crawlNow(workspaceId, groupId);
+    },
     onMutate: () => setLastCrawlJob(null),
     onSuccess: (accepted, groupId) => {
       setLastCrawlJob({ jobId: accepted.job_id, groupId });
@@ -279,7 +295,10 @@ export default function FanpagesMarketResearchPage() {
     },
   });
   const crawlCompetitorNow = useMutation({
-    mutationFn: (sourceId: string) => marketResearchApi.crawlSource(workspaceId, sourceId),
+    mutationFn: (sourceId: string) => {
+      if (!pageConnectionReady) throw new Error(pageGateReason);
+      return marketResearchApi.crawlSource(workspaceId, sourceId);
+    },
     onSuccess: async (accepted, sourceId) => {
       setLastSourceCrawl({ jobId: accepted.job_id, sourceId });
       setExpandedCompetitorId(sourceId);
@@ -290,7 +309,9 @@ export default function FanpagesMarketResearchPage() {
   });
   const createDraft = useMutation({
     mutationFn: ({ reportId, suggestionIndex }: { reportId: string; suggestionIndex: number }) =>
-      marketResearchApi.createDraft(workspaceId, reportId, suggestionIndex),
+      pageConnectionReady
+        ? marketResearchApi.createDraft(workspaceId, reportId, suggestionIndex)
+        : Promise.reject(new Error(pageGateReason)),
     onSuccess: (result) => {
       setDraftCampaign(result.campaign_id);
       setDraftError(null);
@@ -318,6 +339,7 @@ export default function FanpagesMarketResearchPage() {
 
   function submitSource(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (!pageConnectionReady) return;
     createSource.mutate(new FormData(event.currentTarget));
     event.currentTarget.reset();
   }
@@ -343,8 +365,15 @@ export default function FanpagesMarketResearchPage() {
         eyebrow="Nghiên cứu"
         title="Nghiên cứu"
         description="Thu thập nguồn, xem bằng chứng và chọn hướng nội dung cho doanh nghiệp."
-        actions={activeGroupId && canManageMarket ? <Button loading={crawlNow.isPending} onClick={() => crawlNow.mutate(activeGroupId)}><Icon name="globe" size={17} /> Crawl ngay</Button> : undefined}
+        actions={activeGroupId && canManageMarket ? <Button loading={crawlNow.isPending} disabled={!pageConnectionReady} disabledReason={pageGateReason} onClick={() => crawlNow.mutate(activeGroupId)}><Icon name="globe" size={17} /> Crawl ngay</Button> : undefined}
       />
+
+      {!pageConnectionReady ? (
+        <div role="status" className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-950">
+          <p>Thu thập, thêm nguồn và tạo chiến dịch từ báo cáo đang tạm khóa. Dữ liệu nghiên cứu cũ vẫn xem được.</p>
+          <Link className="font-semibold underline underline-offset-4" href={`/w/${workspaceId}/settings`}>Mở cài đặt</Link>
+        </div>
+      ) : null}
 
       {lastCrawlJob?.groupId === activeGroupId ? (
         <p role="status" className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900">
@@ -393,7 +422,7 @@ export default function FanpagesMarketResearchPage() {
                 {sourceType === 'competitor_facebook_page' ? <p className="text-xs text-slate-500 sm:col-span-2">Nguồn mới dùng facebook-cli Tier 0, không cần Page Access Token và không đăng nhập Facebook. Facebook có thể trả ít bài, yêu cầu đăng nhập hoặc từ chối truy cập; giao diện sẽ giữ đúng trạng thái đó.</p> : null}
                 {sourceType === 'facebook_group' ? <p className="text-xs text-amber-800 sm:col-span-2">facebook-cli Tier 0 chỉ đọc metadata nhóm mà Facebook xác nhận công khai. Lượt chạy không gọi feed thảo luận; hệ thống không đăng nhập hoặc tham gia nhóm, và sẽ ghi coverage một phần.</p> : null}
                 {sourceType === 'competitor_facebook_page' ? <label className="text-sm text-slate-700 sm:col-span-2">Tên đối thủ<input name="competitor_name" maxLength={200} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2" /></label> : null}
-                <div className="sm:col-span-2"><Button type="submit" loading={createSource.isPending} disabled={!canManageMarket} disabledReason="Vai trò của bạn chưa có quyền quản lý nguồn nghiên cứu.">Lưu link nguồn</Button></div>
+                <div className="sm:col-span-2"><Button type="submit" loading={createSource.isPending} disabled={!pageConnectionReady} disabledReason={pageGateReason}>Lưu link nguồn</Button></div>
                 {createSource.error ? <p role="alert" className="text-sm text-rose-800 sm:col-span-2">{readableError(createSource.error, 'Không lưu được nguồn.')}</p> : null}
               </form>
             ) : <PermissionNotice message="Bạn có thể xem báo cáo, nhưng cần quyền market:manage để thêm hoặc xoá nguồn." requiredPermission="market:manage" />}
@@ -403,6 +432,11 @@ export default function FanpagesMarketResearchPage() {
                 const isGroup = source.source_type === 'facebook_group';
                 const isOwnedPage = source.source_type === 'owned_facebook_page';
                 const isPublicFacebook = isCompetitor || isGroup;
+                const scheduleEnabled = source.schedule_enabled ?? false;
+                const scheduleToggleBlocked = !pageConnectionReady && (
+                  !scheduleEnabled
+                  || (isPublicFacebook && !['public_web', 'meta_api'].includes(source.collection_mode ?? ''))
+                );
                 const statusKey = isPublicFacebook || isOwnedPage ? (source.collection_status || source.status) : source.status;
                 const status = SOURCE_STATUS[statusKey] ?? SOURCE_STATUS[source.status] ?? { label: statusKey, tone: 'neutral' as const };
                 const schedulePaused = source.status === 'needs_privacy_policy' || ['login_required', 'access_denied', 'challenge', 'challenge_required', 'group_not_public', 'page_needs_reconnect', 'page_token_unavailable', 'page_token_expired', 'page_permission_missing', 'privacy_policy_required'].includes(source.collection_status ?? '');
@@ -413,33 +447,33 @@ export default function FanpagesMarketResearchPage() {
                         <div className="flex flex-wrap items-center gap-2"><p className="font-medium text-slate-900">{source.name}</p><StatusBadge label={status.label} tone={status.tone} /></div>
                         <p className="mt-1 break-all text-xs text-slate-600">{source.url}</p>
                         <p className="mt-1 text-xs text-slate-500">{SOURCE_LABELS[source.source_type]}{source.last_crawled_at ? ' · lần đọc gần nhất ' + formatDateTime(source.last_crawled_at) : ''}</p>
-                        {isPublicFacebook || isOwnedPage ? <p className="mt-1 text-xs text-slate-500">Engine: {isOwnedPage ? 'Meta API · Page đã kết nối' : source.collection_mode === 'public_web' ? 'facebook-cli · Tier 0' : source.collection_mode ?? 'chưa chọn'} · Lần thử: {source.last_collection_attempt_at ? formatDateTime(source.last_collection_attempt_at) : 'chưa có'} · Lần đọc thành công: {source.last_collection_success_at ? formatDateTime(source.last_collection_success_at) : 'chưa có'} · Lịch: {source.schedule_enabled ? schedulePaused ? source.status === 'needs_privacy_policy' || source.collection_status === 'privacy_policy_required' ? 'đang tạm dừng đến khi ghi nhận phạm vi xử lý' : 'đang tạm dừng sau khi Facebook từ chối/yêu cầu đăng nhập' : '12 giờ' : 'đã tắt'}</p> : null}
+                        {isPublicFacebook || isOwnedPage ? <p className="mt-1 text-xs text-slate-500">Engine: {isOwnedPage ? 'Meta API · Page đã kết nối' : source.collection_mode === 'public_web' ? 'facebook-cli · Tier 0' : source.collection_mode ?? 'chưa chọn'} · Lần thử: {source.last_collection_attempt_at ? formatDateTime(source.last_collection_attempt_at) : 'chưa có'} · Lần đọc thành công: {source.last_collection_success_at ? formatDateTime(source.last_collection_success_at) : 'chưa có'} · Lịch: {scheduleEnabled ? schedulePaused ? source.status === 'needs_privacy_policy' || source.collection_status === 'privacy_policy_required' ? 'đang tạm dừng đến khi ghi nhận phạm vi xử lý' : 'đang tạm dừng sau khi Facebook từ chối/yêu cầu đăng nhập' : '12 giờ' : 'đã tắt'}</p> : null}
                         {source.error?.message ? <p className="mt-1 text-xs text-rose-800">{source.error.message}</p> : null}
                       </div>
                       <div className="flex flex-wrap items-center gap-2">
-                        {!isCompetitor && canManageMarket ? <Button size="sm" variant="secondary" loading={crawlCompetitorNow.isPending && crawlCompetitorNow.variables === source.id} onClick={() => crawlCompetitorNow.mutate(source.id)}>Crawl ngay</Button> : null}
-                        {isOwnedPage && canManageMarket ? <Button size="sm" variant="secondary" loading={updateCollectionSettings.isPending} onClick={() => updateCollectionSettings.mutate({ sourceId: source.id, settings: { collector: 'meta_api', schedule_enabled: !(source.schedule_enabled ?? false), post_limit: source.collection_post_limit ?? 100 } })}>{source.schedule_enabled ? 'Tắt lịch 12 giờ' : 'Bật lịch 12 giờ'}</Button> : null}
+                        {!isCompetitor && canManageMarket ? <Button size="sm" variant="secondary" loading={crawlCompetitorNow.isPending && crawlCompetitorNow.variables === source.id} disabled={!pageConnectionReady} disabledReason={pageGateReason} onClick={() => crawlCompetitorNow.mutate(source.id)}>Crawl ngay</Button> : null}
+                        {isOwnedPage && canManageMarket ? <Button size="sm" variant="secondary" loading={updateCollectionSettings.isPending} disabled={!pageConnectionReady && !scheduleEnabled} disabledReason={!pageConnectionReady && !scheduleEnabled ? pageGateReason : undefined} onClick={() => updateCollectionSettings.mutate({ sourceId: source.id, settings: { collector: 'meta_api', schedule_enabled: !scheduleEnabled, post_limit: source.collection_post_limit ?? 100 } })}>{scheduleEnabled ? 'Tắt lịch 12 giờ' : 'Bật lịch 12 giờ'}</Button> : null}
                         {isCompetitor && canManageMarket ? (
                           <>
                             <label className="sr-only" htmlFor={'collector-' + source.id}>Phương thức thu thập</label>
-                            <select id={'collector-' + source.id} aria-label="Phương thức thu thập" value={source.collection_mode ?? 'manual'} disabled={updateCollectionSettings.isPending} onChange={(event) => updateCollectionSettings.mutate({ sourceId: source.id, settings: { collector: event.currentTarget.value as 'public_web' | 'meta_api' | 'manual', schedule_enabled: source.schedule_enabled ?? true, post_limit: source.collection_post_limit ?? 50 } })} className="rounded-lg border border-slate-300 bg-white px-2 py-2 text-xs">
+                            <select id={'collector-' + source.id} aria-label="Phương thức thu thập" value={source.collection_mode ?? 'manual'} disabled={updateCollectionSettings.isPending || !pageConnectionReady} onChange={(event) => updateCollectionSettings.mutate({ sourceId: source.id, settings: { collector: event.currentTarget.value as 'public_web' | 'meta_api' | 'manual', schedule_enabled: scheduleEnabled, post_limit: source.collection_post_limit ?? 50 } })} className="rounded-lg border border-slate-300 bg-white px-2 py-2 text-xs">
                               <option value="public_web">Tự thu thập công khai · facebook-cli (Tier 0)</option>
                               <option value="meta_api">Meta API đã được duyệt</option>
                               <option value="manual">Nhập thủ công</option>
                             </select>
-                            <Button size="sm" variant="secondary" loading={crawlCompetitorNow.isPending && crawlCompetitorNow.variables === source.id} disabled={source.collection_mode === 'manual'} disabledReason="Chọn một phương thức thu thập tự động trước." onClick={() => crawlCompetitorNow.mutate(source.id)}>Crawl ngay</Button>
-                            <Button size="sm" variant="secondary" loading={updateCollectionSettings.isPending} onClick={() => updateCollectionSettings.mutate({ sourceId: source.id, settings: { collector: source.collection_mode === 'meta_api' ? 'meta_api' : 'public_web', schedule_enabled: !(source.schedule_enabled ?? true), post_limit: source.collection_post_limit ?? 50 } })}>{source.schedule_enabled === false ? 'Bật lịch 12 giờ' : 'Tắt lịch'}</Button>
+                            <Button size="sm" variant="secondary" loading={crawlCompetitorNow.isPending && crawlCompetitorNow.variables === source.id} disabled={!pageConnectionReady || source.collection_mode === 'manual'} disabledReason={!pageConnectionReady ? pageGateReason : 'Chọn một phương thức thu thập tự động trước.'} onClick={() => crawlCompetitorNow.mutate(source.id)}>Crawl ngay</Button>
+                            <Button size="sm" variant="secondary" loading={updateCollectionSettings.isPending} disabled={scheduleToggleBlocked} disabledReason={scheduleToggleBlocked ? pageGateReason : undefined} onClick={() => updateCollectionSettings.mutate({ sourceId: source.id, settings: { collector: source.collection_mode === 'meta_api' ? 'meta_api' : 'public_web', schedule_enabled: !scheduleEnabled, post_limit: source.collection_post_limit ?? 50 } })}>{scheduleEnabled ? 'Tắt lịch' : 'Bật lịch 12 giờ'}</Button>
                             <Button size="sm" variant="secondary" onClick={() => setExpandedCompetitorId(expandedCompetitorId === source.id ? '' : source.id)}>{expandedCompetitorId === source.id ? 'Ẩn bài viết' : 'Bài viết & lịch sử'}</Button>
                           </>
                         ) : null}
                         {isGroup && canManageMarket ? <>
-                          <Button size="sm" variant="secondary" loading={updateCollectionSettings.isPending} onClick={() => updateCollectionSettings.mutate({ sourceId: source.id, settings: { collector: 'public_web', schedule_enabled: !(source.schedule_enabled ?? true), post_limit: source.collection_post_limit ?? 50 } })}>{source.schedule_enabled === false ? 'Bật lịch 12 giờ' : 'Tắt lịch'}</Button>
+                          <Button size="sm" variant="secondary" loading={updateCollectionSettings.isPending} disabled={scheduleToggleBlocked} disabledReason={scheduleToggleBlocked ? pageGateReason : undefined} onClick={() => updateCollectionSettings.mutate({ sourceId: source.id, settings: { collector: 'public_web', schedule_enabled: !scheduleEnabled, post_limit: source.collection_post_limit ?? 50 } })}>{scheduleEnabled ? 'Tắt lịch' : 'Bật lịch 12 giờ'}</Button>
                           <Button size="sm" variant="secondary" onClick={() => setExpandedCompetitorId(expandedCompetitorId === source.id ? '' : source.id)}>{expandedCompetitorId === source.id ? 'Ẩn metadata & lịch sử' : 'Metadata & lịch sử'}</Button>
                         </> : null}
-                        {source.source_type === 'website' && canManageMarket && (source.crawl_mode ?? 'legacy') === 'legacy' ? <Button size="sm" variant="secondary" loading={updateCrawlSettings.isPending} onClick={() => updateCrawlSettings.mutate({ sourceId: source.id, settings: { crawl_mode: 'site_catalog', crawl_page_limit: 1000, render_mode: 'http_only', resource_hosts: [], schedule_enabled: true } })}>Bật sản phẩm & bài viết</Button> : null}
-                        {source.source_type === 'website' && canManageMarket && source.crawl_mode === 'site_catalog' ? <Button size="sm" variant="secondary" loading={updateCrawlSettings.isPending} onClick={() => updateCrawlSettings.mutate({ sourceId: source.id, settings: { crawl_mode: 'site_catalog', crawl_page_limit: source.crawl_page_limit ?? 1000, render_mode: 'http_only', resource_hosts: source.resource_hosts ?? [], schedule_enabled: !(source.schedule_enabled ?? true) } })}>{source.schedule_enabled === false ? 'Bật lịch' : 'Tắt lịch'}</Button> : null}
+                        {source.source_type === 'website' && canManageMarket && (source.crawl_mode ?? 'legacy') === 'legacy' ? <Button size="sm" variant="secondary" loading={updateCrawlSettings.isPending} disabled={!pageConnectionReady} disabledReason={pageGateReason} onClick={() => updateCrawlSettings.mutate({ sourceId: source.id, settings: { crawl_mode: 'site_catalog', crawl_page_limit: 1000, render_mode: 'http_only', resource_hosts: [], schedule_enabled: true } })}>Bật sản phẩm & bài viết</Button> : null}
+                        {source.source_type === 'website' && canManageMarket && source.crawl_mode === 'site_catalog' ? <Button size="sm" variant="secondary" loading={updateCrawlSettings.isPending} disabled={!pageConnectionReady && !scheduleEnabled} disabledReason={!pageConnectionReady && !scheduleEnabled ? pageGateReason : undefined} onClick={() => updateCrawlSettings.mutate({ sourceId: source.id, settings: { crawl_mode: 'site_catalog', crawl_page_limit: source.crawl_page_limit ?? 1000, render_mode: 'http_only', resource_hosts: source.resource_hosts ?? [], schedule_enabled: !scheduleEnabled } })}>{scheduleEnabled ? 'Tắt lịch' : 'Bật lịch'}</Button> : null}
                         {canManageConnections ? <Button size="sm" variant="secondary" onClick={() => setExpandedPrivacyPolicyId(expandedPrivacyPolicyId === source.id ? '' : source.id)}>{expandedPrivacyPolicyId === source.id ? 'Ẩn chính sách dữ liệu' : 'Chính sách dữ liệu'}</Button> : null}
-                        {canManageMarket ? <Button size="sm" variant="ghost" loading={deleteSource.isPending} onClick={() => deleteSource.mutate(source.id)}>Xoá link</Button> : null}
+                        {canManageMarket ? <Button size="sm" variant="ghost" loading={deleteSource.isPending} onClick={() => deleteSource.mutate(source.id)}>Ngừng theo dõi</Button> : null}
                       </div>
                     </div>
                     {expandedPrivacyPolicyId === source.id ? (
@@ -649,7 +683,7 @@ export default function FanpagesMarketResearchPage() {
                   <div className="mt-4"><h4 className="text-sm font-semibold text-slate-900">Xu hướng ghi nhận</h4><ul className="mt-2 space-y-2">{report.report.trends?.map((trend, index) => <li key={trend.title + index} className="rounded-lg bg-slate-50 p-3"><p className="text-sm font-medium text-slate-900">{trend.title} <span className="text-xs font-normal text-slate-500">· độ tin cậy {Math.round(trend.confidence * 100)}%</span></p><p className="mt-1 text-sm text-slate-700">{trend.explanation}</p><p className="mt-1 text-xs text-slate-500">{trend.evidence_ids.length} nguồn văn bản · {trend.web_snapshot_ids?.length ?? 0} snapshot sản phẩm/bài viết</p></li>)}</ul></div>
                 ) : null}
                 {(report.report.suggestions ?? []).length > 0 ? (
-                  <div className="mt-4"><h4 className="text-sm font-semibold text-slate-900">Gợi ý nội dung</h4><div className="mt-2 grid gap-3 lg:grid-cols-2">{report.report.suggestions?.map((suggestion, index) => <div key={suggestion.title + index} className="rounded-lg border border-slate-200 p-3"><p className="font-medium text-slate-900">{suggestion.title}</p><p className="mt-1 text-sm text-slate-700">{suggestion.angle}</p><p className="mt-2 text-sm text-slate-600">Mở bài: “{suggestion.hook}” · {suggestion.format}</p><p className="mt-1 text-xs text-slate-500">{suggestion.evidence_ids.length} nguồn liên quan</p><div className="mt-3"><Button size="sm" variant="secondary" loading={createDraft.isPending && createDraft.variables?.reportId === report.id && createDraft.variables?.suggestionIndex === index} onClick={() => createDraft.mutate({ reportId: report.id, suggestionIndex: index })}>Tạo chiến dịch nháp</Button></div></div>)}</div></div>
+                  <div className="mt-4"><h4 className="text-sm font-semibold text-slate-900">Gợi ý nội dung</h4><div className="mt-2 grid gap-3 lg:grid-cols-2">{report.report.suggestions?.map((suggestion, index) => <div key={suggestion.title + index} className="rounded-lg border border-slate-200 p-3"><p className="font-medium text-slate-900">{suggestion.title}</p><p className="mt-1 text-sm text-slate-700">{suggestion.angle}</p><p className="mt-2 text-sm text-slate-600">Mở bài: “{suggestion.hook}” · {suggestion.format}</p><p className="mt-1 text-xs text-slate-500">{suggestion.evidence_ids.length} nguồn liên quan</p><div className="mt-3"><Button size="sm" variant="secondary" loading={createDraft.isPending && createDraft.variables?.reportId === report.id && createDraft.variables?.suggestionIndex === index} disabled={!pageConnectionReady} disabledReason={pageGateReason} onClick={() => createDraft.mutate({ reportId: report.id, suggestionIndex: index })}>Tạo chiến dịch nháp</Button></div></div>)}</div></div>
                 ) : null}
                 {(report.report.evidence_refs ?? []).length > 0 ? (
                   <details className="mt-4">

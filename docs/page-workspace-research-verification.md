@@ -277,3 +277,16 @@ Lát cắt này không đáp ứng thu thập nội dung Group discussions, bài
 | Mở lại xử lý text Facebook | BLOCKED | Chưa có screening/phê duyệt thực tế để cấp `approved_for_provider`; không có cách bật bằng cách nhập checkbox hoặc policy reference hiện tại. |
 | Frontend build | PASS | `npm --workspace @agentic/web run build` hoàn tất; typecheck, ESLint và Vitest 50 tests cũng đạt. |
 | Mixed-source và cache replay | PASS | `tests/test_ai_budget.py tests/test_market_research_api.py tests/test_research_privacy.py`: 40 passed; nội dung Facebook bị giữ vắng mặt trong provider payload, cached report có fingerprint evidence/version khác bị defer. |
+
+## Page gate trong Nghiên cứu — 2026-09-30 16:05 Asia/Ho_Chi_Minh
+
+| Kiểm tra | Trạng thái | Bằng chứng và giới hạn |
+|---|---|---|
+| UI khi Page chưa active | PASS (browser fixture) | Trên `http://127.0.0.1:13106/w/ws_tap_hoa_an/research`, Crawl ngay, lưu nguồn, crawl nguồn và bật thu thập bị disabled; banner chỉ đường tới Cài đặt. Nguồn/báo cáo hiện có vẫn đọc được. Đây là MSW/demo fixture, không phải API thật. |
+| Tắt lịch khi Page chưa active | PASS (code path/UI fixture; API test NOT_RUN) | UI để chủ nguồn tắt lịch đang bật; lịch đã tắt không thể bật lại. API cho phép duy nhất `schedule_enabled=false` nếu collector, giới hạn và cấu hình khác giữ nguyên. |
+| Crawl/thêm nguồn/bật lịch khi Page chưa active | PASS (code guard; API test NOT_RUN) | Frontend disable CTA và mutation có guard; backend vẫn Page-gated. Test API mới bao phủ `409` cho bật lịch, đổi config, crawl và thêm nguồn nhưng chưa chạy trong lượt này. |
+| Dừng theo dõi nguồn | PASS (code review; API test NOT_RUN) | `DELETE /sources/{id}` chỉ soft-disable, giữ bằng chứng và snapshots. UI đổi nhãn thành “Ngừng theo dõi”; đây không phải yêu cầu xóa dữ liệu đã thu thập. |
+| Frontend checks | PASS | ESLint, TypeScript, Vitest 50/50 và Next production build trên worktree riêng. |
+| Python syntax | PASS | `ast.parse` cho API module và test file. |
+| Backend pytest/Ruff | NOT_RUN | Python hiện hành không có `pytest`/FastAPI/SQLAlchemy; `uv` và project virtualenv không có trong checkout/runtime. Lệnh thử `uv run pytest ...` thất bại vì không tìm thấy `uv`. |
+| PostgreSQL/Redis, browser real API, provider/live Page | NOT_RUN | Không dịch vụ thật nào được gọi; preview `13104` không bị restart hoặc thay đổi. |

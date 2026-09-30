@@ -373,3 +373,13 @@ Base đã kiểm tra: `codex/creative-studio-ui` @ `b769097bfdb3568889d974c6def9
 - PASS: PostgreSQL 18.3 disposable: migration fresh tới `0025_owned_page_research_backfill`; database thứ hai nâng từ `0024` tới `0025`; `tests/test_postgres_database_integration.py` đạt 6 passed, 2 Redis tests skipped do lượt này không cấu hình Redis test URL.
 - NOT_RUN: Chưa có Meta live, Redis worker thật, browser reload hoặc provider live.
 - PARTIAL: Thay đổi chỉ bao phủ bài Page công ty. Bình luận/replies vẫn `privacy_hold`; media và Gemini/Qwen chưa nối vào pipeline.
+
+### 2026-09-30 16:05 Asia/Ho_Chi_Minh — Khóa thao tác Nghiên cứu khi Page mất kết nối
+
+- DONE: Nút crawl nhóm/nguồn, lưu nguồn, đổi collector, bật lịch và tạo chiến dịch từ báo cáo bị khóa trên giao diện khi `page_connection_state` chưa `active`; giải thích và liên kết tới Cài đặt được hiển thị.
+- DONE: API chỉ cho người có `market:manage` tắt lịch hiện có khi Page chưa active, nếu request không đổi collector/giới hạn/cấu hình crawl. Bật lịch, đổi cấu hình, crawl và thêm nguồn vẫn trả `409 page_connection_required`/`page_needs_reconnect`.
+- DONE: Có thể ngừng theo dõi nguồn khi Page mất kết nối; thao tác này soft-disable nguồn, không xóa evidence, snapshots hay dữ liệu lưu trước đó.
+- PASS: Frontend ESLint, TypeScript typecheck, Vitest — 50 passed; Next production build đạt; `git diff --check` đạt.
+- PASS (fixture): In-app browser ở port `13106` xác nhận banner trạng thái, nút Crawl ngay/lưu nguồn bị disabled, và khả năng đọc dữ liệu cũ. Fixture cho thấy nguồn có lịch tắt hiển thị “Bật lịch 12 giờ” ở trạng thái disabled.
+- NOT_RUN: API pytest mới được viết nhưng không chạy được vì checkout không có `uv`, virtualenv hoặc `pytest`/FastAPI/SQLAlchemy trong Python hiện hành. Python AST parse đạt; chưa coi đó là test hành vi backend.
+- NOT_RUN: Không truy cập API thật, PostgreSQL/Redis, Meta hay provider live; không thay preview `13104`.

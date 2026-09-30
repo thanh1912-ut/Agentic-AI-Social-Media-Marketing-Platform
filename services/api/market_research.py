@@ -49,6 +49,7 @@ from .cache import cache_key, get_json_cache, set_json_cache
 from .db import get_db
 from .dependencies import current_user, membership_for, require_csrf, require_permission
 from .errors import ApiProblem
+from .permissions import has_permission
 from .job_service import accepted_response, dispatch_research_job
 from .market_research_schemas import (
     DraftFromReportIn,
@@ -83,6 +84,28 @@ MAX_ACTIVE_PAGES = 1
 MAX_SOURCES_PER_WORKSPACE = 20
 VN_TZ = ZoneInfo("Asia/Ho_Chi_Minh")
 FACEBOOK_GROUP_PATH_RE = re.compile(r"^/groups/([A-Za-z0-9._-]{1,128})/?$", re.IGNORECASE)
+
+
+def _require_market_manager(membership) -> None:
+    if not has_permission(membership.role, "market:manage"):
+        raise ApiProblem(
+            403,
+            "forbidden",
+            "Bạn không có quyền thực hiện thao tác này.",
+            details={"required_permission": "market:manage", "required_role": None},
+        )
+
+
+def _require_active_page(company: Company) -> None:
+    if company.page_connection_state == "active" and company.page_id:
+        return
+    code = "page_connection_required" if not company.page_id else "page_needs_reconnect"
+    message = (
+        "Owner cần kết nối Fanpage doanh nghiệp trước khi dùng các tác vụ Agentic."
+        if code == "page_connection_required"
+        else "Fanpage cần được kết nối lại trước khi tiếp tục các tác vụ Agentic."
+    )
+    raise ApiProblem(409, code, message, details={"workspace_id": company.id})
 
 
 def _group_out(row: MetaPageGroup, page_count: int, source_count: int) -> GroupOut:
@@ -246,9 +269,11 @@ async def _web_item_out(db: AsyncSession, entity: WebEntity, snapshot: WebEntity
               dependencies=[Depends(require_csrf)])
 async def update_web_crawl_settings(
     company_id: str, source_id: str, request: WebCrawlSettingsIn,
-    user: User = Depends(current_user), membership=Depends(require_permission("market:manage")),
+    user: User = Depends(current_user),
     db: AsyncSession = Depends(get_db),
 ):
+    membership = await membership_for(company_id, user, db)
+    _require_market_manager(membership)
     source = await db.scalar(select(ResearchSource).where(
         ResearchSource.company_id == company_id, ResearchSource.id == source_id,
         ResearchSource.source_type == "website", ResearchSource.active.is_(True),
@@ -264,6 +289,19 @@ async def update_web_crawl_settings(
                 or candidate.startswith(".") or len(candidate) > 253):
             raise ApiProblem(422, "invalid_resource_host", "Host tài nguyên cần là hostname riêng lẻ, không gồm scheme hoặc path.")
         hosts.append(candidate)
+    company = await db.get(Company, company_id)
+    if company is None:
+        raise ApiProblem(404, "not_found", "Không tìm thấy doanh nghiệp.")
+    if company.page_connection_state != "active" or not company.page_id:
+        pause_only = (
+            request.schedule_enabled is False
+            and request.crawl_mode == source.crawl_mode
+            and request.crawl_page_limit == source.crawl_page_limit
+            and request.render_mode == source.render_mode
+            and sorted(set(hosts)) == sorted(source.resource_hosts_json or [])
+        )
+        if not pause_only:
+            _require_active_page(company)
     source.crawl_mode = request.crawl_mode
     source.crawl_page_limit = request.crawl_page_limit
     source.render_mode = request.render_mode
@@ -311,9 +349,11 @@ async def list_web_crawl_runs(
               dependencies=[Depends(require_csrf)])
 async def update_collection_settings(
     company_id: str, source_id: str, request: CollectionSettingsIn,
-    user: User = Depends(current_user), membership=Depends(require_permission("market:manage")),
+    user: User = Depends(current_user),
     db: AsyncSession = Depends(get_db),
 ):
+    membership = await membership_for(company_id, user, db)
+    _require_market_manager(membership)
     source = await db.scalar(select(ResearchSource).where(
         ResearchSource.company_id == company_id, ResearchSource.id == source_id,
         ResearchSource.source_type.in_(["owned_facebook_page", "competitor_facebook_page", "facebook_group"]),
@@ -321,6 +361,17 @@ async def update_collection_settings(
     ).with_for_update())
     if source is None:
         raise ApiProblem(404, "not_found", "Không tìm thấy nguồn Facebook.")
+    company = await db.get(Company, company_id)
+    if company is None:
+        raise ApiProblem(404, "not_found", "Không tìm thấy doanh nghiệp.")
+    if company.page_connection_state != "active" or not company.page_id:
+        pause_only = (
+            request.schedule_enabled is False
+            and request.collector == source.collection_mode
+            and request.post_limit == (source.collection_post_limit or 50)
+        )
+        if not pause_only:
+            _require_active_page(company)
     previous_mode = source.collection_mode
     if source.source_type == "owned_facebook_page" and request.collector != "meta_api":
         raise ApiProblem(422, "owned_page_collector_fixed", "Fanpage doanh nghiệp chỉ dùng Meta API của Page đã kết nối.")
@@ -984,8 +1035,10 @@ async def create_source(
 @router.delete("/sources/{source_id}", status_code=204, dependencies=[Depends(require_csrf)])
 async def delete_source(
     company_id: str, source_id: str, user: User = Depends(current_user),
-    membership=Depends(require_permission("market:manage")), db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_db),
 ):
+    membership = await membership_for(company_id, user, db)
+    _require_market_manager(membership)
     row = await db.scalar(select(ResearchSource).where(
         ResearchSource.company_id == company_id, ResearchSource.id == source_id,
         ResearchSource.active.is_(True),

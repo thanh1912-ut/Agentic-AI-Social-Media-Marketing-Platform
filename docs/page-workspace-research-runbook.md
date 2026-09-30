@@ -133,6 +133,12 @@ Không dùng các lệnh này nếu đã tái sử dụng các cổng cho tiến
 - Nếu Meta báo token hết hạn/thiếu quyền, workspace chuyển sang `needs_reconnect`; tác vụ bị tạm dừng, thời điểm đến hạn được xóa nhưng lịch đã bật của Owner vẫn được giữ để phục hồi sau reconnect. Dữ liệu cũ vẫn đọc được. Owner dùng biểu mẫu **Xác minh lại Fanpage** với token mới của đúng Page.
 - API không trả token và không thử đăng bài. Metadata refresh không chứng minh Page có quyền publish.
 
+### Nguồn Nghiên cứu khi Page cần kết nối lại
+
+- Các báo cáo và dữ liệu đã lưu vẫn đọc được; crawl, thêm nguồn, bật lịch và tạo chiến dịch từ báo cáo bị khóa tới khi Owner xác minh lại Page.
+- Người có quyền quản lý nguồn có thể tắt lịch đang bật hoặc chọn **Ngừng theo dõi** để soft-disable nguồn. Thao tác này không xóa dữ liệu đã thu thập, evidence hay snapshots; yêu cầu xóa dữ liệu phải đi qua quy trình xóa riêng.
+- Khi Page đã kết nối lại, Owner/Editor có thể bật lịch hoặc chạy Crawl ngay theo quyền hiện có. Không có job nào được gửi tự động chỉ vì mở trang.
+
 ### Link và attachment metadata của bài Page
 
 - Migration `0024_page_post_media_references` bổ sung `link_url`, `attachments_json` và `attachment_metadata_status` cho bài của Page công ty.
