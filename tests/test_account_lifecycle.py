@@ -188,6 +188,7 @@ def test_page_activation_owns_workspace_and_token_does_not_grant_membership(
 
 @pytest.mark.parametrize(("step", "failure", "expected_code", "status"), [
     ("token_identity", "mismatch", "meta_page_identity_mismatch", 422),
+    ("token_identity", "type", "meta_page_type_unverified", 422),
     ("token_identity", "expired", "meta_token_invalid", 422),
     ("token_identity", "rejected", "meta_page_identity_rejected", 422),
     ("posts_read_access", "rejected", "meta_page_permission_missing", 422),
@@ -199,7 +200,7 @@ def test_page_verification_reports_step_and_safe_codes_without_changing_binding(
     account_client, monkeypatch, caplog, step, failure, expected_code, status, reconnect,
 ):
     from services.api.meta_client import (
-        MetaGraphReadError, MetaGraphRejected, MetaGraphTokenExpired, MetaPage, MetaPageIdentityMismatch,
+        MetaGraphReadError, MetaGraphRejected, MetaGraphTokenExpired, MetaPage, MetaPageIdentityMismatch, MetaPageTypeUnverified,
     )
 
     if reconnect:
@@ -219,6 +220,7 @@ def test_page_verification_reports_step_and_safe_codes_without_changing_binding(
 
     failures = {
         "mismatch": MetaPageIdentityMismatch(403), "expired": MetaGraphTokenExpired(400, 190, 463),
+        "type": MetaPageTypeUnverified(403),
         "rejected": MetaGraphRejected(400, 10, 33), "rate": MetaGraphRejected(429, 4),
         "read": MetaGraphReadError("Synthetic response unavailable"),
     }
@@ -255,6 +257,8 @@ def test_page_verification_reports_step_and_safe_codes_without_changing_binding(
     if failure == "rejected":
         assert error["details"]["meta_code"] == 10
         assert error["details"]["meta_subcode"] == 33
+    if failure in {"mismatch", "type"}:
+        assert "meta_http_status" not in error["details"]  # Local identity check, not an upstream 403.
     if reconnect:
         assert account_client.get(f"/api/v1/workspaces/{workspace_id}").json() == original
     else:

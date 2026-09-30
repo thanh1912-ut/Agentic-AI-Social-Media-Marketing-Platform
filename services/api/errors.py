@@ -13,7 +13,7 @@ from fastapi.responses import JSONResponse
 logger = logging.getLogger(__name__)
 _PAGE_VERIFICATION_ERRORS = frozenset({
     "meta_token_invalid", "meta_page_identity_mismatch", "meta_page_identity_rejected",
-    "meta_page_permission_missing", "meta_rate_limited", "meta_verification_failed",
+    "meta_page_permission_missing", "meta_rate_limited", "meta_verification_failed", "meta_page_type_unverified",
 })
 
 

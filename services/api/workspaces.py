@@ -27,7 +27,7 @@ from .schemas import InviteMemberRequest, InviteMemberResponse, MemberOut, PageW
 from .security import is_expired, new_opaque_token, token_hash
 from .auth import make_session
 from .rate_limits import rate_limit
-from .meta_client import MetaGraphClient, MetaGraphReadError, MetaGraphRejected, MetaGraphTokenExpired, MetaPage, MetaPageIdentityMismatch
+from .meta_client import MetaGraphClient, MetaGraphReadError, MetaGraphRejected, MetaGraphTokenExpired, MetaPage, MetaPageIdentityMismatch, MetaPageTypeUnverified
 from .meta_tokens import (
     TokenEncryptionUnavailable, decrypt_page_token, encrypt_page_token, token_fingerprint,
 )
@@ -39,7 +39,7 @@ router = APIRouter(tags=["workspaces"])
 def _verification_problem(error: Exception, step: str) -> ApiProblem:
     """Only expose allowlisted numeric Graph diagnostics, never its raw body."""
     details: dict[str, str | int] = {"verification_step": step}
-    if isinstance(error, MetaGraphRejected):
+    if isinstance(error, MetaGraphRejected) and not isinstance(error, (MetaPageIdentityMismatch, MetaPageTypeUnverified)):
         details["meta_http_status"] = error.status_code
         if error.graph_code is not None:
             details["meta_code"] = error.graph_code
@@ -49,6 +49,8 @@ def _verification_problem(error: Exception, step: str) -> ApiProblem:
         return ApiProblem(422, "meta_token_invalid", "Page Access Token hết hạn, bị thu hồi hoặc không hợp lệ. Hãy tạo token mới cho đúng Fanpage.", details=details)
     if isinstance(error, MetaPageIdentityMismatch):
         return ApiProblem(422, "meta_page_identity_mismatch", "Token thuộc tài khoản hoặc Page khác với Page ID đã nhập. Hãy chọn đúng Fanpage khi lấy Page Access Token; không dùng User Access Token.", details=details)
+    if isinstance(error, MetaPageTypeUnverified):
+        return ApiProblem(422, "meta_page_type_unverified", "Meta chưa xác nhận danh tính này là Fanpage. Hãy dùng Page ID và Page Access Token của Fanpage, không dùng profile cá nhân.", details=details)
     if isinstance(error, MetaGraphRejected):
         if error.retryable:
             return ApiProblem(429, "meta_rate_limited", "Meta đang giới hạn yêu cầu. Hãy chờ rồi xác minh lại; không cần thay token chỉ vì lỗi này.", details=details, retryable=True)

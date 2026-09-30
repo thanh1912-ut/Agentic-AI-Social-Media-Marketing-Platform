@@ -15,6 +15,7 @@ from services.api.meta_client import (
     MetaGraphRejected,
     MetaGraphTokenExpired,
     MetaPageIdentityMismatch,
+    MetaPageTypeUnverified,
     facebook_page_reference,
     safe_page_attachment_metadata,
     safe_external_link_url,
@@ -35,9 +36,9 @@ def test_verify_page_uses_bearer_header_and_returns_verified_identity() -> None:
         assert SECRET not in str(request.url)
         assert request.headers["Authorization"] == f"Bearer {SECRET}"
         assert request.url.path == "/v26.0/me"
-        assert request.url.params["fields"] == "id,name,picture"
+        assert request.url.params["fields"] == "id,name,picture,category"
         return httpx.Response(200, json={
-            "id": "123", "name": " Trang của tôi ",
+            "id": "123", "name": " Trang của tôi ", "category": "Company",
             "picture": {"data": {"url": "https://platform-lookaside.fbsbx.com/profile/photo.jpg?oh=signature&access_token=must-not-leak"}},
         })
 
@@ -53,7 +54,7 @@ def test_verify_page_uses_bearer_header_and_returns_verified_identity() -> None:
 def test_verify_page_discards_untrusted_avatar_hosts() -> None:
     async def handler(request: httpx.Request) -> httpx.Response:
         return httpx.Response(200, json={
-            "id": "123", "name": "Trang của tôi",
+            "id": "123", "name": "Trang của tôi", "category": "Company",
             "picture": {"data": {"url": "https://attacker.example/avatar.png"}},
         })
 
@@ -77,6 +78,19 @@ def test_verify_page_rejects_another_token_identity_without_exposing_it() -> Non
         _run(exercise())
     assert SECRET not in str(error.value)
     assert "999" not in str(error.value)
+
+
+@pytest.mark.parametrize("category", [None, "", "  ", 0])
+def test_verify_page_does_not_accept_a_matching_profile_as_a_page(category) -> None:
+    async def handler(_request):
+        return httpx.Response(200, json={"id": "123", "name": "Matching profile", "category": category})
+
+    async def exercise():
+        async with MetaGraphClient("123", SECRET, transport=httpx.MockTransport(handler)) as client:
+            await client.verify_page()
+
+    with pytest.raises(MetaPageTypeUnverified):
+        _run(exercise())
 
 
 @pytest.mark.parametrize("records", [[], [{"id": "123_456"}]])

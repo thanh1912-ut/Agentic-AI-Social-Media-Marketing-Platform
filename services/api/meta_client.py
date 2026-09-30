@@ -96,6 +96,10 @@ class MetaPageIdentityMismatch(MetaGraphRejected):
     """The supplied token's /me identity is not the requested Page."""
 
 
+class MetaPageTypeUnverified(MetaGraphRejected):
+    """The token identity did not include a Page-specific category."""
+
+
 class MetaGraphOutcomeUnknown(MetaGraphError):
     """A publish request may have succeeded; reconcile before any retry."""
 
@@ -403,13 +407,19 @@ class MetaGraphClient:
             "GET",
             f"/{self.graph_version}/me",
             publishing=False,
-            params={"fields": "id,name,picture"},
+            params={"fields": "id,name,picture,category"},
         )
         page_id, name = payload.get("id"), payload.get("name")
         if page_id != self.page_id:
             raise MetaPageIdentityMismatch(403)
         if not isinstance(name, str) or not name.strip():
             raise MetaGraphReadError("Meta Graph returned an invalid Page name.")
+        # A matching numeric identity and a /posts edge alone can also belong
+        # to a personal User token. Require the Page-only field; a profile
+        # rejects this field or cannot supply it. Do not guess the node type.
+        category = payload.get("category")
+        if not isinstance(category, str) or not category.strip():
+            raise MetaPageTypeUnverified(403)
         picture = payload.get("picture")
         picture_data = picture.get("data") if isinstance(picture, dict) else None
         picture_url = picture_data.get("url") if isinstance(picture_data, dict) else None
