@@ -2211,6 +2211,467 @@
         "title": "CollectionSettingsIn",
         "type": "object"
       },
+      "CommentCandidateOut": {
+        "additionalProperties": false,
+        "properties": {
+          "alias_scope": {
+            "const": "post_read_only",
+            "default": "post_read_only",
+            "title": "Alias Scope",
+            "type": "string"
+          },
+          "author_alias": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Author Alias"
+          },
+          "author_identity_known": {
+            "default": false,
+            "title": "Author Identity Known",
+            "type": "boolean"
+          },
+          "content_status": {
+            "const": "privacy_hold",
+            "default": "privacy_hold",
+            "title": "Content Status",
+            "type": "string"
+          },
+          "content_truncated": {
+            "title": "Content Truncated",
+            "type": "boolean"
+          },
+          "expires_at": {
+            "format": "date-time",
+            "title": "Expires At",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "likes": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Likes"
+          },
+          "observed_at": {
+            "format": "date-time",
+            "title": "Observed At",
+            "type": "string"
+          },
+          "published_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Published At"
+          },
+          "reaction_breakdown": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "title": "Reaction Breakdown",
+            "type": "object"
+          },
+          "reactions": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reactions"
+          },
+          "reactions_precision": {
+            "default": "unknown",
+            "enum": [
+              "exact",
+              "approximate",
+              "lower_bound",
+              "unknown"
+            ],
+            "title": "Reactions Precision",
+            "type": "string"
+          },
+          "reactions_raw": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reactions Raw"
+          },
+          "reply_count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reply Count"
+          },
+          "text": {
+            "title": "Text",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "author_alias",
+          "text",
+          "published_at",
+          "observed_at",
+          "expires_at",
+          "likes",
+          "reactions",
+          "reply_count",
+          "content_truncated"
+        ],
+        "title": "CommentCandidateOut",
+        "type": "object"
+      },
+      "CommentCandidatesPage": {
+        "additionalProperties": false,
+        "properties": {
+          "comments": {
+            "items": {
+              "$ref": "#/components/schemas/CommentCandidateOut"
+            },
+            "title": "Comments",
+            "type": "array"
+          },
+          "coverage": {
+            "additionalProperties": true,
+            "title": "Coverage",
+            "type": "object"
+          },
+          "evidence_id": {
+            "title": "Evidence Id",
+            "type": "string"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
+          },
+          "observation_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Observation Id"
+          },
+          "provider_transmission_allowed": {
+            "const": false,
+            "default": false,
+            "title": "Provider Transmission Allowed",
+            "type": "boolean"
+          },
+          "source_id": {
+            "title": "Source Id",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "privacy_hold",
+              "no_candidates",
+              "processing_required"
+            ],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "source_id",
+          "evidence_id",
+          "observation_id",
+          "status"
+        ],
+        "title": "CommentCandidatesPage",
+        "type": "object"
+      },
+      "CommentProcessingIn": {
+        "additionalProperties": false,
+        "properties": {
+          "assessment_reference": {
+            "maxLength": 1000,
+            "minLength": 5,
+            "title": "Assessment Reference",
+            "type": "string"
+          },
+          "expected_decision_id": {
+            "anyOf": [
+              {
+                "maxLength": 36,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expected Decision Id"
+          },
+          "policy_revision_no": {
+            "minimum": 1.0,
+            "title": "Policy Revision No",
+            "type": "integer"
+          },
+          "status": {
+            "default": "pending",
+            "enum": [
+              "pending",
+              "active"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "valid_until": {
+            "format": "date-time",
+            "title": "Valid Until",
+            "type": "string"
+          }
+        },
+        "required": [
+          "expected_decision_id",
+          "policy_revision_no",
+          "assessment_reference",
+          "valid_until"
+        ],
+        "title": "CommentProcessingIn",
+        "type": "object"
+      },
+      "CommentProcessingOut": {
+        "additionalProperties": false,
+        "properties": {
+          "assessed_by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Assessed By"
+          },
+          "assessment_reference": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Assessment Reference"
+          },
+          "candidate_content_status": {
+            "const": "privacy_hold",
+            "default": "privacy_hold",
+            "title": "Candidate Content Status",
+            "type": "string"
+          },
+          "candidate_versions_count": {
+            "default": 0,
+            "title": "Candidate Versions Count",
+            "type": "integer"
+          },
+          "collection_allowed": {
+            "default": false,
+            "title": "Collection Allowed",
+            "type": "boolean"
+          },
+          "created_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created At"
+          },
+          "decision_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Decision Id"
+          },
+          "effective_status": {
+            "enum": [
+              "not_configured",
+              "pending",
+              "active",
+              "revoked",
+              "expired",
+              "policy_changed",
+              "assessor_unavailable",
+              "page_unavailable",
+              "source_unavailable",
+              "engine_unavailable",
+              "unsupported"
+            ],
+            "title": "Effective Status",
+            "type": "string"
+          },
+          "job_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Job Id"
+          },
+          "legal_basis_verified_by_platform": {
+            "const": false,
+            "default": false,
+            "title": "Legal Basis Verified By Platform",
+            "type": "boolean"
+          },
+          "pending_edges": {
+            "default": 0,
+            "title": "Pending Edges",
+            "type": "integer"
+          },
+          "policy_revision_no": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Policy Revision No"
+          },
+          "provider_transmission_allowed": {
+            "const": false,
+            "default": false,
+            "title": "Provider Transmission Allowed",
+            "type": "boolean"
+          },
+          "quarantine_max_hours": {
+            "const": 24,
+            "default": 24,
+            "title": "Quarantine Max Hours",
+            "type": "integer"
+          },
+          "quarantined_candidate_versions_count": {
+            "default": 0,
+            "title": "Quarantined Candidate Versions Count",
+            "type": "integer"
+          },
+          "scope": {
+            "const": "local_comment_quarantine_v1",
+            "default": "local_comment_quarantine_v1",
+            "title": "Scope",
+            "type": "string"
+          },
+          "source_id": {
+            "title": "Source Id",
+            "type": "string"
+          },
+          "status": {
+            "anyOf": [
+              {
+                "enum": [
+                  "pending",
+                  "active",
+                  "revoked"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Status"
+          },
+          "supported": {
+            "title": "Supported",
+            "type": "boolean"
+          },
+          "valid_until": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Valid Until"
+          }
+        },
+        "required": [
+          "source_id",
+          "supported",
+          "effective_status"
+        ],
+        "title": "CommentProcessingOut",
+        "type": "object"
+      },
+      "CommentProcessingRevokeIn": {
+        "additionalProperties": false,
+        "properties": {
+          "expected_decision_id": {
+            "maxLength": 36,
+            "minLength": 1,
+            "title": "Expected Decision Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "expected_decision_id"
+        ],
+        "title": "CommentProcessingRevokeIn",
+        "type": "object"
+      },
       "CompetitorPostOut": {
         "additionalProperties": false,
         "properties": {
@@ -2232,6 +2693,11 @@
             "maxItems": 100,
             "title": "Attachments",
             "type": "array"
+          },
+          "comment_coverage": {
+            "additionalProperties": true,
+            "title": "Comment Coverage",
+            "type": "object"
           },
           "content_truncated": {
             "default": false,
@@ -2309,6 +2775,13 @@
               }
             ],
             "title": "Published At"
+          },
+          "reaction_breakdown": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "title": "Reaction Breakdown",
+            "type": "object"
           },
           "source_id": {
             "title": "Source Id",
@@ -13576,6 +14049,225 @@
         ]
       }
     },
+    "/api/v1/workspaces/{company_id}/market-research/sources/{source_id}/comment-processing": {
+      "get": {
+        "operationId": "get_comment_processing_api_v1_workspaces__company_id__market_research_sources__source_id__comment_processing_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "company_id",
+            "required": true,
+            "schema": {
+              "title": "Company Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "source_id",
+            "required": true,
+            "schema": {
+              "title": "Source Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommentProcessingOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Comment Processing",
+        "tags": [
+          "market-research"
+        ]
+      },
+      "put": {
+        "operationId": "record_comment_processing_api_v1_workspaces__company_id__market_research_sources__source_id__comment_processing_put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "company_id",
+            "required": true,
+            "schema": {
+              "title": "Company Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "source_id",
+            "required": true,
+            "schema": {
+              "title": "Source Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CommentProcessingIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommentProcessingOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Record Comment Processing",
+        "tags": [
+          "market-research"
+        ]
+      }
+    },
+    "/api/v1/workspaces/{company_id}/market-research/sources/{source_id}/comment-processing/revoke": {
+      "post": {
+        "operationId": "revoke_comment_processing_api_v1_workspaces__company_id__market_research_sources__source_id__comment_processing_revoke_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "company_id",
+            "required": true,
+            "schema": {
+              "title": "Company Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "source_id",
+            "required": true,
+            "schema": {
+              "title": "Source Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CommentProcessingRevokeIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommentProcessingOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Revoke Comment Processing",
+        "tags": [
+          "market-research"
+        ]
+      }
+    },
     "/api/v1/workspaces/{company_id}/market-research/sources/{source_id}/crawl": {
       "post": {
         "operationId": "crawl_competitor_source_now_api_v1_workspaces__company_id__market_research_sources__source_id__crawl_post",
@@ -13954,6 +14646,108 @@
           }
         },
         "summary": "List Competitor Posts",
+        "tags": [
+          "market-research"
+        ]
+      }
+    },
+    "/api/v1/workspaces/{company_id}/market-research/sources/{source_id}/posts/{evidence_id}/comments": {
+      "get": {
+        "operationId": "comment_candidates_api_v1_workspaces__company_id__market_research_sources__source_id__posts__evidence_id__comments_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "company_id",
+            "required": true,
+            "schema": {
+              "title": "Company Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "source_id",
+            "required": true,
+            "schema": {
+              "title": "Source Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "evidence_id",
+            "required": true,
+            "schema": {
+              "title": "Evidence Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 25,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommentCandidatesPage"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Comment Candidates",
         "tags": [
           "market-research"
         ]

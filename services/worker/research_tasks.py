@@ -53,6 +53,7 @@ from services.research.privacy import (
     raw_quarantine_expiry,
     redact_facebook_text,
 )
+from services.research.public_comments import active_public_comment_decision, persist_public_comment_candidates
 from services.research.website_entities import PARSER_VERSION
 from services.worker.ai_budget import (
     PricingUnavailable,
@@ -177,6 +178,7 @@ async def _persist_evidence(
     raw_body: bytes | None, observed_at: datetime,
     page_id: str | None = None, external_post_id: str | None = None,
     public_external_id: str | None = None, parser_version: str = "market-extract-v1",
+    public_comment_post: dict[str, Any] | None = None, comment_decision_id: str | None = None,
 ) -> str:
     now = utcnow()
     if source.source_type in {"owned_facebook_page", "competitor_facebook_page", "facebook_group"}:
@@ -190,6 +192,11 @@ async def _persist_evidence(
     text = " ".join(text.split())[:12000]
     content_hash = hashlib.sha256(text.encode("utf-8")).hexdigest()
     async with SessionLocal() as db:
+        await db.flush()  # Acquire the job fence before tenant/source locks.
+        if public_comment_post is not None:
+            company = await db.scalar(select(Company).where(Company.id == company_id).with_for_update())
+            if company is None or company.page_connection_state != "active":
+                raise CrawlError("page_connection_required", "Workspace cần kết nối Page hợp lệ.")
         # Serialize persistence with an Owner's source-purge request. A crawl
         # that was already in flight must not reinsert data after the source
         # has been disabled for deletion.
@@ -318,6 +325,10 @@ async def _persist_evidence(
                         count_definition="post_comments_summary", status="privacy_hold",
                         pagination_exhausted=False, stop_reason="privacy_hold",
                     ))
+        if public_comment_post is not None and comment_decision_id is not None:
+            await db.flush()
+            await persist_public_comment_candidates(db, source=source, evidence=evidence, observation=observation,
+                                                   post=public_comment_post, decision_id=comment_decision_id)
         await db.commit()
         if raw_to_upload:
             # Commit the expiry pointer before writing the object. If the
@@ -1315,11 +1326,15 @@ async def _collect_public_competitor_page(
     try:
         await _reserve_facebook_request_slot()
         known_urls = await _known_competitor_post_urls(company_id, source.id)
+        async with SessionLocal() as decision_db:
+            comment_decision = await active_public_comment_decision(decision_db, source)
+            comment_decision_id = comment_decision.id if comment_decision else None
         result = await collect_public_facebook_page(
             source.url, run_id=run_id,
             post_limit=min(100, max(1, source.collection_post_limit)),
             known_post_urls=known_urls, runner_path=runner_path,
             heartbeat=lambda: _facebook_cli_heartbeat(lock_session, job_id),
+            include_comments=comment_decision_id is not None,
         )
     except CrawlError as error:
         blocked_codes = {"login_required", "access_denied", "challenge"}
@@ -1391,6 +1406,8 @@ async def _collect_public_competitor_page(
         metrics: dict[str, Any] = {
             **metric_values,
             "_provenance": metric_provenance,
+            "reaction_breakdown": post.get("reaction_breakdown", {}),
+            "comment_coverage": post.get("comment_coverage", {}),
             "privacy_redaction": redaction,
             "content_truncated": bool(post.get("text_truncated"))
             or len(redacted_post_text) > len(post_text),
@@ -1402,7 +1419,8 @@ async def _collect_public_competitor_page(
             title=post_text.splitlines()[0][:1000] if post_text else "",
             text=post_text, published_at=published_at,
             metrics=metrics, comments=[], raw_body=None, observed_at=observed_at,
-            public_external_id=external_id, parser_version="facebook-cli-adapter-v1",
+            public_external_id=external_id, parser_version="facebook-cli-adapter-v2",
+            public_comment_post=post, comment_decision_id=comment_decision_id,
         )
         saved += 1
         for key in metric_counts:

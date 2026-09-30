@@ -2,6 +2,11 @@
 
 import { apiRequest } from './client';
 import type { ApiAcceptedResponse } from './types';
+import type { components } from './schema';
+
+export type CommentProcessing = components['schemas']['CommentProcessingOut'];
+export type CommentProcessingRequest = components['schemas']['CommentProcessingIn'];
+export type CommentCandidatesPage = components['schemas']['CommentCandidatesPage'];
 
 export interface MarketGroup {
   id: string;
@@ -77,6 +82,8 @@ export interface ResearchPrivacyPolicy {
 }
 
 export interface CompetitorPost {
+  reaction_breakdown?: Record<string, number>;
+  comment_coverage?: Record<string, unknown>;
   id: string;
   source_id: string;
   external_id: string | null;
@@ -313,6 +320,10 @@ export const marketResearchKeys = {
     ['workspaces', workspaceId, 'market-research', 'competitor-runs', sourceId] as const,
   privacyPolicy: (workspaceId: string, sourceId: string) =>
     ['workspaces', workspaceId, 'market-research', 'privacy-policy', sourceId] as const,
+  commentProcessing: (workspaceId: string, sourceId: string) =>
+    ['workspaces', workspaceId, 'market-research', 'comment-processing', sourceId] as const,
+  commentCandidates: (workspaceId: string, sourceId: string) =>
+    ['workspaces', workspaceId, 'market-research', 'comment-candidates', sourceId] as const,
 };
 
 export const marketResearchApi = {
@@ -381,6 +392,20 @@ export const marketResearchApi = {
     apiRequest<CompetitorCollectionRun[]>(
       path(workspaceId) + '/sources/' + encodeURIComponent(sourceId) + '/collection-runs',
     ),
+  commentProcessing: (workspaceId: string, sourceId: string) => apiRequest<CommentProcessing>(
+    path(workspaceId) + '/sources/' + encodeURIComponent(sourceId) + '/comment-processing',
+  ),
+  saveCommentProcessing: (workspaceId: string, sourceId: string, body: CommentProcessingRequest) => apiRequest<CommentProcessing>(
+    path(workspaceId) + '/sources/' + encodeURIComponent(sourceId) + '/comment-processing', { method: 'PUT', body },
+  ),
+  revokeCommentProcessing: (workspaceId: string, sourceId: string, decisionId: string) => apiRequest<CommentProcessing>(
+    path(workspaceId) + '/sources/' + encodeURIComponent(sourceId) + '/comment-processing/revoke',
+    { method: 'POST', body: { expected_decision_id: decisionId } },
+  ),
+  commentCandidates: (workspaceId: string, sourceId: string, evidenceId: string, cursor?: string) => apiRequest<CommentCandidatesPage>(
+    path(workspaceId) + '/sources/' + encodeURIComponent(sourceId) + '/posts/' + encodeURIComponent(evidenceId) + '/comments',
+    { query: { limit: 25, cursor } },
+  ),
   competitorPosts: (workspaceId: string, sourceId: string, cursor?: string) =>
     apiRequest<CompetitorPostsPage>(
       path(workspaceId) + '/sources/' + encodeURIComponent(sourceId) + '/posts',

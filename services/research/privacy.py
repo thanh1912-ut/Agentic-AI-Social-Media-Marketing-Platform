@@ -192,6 +192,11 @@ def _safe_facebook_metrics(metrics: dict[str, object]) -> dict[str, object]:
         result["attachment_metadata_status"] = attachment_status
     if type(metrics.get("content_truncated")) is bool:
         result["content_truncated"] = metrics["content_truncated"]
+    from .facebook_cli_collector import safe_comment_coverage, safe_reaction_breakdown
+    if "reaction_breakdown" in metrics:
+        result["reaction_breakdown"] = safe_reaction_breakdown(metrics["reaction_breakdown"])
+    if "comment_coverage" in metrics:
+        result["comment_coverage"] = safe_comment_coverage(metrics["comment_coverage"])
     comments_privacy = metrics.get("comments_privacy")
     if isinstance(comments_privacy, dict) and comments_privacy.get("status") == "privacy_hold":
         withheld_count = comments_privacy.get("withheld_text_count")

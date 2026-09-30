@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"crypto/tls"
+	"encoding/json"
 	"errors"
 	"io"
 	"net"
@@ -11,6 +12,7 @@ import (
 	"net/netip"
 	"strings"
 	"testing"
+	"unicode/utf8"
 
 	"github.com/tamnd/facebook-cli/fb"
 )
@@ -236,5 +238,75 @@ func TestNormalizePostRequiresPageOwnershipAndDoesNotTurnMissingZeroIntoMetric(t
 	}
 	if !strings.Contains(engineVersion, "8e251abf0bc6fd28acca9b9fa1cafbd07ccae39") {
 		t.Fatalf("engine version does not record the pinned upstream revision: %s", engineVersion)
+	}
+}
+
+func TestEmbeddedCommentsKeepAggregateMetricsAndScopeAliasesToPost(t *testing.T) {
+	post := fb.Post{ID: "456", URL: "https://www.facebook.com/111/posts/456", Author: fb.Ref{ID: "111"},
+		Counts: fb.Counts{Comments: 200}, CommentsCursor: "private-cursor-not-exported",
+		Comments: []fb.Comment{
+			{ID: "c1", Author: fb.Ref{ID: "personal-1", Kind: "profile", Name: "Tên Người Thử"},
+				Body: fb.Text{Text: "Tên Người Thử hỏi giá"}, Counts: fb.Counts{Reactions: 9, ByType: map[string]int{"Like": 2, "Love": 7}}, Replies: 3},
+			{ID: "c2", Author: fb.Ref{ID: "personal-1", Kind: "profile"}, Body: fb.Text{Text: "Câu hỏi tiếp theo"}},
+			{ID: "c3", Body: fb.Text{Text: "Không biết tác giả"}},
+		}}
+	record, ok := normalizePost(post, "111")
+	if !ok {
+		t.Fatal("verified Page post rejected")
+	}
+	budget := 500
+	attachComments(&record, post, &budget)
+	if len(record.Comments) != 3 || record.Comments[0].AuthorAlias != "user_name01" || record.Comments[1].AuthorAlias != "user_name01" || record.Comments[2].AuthorAlias != "user_name02" {
+		t.Fatal("incorrect per-post aliases")
+	}
+	if *record.Comments[0].Likes != 2 || *record.Comments[0].Reactions != 9 || *record.Comments[0].ReplyCount != 3 {
+		t.Fatal("likes must not be substituted by total reactions")
+	}
+	if record.Comments[1].Likes != nil || record.Comments[1].Reactions != nil || record.Comments[1].ReplyCount != nil {
+		t.Fatal("ambiguous zero must stay missing")
+	}
+	data, _ := json.Marshal(record)
+	for _, forbidden := range []string{"personal-1", "Tên Người Thử", "private-cursor-not-exported"} {
+		if strings.Contains(string(data), forbidden) {
+			t.Fatalf("personal identity/cursor leaked: %s", forbidden)
+		}
+	}
+	if record.CommentCoverage.HistoryComplete || record.CommentCoverage.ReturnedCount != 3 || !record.CommentCoverage.NextCursorPresent {
+		t.Fatal("partial coverage must be explicit")
+	}
+}
+
+func TestCommentBudgetDedupAndUnicodeMentions(t *testing.T) {
+	person := fb.Ref{Kind: "profile", ID: "person"}
+	post := fb.Post{Comments: []fb.Comment{
+		{ID: "one", Body: fb.Text{Text: "😀 An hỏi", Ranges: []fb.Range{{Offset: 3, Length: 2, Entity: &person}}}},
+		{ID: "one", Body: fb.Text{Text: "duplicate"}},
+		{ID: "two", Body: fb.Text{Text: strings.Repeat("á", 20001)}},
+		{ID: "three", Body: fb.Text{Text: "over budget"}},
+	}}
+	record := postRecord{}
+	remaining := 2
+	attachComments(&record, post, &remaining)
+	if len(record.Comments) != 2 || record.Comments[0].Text != "😀 [đã che tên tài khoản] hỏi" {
+		t.Fatal("UTF-16 mention masking/dedup failed")
+	}
+	if !record.Comments[1].TextTruncated || utf8.RuneCountInString(record.Comments[1].Text) != 20000 {
+		t.Fatal("Unicode truncation failed")
+	}
+	if record.CommentCoverage.StopReason != "comment_batch_limit_reached" || remaining != 0 {
+		t.Fatal("budget exceeded")
+	}
+}
+
+func TestUnavailableCommentReadKeepsPostAndSourceCountWithoutInventingEmptyHistory(t *testing.T) {
+	record := postRecord{ID: "456", Text: "Previously received Page post", Counts: postCounts{Comments: intPointer(200)}}
+	markCommentReadUnavailable(&record, "login_required")
+	if record.Text != "Previously received Page post" || record.ID != "456" {
+		t.Fatal("failed comment read must not discard a valid feed post")
+	}
+	if record.CommentCoverage.Mode != "unavailable" || record.CommentCoverage.StopReason != "login_required" ||
+		record.CommentCoverage.HistoryComplete || record.CommentCoverage.ReturnedCount != 0 ||
+		*record.CommentCoverage.ProviderReportedCount != 200 {
+		t.Fatal("unavailable comment read must preserve its reason and distinct source count")
 	}
 }

@@ -80,6 +80,8 @@ from services.research.facebook_public_crawler import normalize_facebook_page_ur
 from services.research.privacy import hold_comment_text, redact_facebook_text
 
 
+from services.research.facebook_cli_collector import safe_comment_coverage, safe_reaction_breakdown
+
 router = APIRouter(prefix="/workspaces/{company_id}/market-research", tags=["market-research"])
 MAX_ACTIVE_PAGES = 1
 MAX_SOURCES_PER_WORKSPACE = 20
@@ -511,6 +513,8 @@ async def list_competitor_posts(
             link_url=safe_external_link_url(raw_metrics.get("link_url")),
             attachments=attachments, attachment_metadata_status=attachment_status,
             content_truncated=bool(raw_metrics.get("content_truncated", False)),
+            reaction_breakdown=safe_reaction_breakdown(raw_metrics.get("reaction_breakdown")),
+            comment_coverage=safe_comment_coverage(raw_metrics.get("comment_coverage")),
         ))
     audience = await db.scalar(select(ResearchSourceMetricSnapshot).where(
         ResearchSourceMetricSnapshot.company_id == company_id,

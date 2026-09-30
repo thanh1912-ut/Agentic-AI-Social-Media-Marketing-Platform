@@ -61,11 +61,12 @@ async def collect_public_facebook_page(
     known_post_urls: list[str] | None = None,
     runner_path: str | Path | None = None,
     heartbeat: Callable[[], Awaitable[None]] | None = None,
+    include_comments: bool = False,
 ) -> FacebookCliResult:
     return await _collect_public_facebook_source(
         source_type="competitor_facebook_page", source_url=page_url,
         run_id=run_id, post_limit=post_limit, known_post_urls=known_post_urls,
-        runner_path=runner_path, heartbeat=heartbeat,
+        runner_path=runner_path, heartbeat=heartbeat, include_comments=include_comments,
     )
 
 
@@ -92,6 +93,7 @@ async def _collect_public_facebook_source(
     known_post_urls: list[str] | None,
     runner_path: str | Path | None,
     heartbeat: Callable[[], Awaitable[None]] | None,
+    include_comments: bool = False,
 ) -> FacebookCliResult | FacebookCliGroupResult:
     executable = Path(runner_path or os.getenv("FACEBOOK_CLI_RUNNER_PATH", "")).expanduser()
     if not executable.is_absolute() or not executable.is_file() or not os.access(executable, os.X_OK):
@@ -114,6 +116,7 @@ async def _collect_public_facebook_source(
         "post_limit": post_limit,
         "known_post_urls": known,
         "max_http_requests": 20,
+        "include_comments": include_comments and not is_group,
     }
     payload = json.dumps(request, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
     env = {
@@ -257,6 +260,7 @@ async def _collect_public_facebook_source(
         }
         return FacebookCliGroupResult(group=group, coverage=coverage, engine_version=summary_version)
 
+    total_comments = 0
     unique: dict[str, dict[str, Any]] = {}
     for post in posts:
         try:
@@ -264,6 +268,23 @@ async def _collect_public_facebook_source(
         except CrawlError:
             continue
         post["url"] = post_url
+        records = post.pop("comment_records", [])
+        if include_comments:
+            if post.get("author_id") != metadata.get("id") and post.get("delegate_page_id") != metadata.get("id"):
+                raise CrawlError("parser_error", "Bình luận không gắn với bài của Page đã xác minh.")
+            post["comment_records"] = _safe_comments(records)
+            total_comments += len(post["comment_records"])
+            if total_comments > 500:
+                raise CrawlError("parser_error", "Bình luận vượt ngân sách batch.")
+        post["comment_coverage"] = safe_comment_coverage(post.get("comment_coverage"))
+        if include_comments:
+            received = len(post["comment_records"])
+            if (post["comment_coverage"]["returned_count"] != received
+                    or (received and post["comment_coverage"]["mode"] != "tier0_embedded")):
+                raise CrawlError("parser_error", "Độ đầy đủ bình luận không khớp dữ liệu runner trả về.")
+        if not include_comments:
+            post["comment_coverage"] = safe_comment_coverage(None)
+        post["reaction_breakdown"] = safe_reaction_breakdown(post.get("reaction_breakdown"))
         unique[post_url] = post
     posts = list(unique.values())[:post_limit]
     summary_version = str(summary.get("engine_version") or ENGINE_VERSION)
@@ -312,6 +333,9 @@ async def _collect_public_facebook_source(
         "page_name": metadata.get("name"),
         "page_id": metadata.get("id"),
         "page_kind": metadata.get("kind"),
+        "comment_records_received": sum(len(p.get("comment_records", [])) for p in posts),
+        "comments_requested": include_comments,
+        "comment_history_complete": False,
     }
     return FacebookCliResult(page=metadata, posts=posts, coverage=coverage, engine_version=summary_version)
 
@@ -362,3 +386,76 @@ async def _stop_process_group(process: asyncio.subprocess.Process) -> None:
         except (ProcessLookupError, PermissionError):
             process.kill()
         await process.wait()
+
+
+REACTION_TYPES = {"LIKE", "LOVE", "CARE", "HAHA", "WOW", "SAD", "ANGRY"}
+
+
+def safe_reaction_breakdown(value: object) -> dict[str, int]:
+    if not isinstance(value, dict):
+        return {}
+    return {key: count for key, count in value.items()
+            if key in REACTION_TYPES and type(count) is int and 0 <= count <= 2**63 - 1}
+
+
+def safe_comment_coverage(value: object) -> dict[str, Any]:
+    value = value if isinstance(value, dict) else {}
+    mode = value.get("mode") if value.get("mode") in {"tier0_embedded", "not_requested", "unavailable"} else "not_requested"
+    received = value.get("returned_count")
+    reported = value.get("provider_reported_count")
+    return {"mode": mode, "returned_count": received if type(received) is int and 0 <= received <= 100 else 0,
+            "provider_reported_count": reported if type(reported) is int and 0 <= reported <= 2**63-1 else None,
+            "history_complete": False, "next_cursor_present": value.get("next_cursor_present") is True,
+            "replies_status": "not_read_tier0", "stop_reason": value.get("stop_reason") if value.get("stop_reason") in {
+                "signed_out_embedded_comments", "comment_batch_limit_reached", "not_requested",
+                "access_denied", "login_required", "challenge", "rate_limited", "request_budget_reached",
+                "page_identity_unverified", "network_error", "parser_error", "response_too_large",
+                "no_posts_returned", "not_found", "invalid_request", "timeout"
+            } else "not_requested"}
+
+
+def _safe_comments(value: object) -> list[dict[str, Any]]:
+    if not isinstance(value, list) or len(value) > 100:
+        raise CrawlError("parser_error", "Danh sách bình luận từ runner không hợp lệ.")
+    records, seen = [], set()
+    for c in value:
+        if not isinstance(c, dict):
+            raise CrawlError("parser_error", "Bản ghi bình luận không hợp lệ.")
+        identity, alias, text = c.get("id"), c.get("author_alias"), c.get("text")
+        if (not isinstance(identity, str) or not re.fullmatch(r"[A-Za-z0-9_+=/.-]{1,100}", identity)
+                or not isinstance(alias, str) or not re.fullmatch(r"user_name[0-9]{2,3}", alias)
+                or not isinstance(text, str) or len(text) > 20_000 or type(c.get("text_truncated")) is not bool):
+            raise CrawlError("parser_error", "Định danh/nội dung bình luận không hợp lệ.")
+        if identity in seen:
+            continue
+        seen.add(identity)
+        record = {"id": identity, "author_alias": alias, "text": text,
+                  "author_identity_known": c.get("author_identity_known") is True,
+                  "text_truncated": c["text_truncated"], "published_at": None}
+        for key in ("likes", "reactions", "reply_count"):
+            n = c.get(key)
+            record[key] = n if type(n) is int and 0 <= n <= 2**63-1 else None
+        record["reaction_breakdown"] = safe_reaction_breakdown(c.get("reaction_breakdown"))
+        raw = c.get("reactions_raw")
+        record["reactions_raw"] = (raw.strip() if isinstance(raw, str)
+            and re.fullmatch(r"[0-9][0-9 .,KkMmBb+]{0,31}", raw.strip()) else None)
+        record["reactions_precision"] = "unknown"
+        if record["reactions_raw"] is not None:
+            if "+" in record["reactions_raw"]:
+                record["reactions_precision"] = "lower_bound"
+            elif re.search(r"[KkMmBb]", record["reactions_raw"]):
+                record["reactions_precision"] = "approximate"
+            else:
+                record["reactions_precision"] = "exact"
+        if record["likes"] != record["reaction_breakdown"].get("LIKE"):
+            record["likes"] = None
+        date = c.get("published_at")
+        if isinstance(date, str):
+            try:
+                parsed = datetime.fromisoformat(date.replace("Z", "+00:00"))
+                if parsed.tzinfo is not None:
+                    record["published_at"] = parsed
+            except ValueError:
+                pass
+        records.append(record)
+    return records

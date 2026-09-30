@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"math"
 	"net"
@@ -17,6 +18,7 @@ import (
 	"strings"
 	"sync/atomic"
 	"time"
+	"unicode/utf16"
 	"unicode/utf8"
 
 	"github.com/tamnd/facebook-cli/fb"
@@ -47,6 +49,7 @@ type request struct {
 	PostLimit       int      `json:"post_limit"`
 	KnownPostURLs   []string `json:"known_post_urls"`
 	MaxHTTPRequests int      `json:"max_http_requests"`
+	IncludeComments bool     `json:"include_comments"`
 }
 
 type envelope struct {
@@ -93,17 +96,44 @@ type postCounts struct {
 }
 
 type postRecord struct {
-	ID             string            `json:"id,omitempty"`
-	SourceID       string            `json:"source_id,omitempty"`
-	URL            string            `json:"url"`
-	AuthorID       string            `json:"author_id,omitempty"`
-	DelegatePageID string            `json:"delegate_page_id,omitempty"`
-	PublishedAt    *time.Time        `json:"published_at,omitempty"`
-	Text           string            `json:"text"`
-	TextTruncated  bool              `json:"text_truncated"`
-	Counts         postCounts        `json:"counts"`
-	CountsRaw      map[string]string `json:"counts_raw,omitempty"`
-	Envelope       envelope          `json:"provenance"`
+	ID                string            `json:"id,omitempty"`
+	SourceID          string            `json:"source_id,omitempty"`
+	URL               string            `json:"url"`
+	AuthorID          string            `json:"author_id,omitempty"`
+	DelegatePageID    string            `json:"delegate_page_id,omitempty"`
+	PublishedAt       *time.Time        `json:"published_at,omitempty"`
+	Text              string            `json:"text"`
+	TextTruncated     bool              `json:"text_truncated"`
+	Counts            postCounts        `json:"counts"`
+	CountsRaw         map[string]string `json:"counts_raw,omitempty"`
+	Envelope          envelope          `json:"provenance"`
+	ReactionBreakdown map[string]int    `json:"reaction_breakdown,omitempty"`
+	Comments          []commentRecord   `json:"comment_records,omitempty"`
+	CommentCoverage   commentCoverage   `json:"comment_coverage"`
+}
+
+type commentRecord struct {
+	ID                  string         `json:"id"`
+	AuthorAlias         string         `json:"author_alias"`
+	AuthorIdentityKnown bool           `json:"author_identity_known"`
+	Text                string         `json:"text"`
+	TextTruncated       bool           `json:"text_truncated"`
+	PublishedAt         *time.Time     `json:"published_at"`
+	Likes               *int           `json:"likes"`
+	Reactions           *int           `json:"reactions"`
+	ReactionsRaw        string         `json:"reactions_raw,omitempty"`
+	ReactionBreakdown   map[string]int `json:"reaction_breakdown,omitempty"`
+	ReplyCount          *int           `json:"reply_count"`
+}
+
+type commentCoverage struct {
+	Mode                  string `json:"mode"`
+	ReturnedCount         int    `json:"returned_count"`
+	ProviderReportedCount *int   `json:"provider_reported_count"`
+	HistoryComplete       bool   `json:"history_complete"`
+	NextCursorPresent     bool   `json:"next_cursor_present"`
+	RepliesStatus         string `json:"replies_status"`
+	StopReason            string `json:"stop_reason"`
 }
 
 type output struct {
@@ -264,29 +294,71 @@ func run() error {
 		return err
 	}
 
-	posts := make([]postRecord, 0, min(in.PostLimit, len(profile.Posts)+len(in.KnownPostURLs)))
+	// Discover from the verified Page, then read each permalink once. A feed
+	// preview often omits the comment edge and some engagement metrics.
+	candidates := make([]postRecord, 0, in.PostLimit)
 	seen := make(map[string]struct{}, in.PostLimit)
 	for _, post := range profile.Posts {
 		if record, ok := normalizePost(post, profile.ID); ok {
-			key := record.URL
-			if _, exists := seen[key]; exists {
+			if _, exists := seen[record.URL]; exists {
 				continue
 			}
-			seen[key] = struct{}{}
-			posts = append(posts, record)
-			if err := writeJSON(output{SchemaVersion: schemaVersion, Type: "post", Post: &record}); err != nil {
-				return err
-			}
-			if len(posts) >= in.PostLimit {
+			seen[record.URL] = struct{}{}
+			candidates = append(candidates, record)
+			if len(candidates) >= in.PostLimit {
 				break
 			}
 		}
 	}
-
-	stopReason := "tier0_feed_limited"
+	stopReason := "tier0_feed_exhausted"
+	commentBudget := 500
+	detailStopped := false
+	for i := range candidates {
+		if detailStopped {
+			if in.IncludeComments {
+				markCommentReadUnavailable(&candidates[i], stopReason)
+			}
+			continue
+		}
+		post, err := engine.Post(ctx, candidates[i].URL, "")
+		if transport.redirectRejected.Load() {
+			stopReason, detailStopped = "access_denied", true
+			if in.IncludeComments {
+				markCommentReadUnavailable(&candidates[i], stopReason)
+			}
+			continue
+		}
+		if err != nil {
+			reason := failureKind(err)
+			if reason == "request_budget_reached" || transport.count.Load() >= requestBudget {
+				stopReason, detailStopped = "request_budget_reached", true
+				reason = stopReason
+			} else if reason == "login_required" || reason == "challenge" || reason == "access_denied" || reason == "rate_limited" {
+				stopReason, detailStopped = reason, true
+			}
+			if in.IncludeComments {
+				markCommentReadUnavailable(&candidates[i], reason)
+			}
+			continue
+		}
+		record, ok := normalizePost(post, profile.ID)
+		if !ok || (candidates[i].ID != "" && record.ID != candidates[i].ID) {
+			if in.IncludeComments {
+				markCommentReadUnavailable(&candidates[i], "page_identity_unverified")
+			}
+			continue
+		}
+		if in.IncludeComments {
+			attachComments(&record, post, &commentBudget)
+		}
+		candidates[i] = record
+	}
 	for _, postURL := range in.KnownPostURLs {
-		if len(posts) >= in.PostLimit {
+		if len(candidates) >= in.PostLimit {
 			stopReason = "post_limit_reached"
+			break
+		}
+		if detailStopped {
 			break
 		}
 		if _, exists := seen[postURL]; exists {
@@ -294,11 +366,17 @@ func run() error {
 		}
 		post, err := engine.Post(ctx, postURL, "")
 		if transport.redirectRejected.Load() {
-			return codedError{code: 4, err: errRedirectRejected}
+			stopReason = "access_denied"
+			break
 		}
 		if err != nil {
-			if errors.Is(err, errRequestBudget) || transport.count.Load() >= requestBudget {
+			reason := failureKind(err)
+			if reason == "request_budget_reached" || transport.count.Load() >= requestBudget {
 				stopReason = "request_budget_reached"
+				break
+			}
+			if reason == "login_required" || reason == "challenge" || reason == "access_denied" || reason == "rate_limited" {
+				stopReason = reason
 				break
 			}
 			continue
@@ -307,15 +385,21 @@ func run() error {
 		if !ok {
 			continue
 		}
+		if _, exists := seen[record.URL]; exists {
+			continue
+		}
 		seen[record.URL] = struct{}{}
-		posts = append(posts, record)
+		if in.IncludeComments {
+			attachComments(&record, post, &commentBudget)
+		}
+		candidates = append(candidates, record)
+	}
+	for _, record := range candidates {
 		if err := writeJSON(output{SchemaVersion: schemaVersion, Type: "post", Post: &record}); err != nil {
 			return err
 		}
 	}
-	if len(posts) < in.PostLimit && stopReason == "tier0_feed_limited" {
-		stopReason = "tier0_feed_exhausted"
-	}
+
 	if err := writeJSON(output{
 		SchemaVersion: schemaVersion, Type: "summary", PostsTruncated: profile.PostsTruncated || len(profile.Posts) > in.PostLimit,
 		HistoryComplete: false, HTTPRequests: transport.count.Load(), EngineVersion: engineVersion, StopReason: stopReason,
@@ -674,7 +758,8 @@ func normalizePost(post fb.Post, pageID string) (postRecord, bool) {
 	return postRecord{
 		ID: identity, URL: post.URL, AuthorID: post.Author.ID, DelegatePageID: post.DelegatePage,
 		PublishedAt: publishedAt, Text: text, TextTruncated: textTruncated, Counts: counts, CountsRaw: raw,
-		Envelope: envelopeOf(post.Envelope),
+		Envelope: envelopeOf(post.Envelope), ReactionBreakdown: safeReactionBreakdown(post.Counts.ByType),
+		CommentCoverage: commentCoverage{Mode: "not_requested", HistoryComplete: false, RepliesStatus: "not_read_tier0", StopReason: "not_requested"},
 	}, true
 }
 
@@ -748,4 +833,131 @@ func writeJSON(value output) error {
 	n, err := os.Stdout.Write(line)
 	outputBytes += n
 	return err
+}
+
+// Only aggregate reaction counts, never the list of people who reacted.
+func safeReactionBreakdown(input map[string]int) map[string]int {
+	output := make(map[string]int)
+	for rawKey, n := range input {
+		key := strings.ToUpper(rawKey)
+		switch key {
+		case "LIKE", "LOVE", "CARE", "HAHA", "WOW", "SAD", "ANGRY":
+			if n >= 0 {
+				output[key] = n
+			}
+		}
+	}
+	if len(output) == 0 {
+		return nil
+	}
+	return output
+}
+
+// Pseudonyms are local to this post/read. No personal author reference leaves
+// the process. This is pseudonymization, not a claim of anonymity.
+func markCommentReadUnavailable(record *postRecord, reason string) {
+	record.Comments = nil
+	record.CommentCoverage = commentCoverage{Mode: "unavailable", ProviderReportedCount: record.Counts.Comments,
+		HistoryComplete: false, RepliesStatus: "not_read_tier0", StopReason: reason}
+}
+
+func attachComments(record *postRecord, post fb.Post, remaining *int) {
+	record.CommentCoverage = commentCoverage{Mode: "tier0_embedded", HistoryComplete: false,
+		ProviderReportedCount: record.Counts.Comments, NextCursorPresent: post.CommentsCursor != "",
+		RepliesStatus: "not_read_tier0", StopReason: "signed_out_embedded_comments"}
+	aliases := make(map[string]string)
+	seen := make(map[string]struct{})
+	names := make([]string, 0, len(post.Comments))
+	for _, c := range post.Comments {
+		if c.Author.Kind != "page" && c.Author.Name != "" {
+			names = append(names, c.Author.Name)
+		}
+	}
+	for _, c := range post.Comments {
+		if *remaining <= 0 || len(record.Comments) >= 100 {
+			record.CommentCoverage.StopReason = "comment_batch_limit_reached"
+			break
+		}
+		if c.ID == "" || len(c.ID) > 100 || strings.ContainsAny(c.ID, "\r\n\t") {
+			continue
+		}
+		if _, exists := seen[c.ID]; exists {
+			continue
+		}
+		seen[c.ID] = struct{}{}
+		authorKey := c.Author.ID
+		if authorKey == "" {
+			authorKey = "unknown-comment:" + c.ID
+		}
+		alias, exists := aliases[authorKey]
+		if !exists {
+			alias = fmt.Sprintf("user_name%02d", len(aliases)+1)
+			aliases[authorKey] = alias
+		}
+		text := maskPersonalMentions(c.Body)
+		for _, name := range names {
+			text = strings.ReplaceAll(text, name, "[đã che tên cá nhân]")
+		}
+		runes := []rune(text)
+		truncated := len(runes) > 20000
+		if truncated {
+			text = string(runes[:20000])
+		}
+		breakdown := safeReactionBreakdown(c.Counts.ByType)
+		var likes, reactions, replies *int
+		if n, exists := breakdown["LIKE"]; exists {
+			likes = intPointer(n)
+		}
+		if c.Counts.Reactions > 0 {
+			reactions = intPointer(c.Counts.Reactions)
+		} else if n, ok := parseDisplayCount(c.Counts.ReactionsText); ok {
+			reactions = intPointer(n)
+		}
+		if c.Replies > 0 {
+			replies = intPointer(c.Replies)
+		}
+		var published *time.Time
+		if !c.CreatedAt.IsZero() {
+			t := c.CreatedAt.UTC()
+			published = &t
+		}
+		record.Comments = append(record.Comments, commentRecord{ID: c.ID, AuthorAlias: alias,
+			AuthorIdentityKnown: c.Author.ID != "", Text: text, TextTruncated: truncated, PublishedAt: published,
+			Likes: likes, Reactions: reactions, ReactionsRaw: c.Counts.ReactionsText, ReactionBreakdown: breakdown, ReplyCount: replies})
+		*remaining--
+	}
+	record.CommentCoverage.ReturnedCount = len(record.Comments)
+}
+
+func maskPersonalMentions(text fb.Text) string {
+	units := utf16.Encode([]rune(text.Text))
+	hidden := make([]bool, len(units))
+	for _, span := range text.Ranges {
+		if span.Entity == nil || span.Entity.Kind != "profile" || span.Offset < 0 || span.Length <= 0 || span.Offset >= len(units) {
+			continue
+		}
+		end := span.Offset + span.Length
+		if end < span.Offset || end > len(units) {
+			end = len(units)
+		}
+		for i := span.Offset; i < end; i++ {
+			hidden[i] = true
+		}
+	}
+	var out strings.Builder
+	for i := 0; i < len(units); {
+		if hidden[i] {
+			out.WriteString("[đã che tên tài khoản]")
+			for i < len(units) && hidden[i] {
+				i++
+			}
+			continue
+		}
+		start := i
+		for i < len(units) && !hidden[i] {
+			i++
+		}
+		out.WriteString(string(utf16.Decode(units[start:i])))
+	}
+	return out.String()
 }

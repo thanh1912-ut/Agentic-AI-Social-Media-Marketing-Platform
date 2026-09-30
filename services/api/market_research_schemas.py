@@ -125,6 +125,57 @@ class ResearchPrivacyPolicyOut(StrictModel):
     comments_content_status: Literal["privacy_hold"] = "privacy_hold"
 
 
+class CommentProcessingIn(StrictModel):
+    expected_decision_id: str | None = Field(max_length=36)
+    policy_revision_no: int = Field(ge=1)
+    assessment_reference: str = Field(min_length=5, max_length=1000)
+    status: Literal["pending", "active"] = "pending"
+    valid_until: datetime
+
+    @field_validator("valid_until")
+    @classmethod
+    def expiry_has_timezone(cls, value: datetime) -> datetime:
+        if value.tzinfo is None or value.utcoffset() is None:
+            raise ValueError("valid_until must include a timezone")
+        return value
+
+    @field_validator("assessment_reference")
+    @classmethod
+    def reference_has_no_control_chars(cls, value: str) -> str:
+        if any(ord(char) < 32 or ord(char) == 127 for char in value):
+            raise ValueError("assessment_reference must be a reference, not raw personal data")
+        return value
+
+
+class CommentProcessingRevokeIn(StrictModel):
+    expected_decision_id: str = Field(min_length=1, max_length=36)
+
+
+class CommentProcessingOut(StrictModel):
+    source_id: str
+    supported: bool
+    decision_id: str | None = None
+    status: Literal["pending", "active", "revoked"] | None = None
+    effective_status: Literal["not_configured", "pending", "active", "revoked", "expired",
+                              "policy_changed", "assessor_unavailable", "page_unavailable", "source_unavailable",
+                              "engine_unavailable", "unsupported"]
+    collection_allowed: bool = False
+    policy_revision_no: int | None = None
+    assessment_reference: str | None = None
+    assessed_by: str | None = None
+    created_at: datetime | None = None
+    valid_until: datetime | None = None
+    scope: Literal["local_comment_quarantine_v1"] = "local_comment_quarantine_v1"
+    provider_transmission_allowed: Literal[False] = False
+    legal_basis_verified_by_platform: Literal[False] = False
+    candidate_content_status: Literal["privacy_hold"] = "privacy_hold"
+    quarantine_max_hours: Literal[24] = 24
+    candidate_versions_count: int = 0
+    quarantined_candidate_versions_count: int = 0
+    pending_edges: int = 0
+    job_id: str | None = None
+
+
 class CollectionRunOut(StrictModel):
     id: str
     source_id: str
@@ -175,6 +226,8 @@ class CompetitorPostOut(StrictModel):
     attachment_metadata_status: Literal["returned", "none_returned", "not_returned", "truncated"] = "not_returned"
     metric_provenance: dict[str, Any] = Field(default_factory=dict)
     content_truncated: bool = False
+    reaction_breakdown: dict[str, int] = Field(default_factory=dict)
+    comment_coverage: dict[str, Any] = Field(default_factory=dict)
 
 
 class CompetitorPostsPage(StrictModel):
@@ -278,3 +331,33 @@ class ResearchAIBudgetOut(StrictModel):
 
 class DraftFromReportIn(StrictModel):
     suggestion_index: int = Field(ge=0, le=19)
+
+
+class CommentCandidateOut(StrictModel):
+    id: str
+    author_alias: str | None
+    author_identity_known: bool = False
+    text: str
+    published_at: datetime | None
+    observed_at: datetime
+    expires_at: datetime
+    likes: int | None
+    reactions: int | None
+    reactions_raw: str | None = None
+    reactions_precision: Literal["exact", "approximate", "lower_bound", "unknown"] = "unknown"
+    reaction_breakdown: dict[str, int] = Field(default_factory=dict)
+    reply_count: int | None
+    content_truncated: bool
+    content_status: Literal["privacy_hold"] = "privacy_hold"
+    alias_scope: Literal["post_read_only"] = "post_read_only"
+
+
+class CommentCandidatesPage(StrictModel):
+    source_id: str
+    evidence_id: str
+    observation_id: str | None
+    status: Literal["privacy_hold", "no_candidates", "processing_required"]
+    comments: list[CommentCandidateOut] = Field(default_factory=list)
+    coverage: dict[str, Any] = Field(default_factory=dict)
+    next_cursor: str | None = None
+    provider_transmission_allowed: Literal[False] = False
