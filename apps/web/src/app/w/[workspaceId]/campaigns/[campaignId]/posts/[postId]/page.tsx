@@ -17,6 +17,7 @@ import {
 
 import { ApiError, apiDownload, saveBlob } from '@/lib/api';
 import { hasPermission, permissionDeniedReason } from '@/lib/permissions';
+import { pageConnectionDisabledReason, pageConnectionReady } from '@/lib/page-connection';
 import { useSession } from '@/components/session-gate';
 import {
   Button,
@@ -181,6 +182,8 @@ export default function PostEditorPage() {
   }
 
   const current = post.data;
+  const pageReady = pageConnectionReady(workspace);
+  const pageGateReason = pageConnectionDisabledReason(workspace);
   const currentReview = reviews.data?.find((item) => item.post_version === current.version) ?? null;
   const postStatus = POST_STATUS_LABELS[current.status];
   const canEdit = hasPermission(workspace, PERMISSIONS.POST_EDIT);
@@ -194,6 +197,7 @@ export default function PostEditorPage() {
 
   function save(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (!pageReady) return;
     update.mutate({
       version: current.version,
       caption: caption.trim(),
@@ -204,6 +208,7 @@ export default function PostEditorPage() {
   }
 
   function uploadImage(event: ChangeEvent<HTMLInputElement>) {
+    if (!pageReady) return;
     const file = event.currentTarget.files?.[0];
     event.currentTarget.value = '';
     if (!file || selectedMedia.length >= 10) return;
@@ -230,6 +235,7 @@ export default function PostEditorPage() {
 
   function requestAiRevision(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (!pageReady) return;
     const instruction = revisionInstruction.trim();
     if (!instruction) return;
     reviseWithAi.mutate({ version: current.version, instruction, scope: revisionScope, document_ids: revisionDocumentIds, document_usage_note: revisionDocumentNote.trim() || undefined }, {
@@ -238,6 +244,7 @@ export default function PostEditorPage() {
   }
 
   function decide(decision: 'approved' | 'rejected') {
+    if (!pageReady) return;
     decideApproval.mutate({
       version: current.version,
       decision,
@@ -255,6 +262,7 @@ export default function PostEditorPage() {
       />
 
       {mocksEnabled ? <DemoNotice /> : null}
+      {!pageReady ? <p role="status" className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-950">Bài viết và lịch sử vẫn xem được. Các thao tác lưu, dùng agent, kiểm tra, duyệt và xuất bản đang tạm dừng đến khi Owner kết nối lại Fanpage trong <Link className="font-medium underline" href={`/w/${workspaceId}/settings`}>Cài đặt</Link>. {pageGateReason}</p> : null}
       {current.requires_reapproval ? <div role="note" className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">Bài đã từng được duyệt nhưng đã có thay đổi mới. Phải gửi duyệt lại đúng phiên bản {current.version} trước khi đăng.</div> : null}
       {current.rejection_reason ? <div role="note" className="rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-900"><strong>Lý do bị từ chối:</strong> {current.rejection_reason}</div> : null}
 
@@ -290,7 +298,7 @@ export default function PostEditorPage() {
                 </div>
                 <div>
                   <label htmlFor="post-media-file" className="block text-sm font-medium text-slate-700">Tải ảnh JPEG, PNG hoặc WebP</label>
-                  <input id="post-media-file" type="file" accept="image/jpeg,image/png,image/webp" onChange={uploadImage} disabled={uploadMedia.isPending || selectedMedia.length >= 10 || postLocked} className="mt-1 block w-full text-sm text-slate-700" />
+                  <input id="post-media-file" type="file" accept="image/jpeg,image/png,image/webp" onChange={uploadImage} disabled={!pageReady || uploadMedia.isPending || selectedMedia.length >= 10 || postLocked} className="mt-1 block w-full text-sm text-slate-700" />
                   <p className="mt-1 text-xs text-slate-500">Tối đa 10 ảnh cho mỗi phiên bản. Ảnh chỉ được gắn vào bài sau khi bấm lưu phiên bản.</p>
                 </div>
               </> : <PermissionNotice message={permissionDeniedReason(workspace, PERMISSIONS.POST_EDIT)} requiredPermission={PERMISSIONS.POST_EDIT} />}
@@ -302,7 +310,7 @@ export default function PostEditorPage() {
                 {previewMedia.map((media) => <PostMediaPreview key={media.id} media={media} onRemove={canEdit && !postLocked && media.source === 'uploaded' ? () => { setSelectedMedia((items) => items.filter((item) => item.id !== media.id)); setMediaChanged(true); } : undefined} />)}
               </div> : <p className="text-sm text-slate-600">Phiên bản này chưa có ảnh đính kèm.</p>}
             </section>
-            {canEdit ? <Button type="submit" loading={update.isPending} disabled={caption.trim() === '' || uploadMedia.isPending || postLocked} disabledReason={postLocked ? 'Bài đã lên lịch hoặc đã đăng; hãy tạo bài mới nếu cần nội dung khác.' : uploadMedia.isPending ? 'Chờ tải ảnh xong trước khi lưu phiên bản.' : 'Caption không được để trống.'}>Lưu thành phiên bản mới</Button> : <PermissionNotice message={permissionDeniedReason(workspace, PERMISSIONS.POST_EDIT)} requiredPermission={PERMISSIONS.POST_EDIT} />}
+            {canEdit ? <Button type="submit" loading={update.isPending} disabled={!pageReady || caption.trim() === '' || uploadMedia.isPending || postLocked} disabledReason={!pageReady ? pageGateReason : postLocked ? 'Bài đã lên lịch hoặc đã đăng; hãy tạo bài mới nếu cần nội dung khác.' : uploadMedia.isPending ? 'Chờ tải ảnh xong trước khi lưu phiên bản.' : 'Caption không được để trống.'}>Lưu thành phiên bản mới</Button> : <PermissionNotice message={permissionDeniedReason(workspace, PERMISSIONS.POST_EDIT)} requiredPermission={PERMISSIONS.POST_EDIT} />}
           </form>
         </Card>
           <p className="editor-save-state" role="status">
@@ -355,7 +363,7 @@ export default function PostEditorPage() {
             <textarea id="revision-document-usage-note" value={revisionDocumentNote} onChange={(event) => setRevisionDocumentNote(event.target.value)} maxLength={4000} rows={2} placeholder="Ví dụ: Chỉ dùng bảng giá còn hiệu lực, không suy ra số liệu khác." className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" />
             <button type="button" className="text-sm font-medium text-indigo-700 underline" onClick={() => { setRevisionDocumentIds([]); setRevisionDocumentNote(''); }}>Bỏ hết tài liệu</button>
           </fieldset>
-          <Button type="submit" loading={reviseWithAi.isPending || revisionJob.data?.status === 'queued' || revisionJob.data?.status === 'running'} disabled={!revisionInstruction.trim() || current.status === 'scheduled' || current.status === 'published'} disabledReason={current.status === 'scheduled' || current.status === 'published' ? 'Bài đã lên lịch hoặc đã đăng.' : 'Nhập yêu cầu sửa trước.'}>Tạo phiên bản AI sửa</Button>
+          <Button type="submit" loading={reviseWithAi.isPending || revisionJob.data?.status === 'queued' || revisionJob.data?.status === 'running'} disabled={!pageReady || !revisionInstruction.trim() || current.status === 'scheduled' || current.status === 'published'} disabledReason={!pageReady ? pageGateReason : current.status === 'scheduled' || current.status === 'published' ? 'Bài đã lên lịch hoặc đã đăng.' : 'Nhập yêu cầu sửa trước.'}>Tạo phiên bản AI sửa</Button>
           {!canGenerate ? <PermissionNotice message={permissionDeniedReason(workspace, PERMISSIONS.POST_GENERATE)} requiredPermission={PERMISSIONS.POST_GENERATE} /> : null}
           {reviseWithAi.error ? <ErrorPanel title="Không gửi được yêu cầu AI sửa" message={reviseWithAi.error instanceof ApiError ? reviseWithAi.error.message : 'Hãy thử lại.'} code={reviseWithAi.error instanceof ApiError ? reviseWithAi.error.code : undefined} requestId={reviseWithAi.error instanceof ApiError ? reviseWithAi.error.requestId : undefined} retryable={reviseWithAi.error instanceof ApiError ? reviseWithAi.error.retryable : false} onRetry={() => reviseWithAi.reset()} /> : null}
           {revisionJobId && revisionJob.data ? <div role="status" aria-live="polite" className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-3 text-sm text-slate-700">
@@ -373,7 +381,7 @@ export default function PostEditorPage() {
             <section id="post-inspector-panel" role="tabpanel" aria-labelledby="post-inspector-tab-review" className="editor-inspector-panel">
               <Card title="Duyệt nội dung" description="Kiểm tra nội dung trước, người có quyền duyệt đưa ra quyết định cuối cùng.">
         <div className="mb-4 flex flex-wrap items-center gap-3">
-          <Button variant="secondary" onClick={() => runReview.mutate(current.version)} loading={runReview.isPending} disabled={!canEdit || postLocked} disabledReason={postLocked ? 'Bài đã lên lịch hoặc đã đăng.' : 'Bạn không có quyền sửa bài.'}>Chạy kiểm tra bản {current.version}</Button>
+          <Button variant="secondary" onClick={() => runReview.mutate(current.version)} loading={runReview.isPending} disabled={!pageReady || !canEdit || postLocked} disabledReason={!pageReady ? pageGateReason : postLocked ? 'Bài đã lên lịch hoặc đã đăng.' : 'Bạn không có quyền sửa bài.'}>Chạy kiểm tra bản {current.version}</Button>
           {currentReview ? <StatusBadge label={currentReview.status === 'ready' ? 'Không có mục chặn' : 'Cần sửa trước khi duyệt'} tone={currentReview.status === 'ready' ? 'success' : 'danger'} /> : <span className="text-sm text-amber-800">Chưa có kiểm tra cho phiên bản hiện tại.</span>}
           {reviews.isError ? <span role="alert" className="text-sm text-rose-700">Không tải được lịch sử kiểm tra.</span> : null}
         </div>
@@ -385,8 +393,8 @@ export default function PostEditorPage() {
         {runReview.error ? <p role="alert" className="mb-3 text-sm text-rose-700">{runReview.error instanceof ApiError ? runReview.error.message : 'Không chạy được kiểm tra.'}</p> : null}
         {current.current.review ? <div className="space-y-3"><p className="text-sm text-slate-700">{current.current.review.summary}</p><div className="grid gap-2 sm:grid-cols-3">{current.current.review.checks.map((check) => <div key={check.key} className={`rounded-lg border px-3 py-2 text-sm ${check.status === 'fail' ? 'border-rose-200 bg-rose-50 text-rose-900' : check.status === 'warn' ? 'border-amber-200 bg-amber-50 text-amber-900' : 'border-emerald-200 bg-emerald-50 text-emerald-900'}`}><p className="font-medium">{check.label}</p><p className="mt-1 text-xs">{check.message}</p></div>)}</div></div> : <p className="text-sm text-slate-600">Chưa có feedback AI cho phiên bản này.</p>}
         <div className="mt-4 flex flex-wrap items-end gap-3 border-t border-slate-100 pt-4">
-          {canSubmit ? <Button onClick={() => submitApproval.mutate(current.version)} loading={submitApproval.isPending}>Gửi duyệt bản {current.version}</Button> : null}
-          {current.status === 'needs_review' && canApprove ? <><Button onClick={() => decide('approved')} loading={decideApproval.isPending} disabled={currentReview?.status !== 'ready'} disabledReason={currentReview?.status === 'blocked' ? 'Sửa mục bị chặn rồi chạy lại kiểm tra.' : 'Chạy kiểm tra cho đúng phiên bản hiện tại trước khi duyệt.'}>Duyệt bản {current.version}</Button><div><label htmlFor="reject-reason" className="block text-xs font-medium text-slate-600">Lý do nếu từ chối</label><input id="reject-reason" value={rejectionReason} onChange={(event) => setRejectionReason(event.target.value)} className="mt-1 w-64 rounded-lg border border-slate-300 px-3 py-2 text-sm" /></div><Button variant="danger" onClick={() => decide('rejected')} loading={decideApproval.isPending}>Từ chối</Button></> : null}
+          {canSubmit ? <Button onClick={() => { if (pageReady) submitApproval.mutate(current.version); }} loading={submitApproval.isPending} disabled={!pageReady} disabledReason={pageGateReason}>Gửi duyệt bản {current.version}</Button> : null}
+          {current.status === 'needs_review' && canApprove ? <><Button onClick={() => decide('approved')} loading={decideApproval.isPending} disabled={!pageReady || currentReview?.status !== 'ready'} disabledReason={!pageReady ? pageGateReason : currentReview?.status === 'blocked' ? 'Sửa mục bị chặn rồi chạy lại kiểm tra.' : 'Chạy kiểm tra cho đúng phiên bản hiện tại trước khi duyệt.'}>Duyệt bản {current.version}</Button><div><label htmlFor="reject-reason" className="block text-xs font-medium text-slate-600">Lý do nếu từ chối</label><input id="reject-reason" value={rejectionReason} onChange={(event) => setRejectionReason(event.target.value)} className="mt-1 w-64 rounded-lg border border-slate-300 px-3 py-2 text-sm" /></div><Button variant="danger" onClick={() => decide('rejected')} loading={decideApproval.isPending} disabled={!pageReady} disabledReason={pageGateReason}>Từ chối</Button></> : null}
           {!canSubmit && current.status !== 'needs_review' && !canApprove ? <PermissionNotice message={permissionDeniedReason(workspace, PERMISSIONS.POST_APPROVE)} requiredPermission={PERMISSIONS.POST_APPROVE} /> : null}
         </div>
         {submitApproval.error ? <p role="alert" className="mt-3 text-sm text-rose-700">Không gửi duyệt được. Hãy tải bản mới nhất nếu phiên bản đã thay đổi.</p> : null}

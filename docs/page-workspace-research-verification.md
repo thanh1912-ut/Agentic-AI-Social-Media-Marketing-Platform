@@ -290,3 +290,26 @@ Lát cắt này không đáp ứng thu thập nội dung Group discussions, bài
 | Python syntax | PASS | `ast.parse` cho API module và test file. |
 | Backend pytest/Ruff | NOT_RUN | Python hiện hành không có `pytest`/FastAPI/SQLAlchemy; `uv` và project virtualenv không có trong checkout/runtime. Lệnh thử `uv run pytest ...` thất bại vì không tìm thấy `uv`. |
 | PostgreSQL/Redis, browser real API, provider/live Page | NOT_RUN | Không dịch vụ thật nào được gọi; preview `13104` không bị restart hoặc thay đổi. |
+
+## Page gate cho các thao tác thương hiệu, nội dung và xuất bản — 2026-09-30 16:22 Asia/Ho_Chi_Minh
+
+| Kiểm tra | Trạng thái | Bằng chứng và giới hạn |
+|---|---|---|
+| Hồ sơ và tài liệu | PASS (code + UI tests) | Hồ sơ vẫn xem/sửa nháp được nhưng không áp dụng khi Page chưa active. Upload/reprocess bị khóa; dữ liệu cũ vẫn xem được. |
+| Chiến dịch và biên tập | PASS (code + UI tests) | Planning AI, tạo campaign, lưu phiên bản, upload media, review và approval dùng Page gate ở UI và handler. |
+| Xuất bản/đối soát mới | PASS (code) | UI từ chối publish và đối soát `outcome_unknown` khi Page chưa active; API publication/reconcile vẫn dùng permission Page-gated hiện có. |
+| Hủy lịch chưa bắt đầu | PASS (code; PostgreSQL test authored, NOT_RUN) | Owner có thể hủy lịch đã xếp khi token cần reconnect. Endpoint bỏ Page-gated dependency nhưng kiểm tra membership, quyền Owner, CSRF và trạng thái job/schedule trước khi hủy. |
+| Frontend quality | PASS | ESLint, TypeScript, Vitest 52/52, Next production build và `git diff --check`. |
+| Backend syntax/integration | PARTIAL | `py_compile` và Ruff đạt. `tests/test_postgres_application_modules.py` kiểm tra cancellation khi trạng thái Page là `needs_reconnect`, nhưng pytest không collect được do Python Anaconda thiếu `pgvector`; chưa xác nhận `POSTGRES_TEST_URL`. |
+| Browser/API thật và preview | NOT_RUN | Không dùng API hoặc browser thật; preview `13104` chưa được thay. |
+
+## Page gate ở chi tiết chiến dịch và Analytics — 2026-09-30 16:29 Asia/Ho_Chi_Minh
+
+| Kiểm tra | Trạng thái | Bằng chứng và giới hạn |
+|---|---|---|
+| Chi tiết chiến dịch | PASS (code/build) | Khi Page chưa active, UI khóa lưu brief, tạo bài thủ công/AI, sinh bài theo slot và xuất file; handler có guard và campaign cũ vẫn xem được. |
+| Analytics | PASS (code/build) | Đồng bộ Page, nhập metrics, lưu/apply recommendation và ghi outcome bị khóa. Có thể xem dữ liệu cũ; lịch Meta đang bật có nút tắt khi Page disconnected. |
+| Lịch Meta qua API | PARTIAL (code; PostgreSQL test authored, BLOCKED) | GET đọc lịch theo tenant mà không cần token active; PATCH cho Owner tắt lịch khi disconnected nhưng chỉ bật với workspace/Page/connection đã active và khớp Page chính. Test PostgreSQL bị chặn lúc collection vì thiếu `pgvector`; database test chưa xác minh. |
+| Frontend quality | PASS | ESLint, TypeScript `--noEmit --incremental false`, Vitest 52/52, Next production build, `git diff --check`. |
+| Python lint/syntax | PASS | Ruff và `py_compile` đạt cho API/test files liên quan. |
+| Backend integration / real browser | NOT_RUN | Python syntax đạt; PostgreSQL/API/browser preview không chạy trong lượt này. |

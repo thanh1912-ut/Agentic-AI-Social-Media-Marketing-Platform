@@ -24,6 +24,7 @@ import {
 
 import { useSession } from '@/components/session-gate';
 import { ApiError } from '@/lib/api';
+import { pageConnectionDisabledReason, pageConnectionReady } from '@/lib/page-connection';
 import { useMocks } from '@/lib/api/config';
 import type { ApiDocument as DocumentUpload, ApiUploadLimits as UploadLimits } from '@/lib/api/types';
 import { formatBytes, formatDateTime, formatNumber, formatRelative } from '@/lib/format';
@@ -312,8 +313,12 @@ export default function TrangTaiLieu() {
 
   const limits = limitsQuery.data ?? null;
   const canUpload = hasPermission(workspace, ACTION_REQUIREMENTS.uploadDocument);
+  const pageReady = pageConnectionReady(workspace);
+  const pageGateReason = pageConnectionDisabledReason(workspace);
   const uploadDeniedReason = permissionDeniedReason(workspace, ACTION_REQUIREMENTS.uploadDocument);
-  const uploadDisabledReason = !canUpload
+  const uploadDisabledReason = !pageReady
+    ? pageGateReason
+    : !canUpload
     ? uploadDeniedReason
     : limits === null
       ? 'Chưa đọc được hạn mức tải lên nên chưa kiểm tra được tệp trước khi gửi. Hãy thử lại phần hạn mức ở trên.'
@@ -622,8 +627,8 @@ export default function TrangTaiLieu() {
                                   variant="secondary"
                                   size="sm"
                                   loading={reprocess.isPending && reprocess.variables?.documentId === doc.id}
-                                  disabled={!canUpload}
-                                  disabledReason={uploadDeniedReason}
+                                  disabled={!canUpload || !pageReady}
+                                  disabledReason={!pageReady ? pageGateReason : uploadDeniedReason}
                                   onClick={() => {
                                     setLastReprocessId(doc.id);
                                     reprocess.mutate({ documentId: doc.id, mode: 'document' }, {
@@ -665,8 +670,8 @@ export default function TrangTaiLieu() {
                                 <Button
                                   variant="ghost"
                                   size="sm"
-                                  disabled={!canUpload}
-                                  disabledReason={uploadDeniedReason}
+                                  disabled={!canUpload || !pageReady}
+                                  disabledReason={!pageReady ? pageGateReason : uploadDeniedReason}
                                   onClick={() => setPendingDeleteId(doc.id)}
                                 >
                                   Xoá tài liệu

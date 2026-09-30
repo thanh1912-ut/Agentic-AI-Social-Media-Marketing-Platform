@@ -28,6 +28,7 @@ import { useCampaignPlanJob, useCampaigns, useCreateCampaign, usePlanCampaign } 
 import { useMocks } from '@/lib/api/config';
 import { formatDate, formatNumber } from '@/lib/format';
 import { hasPermission } from '@/lib/permissions';
+import { pageConnectionDisabledReason, pageConnectionReady } from '@/lib/page-connection';
 
 function dateOffset(days: number): string {
   const value = new Date();
@@ -73,6 +74,8 @@ export default function CampaignsPage() {
   const router = useRouter();
   const mocksEnabled = useMocks();
   const canCreate = hasPermission(workspace, PERMISSIONS.CAMPAIGN_CREATE);
+  const pageReady = pageConnectionReady(workspace);
+  const pageGateReason = pageConnectionDisabledReason(workspace);
   const [name, setName] = useState('');
   const [message, setMessage] = useState('');
   const [audience, setAudience] = useState('');
@@ -84,6 +87,7 @@ export default function CampaignsPage() {
 
   function requestPlan(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (!pageReady) return;
     const prompt = planningPrompt.trim();
     if (!prompt) return;
     planCampaign.mutate({ prompt }, { onSuccess: (accepted) => {
@@ -93,6 +97,7 @@ export default function CampaignsPage() {
   }
 
   function acceptProposal() {
+    if (!pageReady) return;
     if (!proposal) return;
     const concept = proposal.concepts.find((item) => item.id === selectedConceptId) ?? proposal.concepts[0];
     if (!concept) return;
@@ -125,6 +130,7 @@ export default function CampaignsPage() {
 
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (!pageReady) return;
     const audiences = audience.split(/[\n;,]/).map((item) => item.trim()).filter(Boolean);
     if (!name.trim() || !message.trim() || audiences.length === 0) return;
     createCampaign.mutate(
@@ -157,6 +163,7 @@ export default function CampaignsPage() {
       />
 
       {mocksEnabled ? <DemoNotice /> : null}
+      {!pageReady ? <p role="status" className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-950">Có thể xem chiến dịch cũ. Tạo chiến dịch và dùng AI chỉ mở sau khi Owner kết nối Fanpage tại <Link className="font-medium underline" href={`/w/${workspaceId}/settings`}>Cài đặt</Link>. {pageGateReason}</p> : null}
 
       <section aria-label="Danh sách chiến dịch" className="space-y-4">
         <div className="flex flex-wrap items-center justify-between gap-2">
@@ -194,7 +201,7 @@ export default function CampaignsPage() {
           <form className="space-y-3" onSubmit={requestPlan}>
             <label htmlFor="campaign-planning-prompt" className="block text-sm font-medium text-slate-700">Bạn muốn truyền thông điều gì?</label>
             <textarea id="campaign-planning-prompt" value={planningPrompt} onChange={(event) => setPlanningPrompt(event.target.value)} maxLength={4000} minLength={8} required rows={3} placeholder="Ví dụ: Lên nội dung giáo dục phụ huynh nhận biết tin nhắn giả mạo trường học, không dùng số liệu nếu chưa có nguồn." className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" />
-            <Button type="submit" loading={planCampaign.isPending || proposalJob.data?.status === 'queued' || proposalJob.data?.status === 'running'} disabled={!planningPrompt.trim() || proposalJob.data?.status === 'queued' || proposalJob.data?.status === 'running'}>Đề xuất bằng AI</Button>
+            <Button type="submit" loading={planCampaign.isPending || proposalJob.data?.status === 'queued' || proposalJob.data?.status === 'running'} disabled={!pageReady || !planningPrompt.trim() || proposalJob.data?.status === 'queued' || proposalJob.data?.status === 'running'} disabledReason={!pageReady ? pageGateReason : !planningPrompt.trim() ? 'Nhập yêu cầu trước khi gửi.' : undefined}>Đề xuất bằng AI</Button>
           </form>
           {planCampaign.error ? <p role="alert" className="mt-3 text-sm text-rose-700">{planCampaign.error instanceof Error ? planCampaign.error.message : 'Không gửi được yêu cầu lập kế hoạch.'}</p> : null}
           {planJobId ? <div role="status" aria-live="polite" className="mt-4 rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm">
@@ -208,7 +215,7 @@ export default function CampaignsPage() {
             <fieldset className="grid gap-3 md:grid-cols-3"><legend className="mb-2 text-sm font-semibold text-slate-800">Chọn concept</legend>{proposal.concepts.map((concept) => <label key={concept.id} className={`cursor-pointer rounded-lg border p-3 ${selectedConceptId === concept.id ? 'border-teal-600 bg-teal-50' : 'border-slate-200'}`}><input className="mr-2" type="radio" name="campaign-concept" checked={selectedConceptId === concept.id} onChange={() => setSelectedConceptId(concept.id)} /><span className="font-medium">{concept.title}</span><p className="mt-2 text-sm">{concept.angle}</p><p className="mt-2 text-xs text-slate-600">Hook: {concept.hook}</p><p className="mt-1 text-xs text-slate-600">CTA: {concept.cta}</p><p className="mt-1 text-xs text-slate-600">#{(concept.hashtags ?? []).join(' #')}</p></label>)}</fieldset>
             <p className="text-xs text-slate-500">Đề xuất chưa được xác minh sự thật. Hãy kiểm tra mọi claim trước khi tạo bài hoặc duyệt.</p>
             {createCampaign.error ? <p role="alert" className="text-sm text-rose-700">{createCampaign.error instanceof Error ? createCampaign.error.message : 'Không tạo được chiến dịch. Kiểm tra đề xuất rồi thử lại.'}</p> : null}
-            <Button onClick={acceptProposal} loading={createCampaign.isPending} disabled={!selectedConceptId}>Xác nhận concept và tạo chiến dịch</Button>
+            <Button onClick={acceptProposal} loading={createCampaign.isPending} disabled={!pageReady || !selectedConceptId} disabledReason={!pageReady ? pageGateReason : 'Chọn một concept trước khi tạo chiến dịch.'}>Xác nhận concept và tạo chiến dịch</Button>
           </div> : null}
         </Card>
       ) : null}
@@ -245,7 +252,7 @@ export default function CampaignsPage() {
               <input id="campaign-end" type="date" required min={startDate} value={endDate} onChange={(event) => setEndDate(event.target.value)} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" />
             </div>
             {createCampaign.isError ? <p role="alert" className="md:col-span-2 text-sm text-rose-700">Không tạo được chiến dịch. Kiểm tra brief hoặc thử lại sau.</p> : null}
-            <div className="md:col-span-2"><Button type="submit" loading={createCampaign.isPending} disabled={!name.trim() || !message.trim() || !audience.trim()}>Tạo chiến dịch</Button></div>
+            <div className="md:col-span-2"><Button type="submit" loading={createCampaign.isPending} disabled={!pageReady || !name.trim() || !message.trim() || !audience.trim()} disabledReason={!pageReady ? pageGateReason : 'Nhập tên, thông điệp và đối tượng trước khi tạo chiến dịch.'}>Tạo chiến dịch</Button></div>
           </form>
           </div>
         </details>

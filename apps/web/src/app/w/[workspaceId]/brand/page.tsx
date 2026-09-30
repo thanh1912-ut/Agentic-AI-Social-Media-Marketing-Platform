@@ -8,6 +8,7 @@ import { useSession } from '@/components/session-gate';
 import { useBrandProfile, useBrandProfileRevisions, useUpdateBrandProfile } from '@/lib/hooks';
 import { formatDateTime } from '@/lib/format';
 import { ApiError } from '@/lib/api';
+import { pageConnectionDisabledReason, pageConnectionReady } from '@/lib/page-connection';
 import { Button, Card, EmptyState, ErrorPanel, LoadingBlock, PageHeader, StatusBadge } from '@/components/ui';
 
 const MAX_PROFILE_CHARS = 20_000;
@@ -54,12 +55,14 @@ export default function BrandProfilePage() {
   );
 
   const isOwner = workspace.role === 'owner';
+  const pageReady = pageConnectionReady(workspace);
+  const pageGateReason = pageConnectionDisabledReason(workspace);
   const current = profile.data;
   const dirty = draft !== (current.profile_mode === 'manual_text_v1' ? current.profile_text ?? '' : '');
   const tooLong = draft.length > MAX_PROFILE_CHARS;
 
   function applyProfile() {
-    if (!isOwner || !current || !dirty || tooLong || !draft.trim()) return;
+    if (!isOwner || !pageReady || !current || !dirty || tooLong || !draft.trim()) return;
     setMessage(null);
     save.mutate({ version: current.version, profile_text: draft, confirm: false }, {
       onSuccess: () => setMessage('Đã lưu và áp dụng hồ sơ. DeepSeek không được gọi khi lưu hồ sơ.'),
@@ -89,6 +92,7 @@ export default function BrandProfilePage() {
       ) : null}
 
       {message ? <p role="status" className="rounded-lg border border-slate-200 bg-white p-3 text-sm text-slate-800">{message}</p> : null}
+      {!pageReady ? <p role="status" className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-950">Hồ sơ hiện tại vẫn xem được. Để áp dụng thay đổi và dùng agent, Owner cần kết nối Fanpage doanh nghiệp trong <Link className="font-medium underline" href={`/w/${workspaceId}/settings`}>Cài đặt</Link>. {pageGateReason}</p> : null}
       {save.isError && save.error instanceof ApiError && save.error.isVersionConflict ? (
         <div role="alert" className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-950">
           Bản trên máy chủ đã đổi. Nội dung bạn đang nhập vẫn còn trong ô; tải lại bản mới nhất rồi dán lại trước khi lưu.
@@ -120,7 +124,7 @@ export default function BrandProfilePage() {
             {draft.length.toLocaleString('vi-VN')} / {MAX_PROFILE_CHARS.toLocaleString('vi-VN')} ký tự
           </p>
           {isOwner ? (
-            <Button onClick={applyProfile} loading={save.isPending} disabled={!dirty || tooLong || !draft.trim()} disabledReason={tooLong ? `Rút gọn hồ sơ còn tối đa ${MAX_PROFILE_CHARS.toLocaleString('vi-VN')} ký tự.` : !draft.trim() ? 'Nhập nội dung hồ sơ trước khi áp dụng.' : 'Chỉnh sửa hồ sơ để bật thao tác lưu.'}>
+            <Button onClick={applyProfile} loading={save.isPending} disabled={!pageReady || !dirty || tooLong || !draft.trim()} disabledReason={!pageReady ? pageGateReason : tooLong ? `Rút gọn hồ sơ còn tối đa ${MAX_PROFILE_CHARS.toLocaleString('vi-VN')} ký tự.` : !draft.trim() ? 'Nhập nội dung hồ sơ trước khi áp dụng.' : 'Chỉnh sửa hồ sơ để bật thao tác lưu.'}>
               Lưu và áp dụng
             </Button>
           ) : <span className="text-sm text-slate-600">Chỉ Owner mới được sửa và áp dụng hồ sơ chung.</span>}

@@ -19,6 +19,7 @@ from database.models import (
     Brand,
     BrandProfileRevision,
     CampaignPost,
+    Company,
     Document,
     Job,
     KnowledgeChunk,
@@ -136,6 +137,16 @@ def test_postgres_api_persists_existing_product_modules(monkeypatch: pytest.Monk
             observation = await db.scalar(select(MarketObservation).where(MarketObservation.evidence_id == evidence.id))
             version = await db.get(MarketEvidenceVersion, observation.evidence_version_id)
             return brand, revision, document, document_job, chunks, connection, post, approval, metric, evidence, observation, version
+
+    async def set_page_connection_state(state: str) -> None:
+        async with SessionLocal() as db:
+            company = await db.get(Company, workspace_id)
+            assert company is not None
+            company.page_connection_state = state
+            connection = await db.get(MetaPageConnection, connection_id)
+            assert connection is not None
+            connection.status = "verified" if state == "active" else "needs_reconnect"
+            await db.commit()
 
     workspace_id = document_id = job_id = connection_id = post_id = competitor_id = None
     rows = None
@@ -312,10 +323,12 @@ def test_postgres_api_persists_existing_product_modules(monkeypatch: pytest.Monk
         assert schedules_response.status_code == 200, schedules_response.text
         scheduled = next(row for row in schedules_response.json() if row["post_id"] == post_id)
         assert scheduled["status"] == "scheduled"
+        client.portal.call(set_page_connection_state, "needs_reconnect")
         cancelled = client.post(
             f"/api/v1/workspaces/{workspace_id}/meta/scheduled-publications/{scheduled['id']}/cancel",
             headers=headers,
         )
+        client.portal.call(set_page_connection_state, "active")
         assert cancelled.status_code == 200, cancelled.text
         assert cancelled.json()["status"] == "cancelled"
 
@@ -330,11 +343,26 @@ def test_postgres_api_persists_existing_product_modules(monkeypatch: pytest.Monk
         )
         assert enabled_schedule.status_code == 200, enabled_schedule.text
         assert enabled_schedule.json()["interval_hours"] == 6
+        client.portal.call(set_page_connection_state, "needs_reconnect")
+        disconnected_schedule = client.get(
+            f"/api/v1/workspaces/{workspace_id}/meta/pages/{connection_id}/metrics-schedule"
+        )
+        assert disconnected_schedule.status_code == 200, disconnected_schedule.text
+        assert disconnected_schedule.json()["enabled"] is True
         disabled_schedule = client.patch(
             f"/api/v1/workspaces/{workspace_id}/meta/pages/{connection_id}/metrics-schedule",
             headers=headers, json={"enabled": False},
         )
         assert disabled_schedule.status_code == 200, disabled_schedule.text
+        blocked_schedule = client.patch(
+            f"/api/v1/workspaces/{workspace_id}/meta/pages/{connection_id}/metrics-schedule",
+            headers=headers, json={"enabled": True},
+        )
+        assert blocked_schedule.status_code == 409, blocked_schedule.text
+        assert blocked_schedule.json()["error"]["code"] == "page_needs_reconnect"
+
+        # A lost Page connection blocks re-enabling future metrics sync.
+        client.portal.call(set_page_connection_state, "active")
 
         metric_import = client.post(
             f"/api/v1/workspaces/{workspace_id}/metrics/import",

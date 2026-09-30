@@ -32,6 +32,9 @@ Không đưa token vào tài liệu, ticket, browser storage, query string hoặ
 - Owner mở Cài đặt doanh nghiệp, nhập token mới và giữ nguyên Page ID. Backend xác minh lại trước khi thay token mã hóa.
 - Nếu một nguồn đang chạy khi mất kết nối, kết quả dở dang không được coi là hoàn thành. Sau khi Owner xác minh lại đúng Page, lịch nguồn đang bật được đặt đến hạn để scheduler phục hồi; idempotency ngăn chạy trùng. Lịch đã tắt không tự bật.
 - Lịch đăng đã quá hạn tuân thủ trạng thái missed hiện có; không gửi bù hàng loạt.
+- Publication ở `outcome_unknown` cần Page hoạt động để đối soát; trong lúc token mất hiệu lực, chỉ xem trạng thái hoặc hủy lịch chưa bắt đầu, không xác nhận thủ công khi chưa thể kiểm tra Facebook.
+- Khi Page cần kết nối lại, Owner vẫn có thể hủy lịch chưa bắt đầu. Lệnh hủy chỉ yêu cầu membership Owner và CSRF; tạo lịch/đăng mới tiếp tục bị chặn cho tới khi Page active.
+- Lịch đồng bộ metrics Meta cũng có thể được Owner tắt khi Page cần kết nối lại. API cho phép đọc trạng thái lịch trong thời gian này; chỉ bật lại sau khi xác minh đúng Page và token.
 - Xác minh Page bằng metadata và đọc bài chỉ xác nhận danh tính/quyền đọc bài. API trả `publish_capability=not_tested` cho tới khi có lần xuất bản thành công gắn với token hiện tại; chưa thử đăng không đồng nghĩa chắc chắn Meta sẽ từ chối. Giao diện vẫn cần Owner xác nhận bài đã duyệt, còn Meta quyết định tại lần gửi.
 - `can_sync_metrics` trong API cho biết ứng dụng có thể gửi yêu cầu đồng bộ; đây không phải cam kết mọi permission/metric đều có sẵn. UI gọi đây là khả năng “yêu cầu đồng bộ”; trạng thái dữ liệu và metric thiếu vẫn lấy từ kết quả sync thực tế.
 

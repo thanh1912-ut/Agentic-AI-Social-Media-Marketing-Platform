@@ -13,6 +13,7 @@ import { ApiError, facebookPostUrl, marketResearchApi, marketResearchKeys, metaA
 import { formatDateTime } from '@/lib/format';
 import { useCampaigns, usePosts } from '@/lib/hooks';
 import { ACTION_REQUIREMENTS, hasPermission } from '@/lib/permissions';
+import { pageConnectionDisabledReason, pageConnectionReady } from '@/lib/page-connection';
 
 const PUBLICATION_STATUS: Record<MetaPublicationStatus, { label: string; tone: Tone; hint: string }> = {
   queued: { label: 'Chờ gửi', tone: 'info', hint: 'Bài đã vào hàng đợi.' },
@@ -125,11 +126,17 @@ export default function PublishingPage() {
   const history = useMemo(() =>
     [...(publications.data ?? [])].sort((a, b) => b.created_at.localeCompare(a.created_at)), [publications.data]);
   const canPublish = workspace?.role === 'owner' && hasPermission(workspace, ACTION_REQUIREMENTS.publish);
+  const pageReady = pageConnectionReady(workspace);
+  const pageGateReason = pageConnectionDisabledReason(workspace);
   const verifiedPages = pageConnections.data?.filter((page) => page.status === 'verified') ?? [];
   const ready = verifiedPages.length > 0 || connection.data?.status === 'verified';
 
   function submitReconciliation(publicationId: string) {
     setReconcileError(null);
+    if (!pageReady) {
+      setReconcileError(pageGateReason ?? 'Kết nối lại Fanpage trước khi đối soát trạng thái đăng.');
+      return;
+    }
     const id = externalPostId.trim();
     const link = permalink.trim();
     if (reconcileOutcome === 'published' && !id) {
@@ -197,7 +204,8 @@ export default function PublishingPage() {
             const selectedPage = candidatePages.find((page) => page.id === selectedConnectionId);
             const previous = latestPublication(history, post.id, post.version, selectedPage?.page_id);
             const blocker = previous && BLOCKING_STATUSES.has(previous.status);
-            const disabledReason = !canPublish ? 'Chỉ chủ sở hữu có quyền đăng bài lên Fanpage.'
+            const disabledReason = !pageReady ? pageGateReason
+              : !canPublish ? 'Chỉ chủ sở hữu có quyền đăng bài lên Fanpage.'
               : campaigns.isPending ? 'Đang tải nhóm chiến dịch để lọc đúng Fanpage.'
               : candidatePages.length === 0 ? 'Chiến dịch chưa có Fanpage đã xác minh trong nhóm tương ứng.'
               : !selectedConnectionId ? 'Chọn Fanpage đích trước khi gửi.'
@@ -290,7 +298,7 @@ export default function PublishingPage() {
                 {item.status === 'outcome_unknown' && canPublish ? (
                   <div className="space-y-3 rounded-lg border border-amber-200 bg-amber-50 p-3">
                     <p className="font-medium text-amber-950">Kiểm tra Page trước khi xác nhận. Không gửi lại bài lúc này.</p>
-                    <Button variant="secondary" onClick={() => { setReconcileId(reconcileId === item.id ? null : item.id); setReconcileError(null); }}>Đối soát thủ công</Button>
+                    <Button variant="secondary" disabled={!pageReady} disabledReason={pageGateReason} onClick={() => { setReconcileId(reconcileId === item.id ? null : item.id); setReconcileError(null); }}>Đối soát thủ công</Button>
                     {reconcileId === item.id ? (
                       <div className="space-y-3">
                         <fieldset className="space-y-1">
@@ -307,7 +315,7 @@ export default function PublishingPage() {
                         <label className="block space-y-1">Ghi chú đối soát<input value={reconcileNote} onChange={(event) => setReconcileNote(event.target.value)} className="block w-full rounded-lg border border-slate-300 bg-white px-3 py-2" /></label>
                         {reconcileError ? <p role="alert" className="text-rose-800">{reconcileError}</p> : null}
                         {reconcile.isError ? <p role="alert" className="text-rose-800">{reconcile.error instanceof ApiError ? reconcile.error.message : 'Không lưu được kết quả đối soát.'}</p> : null}
-                        <Button onClick={() => submitReconciliation(item.id)} loading={reconcile.isPending}>Lưu kết quả đối soát</Button>
+                        <Button onClick={() => submitReconciliation(item.id)} loading={reconcile.isPending} disabled={!pageReady} disabledReason={pageGateReason}>Lưu kết quả đối soát</Button>
                       </div>
                     ) : null}
                   </div>

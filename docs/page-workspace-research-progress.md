@@ -383,3 +383,27 @@ Base đã kiểm tra: `codex/creative-studio-ui` @ `b769097bfdb3568889d974c6def9
 - PASS (fixture): In-app browser ở port `13106` xác nhận banner trạng thái, nút Crawl ngay/lưu nguồn bị disabled, và khả năng đọc dữ liệu cũ. Fixture cho thấy nguồn có lịch tắt hiển thị “Bật lịch 12 giờ” ở trạng thái disabled.
 - NOT_RUN: API pytest mới được viết nhưng không chạy được vì checkout không có `uv`, virtualenv hoặc `pytest`/FastAPI/SQLAlchemy trong Python hiện hành. Python AST parse đạt; chưa coi đó là test hành vi backend.
 - NOT_RUN: Không truy cập API thật, PostgreSQL/Redis, Meta hay provider live; không thay preview `13104`.
+
+### 2026-09-30 16:22 Asia/Ho_Chi_Minh — Khóa các thao tác agentic khi Page cần kết nối lại
+
+- DONE: Hồ sơ thương hiệu vẫn đọc được; Owner không thể áp dụng phiên bản mới khi Page chưa active.
+- DONE: Tài liệu cũ vẫn xem được; upload và reprocess bị khóa bằng cùng lý do Page gate.
+- DONE: Danh sách chiến dịch và bài viết cũ vẫn xem được; lập kế hoạch AI, tạo chiến dịch, lưu phiên bản, tải media, review, gửi duyệt và quyết định duyệt/từ chối bị khóa. Handler có guard ngoài trạng thái disabled của giao diện.
+- DONE: Xuất bản mới bị khóa khi Page chưa active. Lịch đã xếp vẫn có thể được Owner hủy: endpoint kiểm tra membership và quyền Owner nhưng không yêu cầu Page active; đăng mới vẫn giữ Page-gated permission.
+- DONE: Đối soát `outcome_unknown` yêu cầu Page hoạt động lại; không ghi kết quả giả khi ứng dụng không thể kiểm tra Fanpage.
+- PASS: ESLint, TypeScript `--noEmit --incremental false`, Vitest 52/52, production build và `git diff --check`.
+- PASS: Python `py_compile` cho `services/api/meta.py` và bài integration test.
+- BLOCKED: Có `pytest` trong Anaconda, nhưng test PostgreSQL dừng lúc collection vì Python đó thiếu `pgvector`; `POSTGRES_TEST_URL` cũng chưa được xác nhận. API cancellation/lịch chưa được kiểm chứng bằng PostgreSQL/HTTP thật.
+- NOT_RUN: Không thay preview `13104`, không gọi Meta hoặc provider AI thật.
+
+### 2026-09-30 16:29 Asia/Ho_Chi_Minh — Hoàn tất rà soát Page gate ở trang công việc
+
+- DONE: Trang chi tiết chiến dịch khóa lưu brief, tạo bài thủ công/AI, sinh bài theo slot và xuất file khi Page chưa active; bản ghi cũ vẫn đọc được.
+- DONE: Analytics khóa đồng bộ/nhập dữ liệu, áp dụng recommendation và ghi outcome khi Page chưa active; lịch Meta đang bật vẫn có thể tắt.
+- DONE: API đọc trạng thái lịch Meta kể cả khi Page connection chưa verified; Owner chỉ được tắt lịch khi inactive. Bật lịch yêu cầu Page active, đúng Page ID và connection đã verified.
+- DONE: Nút đối soát publication `outcome_unknown` bị khóa khi Page mất kết nối; Owner phải reconnect trước khi xác nhận kết quả.
+- PASS: ESLint, TypeScript, Vitest 52/52, production build và `git diff --check` sau thay đổi UI.
+- PASS: Python `py_compile` cho các file backend/test liên quan.
+- BLOCKED: PostgreSQL test xác nhận lịch Meta khi mất kết nối dừng lúc collection vì thiếu `pgvector`; cần cài bộ dependency dự án và cấu hình database test riêng trước khi chạy.
+- PASS: Ruff check trên `services/api/meta.py` và `tests/test_postgres_application_modules.py` với cache chuyển sang `/private/tmp`.
+- NOT_RUN: Browser/API real và preview `13104` chưa được thay.

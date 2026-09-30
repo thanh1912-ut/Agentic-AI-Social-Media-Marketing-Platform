@@ -21,6 +21,7 @@ import {
 
 import { ApiError } from '@/lib/api';
 import { hasPermission, permissionDeniedReason } from '@/lib/permissions';
+import { pageConnectionDisabledReason, pageConnectionReady } from '@/lib/page-connection';
 import { useSession } from '@/components/session-gate';
 import {
   Button,
@@ -113,6 +114,8 @@ export default function CampaignDetailPage() {
   }
 
   const data = campaign.data;
+  const pageReady = pageConnectionReady(workspace);
+  const pageGateReason = pageConnectionDisabledReason(workspace);
   const status = CAMPAIGN_STATUS_LABELS[data.status];
   const canGenerate = hasPermission(workspace, PERMISSIONS.POST_GENERATE);
   const canEditPosts = hasPermission(workspace, PERMISSIONS.POST_EDIT);
@@ -121,6 +124,7 @@ export default function CampaignDetailPage() {
 
   function submitGenerate(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (!pageReady) return;
     const parsed = Number(count);
     if (!Number.isInteger(parsed) || parsed < 1 || parsed > 10) return;
     generate.mutate(
@@ -130,6 +134,7 @@ export default function CampaignDetailPage() {
   }
 
   function submitExport() {
+    if (!pageReady) return;
     createExport.mutate(
       { campaign_id: data.id, format },
       { onSuccess: (accepted) => router.push(`/w/${workspaceId}/jobs/${accepted.job_id}`) },
@@ -138,6 +143,7 @@ export default function CampaignDetailPage() {
 
   function submitManualPost(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (!pageReady) return;
     const hashtags = manualHashtags.split(/[\s,]+/).map((item) => item.trim()).filter(Boolean);
     createPost.mutate(
       { pillar: manualPillar, format: manualFormat, caption: manualCaption.trim(), hashtags },
@@ -149,6 +155,7 @@ export default function CampaignDetailPage() {
 
   function submitBrief(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (!pageReady) return;
     const splitLines = (value: string) => value.split(/[\n;,]/).map((item) => item.trim()).filter(Boolean);
     const audience = splitLines(briefAudience);
     if (audience.length === 0 || !briefName.trim() || !briefMessage.trim()) return;
@@ -196,6 +203,7 @@ export default function CampaignDetailPage() {
   }
 
   function generateFromSlot(slot: CampaignContentSlot) {
+    if (!pageReady) return;
     generate.mutate(
       { campaign_id: data.id, count: 1, slot_id: slot.id, document_ids: selectedDocumentIds, document_usage_note: documentUsageNote.trim() || undefined },
       { onSuccess: (accepted) => router.push(`/w/${workspaceId}/jobs/${accepted.job_id}`) },
@@ -212,6 +220,7 @@ export default function CampaignDetailPage() {
       />
 
       {mocksEnabled ? <DemoNotice /> : null}
+      {!pageReady ? <p role="status" className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-950">Chiến dịch cũ vẫn xem được. Tạo/sửa nội dung, dùng agent và xuất dữ liệu đang tạm dừng đến khi Owner kết nối Fanpage trong <Link className="font-medium underline" href={`/w/${workspaceId}/settings`}>Cài đặt</Link>. {pageGateReason}</p> : null}
 
       <Card title="Tài liệu tham khảo cho yêu cầu viết" description="Chọn nguồn cho lần tạo bài tiếp theo, bao gồm tạo nhiều bài hoặc theo lịch. Để trống để chỉ dùng hồ sơ thương hiệu và brief.">
         {documents.isPending ? <p className="text-sm text-slate-600">Đang tải danh sách tài liệu…</p> : documents.isError ? <p role="alert" className="text-sm text-rose-700">Không tải được tài liệu. Hãy làm mới trang trước khi tạo bài có nguồn tham khảo.</p> : documents.data?.some((item) => item.selectable_for_content) ? (
@@ -320,7 +329,7 @@ export default function CampaignDetailPage() {
               </div>
             ) : null}
             <div className="flex flex-wrap gap-2">
-              <Button type="submit" loading={updateCampaign.isPending} disabled={!briefName.trim() || !briefMessage.trim() || !briefAudience.trim()}>Lưu brief · v{data.version + 1}</Button>
+              <Button type="submit" loading={updateCampaign.isPending} disabled={!pageReady || !briefName.trim() || !briefMessage.trim() || !briefAudience.trim()} disabledReason={!pageReady ? pageGateReason : 'Nhập tên, thông điệp và khán giả trước khi lưu.'}>Lưu brief · v{data.version + 1}</Button>
               <Button type="button" variant="secondary" disabled={updateCampaign.isPending} onClick={() => { updateCampaign.reset(); setEditingBrief(false); }}>Hủy</Button>
             </div>
           </form>
@@ -347,7 +356,7 @@ export default function CampaignDetailPage() {
                         <p className="mt-1 text-slate-700">{slot.topic}</p>
                         {slot.generation_job_id ? <p className="mt-1 text-xs text-amber-700">Đang tạo bản nháp</p> : slot.generated_post_id ? <p className="mt-1 text-xs text-emerald-700">Đã có bản nháp theo slot</p> : null}
                       </div>
-                      {canGenerate && !slot.generated_post_id && !slot.generation_job_id ? <Button variant="secondary" loading={generate.isPending} disabled={generate.isPending} onClick={() => generateFromSlot(slot)}>Sinh bài theo slot</Button> : null}
+                      {canGenerate && !slot.generated_post_id && !slot.generation_job_id ? <Button variant="secondary" loading={generate.isPending} disabled={!pageReady || generate.isPending} disabledReason={!pageReady ? pageGateReason : undefined} onClick={() => generateFromSlot(slot)}>Sinh bài theo slot</Button> : null}
                       {slot.generated_post_id ? <Link href={`/w/${workspaceId}/campaigns/${data.id}/posts/${slot.generated_post_id}`} className="text-sm font-medium text-slate-900 underline">Mở bản nháp</Link> : null}
                     </li>
                   ))}
@@ -355,7 +364,7 @@ export default function CampaignDetailPage() {
               ) : <p className="mt-2 text-sm text-slate-600">Chưa có slot. Thêm lịch nội dung khi chỉnh sửa brief.</p>}
             </section>
             {canEditBrief ? (
-              <div className="mt-4"><Button variant="secondary" onClick={() => { updateCampaign.reset(); setEditingBrief(true); }}>Chỉnh sửa brief</Button></div>
+              <div className="mt-4"><Button variant="secondary" disabled={!pageReady} disabledReason={pageGateReason} onClick={() => { updateCampaign.reset(); setEditingBrief(true); }}>Chỉnh sửa brief</Button></div>
             ) : (
               <PermissionNotice message={permissionDeniedReason(workspace, PERMISSIONS.CAMPAIGN_EDIT)} requiredPermission={PERMISSIONS.CAMPAIGN_EDIT} />
             )}
@@ -390,7 +399,7 @@ export default function CampaignDetailPage() {
                 <input id="manual-hashtags" value={manualHashtags} onChange={(event) => setManualHashtags(event.target.value)} placeholder="#monviet #bepmoc" className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" />
               </div>
               {createPost.error ? <p role="alert" className="text-sm text-rose-700">{createPost.error instanceof ApiError ? createPost.error.message : 'Không tạo được bản nháp.'}</p> : null}
-              <Button type="submit" loading={createPost.isPending} disabled={!manualCaption.trim()}>Tạo bản nháp</Button>
+              <Button type="submit" loading={createPost.isPending} disabled={!pageReady || !manualCaption.trim()} disabledReason={!pageReady ? pageGateReason : 'Nhập nội dung bài trước khi tạo bản nháp.'}>Tạo bản nháp</Button>
             </form>
           )}
         </Card>
@@ -405,7 +414,7 @@ export default function CampaignDetailPage() {
                 <input id="generate-count" type="number" min={1} max={10} value={count} onChange={(event) => setCount(event.target.value)} className="mt-1 w-28 rounded-lg border border-slate-300 px-3 py-2 text-sm" />
                 <p className="mt-1 text-xs text-slate-500">Từ 1 đến 10 bài mỗi lần.</p>
               </div>
-              <Button type="submit" loading={generate.isPending}>Tạo bản nháp</Button>
+              <Button type="submit" loading={generate.isPending} disabled={!pageReady} disabledReason={pageGateReason}>Tạo bản nháp</Button>
             </form>
           )}
           {generate.error ? <p role="alert" className="mt-3 text-sm text-rose-700">{generate.error instanceof ApiError ? generate.error.message : 'Không tạo được job.'}</p> : null}
@@ -423,7 +432,7 @@ export default function CampaignDetailPage() {
                   <option value={EXPORT_FORMATS.CSV}>CSV</option>
                 </select>
               </div>
-              <Button variant="secondary" onClick={submitExport} loading={createExport.isPending}>Tạo tệp xuất</Button>
+              <Button variant="secondary" onClick={submitExport} loading={createExport.isPending} disabled={!pageReady} disabledReason={pageGateReason}>Tạo tệp xuất</Button>
             </div>
           )}
           {createExport.error ? <p role="alert" className="mt-3 text-sm text-rose-700">Không tạo được tệp xuất. Hãy thử lại.</p> : null}

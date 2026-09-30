@@ -10,7 +10,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from database.models import (
-    AuditEvent, Campaign, CampaignPost, Job, JobStep, MediaAsset, Membership, MetaPageConnection,
+    AuditEvent, Campaign, CampaignPost, Company, Job, JobStep, MediaAsset, Membership, MetaPageConnection,
     MetaPageMetricSnapshot, MetaPagePost, MetaPostMetricSnapshot, MetaPublication,
     MetaSyncState, PostApproval, PostVersion, ScheduledMetaPublication, User, utcnow, new_id,
 )
@@ -25,6 +25,7 @@ from .meta_client import (
     safe_external_link_url, safe_page_attachment_metadata,
 )
 from .meta_tokens import TokenEncryptionUnavailable, decrypt_page_token
+from .permissions import has_permission
 from .meta_schemas import (
     MetaConnectionOut, MetaMetricHistoryOut, MetaMetricSnapshotOut,
     MetaPagePostOut, MetaPagePostsOut, MetaPublicationOut,
@@ -261,9 +262,13 @@ async def cancel_scheduled_meta_publication(
     company_id: str,
     schedule_id: str,
     user: User = Depends(current_user),
-    membership: Membership = Depends(require_permission("publish:create")),
     db: AsyncSession = Depends(get_db),
 ):
+    membership = await membership_for(company_id, user, db)
+    if not has_permission(membership.role, "publish:create"):
+        raise ApiProblem(403, "forbidden", "Chỉ Owner có thể hủy lịch đăng.", details={
+            "required_permission": "publish:create", "required_role": "owner",
+        })
     row = await db.scalar(select(ScheduledMetaPublication).where(
         ScheduledMetaPublication.company_id == company_id,
         ScheduledMetaPublication.id == schedule_id,
@@ -310,7 +315,12 @@ async def get_meta_metrics_schedule(
     db: AsyncSession = Depends(get_db),
 ):
     await membership_for(company_id, user, db)
-    connection = await _verified_connection(db, company_id, connection_id)
+    connection = await db.scalar(select(MetaPageConnection).where(
+        MetaPageConnection.company_id == company_id,
+        MetaPageConnection.id == connection_id,
+    ))
+    if connection is None:
+        raise ApiProblem(404, "not_found", "Không tìm thấy kết nối Fanpage trong doanh nghiệp này.")
     return MetaMetricsScheduleOut(
         connection_id=connection.id, page_id=connection.page_id,
         enabled=connection.metrics_schedule_enabled,
@@ -326,10 +336,32 @@ async def set_meta_metrics_schedule(
     connection_id: str,
     request: MetaMetricsScheduleIn,
     user: User = Depends(current_user),
-    membership: Membership = Depends(require_permission("connection:manage")),
     db: AsyncSession = Depends(get_db),
 ):
-    connection = await _verified_connection(db, company_id, connection_id)
+    membership = await membership_for(company_id, user, db)
+    if not has_permission(membership.role, "connection:manage"):
+        raise ApiProblem(403, "forbidden", "Chỉ Owner có thể quản lý lịch đồng bộ Fanpage.", details={
+            "required_permission": "connection:manage", "required_role": "owner",
+        })
+    company = await db.get(Company, company_id)
+    if company is None:
+        raise ApiProblem(404, "not_found", "Không tìm thấy doanh nghiệp.")
+    if request.enabled and (company.page_connection_state != "active" or not company.page_id):
+        code = "page_connection_required" if not company.page_id else "page_needs_reconnect"
+        raise ApiProblem(409, code, "Kết nối lại Fanpage trước khi bật lịch đồng bộ.")
+    if request.enabled:
+        connection = await _verified_connection(db, company_id, connection_id)
+        if connection.page_id != company.page_id:
+            raise ApiProblem(409, "page_connection_mismatch", "Chỉ bật lịch cho Fanpage chính của workspace này.")
+    else:
+        # Owners may stop future reads while disconnected; don't require a
+        # currently usable token just to turn off an existing schedule.
+        connection = await db.scalar(select(MetaPageConnection).where(
+            MetaPageConnection.company_id == company_id,
+            MetaPageConnection.id == connection_id,
+        ).with_for_update())
+        if connection is None:
+            raise ApiProblem(404, "not_found", "Không tìm thấy kết nối Fanpage trong doanh nghiệp này.")
     now = utcnow()
     connection.metrics_schedule_enabled = request.enabled
     connection.metrics_sync_interval_hours = 6

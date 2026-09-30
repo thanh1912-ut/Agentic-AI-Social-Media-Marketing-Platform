@@ -13,6 +13,7 @@ import { ApiError, facebookPostUrl, mailGuardApi, marketResearchApi, marketResea
 import type { ApiMetricImportRequest, ApiRecordExperimentOutcomeRequest } from '@/lib/api/types';
 import { formatDateTime, formatNumber } from '@/lib/format';
 import { hasPermission } from '@/lib/permissions';
+import { pageConnectionDisabledReason, pageConnectionReady } from '@/lib/page-connection';
 import {
   useApplyManualRecommendation,
   useCampaigns,
@@ -79,6 +80,8 @@ export default function AnalyticsPage() {
   const workspaceId = params?.workspaceId ?? '';
   const { workspaces } = useSession();
   const workspace = workspaces.find((item) => item.id === workspaceId) ?? null;
+  const pageReady = pageConnectionReady(workspace);
+  const pageGateReason = pageConnectionDisabledReason(workspace);
   const queryClient = useQueryClient();
   const posts = usePosts(workspace ? workspaceId : '');
   const campaigns = useCampaigns(workspace ? workspaceId : '');
@@ -140,7 +143,7 @@ export default function AnalyticsPage() {
   const connectionId = selectedPage?.id;
   const metaPageId = selectedPage?.page_id ?? metaConnection.data?.page_id ?? null;
   const metaPageName = selectedPage?.page_name ?? metaConnection.data?.page_name ?? null;
-  const canReadMetaPage = Boolean(selectedPage) || Boolean(metaConnection.data?.status === 'verified' && metaConnection.data.can_sync_metrics && metaConnection.data.page_id);
+  const canReadMetaPage = pageReady && (Boolean(selectedPage) || Boolean(metaConnection.data?.status === 'verified' && metaConnection.data.can_sync_metrics && metaConnection.data.page_id));
   const metaSourceId = metaPageId ? `meta:${metaPageId}` : '';
   const pagePosts = useQuery({
     queryKey: metaQueryKeys.pagePosts(workspace ? workspaceId : '', pagePostOffset, connectionId),
@@ -289,6 +292,7 @@ export default function AnalyticsPage() {
 
   function submitSnapshot() {
     setFormError(null);
+    if (!pageReady) return setFormError(pageGateReason ?? 'Kết nối lại Fanpage trước khi ghi dữ liệu.');
     if (isMetaSource) return setFormError('Nguồn Meta được đồng bộ tự động; chọn mã nguồn khác để nhập thủ công.');
     if (!sourceId.trim()) return setFormError('Nhập mã nguồn, ví dụ ID Facebook Page.');
     if (!measuredAt || Number.isNaN(new Date(measuredAt).getTime())) return setFormError('Chọn thời điểm đo hợp lệ.');
@@ -303,6 +307,10 @@ export default function AnalyticsPage() {
   }
 
   function submitExperimentOutcome() {
+    if (!pageReady) {
+      setExperimentFormError(pageGateReason ?? 'Kết nối lại Fanpage trước khi ghi nhận kết quả.');
+      return;
+    }
     const windowValues = [baselineWindowFrom, baselineWindowTo, followupWindowFrom, followupWindowTo];
     if (windowValues.some((value) => !value || Number.isNaN(new Date(value).getTime()))) {
       setExperimentFormError('Chọn đủ bốn mốc thời gian đo trước và sau khi áp dụng recommendation.');
@@ -350,6 +358,7 @@ export default function AnalyticsPage() {
         title="Hiệu quả nội dung"
         description="Hiểu điều đang hiệu quả từ số liệu có nguồn. Dữ liệu chưa có luôn được hiển thị rõ."
       />
+      {!pageReady ? <p role="status" className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-950">Dữ liệu và lịch sử vẫn xem được. Đồng bộ, nhập số liệu, ghi outcome và áp dụng đề xuất cần Fanpage đang kết nối. {pageGateReason}</p> : null}
       <nav aria-label="Các mục hiệu quả nội dung" className="flex flex-wrap gap-2 rounded-2xl border border-slate-200/80 bg-white p-2">
         {[
           { href: '#meta-page-posts-heading', label: 'Số liệu Fanpage', icon: 'publish' as const },
@@ -393,7 +402,7 @@ export default function AnalyticsPage() {
             <p className="text-sm text-slate-700">{metaPageName || 'Fanpage'} · Page ID {metaPageId}</p>
             {connectionId ? <div className="flex flex-wrap items-center gap-3 rounded-lg bg-slate-50 p-3 text-sm">
               <p>{metaMetricsSchedule.data?.enabled ? `Đồng bộ tự động mỗi ${metaMetricsSchedule.data.interval_hours} giờ` : 'Đồng bộ tự động đang tắt'}</p>
-              {workspace.role === 'owner' ? <Button variant="secondary" size="sm" onClick={() => updateMetaMetricsSchedule.mutate(!metaMetricsSchedule.data?.enabled)} loading={updateMetaMetricsSchedule.isPending} disabled={metaMetricsSchedule.isPending || metaMetricsSchedule.isError}>{metaMetricsSchedule.data?.enabled ? 'Tắt lịch tự động' : 'Bật lịch mỗi 6 giờ'}</Button> : null}
+              {workspace.role === 'owner' ? <Button variant="secondary" size="sm" onClick={() => updateMetaMetricsSchedule.mutate(!metaMetricsSchedule.data?.enabled)} loading={updateMetaMetricsSchedule.isPending} disabled={updateMetaMetricsSchedule.isPending || metaMetricsSchedule.isError || (!pageReady && !metaMetricsSchedule.data?.enabled)} disabledReason={!pageReady && !metaMetricsSchedule.data?.enabled ? pageGateReason : undefined}>{metaMetricsSchedule.data?.enabled ? 'Tắt lịch tự động' : 'Bật lịch mỗi 6 giờ'}</Button> : null}
             </div> : null}
             {metaMetricsSchedule.isError && connectionId ? <p className="text-xs text-slate-600">Không đọc được trạng thái lịch đồng bộ; thao tác thủ công vẫn khả dụng.</p> : null}
             <div className="flex flex-wrap items-center gap-3">
@@ -401,7 +410,7 @@ export default function AnalyticsPage() {
                 onClick={() => syncMetaMetrics.mutate()}
                 loading={syncMetaMetrics.isPending}
                 disabled={workspace?.role !== 'owner' || !canReadMetaPage || syncJob.data?.status === 'queued' || syncJob.data?.status === 'running'}
-                disabledReason={workspace?.role !== 'owner' ? 'Chỉ chủ sở hữu có quyền đồng bộ Fanpage.' : !canReadMetaPage ? 'Chọn Fanpage đã xác minh trước khi đồng bộ.' : 'Đang đồng bộ, chờ job hoàn tất.'}
+                disabledReason={workspace?.role !== 'owner' ? 'Chỉ chủ sở hữu có quyền đồng bộ Fanpage.' : !pageReady ? pageGateReason : !canReadMetaPage ? 'Chọn Fanpage đã xác minh trước khi đồng bộ.' : 'Đang đồng bộ, chờ job hoàn tất.'}
               >
                 Đồng bộ bài và số liệu Meta
               </Button>
@@ -511,7 +520,7 @@ export default function AnalyticsPage() {
         </label>
         <div className="mt-4 flex flex-wrap gap-2">
           <button type="button" onClick={addPoint} disabled={isMetaSource} title={isMetaSource ? 'Chọn mã nguồn khác để nhập thủ công.' : undefined} className="rounded-lg border border-slate-300 px-3 py-2 text-sm font-medium text-slate-800 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50">Thêm bài vào snapshot</button>
-          <button type="button" onClick={submitSnapshot} disabled={isMetaSource || importSnapshot.isPending || pendingPoints.length === 0} title={isMetaSource ? 'Nguồn Meta được đồng bộ tự động.' : undefined} className="rounded-xl bg-teal-800 px-4 py-2.5 text-sm font-semibold text-white hover:bg-teal-900 disabled:cursor-not-allowed disabled:opacity-50">{importSnapshot.isPending ? 'Đang lưu…' : `Lưu ${pendingPoints.length} bài`}</button>
+          <button type="button" onClick={submitSnapshot} disabled={!pageReady || isMetaSource || importSnapshot.isPending || pendingPoints.length === 0} title={!pageReady ? pageGateReason : isMetaSource ? 'Nguồn Meta được đồng bộ tự động.' : undefined} className="rounded-xl bg-teal-800 px-4 py-2.5 text-sm font-semibold text-white hover:bg-teal-900 disabled:cursor-not-allowed disabled:opacity-50">{importSnapshot.isPending ? 'Đang lưu…' : `Lưu ${pendingPoints.length} bài`}</button>
           {pendingPoints.length > 0 ? <button type="button" onClick={() => setPendingPoints([])} className="rounded-lg px-3 py-2 text-sm text-slate-600 hover:bg-slate-100">Xóa danh sách</button> : null}
         </div>
         {formError ? <p role="alert" className="mt-3 text-sm text-rose-800">{formError}</p> : null}
@@ -578,7 +587,7 @@ export default function AnalyticsPage() {
                 {recommendation.data.status === 'proposed' && !savedRecommendation ? (
                   <button
                     type="button"
-                    disabled={saveRecommendation.isPending}
+                    disabled={!pageReady || saveRecommendation.isPending}
                     onClick={() => saveRecommendation.mutate({ source_id: sourceId.trim() })}
                     className="mt-2 rounded-lg bg-amber-900 px-3 py-2 font-medium text-white disabled:opacity-50"
                   >
@@ -611,7 +620,7 @@ export default function AnalyticsPage() {
                     </label>
                     <button
                       type="button"
-                      disabled={!targetCampaignId || applyRecommendation.isPending}
+                      disabled={!pageReady || !targetCampaignId || applyRecommendation.isPending}
                       onClick={() => applyRecommendation.mutate({
                         recommendationId: recommendationRecord.id,
                         body: { campaign_id: targetCampaignId, evidence_ids: recommendationRecord.recommendation.evidence_ids },
@@ -702,7 +711,7 @@ export default function AnalyticsPage() {
                 <label className="space-y-1 text-sm text-slate-700">Kết thúc follow-up<input className="w-full rounded-lg border border-slate-300 px-3 py-2" type="datetime-local" value={followupWindowTo} onChange={(event) => setFollowupWindowTo(event.target.value)} /></label>
               </div>
               <div className="flex flex-wrap items-center gap-3">
-                {canApplyRecommendation ? <button type="button" disabled={recordExperimentOutcome.isPending} onClick={submitExperimentOutcome} className="rounded-xl bg-teal-800 px-4 py-2.5 text-sm font-semibold text-white hover:bg-teal-900 disabled:opacity-50">{recordExperimentOutcome.isPending ? 'Đang tính và lưu…' : 'Ghi nhận kết quả'}</button> : <p className="text-sm text-slate-600">Chỉ chủ workspace có thể ghi nhận outcome.</p>}
+                {canApplyRecommendation ? <button type="button" disabled={!pageReady || recordExperimentOutcome.isPending} onClick={submitExperimentOutcome} title={!pageReady ? pageGateReason : undefined} className="rounded-xl bg-teal-800 px-4 py-2.5 text-sm font-semibold text-white hover:bg-teal-900 disabled:opacity-50">{recordExperimentOutcome.isPending ? 'Đang tính và lưu…' : 'Ghi nhận kết quả'}</button> : <p className="text-sm text-slate-600">Chỉ chủ workspace có thể ghi nhận outcome.</p>}
                 {recordExperimentOutcome.isError ? <p role="alert" className="text-sm text-rose-800">{shortError(recordExperimentOutcome.error)}</p> : null}
                 {experimentFormError ? <p role="alert" className="text-sm text-rose-800">{experimentFormError}</p> : null}
               </div>
