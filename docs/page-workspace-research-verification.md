@@ -236,3 +236,4 @@ Lát cắt này không đáp ứng thu thập nội dung Group discussions, bài
 | Regression | PASS | `tests/test_market_research_api.py tests/test_research_privacy.py`: 26 passed; Ruff đạt. |
 | Mở lại xử lý text Facebook | BLOCKED | Chưa có screening/phê duyệt thực tế để cấp `approved_for_provider`; không có cách bật bằng cách nhập checkbox hoặc policy reference hiện tại. |
 | Frontend build | PASS | `npm --workspace @agentic/web run build` hoàn tất; typecheck, ESLint và Vitest 50 tests cũng đạt. |
+| Mixed-source và cache replay | PASS | `tests/test_ai_budget.py tests/test_market_research_api.py tests/test_research_privacy.py`: 40 passed; nội dung Facebook bị giữ vắng mặt trong provider payload, cached report có fingerprint evidence/version khác bị defer. |

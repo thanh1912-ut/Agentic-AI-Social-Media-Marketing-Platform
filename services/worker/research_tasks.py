@@ -1473,6 +1473,18 @@ async def _make_report(
             "trends": [], "suggestions": [], "analysis_status": "no_evidence",
             "business_profile_context": {"status": "not_used", "reason": "no_evidence"},
         }, None, "no_evidence"
+    facebook_evidence_manifest = sorted(
+        (
+            str(item.get("id") or ""),
+            str(item.get("evidence_version_id") or ""),
+            str(item.get("content_processing_status") or "unknown"),
+        )
+        for item in evidence_rows
+        if item.get("content_processing_status") in {"privacy_review_required", "approved_for_provider"}
+    )
+    facebook_evidence_fingerprint = hashlib.sha256(
+        json.dumps(facebook_evidence_manifest, ensure_ascii=True, separators=(",", ":")).encode("ascii")
+    ).hexdigest()
     privacy_coverage = {
         "facebook_post_text_withheld": sum(
             1 for item in evidence_rows if item.get("content_processing_status") == "privacy_review_required"
@@ -1482,6 +1494,7 @@ async def _make_report(
         ),
         "comments_content_status": "privacy_hold",
         "media_content_status": "privacy_hold",
+        "facebook_evidence_fingerprint": facebook_evidence_fingerprint,
     }
     if privacy_coverage["facebook_post_text_withheld"] and not web_snapshot_rows and all(
         item.get("content_processing_status") == "privacy_review_required" for item in evidence_rows
@@ -1568,6 +1581,27 @@ async def _make_report(
     if reservation.status in {"cached", "cached_unknown"} and reservation.cached_result:
         cached = reservation.cached_result
         report = dict(cached.get("report") or {})
+        cached_privacy = report.get("privacy_coverage")
+        privacy_cache_matches = (
+            isinstance(cached_privacy, dict)
+            and int(cached_privacy.get("facebook_post_text_withheld", 0) or 0)
+            >= privacy_coverage["facebook_post_text_withheld"]
+            and int(cached_privacy.get("facebook_post_text_sent", 0) or 0)
+            >= privacy_coverage["facebook_post_text_sent"]
+            and cached_privacy.get("comments_content_status") == "privacy_hold"
+            and cached_privacy.get("media_content_status") == "privacy_hold"
+            and cached_privacy.get("facebook_evidence_fingerprint") == facebook_evidence_fingerprint
+        )
+        if privacy_coverage["facebook_post_text_withheld"] and not privacy_cache_matches:
+            return report_with_context({
+                "headline": "Báo cáo cũ đang chờ rà soát dữ liệu Facebook",
+                "summary": (
+                    "Kết quả AI đã lưu trước đây không có bằng chứng về trạng thái nội dung Facebook được gửi. "
+                    "Hệ thống không phát lại kết quả đó cho lượt này; văn bản bài viết, bình luận và media vẫn được giữ."
+                ),
+                "trends": [], "suggestions": [], "analysis_status": "deferred_privacy_review",
+                "privacy_coverage": privacy_coverage,
+            }, status="not_used", reason="legacy_cached_report_privacy_status_unknown"), None, "deferred_privacy_review"
         if not isinstance(report.get("business_profile_context"), dict):
             # A replay must not claim that the current profile was included in
             # an earlier provider request whose stored input provenance is absent.
@@ -1594,7 +1628,7 @@ async def _make_report(
         valid_snapshot_ids = {str(item["snapshot_id"]) for item in (web_snapshot_rows or [])}
         report = _trim_evidence_ids(report, valid_ids, valid_snapshot_ids)
         report["analysis_status"] = "completed"
-        _annotate_business_profile(report, business_profile_context)
+        report_with_context(report)
         actual_model = metadata.model if metadata else configured_model
         settlement = await settle_automatic_request(
             company_id=company_id, reservation=reservation,

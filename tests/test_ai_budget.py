@@ -169,3 +169,130 @@ def test_research_report_uses_only_applied_owner_profile_and_explicit_market_sco
     assert model.payload["owner_authored_brand_profile"] == profile
     assert model.payload["market_scope"] == {"locale": "vi-VN", "keywords": ["trà"]}
     assert report["business_profile_context"] == provenance
+
+
+def test_mixed_report_sends_facebook_metrics_but_not_held_content_to_provider(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from services.worker import research_tasks
+
+    class Model:
+        model_name = "deepseek-flash"
+        payload = None
+
+        def generate(self, *, system_prompt, input_payload, response_model):
+            self.payload = input_payload
+            assert "privacy_review_required" in system_prompt
+            return response_model(
+                headline="Báo cáo có nguồn website",
+                summary="Tóm tắt từ nguồn đủ điều kiện.",
+                trends=[],
+                suggestions=[],
+            ), SimpleNamespace(model="deepseek-flash", input_tokens=20, output_tokens=10)
+
+    model = Model()
+
+    async def active_profile(_company_id):
+        return None, {"status": "not_configured"}
+
+    async def reserve(**_kwargs):
+        return Reservation("reserved", "cycle-key")
+
+    async def settle(**_kwargs):
+        return "settled"
+
+    monkeypatch.setattr(research_tasks, "configured_structured_model", lambda: model)
+    monkeypatch.setattr(research_tasks, "_active_owner_brand_context", active_profile)
+    monkeypatch.setattr(research_tasks, "reserve_automatic_request", reserve)
+    monkeypatch.setattr(research_tasks, "settle_automatic_request", settle)
+
+    evidence = [{
+        "id": "facebook-evidence",
+        "source_type": "owned_facebook_page",
+        "content_processing_status": "privacy_review_required",
+        "title": "Bài viết Facebook đang chờ rà soát dữ liệu cá nhân",
+        "text": "",
+        "url": "https://facebook.com/example/posts/1",
+        "metrics": {"reactions": 10},
+        "comments": [],
+    }, {
+        "id": "website-evidence",
+        "source_type": "website",
+        "content_processing_status": "not_facebook_source",
+        "title": "Thông tin trên website",
+        "text": "Mô tả công khai của sản phẩm.",
+        "url": "https://example.com/product",
+        "metrics": {},
+        "comments": [],
+    }]
+    group = SimpleNamespace(industry="", region="", locale="vi-VN", keywords_json=[])
+    report, _model_name, status = asyncio.run(research_tasks._make_report(
+        "workspace-test", "cycle-mixed", group, evidence, [], [],
+    ))
+
+    assert status == "completed"
+    assert report["privacy_coverage"]["facebook_post_text_withheld"] == 1
+    assert len(report["privacy_coverage"]["facebook_evidence_fingerprint"]) == 64
+    payload_evidence = {item["id"]: item for item in model.payload["evidence"]}
+    facebook_item = payload_evidence["facebook-evidence"]
+    assert facebook_item["title"] == "Bài viết Facebook đang chờ rà soát dữ liệu cá nhân"
+    assert facebook_item["text"] == ""
+    assert facebook_item["comments"] == []
+    assert facebook_item["metrics"] == {"reactions": 10}
+    assert payload_evidence["website-evidence"]["text"] == "Mô tả công khai của sản phẩm."
+
+
+def test_cached_mixed_report_for_different_facebook_evidence_is_not_replayed(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from services.worker import research_tasks
+
+    class Model:
+        model_name = "deepseek-flash"
+
+        def generate(self, **_kwargs):
+            pytest.fail("a legacy cached result must not trigger a replacement provider call")
+
+    async def reserve(**_kwargs):
+        return Reservation(
+            "cached", "cycle-key", cached_result={
+                "report": {
+                    "headline": "Nội dung báo cáo cũ",
+                    "summary": "Có thể dựa trên text Facebook chưa được rà soát.",
+                    "trends": [],
+                    "suggestions": [],
+                    "privacy_coverage": {
+                        "facebook_post_text_withheld": 1,
+                        "facebook_post_text_sent": 0,
+                        "comments_content_status": "privacy_hold",
+                        "media_content_status": "privacy_hold",
+                        "facebook_evidence_fingerprint": "different-evidence-set",
+                    },
+                },
+                "model_name": "deepseek-flash",
+            },
+        )
+
+    async def active_profile(_company_id):
+        return None, {"status": "not_configured"}
+
+    monkeypatch.setattr(research_tasks, "configured_structured_model", lambda: Model())
+    monkeypatch.setattr(research_tasks, "_active_owner_brand_context", active_profile)
+    monkeypatch.setattr(research_tasks, "reserve_automatic_request", reserve)
+
+    group = SimpleNamespace(industry="", region="", locale="vi-VN", keywords_json=[])
+    evidence = [{
+        "id": "facebook-evidence",
+        "content_processing_status": "privacy_review_required",
+        "text": "",
+    }]
+    web_snapshots = [{"snapshot_id": "web-snapshot", "entity_type": "article"}]
+    report, model_name, status = asyncio.run(research_tasks._make_report(
+        "workspace-test", "cycle-legacy", group, evidence, [], web_snapshots,
+    ))
+
+    assert status == "deferred_privacy_review"
+    assert model_name is None
+    assert report["analysis_status"] == "deferred_privacy_review"
+    assert "Nội dung báo cáo cũ" not in report["headline"]
+    assert report["privacy_coverage"]["facebook_post_text_withheld"] == 1

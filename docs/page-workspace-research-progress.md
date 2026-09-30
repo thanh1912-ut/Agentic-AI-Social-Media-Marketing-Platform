@@ -68,6 +68,13 @@ Base đã kiểm tra: `codex/creative-studio-ui` @ `b769097bfdb3568889d974c6def9
 - PASS: `git diff --check`; frontend typecheck, lint và Vitest 50 tests đạt trên cùng thay đổi.
 - NOT_RUN: Không triển khai preview và không gọi provider/Meta live.
 
+### 2026-09-30 14:53 Asia/Ho_Chi_Minh — Ràng buộc report trộn nguồn và kết quả cache cũ
+
+- DONE: Report hoàn tất giờ lưu `privacy_coverage`, để UI hiện đúng số bài Facebook đang bị giữ.
+- DONE: Report trộn Facebook + website chỉ gửi nội dung website đủ điều kiện và số liệu Facebook; cache được ràng buộc bằng fingerprint của evidence/version/trạng thái Facebook nên không phát lại report thuộc tập bằng chứng khác.
+- PASS: `tests/test_ai_budget.py tests/test_market_research_api.py tests/test_research_privacy.py` — 40 passed; regression kiểm tra payload trộn nguồn và cache có fingerprint lệch. Ruff và `git diff --check` đạt.
+- BLOCKED: Không tự chuyển text Facebook sang provider; chưa có bước rà soát/ra quyết định đủ tin cậy.
+
 ### 2026-09-30 10:21 Asia/Ho_Chi_Minh — Ghi nhận policy theo nguồn
 
 - DONE: Thêm bảng revision bất biến `research_privacy_policy_revisions` và migration `0023_research_privacy_policy_records`, tenant FK ghép từ `(company_id, source_id)` về nguồn.
