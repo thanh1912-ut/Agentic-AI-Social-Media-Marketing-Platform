@@ -112,6 +112,8 @@ class ResearchPrivacyPolicyUpdate(StrictModel):
 class ResearchPrivacyPolicyOut(StrictModel):
     source_id: str
     configured: bool
+    collection_ready: bool = False
+    legal_basis_verified: Literal[False] = False
     revision_no: int | None = None
     purpose: str | None = None
     processing_basis_reference: str | None = None
@@ -134,6 +136,8 @@ class CollectionRunOut(StrictModel):
     privacy_policy_revision_id: str | None = None
     privacy_policy_revision_no: int | None = None
     privacy_policy_version: str | None = None
+    privacy_policy_ready_for_collection: bool | None = None
+    privacy_policy_legal_basis_verified: Literal[False] | None = None
     privacy_policy_requested_retention_days: int | None = None
     retention_enforcement_status: Literal["not_enforced"] = "not_enforced"
     comments_content_status: Literal["privacy_hold"] = "privacy_hold"

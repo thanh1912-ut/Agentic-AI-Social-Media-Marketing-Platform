@@ -28,11 +28,23 @@
 | AI budget $2/workspace/day | PARTIAL | PostgreSQL reservation/ledger hiện bao phủ báo cáo Nghiên cứu DeepSeek tự động; chưa áp dụng chung cho các agent, Gemini/Qwen hoặc media |
 | Ngân sách API/UI | PASS theo API fixture và frontend lint/unit; browser real NOT_RUN | `GET .../market-research/ai-budget`; `test_research_ai_budget_is_workspace_scoped_and_reports_reserved_cost` |
 | Pin bằng chứng cho hướng viết | PASS (API + worker fixture) | `test_market_suggestion_draft_pins_report_observation_and_version`, `test_content_generation_job_persists_cited_draft_and_is_idempotent` |
-| Privacy policy record | PARTIAL; không mở processing | Bảng revision bất biến và Owner-only API/UI lưu mục đích, tham chiếu căn cứ, version và thời hạn dự kiến. Response nói rõ `not_enforced` và `privacy_hold`; chưa có deletion ledger/propagation hoặc legal review |
-| Privacy policy run snapshot | PASS (SQLite API/worker fixture) | `test_collection_run_pins_privacy_policy_revision_without_enabling_processing`: run giữ policy revision `PR-1` sau khi source đổi sang `PR-2`; API trả `not_enforced` và `privacy_hold`. Chỉ kiểm tra provenance, không chứng minh retention hoặc comment processing |
+| Privacy policy record | PARTIAL; chỉ là cấu hình do Owner ghi nhận | Bảng revision bất biến và Owner-only API/UI lưu mục đích, tham chiếu căn cứ, version và thời hạn dự kiến. Không xác minh tính hợp lệ của căn cứ; comments `privacy_hold`, retention `not_enforced`; chưa có deletion ledger/propagation hoặc legal review |
+| Privacy policy run snapshot | PASS (SQLite API/worker fixture) | `test_collection_run_pins_policy_snapshot_without_verifying_legal_basis`: run giữ policy revision `PR-1` sau khi source đổi sang `PR-2`; API trả `legal_basis_verified=false`, `not_enforced` và `privacy_hold`. Chỉ kiểm tra provenance |
 | Raw research quarantine TTL | PARTIAL | PostgreSQL integration test xác nhận pointer+24h expiry đã commit trước storage `put`; simulated timeout giữ pointer. Object storage thật và purge scheduler end-to-end chưa chạy. |
 | Manual comment import privacy hold | PASS (SQLite API fixture) | `tests/test_market_research_api.py` — 12 passed trong lượt mới nhất; endpoint không lưu/trả comment text, giữ metrics và trả count/status. |
-| Privacy policy record | PASS (SQLite API fixture; processing remains held) | Hai test mới trong `tests/test_market_research_api.py`: save/reload, immutable revision/idempotency, `not_enforced`, `privacy_hold`, Editor bị từ chối |
+| Privacy policy record | PASS (SQLite API fixture; legal basis unverified) | Tests `tests/test_market_research_api.py`: save/reload, immutable revision/idempotency, `legal_basis_verified=false`, `not_enforced`, `privacy_hold`, Editor bị từ chối |
+
+## Gate cấu hình privacy trước thu thập Facebook — 2026-09-30
+
+| Kiểm tra | Trạng thái | Bằng chứng và giới hạn |
+|---|---|---|
+| Nguồn Facebook mới | PASS (SQLite/API fixture) | Page công ty, Page công khai và Group công khai bắt đầu ở `needs_privacy_policy`; collector chưa được gọi khi thiếu mục đích/tham chiếu. |
+| Worker/group crawl | PASS (SQLite worker fixture) | `test_research_worker_blocks_facebook_fetch_until_policy_fields_are_recorded` xác nhận worker trả `privacy_policy_required`, không gọi collector, không giữ lịch tự chạy và lưu `legal_basis_verified=false` vào kết quả. |
+| Manual import | PASS (SQLite/API fixture) | Import Facebook trả 409 `privacy_policy_required` trước khi có cấu hình; sau revision Owner, import tiếp tục qua privacy filter hiện có. |
+| Resume lịch | PASS (SQLite/API fixture) | Ghi policy revision đưa nguồn từ `needs_privacy_policy` về `active`; chỉ đặt nguồn/group due nếu lịch Owner đang bật. |
+| Chất lượng | PASS | 41 backend focused tests; Ruff; OpenAPI export/check; TypeScript generation; ESLint; `tsc --noEmit --incremental false`; Vitest 50/50; Next production build. |
+| Căn cứ pháp lý / deletion / retention | NOT_RUN | `collection_ready` chỉ xác nhận đủ trường text; không xác minh căn cứ, đồng ý hay tuân thủ. `legal_basis_verified` luôn false; retention `not_enforced`, comments `privacy_hold`, chưa có deletion propagation. |
+| Live systems | NOT_RUN | Không gọi Facebook, provider AI, PostgreSQL/Redis preview hoặc browser real. Văn bản tham khảo chính thức có hiệu lực từ 01-01-2026; việc áp dụng cho tổ chức cần rà soát riêng. |
 | PostgreSQL migration fresh/upgrade | PASS (disposable PG 18.3) | Fresh migration tới `0023_research_privacy_policy_records`; DB thứ hai chạy từ đầu tới `0022` rồi upgrade `0022` → `0023`; `test_postgres_migrations_constraints_vector_and_job_fencing` 1 passed, kiểm tra composite tenant FK. |
 | PostgreSQL/Redis integration | PASS at `0022`; PARTIAL for `0023` | Combined focused suite trước đó: 32 passed, fresh migration to `0022`, schema/vector, fencing/claim, Redis queue/cache, dispatch, reservation race và raw-expiry ordering. Migration mới được kiểm tra trên PG tới `0023`, nhưng lượt PG/Redis kết hợp đầy đủ chưa chạy lại sau `0023`. Test services đã dừng sau lượt chạy. |
 | Budget pricing + no-provider fallback | PASS (unit) | 9 test; tiền micro-USD, upper bound một repair, worker không gọi provider khi deferred/uncertain |
@@ -123,7 +135,7 @@ Giá lấy từ [Google Gemini model update](https://ai.google.dev/gemini-api/do
 
 | Kiểm tra | Trạng thái | Bằng chứng và giới hạn |
 |---|---|---|
-| Policy revision được chụp khi mở run | PASS (SQLite API/worker fixture) | `test_collection_run_pins_privacy_policy_revision_without_enabling_processing`: run giữ `PR-1` sau khi nguồn được cập nhật thành `PR-2`. |
+| Policy revision được chụp khi mở run | PASS (SQLite API/worker fixture) | `test_collection_run_pins_policy_snapshot_without_verifying_legal_basis`: run giữ `PR-1` sau khi nguồn được cập nhật thành `PR-2`, đồng thời báo căn cứ chưa xác minh. |
 | Không mở comment processing hoặc retention | PASS (contract assertion) | Lịch sử trả `comments_content_status=privacy_hold`, `retention_enforcement_status=not_enforced`; UI hiện hai giới hạn này. |
 | OpenAPI / generated TypeScript | PASS | Xuất bằng `scripts/export_openapi.py`; kiểm tra `--check` đạt; sinh bằng `npm run gen:api -- --from ../../packages/contracts/openapi.json`. Generator sắp lại nhiều declaration do export OpenAPI canonical; thay đổi type vẫn là output tự sinh. |
 | Backend focused | PASS | `tests/test_market_research_api.py tests/test_research_privacy.py`: 16 passed. |

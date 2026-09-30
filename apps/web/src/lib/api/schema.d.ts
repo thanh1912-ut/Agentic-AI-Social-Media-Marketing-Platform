@@ -2419,6 +2419,10 @@ export interface components {
             readonly job_id: string;
             /** Post Limit */
             readonly post_limit: number;
+            /** Privacy Policy Legal Basis Verified */
+            readonly privacy_policy_legal_basis_verified?: false | null;
+            /** Privacy Policy Ready For Collection */
+            readonly privacy_policy_ready_for_collection?: boolean | null;
             /** Privacy Policy Requested Retention Days */
             readonly privacy_policy_requested_retention_days?: number | null;
             /** Privacy Policy Revision Id */
@@ -2461,6 +2465,14 @@ export interface components {
         /** CompetitorPostOut */
         readonly CompetitorPostOut: {
             /**
+             * Attachment Metadata Status
+             * @default not_returned
+             * @enum {string}
+             */
+            readonly attachment_metadata_status: "returned" | "none_returned" | "not_returned" | "truncated";
+            /** Attachments */
+            readonly attachments?: readonly components["schemas"]["ResearchPostAttachmentOut"][];
+            /**
              * Content Truncated
              * @default false
              */
@@ -2469,6 +2481,8 @@ export interface components {
             readonly external_id: string | null;
             /** Id */
             readonly id: string;
+            /** Link Url */
+            readonly link_url?: string | null;
             /** Metric Provenance */
             readonly metric_provenance?: {
                 readonly [key: string]: unknown;
@@ -2489,16 +2503,6 @@ export interface components {
             readonly title: string;
             /** Url */
             readonly url: string;
-            /** Link Url */
-            readonly link_url?: string | null;
-            /** Attachments */
-            readonly attachments?: readonly components["schemas"]["ResearchPostAttachmentOut"][];
-            /**
-             * Attachment Metadata Status
-             * @default not_returned
-             * @enum {string}
-             */
-            readonly attachment_metadata_status: "returned" | "none_returned" | "not_returned" | "truncated";
         };
         /** CompetitorPostsPage */
         readonly CompetitorPostsPage: {
@@ -3392,6 +3396,14 @@ export interface components {
         };
         /** MetaPagePostOut */
         readonly MetaPagePostOut: {
+            /**
+             * Attachment Metadata Status
+             * @default not_returned
+             * @enum {string}
+             */
+            readonly attachment_metadata_status: "returned" | "none_returned" | "not_returned" | "truncated";
+            /** Attachments */
+            readonly attachments?: readonly components["schemas"]["MetaPostAttachmentOut"][];
             /** Comments */
             readonly comments: number | null;
             /** Engagements */
@@ -3405,6 +3417,8 @@ export interface components {
              * Format: date-time
              */
             readonly last_synced_at: string;
+            /** Link Url */
+            readonly link_url?: string | null;
             /** Linked Post Id */
             readonly linked_post_id: string | null;
             /** Message */
@@ -3419,16 +3433,6 @@ export interface components {
             readonly reactions: number | null;
             /** Shares */
             readonly shares: number | null;
-            /** Link Url */
-            readonly link_url?: string | null;
-            /** Attachments */
-            readonly attachments?: readonly components["schemas"]["MetaPostAttachmentOut"][];
-            /**
-             * Attachment Metadata Status
-             * @default not_returned
-             * @enum {string}
-             */
-            readonly attachment_metadata_status: "returned" | "none_returned" | "not_returned" | "truncated";
         };
         /** MetaPagePostsOut */
         readonly MetaPagePostsOut: {
@@ -3448,24 +3452,24 @@ export interface components {
         /** MetaPostAttachmentOut */
         readonly MetaPostAttachmentOut: {
             /**
+             * Content Status
+             * @default metadata_only_privacy_hold
+             * @constant
+             */
+            readonly content_status: "metadata_only_privacy_hold";
+            /** Description */
+            readonly description?: string | null;
+            /**
              * Kind
              * @enum {string}
              */
             readonly kind: "image" | "video" | "link" | "other" | "unknown";
             /** Provider Type */
             readonly provider_type?: string | null;
-            /** Title */
-            readonly title?: string | null;
-            /** Description */
-            readonly description?: string | null;
             /** Target Url */
             readonly target_url?: string | null;
-            /**
-             * Content Status
-             * @default metadata_only_privacy_hold
-             * @constant
-             */
-            readonly content_status: "metadata_only_privacy_hold";
+            /** Title */
+            readonly title?: string | null;
         };
         /** MetaPublicationOut */
         readonly MetaPublicationOut: {
@@ -3977,27 +3981,32 @@ export interface components {
         /** ResearchPostAttachmentOut */
         readonly ResearchPostAttachmentOut: {
             /**
+             * Content Status
+             * @default metadata_only_privacy_hold
+             * @constant
+             */
+            readonly content_status: "metadata_only_privacy_hold";
+            /** Description */
+            readonly description?: string | null;
+            /**
              * Kind
              * @enum {string}
              */
             readonly kind: "image" | "video" | "link" | "other" | "unknown";
             /** Provider Type */
             readonly provider_type?: string | null;
-            /** Title */
-            readonly title?: string | null;
-            /** Description */
-            readonly description?: string | null;
             /** Target Url */
             readonly target_url?: string | null;
-            /**
-             * Content Status
-             * @default metadata_only_privacy_hold
-             * @constant
-             */
-            readonly content_status: "metadata_only_privacy_hold";
+            /** Title */
+            readonly title?: string | null;
         };
         /** ResearchPrivacyPolicyOut */
         readonly ResearchPrivacyPolicyOut: {
+            /**
+             * Collection Ready
+             * @default false
+             */
+            readonly collection_ready: boolean;
             /**
              * Comments Content Status
              * @default privacy_hold
@@ -4010,6 +4019,12 @@ export interface components {
             readonly configured_at?: string | null;
             /** Configured By */
             readonly configured_by?: string | null;
+            /**
+             * Legal Basis Verified
+             * @default false
+             * @constant
+             */
+            readonly legal_basis_verified: false;
             /** Policy Version */
             readonly policy_version?: string | null;
             /** Processing Basis Reference */

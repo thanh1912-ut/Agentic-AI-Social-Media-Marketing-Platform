@@ -17,10 +17,21 @@ Base đã kiểm tra: `codex/creative-studio-ui` @ `b769097bfdb3568889d974c6def9
 - [PARTIAL] Worker không gửi comment text cũ/mới cho agent. Chưa có pipeline nhận dạng/redact toàn diện, retention/deletion ledger hoặc quy trình pháp lý; không được coi là chứng nhận tuân thủ.
 - [PARTIAL] Nội dung bài Facebook và manual import được che email, số điện thoại và cụm địa chỉ nhà rõ ràng trước khi lưu bằng `facebook-contact-patterns-v1`; bộ lọc không phát hiện tên và không phải cơ chế ẩn danh.
 - [PARTIAL] Ranh giới gọi DeepSeek loại nội dung bài Facebook chưa qua rà soát đầy đủ; report chỉ có Facebook được ghi `deferred_privacy_review`, không gọi provider. Với nguồn web đủ điều kiện, Facebook cùng report chỉ gửi số liệu và nhãn nội dung đang giữ.
-- [PARTIAL] Owner có thể ghi nhận mục đích, tham chiếu căn cứ, phiên bản chính sách và thời hạn dự kiến theo từng nguồn; bản ghi bất biến có số revision. Đây chỉ là hồ sơ cấu hình, chưa thi hành retention và không mở `privacy_hold`.
+- [PARTIAL] Owner có thể ghi nhận mục đích, tham chiếu căn cứ, phiên bản chính sách và thời hạn dự kiến theo từng nguồn; nguồn Facebook mới bị chặn tới khi đủ trường cấu hình. Đây không phải xác minh căn cứ; retention chưa thi hành, comment/media tiếp tục `privacy_hold`.
 - [PARTIAL] OpenAPI và TypeScript declarations đã được regenerate. Frontend lint, typecheck, unit tests và desktop/mobile fixture E2E hiện đạt; các test này không thay cho nghiệm thu real API/browser.
 - [PARTIAL] API/worker fixtures và PostgreSQL/Redis/Celery integration test đã chạy trên môi trường disposable; browser real mode, Meta/provider live và worker crawl chưa chạy.
 - [TODO] Cursor bình luận/replies, media analysis, deletion/retention propagation và routing Gemini/Qwen chưa triển khai.
+
+### 2026-09-30 15:28 Asia/Ho_Chi_Minh — Gate cấu hình privacy trước thu thập Facebook
+
+- DONE: Nguồn Page công ty, Page công khai và Group công khai mới khởi tạo `needs_privacy_policy`; worker kiểm tra mục đích/tham chiếu trước collector, nên gọi API/worker trực tiếp cũng không bỏ qua gate.
+- DONE: Manual import Facebook bị từ chối khi thiếu hai trường. Lưu revision đủ trường đưa nguồn về active theo lịch Owner chọn; gửi lại cùng revision là idempotent.
+- DONE: API/UI phân biệt `collection_ready` (đủ trường cấu hình) với `legal_basis_verified=false`. Cấu hình không được thể hiện như xác minh pháp lý hay đồng ý; comments tiếp tục `privacy_hold`, media chưa xử lý và retention tiếp tục `not_enforced`.
+- PASS: `tests/test_market_research_api.py tests/test_ai_budget.py tests/test_research_privacy.py` — 41 passed; Ruff — all checks passed; TypeScript `tsc --noEmit --incremental false` — exit 0; `git diff --check` — đạt.
+- PASS: OpenAPI xuất lại và `scripts/export_openapi.py --check` đạt; TypeScript declarations sinh bằng `npm --workspace @agentic/web run gen:api -- --from packages/contracts/openapi.json`.
+- PASS: Frontend ESLint, typecheck (`tsc --noEmit --incremental false`), Vitest 50/50 và production build đạt.
+- LIMIT: Test phần này dùng SQLite/API worker fixtures; không phải PostgreSQL/Redis, browser real hoặc live Meta/provider.
+- NOT_RUN: Không xác minh căn cứ pháp lý, không bật comment/media, không chạy Facebook live, Meta/DeepSeek/Gemini/Qwen live, PostgreSQL/Redis worker integration hoặc browser real trong lát cắt này.
 
 ## Bằng chứng ban đầu
 

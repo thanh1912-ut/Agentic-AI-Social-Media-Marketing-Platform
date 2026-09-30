@@ -63,6 +63,8 @@ export interface ResearchSource {
 export interface ResearchPrivacyPolicy {
   source_id: string;
   configured: boolean;
+  collection_ready: boolean;
+  legal_basis_verified: false;
   revision_no: number | null;
   purpose: string | null;
   processing_basis_reference: string | null;
@@ -123,6 +125,8 @@ export interface CompetitorCollectionRun {
   privacy_policy_revision_id?: string | null;
   privacy_policy_revision_no?: number | null;
   privacy_policy_version?: string | null;
+  privacy_policy_ready_for_collection?: boolean | null;
+  privacy_policy_legal_basis_verified?: false | null;
   privacy_policy_requested_retention_days?: number | null;
   retention_enforcement_status?: 'not_enforced';
   comments_content_status?: 'privacy_hold';

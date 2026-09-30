@@ -195,6 +195,8 @@ def test_market_suggestion_draft_pins_report_observation_and_version(market_api)
     )
     assert source_response.status_code == 201, source_response.text
     source_id = source_response.json()["id"]
+    assert source_response.json()["status"] == "needs_privacy_policy"
+    assert source_response.json()["collection_status"] == "privacy_policy_required"
     now = datetime.now(timezone.utc)
     report_id, evidence_id, version_id, observation_id = (new_id() for _ in range(4))
 
@@ -432,7 +434,7 @@ def test_page_token_is_encrypted_and_same_page_can_reconnect(market_api, monkeyp
     assert meta_tokens.decrypt_page_token(stored_again.encrypted_token) == token + "-rotated"
 
 
-def test_manual_competitor_import_holds_comment_text_and_keeps_aggregate_counts(market_api) -> None:
+def test_manual_competitor_import_requires_policy_and_holds_comment_text(market_api) -> None:
     client, session_factory, _encryption_key = market_api
     workspace_id, headers = _owner(client, "market-owner@example.com")
     group_id = _create_group(client, workspace_id, headers)
@@ -449,22 +451,38 @@ def test_manual_competitor_import_holds_comment_text_and_keeps_aggregate_counts(
     )
     assert created.status_code == 201, created.text
     source = created.json()
-    assert source["status"] == "active"
+    assert source["status"] == "needs_privacy_policy"
     assert source["collection_mode"] == "public_web"
     assert source["collection_post_limit"] == 50
     assert source["schedule_enabled"] is True
 
-    imported = client.post(
-        f"/api/v1/workspaces/{workspace_id}/market-research/sources/{source['id']}/import",
+    import_url = f"/api/v1/workspaces/{workspace_id}/market-research/sources/{source['id']}/import"
+    import_body = {"rows": [{
+        "url": "https://www.facebook.com/rival/posts/42",
+        "title": "Bài đối thủ",
+        "text": "Liên hệ 0901234567 hoặc trend@example.com",
+        "observed_at": "2026-09-25T12:00:00Z",
+        "metrics": {"reactions": 45, "comments": 7, "shares": 3, "views": 1000},
+        "comments": ["Nhắn tôi tại contact@example.com", "SĐT 0912345678"],
+    }]}
+    withheld = client.post(import_url, headers=headers, json=import_body)
+    assert withheld.status_code == 409
+    assert withheld.json()["error"]["code"] == "privacy_policy_required"
+    configured = client.put(
+        f"/api/v1/workspaces/{workspace_id}/market-research/sources/{source['id']}/privacy-policy",
         headers=headers,
-        json={"rows": [{
-            "url": "https://www.facebook.com/rival/posts/42",
-            "title": "Bài đối thủ",
-            "text": "Liên hệ 0901234567 hoặc trend@example.com",
-            "observed_at": "2026-09-25T12:00:00Z",
-            "metrics": {"reactions": 45, "comments": 7, "shares": 3, "views": 1000},
-            "comments": ["Nhắn tôi tại contact@example.com", "SĐT 0912345678"],
-        }]},
+        json={
+            "purpose": "Tổng hợp câu hỏi công khai để lập báo cáo nghiên cứu.",
+            "processing_basis_reference": "Hồ sơ rà soát nội bộ PRIV-2026-09.",
+            "policy_version": "privacy-policy-v1",
+            "requested_retention_days": 90,
+        },
+    )
+    assert configured.status_code == 200
+    imported = client.post(
+        import_url,
+        headers=headers,
+        json=import_body,
     )
     assert imported.status_code == 201, imported.text
     assert imported.json()["imported"] == 1
@@ -636,7 +654,20 @@ def test_competitor_page_uses_approved_public_api_token_when_configured(market_a
     )
     assert created.status_code == 201, created.text
     source_id = created.json()["id"]
-    assert created.json()["status"] == "active"
+    assert created.json()["status"] == "needs_privacy_policy"
+    policy = client.put(
+        f"/api/v1/workspaces/{workspace_id}/market-research/sources/{source_id}/privacy-policy",
+        headers=headers,
+        json={
+            "purpose": "Tổng hợp dữ liệu công khai phục vụ nghiên cứu.",
+            "processing_basis_reference": "Hồ sơ rà soát nội bộ PRIV-2026-09.",
+            "policy_version": "privacy-policy-v1",
+            "requested_retention_days": 90,
+        },
+    )
+    assert policy.status_code == 200
+    assert policy.json()["collection_ready"] is True
+    assert policy.json()["legal_basis_verified"] is False
 
     class FakePublicGraphClient:
         def __init__(self, page_id: str, token: str, graph_version: str):
@@ -1131,7 +1162,7 @@ def test_disabling_last_source_schedule_clears_group_due_time(market_api) -> Non
     assert asyncio.run(make_disabled_source_overdue_and_enqueue()) == 0
 
 
-def test_source_privacy_policy_is_owner_recorded_but_does_not_enable_processing(market_api) -> None:
+def test_source_privacy_policy_records_configuration_but_does_not_verify_legal_basis(market_api) -> None:
     client, session_factory, _encryption_key = market_api
     workspace_id, headers = _owner(client, "privacy-policy-owner@example.com")
     group_id = _create_group(client, workspace_id, headers)
@@ -1152,6 +1183,8 @@ def test_source_privacy_policy_is_owner_recorded_but_does_not_enable_processing(
     empty = client.get(policy_url)
     assert empty.status_code == 200, empty.text
     assert empty.json()["configured"] is False
+    assert empty.json()["collection_ready"] is False
+    assert empty.json()["legal_basis_verified"] is False
     assert empty.json()["comments_content_status"] == "privacy_hold"
     assert empty.json()["retention_enforcement_status"] == "not_enforced"
 
@@ -1164,10 +1197,15 @@ def test_source_privacy_policy_is_owner_recorded_but_does_not_enable_processing(
     assert saved.status_code == 200, saved.text
     body = saved.json()
     assert body["configured"] is True
+    assert body["collection_ready"] is True
+    assert body["legal_basis_verified"] is False
     assert body["revision_no"] == 1
     assert body["requested_retention_days"] == 90
     assert body["retention_enforcement_status"] == "not_enforced"
     assert body["comments_content_status"] == "privacy_hold"
+    sources_after_policy = client.get(f"/api/v1/workspaces/{workspace_id}/market-research/sources")
+    resumed_source = next(item for item in sources_after_policy.json() if item["id"] == source_id)
+    assert resumed_source["status"] == "active"
     reread = client.get(policy_url)
     assert reread.status_code == 200
     assert reread.json()["purpose"] == body["purpose"]
@@ -1210,7 +1248,7 @@ def test_source_privacy_policy_is_owner_recorded_but_does_not_enable_processing(
     assert asyncio.run(count_policy_revisions()) == 2
 
 
-def test_collection_run_pins_privacy_policy_revision_without_enabling_processing(market_api, monkeypatch) -> None:
+def test_collection_run_pins_policy_snapshot_without_verifying_legal_basis(market_api, monkeypatch) -> None:
     async def no_redis_dispatch(_job_id: str) -> bool:
         return False
 
@@ -1273,6 +1311,8 @@ def test_collection_run_pins_privacy_policy_revision_without_enabling_processing
     captured = next(run for run in runs.json() if run["id"] == run_id)
     assert captured["privacy_policy_revision_no"] == 1
     assert captured["privacy_policy_version"] == "PR-1"
+    assert captured["privacy_policy_ready_for_collection"] is True
+    assert captured["privacy_policy_legal_basis_verified"] is False
     assert captured["privacy_policy_requested_retention_days"] == 90
     assert captured["retention_enforcement_status"] == "not_enforced"
     assert captured["comments_content_status"] == "privacy_hold"
@@ -1296,11 +1336,15 @@ def test_research_policy_snapshot_is_explicitly_not_enforced() -> None:
         revision_no=1,
         policy_version="policy-v1",
         requested_retention_days=90,
+        purpose="Tổng hợp câu hỏi công khai.",
+        processing_basis_reference="PRIV-2026-09",
     ))
     missing = research_tasks._policy_snapshot(None)
 
     assert configured == {
         "configured": True,
+        "ready_for_collection": True,
+        "legal_basis_verified": False,
         "revision_id": "policy-revision-1",
         "revision_no": 1,
         "version": "policy-v1",
@@ -1309,8 +1353,68 @@ def test_research_policy_snapshot_is_explicitly_not_enforced() -> None:
         "comments_content_status": "privacy_hold",
     }
     assert missing["configured"] is False
+    assert missing["ready_for_collection"] is False
+    assert missing["legal_basis_verified"] is False
     assert missing["revision_id"] is None
     assert missing["retention_enforcement_status"] == "not_enforced"
+
+
+def test_research_worker_blocks_facebook_fetch_until_policy_fields_are_recorded(market_api, monkeypatch) -> None:
+    async def no_redis_dispatch(_job_id: str) -> bool:
+        return False
+
+    monkeypatch.setattr(market_research_routes, "dispatch_research_job", no_redis_dispatch)
+    client, session_factory, _encryption_key = market_api
+    workspace_id, headers = _owner(client, "research-policy-gate@example.com")
+    group_id = _create_group(client, workspace_id, headers)
+    created = client.post(
+        f"/api/v1/workspaces/{workspace_id}/market-research/sources",
+        headers=headers,
+        json={
+            "group_id": group_id,
+            "source_type": "competitor_facebook_page",
+            "name": "Public page without policy",
+            "url": "https://www.facebook.com/policy.gate.page",
+        },
+    )
+    assert created.status_code == 201, created.text
+    source_id = created.json()["id"]
+    accepted = client.post(
+        f"/api/v1/workspaces/{workspace_id}/market-research/groups/{group_id}/crawl",
+        headers=headers,
+    )
+    assert accepted.status_code == 202, accepted.text
+    job_id = accepted.json()["job_id"]
+
+    async def unexpected_collection(*_args, **_kwargs):
+        pytest.fail("collector must not run before source policy fields are recorded")
+
+    monkeypatch.setattr(research_tasks, "SessionLocal", session_factory)
+    monkeypatch.setattr(research_tasks, "_collect_competitor_page", unexpected_collection)
+
+    async def run_job():
+        async with session_factory() as db:
+            job = await db.get(Job, job_id)
+            assert job is not None
+            job.status = "running"
+            await db.commit()
+        await research_tasks._run(job_id)
+
+    asyncio.run(run_job())
+
+    async def read_blocked_state():
+        async with session_factory() as db:
+            source = await db.get(ResearchSource, source_id)
+            cycle = await db.scalar(select(ResearchCycle).where(ResearchCycle.job_id == job_id))
+            assert source is not None and cycle is not None
+            return source.status, source.collection_status, source.next_due_at, list(cycle.source_results_json)
+
+    status, collection_status, next_due_at, results = asyncio.run(read_blocked_state())
+    assert status == "needs_privacy_policy"
+    assert collection_status == "privacy_policy_required"
+    assert next_due_at is None
+    assert results[0]["code"] == "privacy_policy_required"
+    assert results[0]["privacy_policy_snapshot"]["legal_basis_verified"] is False
 
 
 def test_research_cycle_persists_source_checkpoint_for_worker_recovery(market_api, monkeypatch) -> None:
@@ -1466,7 +1570,7 @@ def test_public_group_source_uses_tier0_metadata_and_supports_schedule_toggle(ma
     source = created.json()
     assert source["source_type"] == "facebook_group"
     assert source["url"] == "https://www.facebook.com/groups/public-market"
-    assert source["status"] == "active"
+    assert source["status"] == "needs_privacy_policy"
     assert source["collection_mode"] == "public_web"
     assert source["schedule_enabled"] is True
 
@@ -1553,6 +1657,18 @@ def test_public_group_worker_persists_shell_metadata_as_partial_without_report(m
     )
     assert created.status_code == 201, created.text
     source_id = created.json()["id"]
+    assert created.json()["status"] == "needs_privacy_policy"
+    policy = client.put(
+        f"/api/v1/workspaces/{workspace_id}/market-research/sources/{source_id}/privacy-policy",
+        headers=headers,
+        json={
+            "purpose": "Đọc metadata nhóm công khai phục vụ nghiên cứu.",
+            "processing_basis_reference": "Hồ sơ rà soát nội bộ PRIV-2026-09.",
+            "policy_version": "privacy-policy-v1",
+            "requested_retention_days": 90,
+        },
+    )
+    assert policy.status_code == 200, policy.text
     accepted = client.post(
         f"/api/v1/workspaces/{workspace_id}/market-research/sources/{source_id}/crawl",
         headers=headers,

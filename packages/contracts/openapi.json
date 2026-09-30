@@ -2070,6 +2070,29 @@
             "title": "Post Limit",
             "type": "integer"
           },
+          "privacy_policy_legal_basis_verified": {
+            "anyOf": [
+              {
+                "const": false,
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Privacy Policy Legal Basis Verified"
+          },
+          "privacy_policy_ready_for_collection": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Privacy Policy Ready For Collection"
+          },
           "privacy_policy_requested_retention_days": {
             "anyOf": [
               {
@@ -2191,6 +2214,25 @@
       "CompetitorPostOut": {
         "additionalProperties": false,
         "properties": {
+          "attachment_metadata_status": {
+            "default": "not_returned",
+            "enum": [
+              "returned",
+              "none_returned",
+              "not_returned",
+              "truncated"
+            ],
+            "title": "Attachment Metadata Status",
+            "type": "string"
+          },
+          "attachments": {
+            "items": {
+              "$ref": "#/components/schemas/ResearchPostAttachmentOut"
+            },
+            "maxItems": 100,
+            "title": "Attachments",
+            "type": "array"
+          },
           "content_truncated": {
             "default": false,
             "title": "Content Truncated",
@@ -2210,6 +2252,17 @@
           "id": {
             "title": "Id",
             "type": "string"
+          },
+          "link_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Link Url"
           },
           "metric_provenance": {
             "additionalProperties": true,
@@ -4905,6 +4958,24 @@
       "MetaPagePostOut": {
         "additionalProperties": false,
         "properties": {
+          "attachment_metadata_status": {
+            "default": "not_returned",
+            "enum": [
+              "returned",
+              "none_returned",
+              "not_returned",
+              "truncated"
+            ],
+            "title": "Attachment Metadata Status",
+            "type": "string"
+          },
+          "attachments": {
+            "items": {
+              "$ref": "#/components/schemas/MetaPostAttachmentOut"
+            },
+            "title": "Attachments",
+            "type": "array"
+          },
           "comments": {
             "anyOf": [
               {
@@ -4939,6 +5010,17 @@
             "format": "date-time",
             "title": "Last Synced At",
             "type": "string"
+          },
+          "link_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Link Url"
           },
           "linked_post_id": {
             "anyOf": [
@@ -5084,6 +5166,77 @@
           "last_sync_at"
         ],
         "title": "MetaPagePostsOut",
+        "type": "object"
+      },
+      "MetaPostAttachmentOut": {
+        "additionalProperties": false,
+        "properties": {
+          "content_status": {
+            "const": "metadata_only_privacy_hold",
+            "default": "metadata_only_privacy_hold",
+            "title": "Content Status",
+            "type": "string"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "kind": {
+            "enum": [
+              "image",
+              "video",
+              "link",
+              "other",
+              "unknown"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "provider_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Provider Type"
+          },
+          "target_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target Url"
+          },
+          "title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Title"
+          }
+        },
+        "required": [
+          "kind"
+        ],
+        "title": "MetaPostAttachmentOut",
         "type": "object"
       },
       "MetaPublicationOut": {
@@ -6593,9 +6746,85 @@
         "title": "ResearchAIBudgetOut",
         "type": "object"
       },
+      "ResearchPostAttachmentOut": {
+        "additionalProperties": false,
+        "properties": {
+          "content_status": {
+            "const": "metadata_only_privacy_hold",
+            "default": "metadata_only_privacy_hold",
+            "title": "Content Status",
+            "type": "string"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "kind": {
+            "enum": [
+              "image",
+              "video",
+              "link",
+              "other",
+              "unknown"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "provider_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Provider Type"
+          },
+          "target_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target Url"
+          },
+          "title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Title"
+          }
+        },
+        "required": [
+          "kind"
+        ],
+        "title": "ResearchPostAttachmentOut",
+        "type": "object"
+      },
       "ResearchPrivacyPolicyOut": {
         "additionalProperties": false,
         "properties": {
+          "collection_ready": {
+            "default": false,
+            "title": "Collection Ready",
+            "type": "boolean"
+          },
           "comments_content_status": {
             "const": "privacy_hold",
             "default": "privacy_hold",
@@ -6628,6 +6857,12 @@
               }
             ],
             "title": "Configured By"
+          },
+          "legal_basis_verified": {
+            "const": false,
+            "default": false,
+            "title": "Legal Basis Verified",
+            "type": "boolean"
           },
           "policy_version": {
             "anyOf": [

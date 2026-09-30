@@ -855,6 +855,8 @@ async def _open_competitor_run(
                              "privacy_policy_revision_id": privacy_policy_snapshot["revision_id"],
                              "privacy_policy_revision_no": privacy_policy_snapshot["revision_no"],
                              "privacy_policy_version": privacy_policy_snapshot["version"],
+                             "privacy_policy_ready_for_collection": privacy_policy_snapshot["ready_for_collection"],
+                             "privacy_policy_legal_basis_verified": privacy_policy_snapshot["legal_basis_verified"],
                              "privacy_policy_requested_retention_days": privacy_policy_snapshot["requested_retention_days"],
                              "retention_enforcement_status": privacy_policy_snapshot["retention_enforcement_status"],
                              "comments_content_status": privacy_policy_snapshot["comments_content_status"]},
@@ -870,9 +872,17 @@ async def _open_competitor_run(
 
 
 def _policy_snapshot(row: ResearchPrivacyPolicyRevision | None) -> dict[str, Any]:
-    """Keep only policy identity in a run snapshot; never copy basis prose."""
+    """Keep policy identity/readiness, but never treat a note as legal approval."""
+    configured = row is not None
+    collection_ready = bool(
+        configured
+        and isinstance(row.purpose, str) and row.purpose.strip()
+        and isinstance(row.processing_basis_reference, str) and row.processing_basis_reference.strip()
+    )
     return {
-        "configured": row is not None,
+        "configured": configured,
+        "ready_for_collection": collection_ready,
+        "legal_basis_verified": False,
         "revision_id": row.id if row else None,
         "revision_no": row.revision_no if row else None,
         "version": row.policy_version if row else None,
@@ -1878,6 +1888,13 @@ async def _run(job_id: str) -> None:
             # Do not keep a database transaction open while collectors make network calls.
             await db.commit()
             try:
+                if source_type in {"owned_facebook_page", "competitor_facebook_page", "facebook_group"} and not (
+                    privacy_policy_snapshot and privacy_policy_snapshot["ready_for_collection"]
+                ):
+                    raise CrawlError(
+                        "privacy_policy_required",
+                        "Ghi nhận mục đích và tài liệu tham chiếu căn cứ xử lý trước khi thu thập nội dung Facebook.",
+                    )
                 if source_type == "facebook_group":
                     _count, details = await _collect_public_facebook_group(
                         company_id, group_id, source, cycle_id=cycle.id, job_id=job_id,
@@ -1949,6 +1966,7 @@ async def _run(job_id: str) -> None:
                         else None
                     )
             except CrawlError as error:
+                policy_required = error.code == "privacy_policy_required"
                 is_public_block = error.code in {
                     "login_required", "access_denied", "challenge", "challenge_required",
                 }
@@ -1961,7 +1979,7 @@ async def _run(job_id: str) -> None:
                     source.collection_last_method = (
                         "meta_api" if source_type == "owned_facebook_page" else "facebook-cli"
                     )
-                    source.status = "active" if is_public_block or is_nonpublic_group else (
+                    source.status = "needs_privacy_policy" if policy_required else "active" if is_public_block or is_nonpublic_group else (
                         "needs_access" if error.code in {
                             "page_needs_reconnect", "page_token_unavailable", "page_token_expired",
                             "page_permission_missing", "page_public_content_access_not_configured",
@@ -1970,7 +1988,7 @@ async def _run(job_id: str) -> None:
                     )
                     source.next_due_at = (
                         utcnow() + timedelta(hours=1)
-                        if error.retryable and source.schedule_enabled else None
+                        if error.retryable and source.schedule_enabled and not policy_required else None
                     )
                 else:
                     source.status = "needs_access" if error.code in {

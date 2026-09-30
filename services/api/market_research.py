@@ -380,6 +380,12 @@ async def list_competitor_collection_runs(
             privacy_policy_revision_id=(row.config_json or {}).get("privacy_policy_revision_id"),
             privacy_policy_revision_no=(row.config_json or {}).get("privacy_policy_revision_no"),
             privacy_policy_version=(row.config_json or {}).get("privacy_policy_version"),
+            privacy_policy_ready_for_collection=(row.config_json or {}).get(
+                "privacy_policy_ready_for_collection"
+            ),
+            privacy_policy_legal_basis_verified=(row.config_json or {}).get(
+                "privacy_policy_legal_basis_verified"
+            ),
             privacy_policy_requested_retention_days=(row.config_json or {}).get(
                 "privacy_policy_requested_retention_days"
             ),
@@ -925,6 +931,7 @@ async def create_source(
         if (parsed.hostname or "").casefold() not in {"facebook.com", "www.facebook.com", "m.facebook.com"}:
             raise ApiProblem(422, "facebook_url_required", "Nguồn Fanpage cần là liên kết facebook.com.")
         normalized = f"https://www.facebook.com/{connection.page_id}"
+        status = "needs_privacy_policy"
     elif request.source_type == "competitor_facebook_page":
         try:
             normalized = normalize_facebook_page_url(normalized)
@@ -933,7 +940,7 @@ async def create_source(
         # A user-selected public collector uses the pinned facebook-cli Tier 0 runner.
         # Availability and access outcome are recorded by the first durable worker run.
         collection_mode = "public_web"
-        status = "active"
+        status = "needs_privacy_policy"
     elif request.source_type == "facebook_group":
         parsed = urlsplit(normalized)
         host = (parsed.hostname or "").casefold()
@@ -945,7 +952,7 @@ async def create_source(
             )
         normalized = f"https://www.facebook.com/groups/{match.group(1)}"
         collection_mode = "public_web"
-        status = "active"
+        status = "needs_privacy_policy"
     else:
         connection = None
     now = utcnow()
@@ -957,7 +964,7 @@ async def create_source(
         crawl_mode="site_catalog" if request.source_type == "website" else "legacy",
         crawl_page_limit=1000, render_mode="http_only", resource_hosts_json=[], schedule_enabled=True,
         collection_mode=collection_mode, collection_post_limit=50,
-        collection_status="not_started",
+        collection_status="privacy_policy_required" if status == "needs_privacy_policy" else "not_started",
         next_due_at=now if status == "active" else None, created_by=user.id,
     )
     db.add(row)
@@ -997,10 +1004,12 @@ async def delete_source(
 
 def _privacy_policy_out(source_id: str, row: ResearchPrivacyPolicyRevision | None) -> ResearchPrivacyPolicyOut:
     if row is None:
-        return ResearchPrivacyPolicyOut(source_id=source_id, configured=False)
+        return ResearchPrivacyPolicyOut(source_id=source_id, configured=False, collection_ready=False)
     return ResearchPrivacyPolicyOut(
         source_id=source_id,
         configured=True,
+        collection_ready=bool(row.purpose.strip() and row.processing_basis_reference.strip()),
+        legal_basis_verified=False,
         revision_no=row.revision_no,
         purpose=row.purpose,
         processing_basis_reference=row.processing_basis_reference,
@@ -1009,6 +1018,22 @@ def _privacy_policy_out(source_id: str, row: ResearchPrivacyPolicyRevision | Non
         configured_by=row.configured_by,
         configured_at=row.configured_at,
     )
+
+
+async def _resume_source_after_policy(db: AsyncSession, source: ResearchSource, now: datetime) -> None:
+    if not source.active or source.status != "needs_privacy_policy":
+        return
+    source.status = "active"
+    source.collection_status = "not_started"
+    source.error_json = None
+    if source.schedule_enabled:
+        source.next_due_at = now
+        group = await db.scalar(select(MetaPageGroup).where(
+            MetaPageGroup.company_id == source.company_id,
+            MetaPageGroup.id == source.group_id,
+        ).with_for_update())
+        if group is not None:
+            group.next_due_at = now
 
 
 @router.get("/sources/{source_id}/privacy-policy", response_model=ResearchPrivacyPolicyOut)
@@ -1059,6 +1084,8 @@ async def put_source_privacy_policy(
         and row.policy_version == request.policy_version
         and row.requested_retention_days == request.requested_retention_days
     ):
+        await _resume_source_after_policy(db, source, now)
+        await db.commit()
         return _privacy_policy_out(source_id, row)
     revision_no = 1 if row is None else row.revision_no + 1
     row = ResearchPrivacyPolicyRevision(
@@ -1074,6 +1101,7 @@ async def put_source_privacy_policy(
         configured_at=now,
     )
     db.add(row)
+    await _resume_source_after_policy(db, source, now)
     db.add(AuditEvent(
         company_id=company_id,
         actor_user_id=user.id,
@@ -1148,6 +1176,17 @@ async def import_source_observations(
         raise ApiProblem(404, "not_found", "Không tìm thấy nguồn nghiên cứu.")
     if source.source_type == "website":
         raise ApiProblem(409, "manual_import_not_allowed", "Nguồn web đang được thu thập tự động.")
+    if source.source_type in {"owned_facebook_page", "competitor_facebook_page", "facebook_group"}:
+        policy = await db.scalar(select(ResearchPrivacyPolicyRevision).where(
+            ResearchPrivacyPolicyRevision.company_id == company_id,
+            ResearchPrivacyPolicyRevision.source_id == source.id,
+        ).order_by(ResearchPrivacyPolicyRevision.revision_no.desc()).limit(1))
+        if policy is None or not policy.purpose.strip() or not policy.processing_basis_reference.strip():
+            raise ApiProblem(
+                409,
+                "privacy_policy_required",
+                "Ghi nhận mục đích và tài liệu tham chiếu căn cứ xử lý trước khi nhập dữ liệu Facebook.",
+            )
     now = utcnow()
     created = 0
     withheld_comments = 0
