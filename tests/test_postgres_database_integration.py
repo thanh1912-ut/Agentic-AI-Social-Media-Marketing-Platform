@@ -38,7 +38,7 @@ def test_postgres_migrations_constraints_vector_and_job_fencing() -> None:
                 revision = await connection.exec_driver_sql(
                     "SELECT version_num FROM alembic_version ORDER BY version_num LIMIT 1"
                 )
-                assert revision.scalar_one() == "0025_owned_page_research_backfill"
+                assert revision.scalar_one() == "0026_research_source_erasure"
                 extension = await connection.exec_driver_sql(
                     "SELECT extversion FROM pg_extension WHERE extname='vector'"
                 )
@@ -97,7 +97,21 @@ def test_postgres_migrations_constraints_vector_and_job_fencing() -> None:
                         "mailguard_integrations", "mailguard_tracking_references",
                         "mailguard_conversion_events", "ai_usage_budget_days", "ai_usage_ledger",
                         "research_privacy_policy_revisions",
+                        "research_source_erasures", "research_source_erasure_objects",
                     })
+                    erasure_fks = inspector.get_foreign_keys("research_source_erasures")
+                    assert {fk["name"] for fk in erasure_fks}.issuperset({
+                        "fk_research_source_erasure_source_tenant",
+                        "fk_research_source_erasure_job_tenant",
+                    })
+                    erasure_object_fks = inspector.get_foreign_keys(
+                        "research_source_erasure_objects"
+                    )
+                    assert any(
+                        fk["name"] == "fk_research_source_erasure_object_tenant"
+                        and fk["constrained_columns"] == ["company_id", "erasure_id"]
+                        for fk in erasure_object_fks
+                    )
                     privacy_fks = inspector.get_foreign_keys("research_privacy_policy_revisions")
                     assert any(
                         fk["name"] == "fk_research_privacy_policy_source_tenant"

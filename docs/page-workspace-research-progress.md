@@ -429,3 +429,10 @@ Base đã kiểm tra: `codex/creative-studio-ui` @ `b769097bfdb3568889d974c6def9
 - PASS: Ruff cho các file Python đã sửa; `git diff --check` đạt.
 - NOT_RUN: Redis/Celery recovery, object storage thật, Browser UI và test race đa-worker chưa chạy. Không đụng tới PostgreSQL khác đang dùng cổng `15434`.
 - PARTIAL: Đây là purge dữ liệu nghiên cứu do ứng dụng quản lý theo một source, không phải xóa toàn bộ dữ liệu cá nhân hay chứng nhận pháp lý. Bản bài/approval/publication đã tạo, nội dung đã xuất/đăng, provider ngoài, cache/backup ngoài cơ chế này và deletion propagation toàn diện chưa được xử lý.
+
+### 2026-09-30 17:40 Asia/Ho_Chi_Minh — Kiểm tra schema purge trên PostgreSQL
+
+- DONE: Cập nhật regression `test_postgres_migrations_constraints_vector_and_job_fencing` theo migration head `0026_research_source_erasure`; bổ sung assertion cho bảng purge và composite tenant foreign keys.
+- PASS: Test trên PostgreSQL 18.3 disposable đã migrate thật, xác nhận extension vector, schema, FK và job fencing — `1 passed`. `pgvector` shim chỉ giải quyết import trong test environment.
+- PASS: Ruff và `git diff --check`; cụm PostgreSQL riêng đã dừng sau test.
+- NOT_RUN: Test này không chạy HTTP API, Redis/Celery, object storage, trình duyệt, race đa-worker hoặc Page/provider live.
