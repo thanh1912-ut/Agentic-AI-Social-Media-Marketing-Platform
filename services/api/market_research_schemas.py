@@ -131,6 +131,12 @@ class CollectionRunOut(StrictModel):
     engine: str | None = None
     engine_version: str | None = None
     access_tier: int | None = None
+    privacy_policy_revision_id: str | None = None
+    privacy_policy_revision_no: int | None = None
+    privacy_policy_version: str | None = None
+    privacy_policy_requested_retention_days: int | None = None
+    retention_enforcement_status: Literal["not_enforced"] = "not_enforced"
+    comments_content_status: Literal["privacy_hold"] = "privacy_hold"
     status: str
     post_limit: int
     counters: dict[str, Any]

@@ -27,6 +27,7 @@
 | Ngân sách API/UI | PASS theo API fixture và frontend lint/unit; browser real NOT_RUN | `GET .../market-research/ai-budget`; `test_research_ai_budget_is_workspace_scoped_and_reports_reserved_cost` |
 | Pin bằng chứng cho hướng viết | PASS (API + worker fixture) | `test_market_suggestion_draft_pins_report_observation_and_version`, `test_content_generation_job_persists_cited_draft_and_is_idempotent` |
 | Privacy policy record | PARTIAL; không mở processing | Bảng revision bất biến và Owner-only API/UI lưu mục đích, tham chiếu căn cứ, version và thời hạn dự kiến. Response nói rõ `not_enforced` và `privacy_hold`; chưa có deletion ledger/propagation hoặc legal review |
+| Privacy policy run snapshot | PASS (SQLite API/worker fixture) | `test_collection_run_pins_privacy_policy_revision_without_enabling_processing`: run giữ policy revision `PR-1` sau khi source đổi sang `PR-2`; API trả `not_enforced` và `privacy_hold`. Chỉ kiểm tra provenance, không chứng minh retention hoặc comment processing |
 | Raw research quarantine TTL | PARTIAL | PostgreSQL integration test xác nhận pointer+24h expiry đã commit trước storage `put`; simulated timeout giữ pointer. Object storage thật và purge scheduler end-to-end chưa chạy. |
 | Manual comment import privacy hold | PASS (SQLite API fixture) | `tests/test_market_research_api.py` — 12 passed trong lượt mới nhất; endpoint không lưu/trả comment text, giữ metrics và trả count/status. |
 | Privacy policy record | PASS (SQLite API fixture; processing remains held) | Hai test mới trong `tests/test_market_research_api.py`: save/reload, immutable revision/idempotency, `not_enforced`, `privacy_hold`, Editor bị từ chối |
@@ -115,3 +116,15 @@ Lần chạy đầu phát hiện thêm assertion cũ tìm heading “Đăng nh�
 | Provider credentials/live usage | NOT_RUN | Không gọi dịch vụ live, không đọc hay yêu cầu secret trong lượt này. |
 
 Giá lấy từ [Google Gemini model update](https://ai.google.dev/gemini-api/docs/latest-model), [Google Gemini pricing](https://ai.google.dev/gemini-api/docs/pricing), [Alibaba Model Studio pricing](https://www.alibabacloud.com/help/en/model-studio/model-pricing) và [Qwen3.8-27B model page](https://docs.modelstudio.console.alibabacloud.com/en/model-studio/qwen3-8-27b). Đây là snapshot giá theo ngày kiểm tra; không phải giá đảm bảo về sau.
+
+## Kiểm thử provenance policy trong source-run — 2026-09-30
+
+| Kiểm tra | Trạng thái | Bằng chứng và giới hạn |
+|---|---|---|
+| Policy revision được chụp khi mở run | PASS (SQLite API/worker fixture) | `test_collection_run_pins_privacy_policy_revision_without_enabling_processing`: run giữ `PR-1` sau khi nguồn được cập nhật thành `PR-2`. |
+| Không mở comment processing hoặc retention | PASS (contract assertion) | Lịch sử trả `comments_content_status=privacy_hold`, `retention_enforcement_status=not_enforced`; UI hiện hai giới hạn này. |
+| OpenAPI / generated TypeScript | PASS | Xuất bằng `scripts/export_openapi.py`; kiểm tra `--check` đạt; sinh bằng `npm run gen:api -- --from ../../packages/contracts/openapi.json`. Generator sắp lại nhiều declaration do export OpenAPI canonical; thay đổi type vẫn là output tự sinh. |
+| Backend focused | PASS | `tests/test_market_research_api.py tests/test_research_privacy.py`: 16 passed. |
+| Frontend quality | PASS | Typecheck, ESLint, Vitest: 50 passed; `next build` trong worktree riêng đạt. |
+| Python lint / whitespace | PASS | Ruff trên file Python đã sửa và `git diff --check`. |
+| Database migration / live source run / UI reload | NOT_RUN | Không có migration trong lát cắt này; không chạy Facebook live hoặc pipeline worker thật. |

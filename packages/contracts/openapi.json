@@ -2003,6 +2003,12 @@
             "title": "Collector",
             "type": "string"
           },
+          "comments_content_status": {
+            "const": "privacy_hold",
+            "default": "privacy_hold",
+            "title": "Comments Content Status",
+            "type": "string"
+          },
           "completed_at": {
             "anyOf": [
               {
@@ -2063,6 +2069,56 @@
           "post_limit": {
             "title": "Post Limit",
             "type": "integer"
+          },
+          "privacy_policy_requested_retention_days": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Privacy Policy Requested Retention Days"
+          },
+          "privacy_policy_revision_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Privacy Policy Revision Id"
+          },
+          "privacy_policy_revision_no": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Privacy Policy Revision No"
+          },
+          "privacy_policy_version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Privacy Policy Version"
+          },
+          "retention_enforcement_status": {
+            "const": "not_enforced",
+            "default": "not_enforced",
+            "title": "Retention Enforcement Status",
+            "type": "string"
           },
           "source_id": {
             "title": "Source Id",
@@ -6516,6 +6572,152 @@
           "pending_reports"
         ],
         "title": "ResearchAIBudgetOut",
+        "type": "object"
+      },
+      "ResearchPrivacyPolicyOut": {
+        "additionalProperties": false,
+        "properties": {
+          "comments_content_status": {
+            "const": "privacy_hold",
+            "default": "privacy_hold",
+            "title": "Comments Content Status",
+            "type": "string"
+          },
+          "configured": {
+            "title": "Configured",
+            "type": "boolean"
+          },
+          "configured_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Configured At"
+          },
+          "configured_by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Configured By"
+          },
+          "policy_version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Policy Version"
+          },
+          "processing_basis_reference": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Processing Basis Reference"
+          },
+          "purpose": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Purpose"
+          },
+          "requested_retention_days": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Requested Retention Days"
+          },
+          "retention_enforcement_status": {
+            "const": "not_enforced",
+            "default": "not_enforced",
+            "title": "Retention Enforcement Status",
+            "type": "string"
+          },
+          "revision_no": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Revision No"
+          },
+          "source_id": {
+            "title": "Source Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "source_id",
+          "configured"
+        ],
+        "title": "ResearchPrivacyPolicyOut",
+        "type": "object"
+      },
+      "ResearchPrivacyPolicyUpdate": {
+        "additionalProperties": false,
+        "properties": {
+          "policy_version": {
+            "maxLength": 100,
+            "minLength": 1,
+            "title": "Policy Version",
+            "type": "string"
+          },
+          "processing_basis_reference": {
+            "maxLength": 4000,
+            "minLength": 5,
+            "title": "Processing Basis Reference",
+            "type": "string"
+          },
+          "purpose": {
+            "maxLength": 4000,
+            "minLength": 10,
+            "title": "Purpose",
+            "type": "string"
+          },
+          "requested_retention_days": {
+            "default": 90,
+            "maximum": 365.0,
+            "minimum": 1.0,
+            "title": "Requested Retention Days",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "purpose",
+          "processing_basis_reference",
+          "policy_version"
+        ],
+        "title": "ResearchPrivacyPolicyUpdate",
         "type": "object"
       },
       "ResearchReportOut": {
@@ -13498,6 +13700,148 @@
           }
         },
         "summary": "List Competitor Posts",
+        "tags": [
+          "market-research"
+        ]
+      }
+    },
+    "/api/v1/workspaces/{company_id}/market-research/sources/{source_id}/privacy-policy": {
+      "get": {
+        "operationId": "get_source_privacy_policy_api_v1_workspaces__company_id__market_research_sources__source_id__privacy_policy_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "company_id",
+            "required": true,
+            "schema": {
+              "title": "Company Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "source_id",
+            "required": true,
+            "schema": {
+              "title": "Source Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResearchPrivacyPolicyOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Source Privacy Policy",
+        "tags": [
+          "market-research"
+        ]
+      },
+      "put": {
+        "operationId": "put_source_privacy_policy_api_v1_workspaces__company_id__market_research_sources__source_id__privacy_policy_put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "company_id",
+            "required": true,
+            "schema": {
+              "title": "Company Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "source_id",
+            "required": true,
+            "schema": {
+              "title": "Source Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ResearchPrivacyPolicyUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResearchPrivacyPolicyOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Put Source Privacy Policy",
         "tags": [
           "market-research"
         ]

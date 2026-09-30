@@ -207,6 +207,15 @@ Base đã kiểm tra: `codex/creative-studio-ui` @ `b769097bfdb3568889d974c6def9
 - PARTIAL: Chưa có retention 90 ngày cho nội dung chuẩn hóa, deletion ledger/propagation hoặc legal review.
 - NOT_RUN: Không chạy crawl live, không tạo/đọc dữ liệu Facebook hoặc website.
 
+### 2026-09-30 — Ghim policy revision vào lượt Facebook
+
+- DONE: Khi mở `WebCrawlRun`, worker chụp revision chính sách mới nhất của nguồn vào `config_json`: revision ID/no, version và retention được yêu cầu. Snapshot chỉ ghi provenance; không cấp phép xử lý dữ liệu cá nhân.
+- DONE: API lịch sử chạy trả snapshot chính sách; UI phân biệt revision được ghi nhận, lượt chưa có policy revision, `privacy_hold` cho bình luận và việc retention chưa được thực thi.
+- PASS: Test regression tạo lượt với policy `PR-1`, sửa nguồn sang `PR-2`, rồi xác nhận lịch sử lượt cũ vẫn giữ `PR-1`/90 ngày và trạng thái `privacy_hold`/`not_enforced`.
+- PASS: OpenAPI được xuất từ FastAPI và TypeScript được sinh bằng `npm run gen:api`; không sửa generated type bằng tay.
+- PARTIAL: Provenance hiện gắn vào source-run Facebook công khai dùng `WebCrawlRun`; owned Page, website và group chưa có cùng pipeline comment policy.
+- NOT_RUN: Không xử lý comment body/media, không kiểm thử retention/deletion end-to-end, không crawl Facebook live và không gọi provider.
+
 ### 2026-09-30 10:02 Asia/Ho_Chi_Minh — PostgreSQL/Redis integration và raw retention
 
 - PASS: Tạo PostgreSQL 18.3 riêng trong `/private/tmp`, hai Redis riêng trên loopback; chạy migration từ database rỗng tới `0022_ai_usage_budget`.

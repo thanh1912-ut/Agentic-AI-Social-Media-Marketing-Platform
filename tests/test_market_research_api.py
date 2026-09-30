@@ -953,6 +953,74 @@ def test_source_privacy_policy_is_owner_recorded_but_does_not_enable_processing(
     assert asyncio.run(count_policy_revisions()) == 2
 
 
+def test_collection_run_pins_privacy_policy_revision_without_enabling_processing(market_api, monkeypatch) -> None:
+    async def no_redis_dispatch(_job_id: str) -> bool:
+        return False
+
+    monkeypatch.setattr(market_research_routes, "dispatch_research_job", no_redis_dispatch)
+    monkeypatch.setattr(research_tasks, "SessionLocal", market_api[1])
+    client, session_factory, _encryption_key = market_api
+    workspace_id, headers = _owner(client, "privacy-run-snapshot@example.com")
+    group_id = _create_group(client, workspace_id, headers)
+    source_response = client.post(
+        f"/api/v1/workspaces/{workspace_id}/market-research/sources",
+        headers=headers,
+        json={
+            "group_id": group_id,
+            "source_type": "competitor_facebook_page",
+            "name": "Public page policy snapshot",
+            "url": "https://www.facebook.com/policy.snapshot.page",
+        },
+    )
+    assert source_response.status_code == 201, source_response.text
+    source_id = source_response.json()["id"]
+    policy_url = f"/api/v1/workspaces/{workspace_id}/market-research/sources/{source_id}/privacy-policy"
+    policy_v1 = {
+        "purpose": "Tổng hợp câu hỏi công khai cho báo cáo nghiên cứu.",
+        "processing_basis_reference": "Hồ sơ rà soát PR-1.",
+        "policy_version": "PR-1",
+        "requested_retention_days": 90,
+    }
+    saved = client.put(policy_url, headers=headers, json=policy_v1)
+    assert saved.status_code == 200, saved.text
+
+    accepted = client.post(
+        f"/api/v1/workspaces/{workspace_id}/market-research/sources/{source_id}/crawl",
+        headers=headers,
+    )
+    assert accepted.status_code == 202, accepted.text
+    job_id = accepted.json()["job_id"]
+
+    async def read_source_and_cycle():
+        async with session_factory() as db:
+            source = await db.get(ResearchSource, source_id)
+            cycle = await db.scalar(select(ResearchCycle).where(ResearchCycle.job_id == job_id))
+            assert source is not None and cycle is not None
+            return source, cycle.id
+
+    source, cycle_id = asyncio.run(read_source_and_cycle())
+    run_id = asyncio.run(research_tasks._open_competitor_run(
+        workspace_id, group_id, source, cycle_id, job_id,
+    ))
+
+    policy_v2 = {**policy_v1, "policy_version": "PR-2", "requested_retention_days": 30}
+    revised = client.put(policy_url, headers=headers, json=policy_v2)
+    assert revised.status_code == 200, revised.text
+    assert revised.json()["revision_no"] == 2
+
+    runs = client.get(
+        f"/api/v1/workspaces/{workspace_id}/market-research/sources/{source_id}/collection-runs",
+        headers=headers,
+    )
+    assert runs.status_code == 200, runs.text
+    captured = next(run for run in runs.json() if run["id"] == run_id)
+    assert captured["privacy_policy_revision_no"] == 1
+    assert captured["privacy_policy_version"] == "PR-1"
+    assert captured["privacy_policy_requested_retention_days"] == 90
+    assert captured["retention_enforcement_status"] == "not_enforced"
+    assert captured["comments_content_status"] == "privacy_hold"
+
+
 def test_source_privacy_policy_write_requires_owner(market_api) -> None:
     client, session_factory, _encryption_key = market_api
     workspace_id, headers = _owner(client, "privacy-policy-permissions@example.com")

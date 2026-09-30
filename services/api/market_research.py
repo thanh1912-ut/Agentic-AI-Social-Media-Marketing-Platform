@@ -350,6 +350,14 @@ async def list_competitor_collection_runs(
             engine=(row.config_json or {}).get("engine"),
             engine_version=(row.config_json or {}).get("engine_version"),
             access_tier=(row.config_json or {}).get("access_tier"),
+            privacy_policy_revision_id=(row.config_json or {}).get("privacy_policy_revision_id"),
+            privacy_policy_revision_no=(row.config_json or {}).get("privacy_policy_revision_no"),
+            privacy_policy_version=(row.config_json or {}).get("privacy_policy_version"),
+            privacy_policy_requested_retention_days=(row.config_json or {}).get(
+                "privacy_policy_requested_retention_days"
+            ),
+            retention_enforcement_status=(row.config_json or {}).get("retention_enforcement_status", "not_enforced"),
+            comments_content_status=(row.config_json or {}).get("comments_content_status", "privacy_hold"),
             status=row.status, post_limit=row.page_limit,
             counters=row.counters_json or {}, coverage=(row.counters_json or {}).get("coverage", {}),
             blocked_reason=(row.counters_json or {}).get("blocked_reason"),

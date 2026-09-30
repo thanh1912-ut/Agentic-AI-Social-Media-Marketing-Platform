@@ -108,6 +108,12 @@ export interface CompetitorCollectionRun {
   engine?: string | null;
   engine_version?: string | null;
   access_tier?: number | null;
+  privacy_policy_revision_id?: string | null;
+  privacy_policy_revision_no?: number | null;
+  privacy_policy_version?: string | null;
+  privacy_policy_requested_retention_days?: number | null;
+  retention_enforcement_status?: 'not_enforced';
+  comments_content_status?: 'privacy_hold';
   status: string;
   post_limit: number;
   counters: Record<string, unknown>;

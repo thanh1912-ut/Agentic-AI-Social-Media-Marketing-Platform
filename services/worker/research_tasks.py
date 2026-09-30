@@ -29,7 +29,7 @@ from database.models import (
     MarketObservation,
     MarketReport, MarketReportEvidence, MarketReportWebSnapshot, MetaPageConnection, MetaPageGroup,
     MetaPageMetricSnapshot, MetaPagePost, MetaPostMetricSnapshot, ResearchCycle,
-    ResearchSource, ResearchSourceMetricSnapshot,
+    ResearchPrivacyPolicyRevision, ResearchSource, ResearchSourceMetricSnapshot,
     WebCrawlPage, WebCrawlRun, WebEntity, WebEntitySnapshot, WebOfferSnapshot,
     new_id, utcnow,
 )
@@ -690,6 +690,10 @@ async def _open_competitor_run(
             WebCrawlRun.cycle_id == cycle_id,
         ).with_for_update())
         if run is None:
+            privacy_policy = await db.scalar(select(ResearchPrivacyPolicyRevision).where(
+                ResearchPrivacyPolicyRevision.company_id == company_id,
+                ResearchPrivacyPolicyRevision.source_id == source.id,
+            ).order_by(ResearchPrivacyPolicyRevision.revision_no.desc()).limit(1))
             run = WebCrawlRun(
                 company_id=company_id, group_id=group_id, source_id=source.id,
                 cycle_id=cycle_id, job_id=job_id, status="running",
@@ -697,7 +701,15 @@ async def _open_competitor_run(
                 config_json={"collector": source.collection_mode, "engine": "facebook-cli",
                              "engine_version": ENGINE_VERSION, "access_tier": 0,
                              "parser_version": "facebook-cli-adapter-v1",
-                             "window_days": 90, "request_budget": 20},
+                             "window_days": 90, "request_budget": 20,
+                             "privacy_policy_revision_id": privacy_policy.id if privacy_policy else None,
+                             "privacy_policy_revision_no": privacy_policy.revision_no if privacy_policy else None,
+                             "privacy_policy_version": privacy_policy.policy_version if privacy_policy else None,
+                             "privacy_policy_requested_retention_days": (
+                                 privacy_policy.requested_retention_days if privacy_policy else None
+                             ),
+                             "retention_enforcement_status": "not_enforced",
+                             "comments_content_status": "privacy_hold"},
                 counters_json={"items_seen": 0, "items_saved": 0, "pages_requested": 0},
                 started_at=utcnow(),
             )
