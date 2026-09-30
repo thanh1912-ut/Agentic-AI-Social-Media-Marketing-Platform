@@ -1473,11 +1473,36 @@ async def _make_report(
             "trends": [], "suggestions": [], "analysis_status": "no_evidence",
             "business_profile_context": {"status": "not_used", "reason": "no_evidence"},
         }, None, "no_evidence"
+    privacy_coverage = {
+        "facebook_post_text_withheld": sum(
+            1 for item in evidence_rows if item.get("content_processing_status") == "privacy_review_required"
+        ),
+        "facebook_post_text_sent": sum(
+            1 for item in evidence_rows if item.get("content_processing_status") == "approved_for_provider"
+        ),
+        "comments_content_status": "privacy_hold",
+        "media_content_status": "privacy_hold",
+    }
+    if privacy_coverage["facebook_post_text_withheld"] and not web_snapshot_rows and all(
+        item.get("content_processing_status") == "privacy_review_required" for item in evidence_rows
+    ):
+        return {
+            "headline": "Đã lưu số liệu Fanpage; nội dung đang chờ rà soát quyền xử lý",
+            "summary": (
+                "Văn bản bài Facebook chưa được gửi tới nhà cung cấp AI vì bộ lọc hiện tại chưa nhận diện tên người "
+                "đầy đủ. Bình luận và media vẫn đang giữ. Có thể xem nội dung đã thu thập và số liệu trong nguồn; "
+                "báo cáo AI chỉ chạy khi có dữ liệu tham khảo khác đủ điều kiện."
+            ),
+            "trends": [], "suggestions": [], "analysis_status": "deferred_privacy_review",
+            "privacy_coverage": privacy_coverage,
+            "business_profile_context": {"status": "not_used", "reason": "deferred_privacy_review"},
+        }, None, "deferred_privacy_review"
     owner_brand_context, business_profile_context = await _active_owner_brand_context(company_id)
 
     def report_with_context(
         value: dict[str, Any], *, status: str | None = None, reason: str | None = None,
     ) -> dict[str, Any]:
+        value["privacy_coverage"] = privacy_coverage
         context = dict(business_profile_context)
         if status is not None:
             context = {"status": status}
@@ -1518,6 +1543,7 @@ async def _make_report(
         "Dùng evidence_ids và web_snapshot_ids đúng như dữ liệu đầu vào; không tạo mã nguồn giả. "
         "Chỉ trích giá, tiền tệ, tình trạng và số bán từ web_entity_snapshots. "
         "Giữ nguyên cờ xấp xỉ/cận dưới và nêu rõ các số này do website tự công bố; không quy đổi tiền hoặc suy doanh thu. "
+        "Evidence có content_processing_status=privacy_review_required chỉ chứa số liệu; không suy luận chủ đề từ nội dung bị giữ. "
         "Đề xuất tối đa 5 góc nội dung để con người xem xét; không tự đăng bài."
     )
     request_key = f"research-report:{cycle_id}"
@@ -1606,6 +1632,14 @@ async def _evidence_for_report(company_id: str, group_id: str) -> list[dict[str,
             MarketEvidence.last_seen_at >= utcnow() - timedelta(days=60),
         ).order_by(MarketEvidence.last_seen_at.desc()).limit(MAX_REPORT_EVIDENCE))).all()
         evidence_ids = [row.id for row in rows]
+        source_ids = {row.source_id for row in rows}
+        source_types = {
+            source.id: source.source_type
+            for source in (await db.scalars(select(ResearchSource).where(
+                ResearchSource.company_id == company_id,
+                ResearchSource.id.in_(source_ids or {"__none__"}),
+            ))).all()
+        }
         observations = (await db.scalars(select(MarketObservation).where(
             MarketObservation.company_id == company_id,
             MarketObservation.evidence_id.in_(evidence_ids or ["__none__"]),
@@ -1639,6 +1673,17 @@ async def _evidence_for_report(company_id: str, group_id: str) -> list[dict[str,
                 continue
             previous = snapshots[1] if len(snapshots) > 1 else None
             metrics = _safe_market_metrics(observation.metrics_json if observation else {})
+            stored_metrics = observation.metrics_json if isinstance(observation.metrics_json, dict) else {}
+            redaction = stored_metrics.get("privacy_redaction")
+            redaction_status = redaction.get("status") if isinstance(redaction, dict) else None
+            facebook_source = source_types.get(row.source_id) in {
+                "owned_facebook_page", "competitor_facebook_page", "facebook_group",
+            }
+            provider_approved = not facebook_source or redaction_status == "approved_for_provider"
+            content_processing_status = (
+                "not_facebook_source" if not facebook_source else
+                "approved_for_provider" if provider_approved else "privacy_review_required"
+            )
             previous_metrics = _safe_market_metrics(previous.metrics_json if previous else {})
             metric_delta = {
                 key: metrics[key] - previous_metrics[key]
@@ -1646,11 +1691,16 @@ async def _evidence_for_report(company_id: str, group_id: str) -> list[dict[str,
                 if key in metrics and key in previous_metrics
             }
             output.append({
-                "id": row.id, "url": row.canonical_url, "title": version.title,
+                "id": row.id, "url": row.canonical_url,
+                "title": version.title if provider_approved else "Bài viết Facebook đang chờ rà soát dữ liệu cá nhân",
                 "evidence_version_id": version.id, "observation_id": observation.id,
                 "provenance_status": "verified",
+                "source_type": source_types.get(row.source_id),
                 "published_at": version.published_at.isoformat() if version.published_at else None,
-                "text": version.text[:1200], "metrics": metrics, "metric_delta": metric_delta,
+                "text": version.text[:1200] if provider_approved else "",
+                "content_processing_status": content_processing_status,
+                "privacy_redaction_status": redaction_status,
+                "metrics": metrics, "metric_delta": metric_delta,
                 "observed_at": observation.observed_at.isoformat() if observation else None,
                 "previous_observed_at": previous.observed_at.isoformat() if previous else None,
                 # Do not expose legacy or new commenter text to agents until
@@ -2015,6 +2065,7 @@ async def _run(job_id: str) -> None:
             "published_at": item["published_at"], "observed_at": item["observed_at"],
             "previous_observed_at": item["previous_observed_at"], "metrics": item["metrics"],
             "metric_delta": item["metric_delta"], "comments": item["comments"],
+            "content_processing_status": item.get("content_processing_status"),
             "evidence_version_id": item["evidence_version_id"],
             "observation_id": item["observation_id"],
             "provenance_status": item["provenance_status"],
@@ -2039,6 +2090,12 @@ async def _run(job_id: str) -> None:
                                "business_profile_context", {"status": "not_configured"},
                            ),
                            "evidence_analyzed": len(evidence_rows),
+                           "privacy_coverage": report_json.get("privacy_coverage", {
+                               "facebook_post_text_withheld": 0,
+                               "facebook_post_text_sent": 0,
+                               "comments_content_status": "privacy_hold",
+                               "media_content_status": "privacy_hold",
+                           }),
                            "web_snapshot_ids": [item["snapshot_id"] for item in web_snapshot_rows],
                            "metrics_note": "Views and Page follower counts appear only when Meta returns them for an authorized source. Per-post metric changes compare the latest two snapshots; missing values are not treated as zero."},
             model_name=model_name,

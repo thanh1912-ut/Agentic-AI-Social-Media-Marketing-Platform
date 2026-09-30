@@ -225,3 +225,14 @@ Lát cắt này không đáp ứng thu thập nội dung Group discussions, bài
 | Phạm vi bộ lọc | PARTIAL | Không nhận diện tên hoặc mọi dạng địa chỉ/PII; metadata ghi `not_anonymization` và `names_not_detected`. Không phải kết luận dữ liệu đã vô danh hoặc tuân thủ luật. |
 | Backend focused | PASS | `tests/test_research_privacy.py tests/test_market_research_api.py`: 25 passed. Ruff và `git diff --check` chạy lại trước commit. |
 | Live sources/providers and erasure | NOT_RUN | Không có Page/Meta/provider live; chưa triển khai retention/deletion propagation hoặc quy trình pháp lý. |
+
+## Chặn gửi nội dung Facebook chưa rà soát sang nhà cung cấp AI — 2026-09-30
+
+| Kiểm tra | Trạng thái | Bằng chứng và giới hạn |
+|---|---|---|
+| Evidence boundary | PASS (SQLite worker fixture) | Owned Page evidence giữ metric/provenance nhưng `text` rỗng và title được thay bằng thông báo khi thiếu trạng thái `approved_for_provider`. |
+| Chỉ có Facebook | PASS (unit fixture) | `_make_report` trả `deferred_privacy_review`; test thay factory bằng lỗi nếu provider được gọi, xác nhận không có lời gọi AI. |
+| Nguồn trộn | PARTIAL (code path) | Prompt chỉ đạo model dùng metrics từ evidence đang giữ và không suy chủ đề; website snapshot vẫn có thể chạy report. Chưa kiểm thử provider thật. |
+| Regression | PASS | `tests/test_market_research_api.py tests/test_research_privacy.py`: 26 passed; Ruff đạt. |
+| Mở lại xử lý text Facebook | BLOCKED | Chưa có screening/phê duyệt thực tế để cấp `approved_for_provider`; không có cách bật bằng cách nhập checkbox hoặc policy reference hiện tại. |
+| Frontend build | PASS | `npm --workspace @agentic/web run build` hoàn tất; typecheck, ESLint và Vitest 50 tests cũng đạt. |

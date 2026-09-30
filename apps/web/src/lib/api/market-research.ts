@@ -177,6 +177,12 @@ export interface MarketReport {
     headline?: string;
     summary?: string;
     analysis_status?: string;
+    privacy_coverage?: {
+      facebook_post_text_withheld?: number;
+      facebook_post_text_sent?: number;
+      comments_content_status?: string;
+      media_content_status?: string;
+    };
     business_profile_context?: {
       status: 'applied' | 'not_configured' | 'revision_unavailable' | 'legacy_unknown' | string;
       brand_id?: string;
@@ -208,6 +214,7 @@ export interface MarketReport {
       metrics?: Record<string, number | null>;
       metric_delta?: Record<string, number | null>;
       comments?: string[];
+      content_processing_status?: string | null;
     }>;
   };
   evidence_ids: string[];
@@ -231,6 +238,12 @@ export interface MarketReport {
     };
     web_snapshot_ids?: string[];
     metrics_note?: string;
+    privacy_coverage?: {
+      facebook_post_text_withheld?: number;
+      facebook_post_text_sent?: number;
+      comments_content_status?: string;
+      media_content_status?: string;
+    };
   };
   model_name: string | null;
   created_at: string;

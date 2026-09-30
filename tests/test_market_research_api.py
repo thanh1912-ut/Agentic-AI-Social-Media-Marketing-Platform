@@ -1017,8 +1017,34 @@ def test_owned_page_collection_saves_views_and_followers_when_meta_returns_them(
     assert latest_post["metric_delta"] == {
         "reactions": 12, "comments": 2, "shares": 1, "interactions": 15, "views": 654,
     }
+    assert latest_post["text"] == ""
+    assert latest_post["content_processing_status"] == "privacy_review_required"
+    assert latest_post["title"] == "Bài viết Facebook đang chờ rà soát dữ liệu cá nhân"
     assert latest_post["comments"] == []
     assert latest_post["comments_content_status"] == "privacy_hold"
+
+
+def test_facebook_only_report_waits_for_privacy_review_without_provider_call(monkeypatch) -> None:
+    def unexpected_provider_call():
+        raise AssertionError("privacy-held Facebook text must not trigger an AI provider request")
+
+    monkeypatch.setattr(research_tasks, "configured_structured_model", unexpected_provider_call)
+    report, model_name, status = asyncio.run(research_tasks._make_report(
+        "workspace-test", "cycle-test", SimpleNamespace(),
+        evidence_rows=[{
+            "id": "evidence-test",
+            "content_processing_status": "privacy_review_required",
+            "text": "",
+        }],
+        audience_rows=[],
+        web_snapshot_rows=[],
+    ))
+
+    assert status == "deferred_privacy_review"
+    assert model_name is None
+    assert report["analysis_status"] == "deferred_privacy_review"
+    assert report["privacy_coverage"]["facebook_post_text_withheld"] == 1
+    assert report["privacy_coverage"]["comments_content_status"] == "privacy_hold"
 
 
 def test_due_market_research_enqueues_one_durable_cycle(market_api) -> None:

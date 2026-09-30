@@ -16,6 +16,7 @@ Base đã kiểm tra: `codex/creative-studio-ui` @ `b769097bfdb3568889d974c6def9
 - [PARTIAL] Ledger ngân sách tự động PostgreSQL và mức trần $2/workspace/ngày đã được thêm cho báo cáo Nghiên cứu chạy DeepSeek; API và UI hiển thị số đã dùng/giữ chỗ/còn lại. Bảng giá đã ghi nhận model Gemini/Qwen đã chọn, nhưng chưa route call của hai provider hoặc media vào ledger.
 - [PARTIAL] Worker không gửi comment text cũ/mới cho agent. Chưa có pipeline nhận dạng/redact toàn diện, retention/deletion ledger hoặc quy trình pháp lý; không được coi là chứng nhận tuân thủ.
 - [PARTIAL] Nội dung bài Facebook và manual import được che email, số điện thoại và cụm địa chỉ nhà rõ ràng trước khi lưu bằng `facebook-contact-patterns-v1`; bộ lọc không phát hiện tên và không phải cơ chế ẩn danh.
+- [PARTIAL] Ranh giới gọi DeepSeek loại nội dung bài Facebook chưa qua rà soát đầy đủ; report chỉ có Facebook được ghi `deferred_privacy_review`, không gọi provider. Với nguồn web đủ điều kiện, Facebook cùng report chỉ gửi số liệu và nhãn nội dung đang giữ.
 - [PARTIAL] Owner có thể ghi nhận mục đích, tham chiếu căn cứ, phiên bản chính sách và thời hạn dự kiến theo từng nguồn; bản ghi bất biến có số revision. Đây chỉ là hồ sơ cấu hình, chưa thi hành retention và không mở `privacy_hold`.
 - [PARTIAL] OpenAPI và TypeScript declarations đã được regenerate. Frontend lint, typecheck, unit tests và desktop/mobile fixture E2E hiện đạt; các test này không thay cho nghiệm thu real API/browser.
 - [PARTIAL] API/worker fixtures và PostgreSQL/Redis/Celery integration test đã chạy trên môi trường disposable; browser real mode, Meta/provider live và worker crawl chưa chạy.
@@ -52,6 +53,20 @@ Base đã kiểm tra: `codex/creative-studio-ui` @ `b769097bfdb3568889d974c6def9
 - PASS: `tests/test_research_privacy.py tests/test_market_research_api.py` — 25 passed; regression kiểm tra email, điện thoại, cụm “địa chỉ nhà riêng” không còn trong nội dung Page đã lưu, đồng thời giữ ngày ISO và số tiền không giống số điện thoại.
 - PARTIAL: Bộ lọc không nhận diện tên, không bao phủ hết cách viết địa chỉ hoặc dữ liệu cá nhân; chỉ xử lý rõ các mẫu đã kiểm tra, không được mô tả là ẩn danh hoặc chứng nhận tuân thủ.
 - NOT_RUN: Meta live, Qwen/Gemini/DeepSeek live, browser real, deletion/retention propagation.
+
+### 2026-09-30 14:32 Asia/Ho_Chi_Minh — Giữ nội dung Facebook khỏi provider khi còn privacy hold
+
+- DONE: `_evidence_for_report` kiểm tra loại nguồn và trạng thái privacy; Page công ty, Page công khai/nhập tay chưa có `approved_for_provider` chỉ truyền số liệu, version/observation ID và nhãn nội dung đang giữ, không truyền tiêu đề/nội dung gốc.
+- DONE: Nếu chỉ có evidence Facebook đang chờ rà soát và không có snapshot website, DeepSeek không được gọi; report ghi `deferred_privacy_review` và coverage rõ số bài bị giữ. Report hỗn hợp nhắc model chỉ dùng metrics từ evidence bị giữ.
+- PASS: `tests/test_market_research_api.py tests/test_research_privacy.py` — 26 passed; kiểm tra bài Page không tới provider và Facebook-only report không gọi model.
+- PARTIAL: Không có workflow/phê duyệt rà soát hoàn chỉnh để chuyển nội dung thành `approved_for_provider`; vì vậy Facebook-only AI reports hiện bị defer.
+- NOT_RUN: Provider live, Meta live, browser real, deletion/retention propagation.
+
+### 2026-09-30 14:47 Asia/Ho_Chi_Minh — Kiểm tra production build
+
+- PASS: `npm --workspace @agentic/web run build` hoàn tất; route build chứa Fanpage/Nghiên cứu và các màn hình chính.
+- PASS: `git diff --check`; frontend typecheck, lint và Vitest 50 tests đạt trên cùng thay đổi.
+- NOT_RUN: Không triển khai preview và không gọi provider/Meta live.
 
 ### 2026-09-30 10:21 Asia/Ho_Chi_Minh — Ghi nhận policy theo nguồn
 

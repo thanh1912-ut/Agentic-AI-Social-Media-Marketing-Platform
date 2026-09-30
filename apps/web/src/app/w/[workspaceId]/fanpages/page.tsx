@@ -617,6 +617,7 @@ export default function FanpagesMarketResearchPage() {
             {reportsQuery.error ? <ErrorPanel message={readableError(reportsQuery.error, 'Không tải được báo cáo.')} retryable onRetry={() => void reportsQuery.refetch()} /> : null}
             {reports.map((report) => {
               const profileContext = report.coverage.business_profile_context ?? report.report.business_profile_context;
+              const privacyCoverage = report.coverage.privacy_coverage ?? report.report.privacy_coverage;
               return (
               <article key={report.id} className="mb-4 rounded-xl border border-slate-200 p-4 last:mb-0">
                 <div className="flex flex-wrap items-start justify-between gap-3">
@@ -637,6 +638,11 @@ export default function FanpagesMarketResearchPage() {
                         : 'Báo cáo cũ không lưu trạng thái hồ sơ thương hiệu tại thời điểm phân tích.'}
                 </p>
                 <p className="mt-3 whitespace-pre-line text-sm text-slate-700">{report.report.summary}</p>
+                {(privacyCoverage?.facebook_post_text_withheld ?? 0) > 0 ? (
+                  <p role="note" className="mt-3 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-950">
+                    Nội dung {privacyCoverage?.facebook_post_text_withheld} bài Facebook đang được giữ lại, chưa gửi tới AI vì bộ lọc chưa rà soát đầy đủ dữ liệu cá nhân. Bình luận và ảnh/video cũng chưa được phân tích.
+                  </p>
+                ) : null}
                 {(report.report.trends ?? []).length > 0 ? (
                   <div className="mt-4"><h4 className="text-sm font-semibold text-slate-900">Xu hướng ghi nhận</h4><ul className="mt-2 space-y-2">{report.report.trends?.map((trend, index) => <li key={trend.title + index} className="rounded-lg bg-slate-50 p-3"><p className="text-sm font-medium text-slate-900">{trend.title} <span className="text-xs font-normal text-slate-500">· độ tin cậy {Math.round(trend.confidence * 100)}%</span></p><p className="mt-1 text-sm text-slate-700">{trend.explanation}</p><p className="mt-1 text-xs text-slate-500">{trend.evidence_ids.length} nguồn văn bản · {trend.web_snapshot_ids?.length ?? 0} snapshot sản phẩm/bài viết</p></li>)}</ul></div>
                 ) : null}
