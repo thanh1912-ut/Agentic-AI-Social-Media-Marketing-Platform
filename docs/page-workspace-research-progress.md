@@ -716,3 +716,14 @@ Các mục theo timestamp phía dưới là lịch sử kiểm tra, không thay 
 - IN_PROGRESS: Rollout0030/preview; report/hướng viết và media còn trong scope. [Bằng chứng chi tiết](screened-comment-analysis-verification.md).
 
 - DONE 2026-10-01 18:28: Rollout0030/real release752af5d đạt, backup DB/storage có checksum;65 bảng giữ counts, secret/Page/lịch giữ nguyên,0live model calls. Report/hướng viết và media vẫn IN_PROGRESS.
+
+
+### 2026-10-01 19:40 Asia/Ho_Chi_Minh — Bình luận → hướng viết có bằng chứng
+
+- DONE: Code `ba23d79ef4c6695985b5591e6a48247e133e4b0c` thêm durable report child, schema0031, input/result pins và chọn hướng vào campaign; brief edit không làm mất pins/tombstone.
+- PASS:164backend tests/18skip có phạm vi ghi rõ,66frontend tests, lint/build/OpenAPI/Ruff/secret scan.
+- PASS: Browser với PostgreSQL/Redis/Celery thật qua Meta/Gemini tổng hợp → report → campaign → reload;0live provider calls.
+- DONE: Push code/remoteSHAkhớp; rollout0031/13104, backup checksum;67bảng counts giữ nguyên, secret/Page/lịch giữ nguyên.
+- IN_PROGRESS: Media và provider/Facebook live vẫn chưa đạt toàn bộ plan; Tier0 giữ nguyên. [Bằng chứng](comment-report-workflow-verification.md).
+
+- DONE: Health13104/login/register/font/API8001 đạt bằng browser context riêng; fixture processes/test PG/Redis đã dừng đúng ownership, credential tổng hợp đã xóa. Preview thật giữ hoạt động.

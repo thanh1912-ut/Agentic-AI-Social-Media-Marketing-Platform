@@ -21,16 +21,41 @@ lựa chọn; `provider_outcome_unknown` cần đối soát trước retry, khô
 Thiếu model/key/pricing trả lỗi riêng; không thay provider.
 
 Xóa bình luận vô hiệu các lô đã dùng phiên đó, không xóa lô không liên quan. Beat
-purge lô quá90ngày. Xóa nguồn xóa lô và đoạn kiểm tra. Tạm thời chưa đưa lô này vào
-report/hướng viết, tránh dùng ngầm latest. Migration0030 forward-only; rollback
+purge lô quá90ngày. Xóa nguồn xóa lô và đoạn kiểm tra. Từ schema0031, báo cáo/hướng
+viết ghim đúng input/result hash của lô; xóa vô hiệu đúng báo cáo/chiến dịch phụ thuộc.
+Migration0030/0031 forward-only; rollback
 bằng tắt đường phân tích/frontend, giữ worker đọc suppression/retention/schema.
 Không downgrade hoặc quay về code bỏ qua deletion ledger. Không bật live analysis
 chỉ từ việc có API key; operator vẫn phải xác định điều kiện xử lý và gửi dữ liệu.
 Xem [bằng chứng và giới hạn](screened-comment-analysis-verification.md).
 
 
-Bổ sung xóa bình luận: [comment-deletion-runbook.md](comment-deletion-runbook.md). Schema0030 đã rollout; bảng trạng thái trong verification là nguồn mới nhất. Không restore/revert worker bỏ qua suppression ledger.
+Bổ sung xóa bình luận: [comment-deletion-runbook.md](comment-deletion-runbook.md). Schema0031 đã rollout; bảng trạng thái trong verification là nguồn mới nhất. Không restore/revert worker bỏ qua suppression ledger.
 
+
+
+## Báo cáo và chọn hướng viết (schema0031)
+
+Sau khi Owner bấm phân tích lô đã kiểm tra, một job `research_comment_report`
+trên queue agent tiếp tục tạo báo cáo, dùng summary có coverage và hồ sơ thủ
+công. Hai bước AI dùng chung hạn mức2USD/ngày. Không gửi lại raw comments/author
+cho bước report. Không có topic thì không tạo report thành công từ dữ liệu rỗng.
+
+Trong kết quả có trạng thái job report và **Xem báo cáo và chọn hướng viết**.
+Owner/Editor theo quyền hiện có chọn **Tạo chiến dịch nháp**, rồi xem/sửa brief.
+Thao tác này chưa tạo bài/duyệt/đăng. Chiến dịch hiển thị nguồn đã ghim; sửa brief
+giữ pins. Muốn dùng nguồn/hướng mới phải chọn lại từ report, không sửa IDs JSON.
+
+Nếu nguồn hết hạn/xóa, UI báo cần chọn hướng mới; sửa brief không gỡ marker.
+`deferred_budget` chờ ngày Việt Nam kế tiếp; `provider_outcome_unknown` cần đối
+soát, không bấm gửi liên tục. Job queued sau lỗi broker được scheduler phục hồi.
+API/worker/Beat phải cùng schema0031 trước khi bật luồng mới. Không downgrade
+bảng provenance hoặc rollback về worker bỏ qua suppression/Page gate.
+
+Backup DB/storage dưới runtime backups; frontend release trước được giữ. Start/
+stop vẫn chỉ các label auth-preview đã xác minh trong phần vận hành hiện có.
+Không reset database, purge Redis dùng chung hay sao chép key vào worktree.
+Xem [kiểm thử, IDs và giới hạn](comment-report-workflow-verification.md).
 
 ## Bình luận Page công ty qua giao diện
 
@@ -102,7 +127,7 @@ Không tạo lại key khi có token đã lưu. Backup key riêng với database
 
 Checkout: `/Users/lethanh/.codex/worktrees/page-workspaces-research/agent`.
 Frontend real: `http://127.0.0.1:13104`; API/readiness: `http://127.0.0.1:8001/readyz`.
-Schema preview đã nâng lên `0030_screened_comment_analysis`. PostgreSQL15432, queue16379/4,
+Schema preview đã nâng lên `0031_report_comment_analysis`. PostgreSQL15432, queue16379/4,
 cache16380/4 và storage bền vững của preview giữ nguyên.
 
 Launcher API/worker trong LaunchAgent dùng Python tại

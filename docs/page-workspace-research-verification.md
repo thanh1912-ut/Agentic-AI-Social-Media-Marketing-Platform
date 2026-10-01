@@ -1,5 +1,16 @@
 # Kiểm chứng Page workspace và Nghiên cứu
 
+## Trạng thái mới nhất — 2026-10-01 19:40 Asia/Ho_Chi_Minh
+
+Bình luận đã kiểm tra đã nối vào durable report/hướng viết và campaign pinned
+trên code `ba23d79ef4c6695985b5591e6a48247e133e4b0c`, schema0031, preview13104. Backend164tests và frontend66tests
+đạt; browser PostgreSQL/Redis/Celery→reload đạt với Meta/Gemini tổng hợp.
+Không có live call lần này. [Ma trận và giới hạn](comment-report-workflow-verification.md).
+Media/provider live và nghiệm thu đầy đủ Page-workspace Research còn IN_PROGRESS.
+Các mục phía dưới là bằng chứng từng lát cắt theo thời gian, không thay kết quả
+live hoặc tuyên bố toàn bộ kế hoạch hoàn tất.
+
+
 ## Kết quả mới nhất — 2026-10-01 18:27 Asia/Ho_Chi_Minh
 
 Code `752af5d8345e8110f24593e2e984113ac4251476` bổ sung phân tích các đoạn bình luận Owner đã kiểm tra bằng Gemini3.8.
