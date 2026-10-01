@@ -727,3 +727,11 @@ Các mục theo timestamp phía dưới là lịch sử kiểm tra, không thay 
 - IN_PROGRESS: Media và provider/Facebook live vẫn chưa đạt toàn bộ plan; Tier0 giữ nguyên. [Bằng chứng](comment-report-workflow-verification.md).
 
 - DONE: Health13104/login/register/font/API8001 đạt bằng browser context riêng; fixture processes/test PG/Redis đã dừng đúng ownership, credential tổng hợp đã xóa. Preview thật giữ hoạt động.
+
+
+### 2026-10-01 20:18 Asia/Ho_Chi_Minh — Files API nền cho ảnh/video
+
+- DONE: Code `23c8736de8e82885a2ec2fb96b972a1621f3294b` thêm upload/journal callback/reconcile/delete và fileData analysis Gemini; URL session không ra UI/log, hash/state/expiry được kiểm tra.
+- PASS:64tests/1live-opt-in skip, HTTPX native fixture; Ruff/whitespace/secret scan.0provider/Facebook live.
+- IN_PROGRESS: Asset records/downloader/privacy/media worker/budget/UI/report pipeline còn thiếu; không bật adapter trên preview. ffprobe/ffmpeg có trên máy.
+- Preview13104/releaseba23d79/schema0031 giữ nguyên. [Checkpoint và việc còn lại](research-media-files-verification.md).

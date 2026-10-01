@@ -476,3 +476,15 @@ Không dùng các lệnh này nếu đã tái sử dụng các cổng cho tiến
 - Sau khi trạng thái nguồn thành `erased`, nguồn không thể bật lại; tạo nguồn mới nếu cần thu thập tiếp. Dữ liệu nguồn cũ không được tự khôi phục.
 - Giới hạn: thao tác này không xóa bài/campaign/post versions đã tạo thành nội dung nghiệp vụ, nội dung đã xuất hoặc đăng lên Facebook, dữ liệu provider ngoài, bản backup, hoặc bản sao ngoài storage/database mà ứng dụng không quản lý. Không dùng nó làm bằng chứng đã xử lý xong mọi yêu cầu chủ thể dữ liệu hoặc đã tuân thủ pháp luật.
 - Trước rollout, áp dụng migration `0026_research_source_erasure` trên database kiểm thử/triển khai theo quy trình migration chuẩn. Không chạy test purge trên nguồn thật của người dùng; dùng workspace và object storage fixture riêng. Nếu worker hoặc storage lỗi, không xóa thủ công các hàng pending; khôi phục worker/storage rồi để durable job retry.
+
+
+## Gemini Files API — chưa bật pipeline media
+
+Adapter mới trong services/agents/providers/gemini_files.py nhận local bytes đã
+được kiểm tra; không thể bật bằng cách chỉ thêm key hoặc gọi crawler. Caller
+phải reserve ngân sách, ghi manifest/tag trước upload và handle sau receipt vào
+PostgreSQL, cleanup sau success/failure/erasure. Upload outcome_unknown chỉ đối
+soát tag, không upload lại. File active/hash/provenance mới được gửi generate.
+Không gọi factory/helper bằng media người dùng trước khi workflow privacy và
+journal/worker hoàn tất. Giữ Gemini3.8 và secret store hiện tại; không fallback.
+Xem [bằng chứng, giới hạn và phần cần nối](research-media-files-verification.md).

@@ -696,3 +696,12 @@ Code đã commit/push tại `d2801fdfcdaf1d552155586626b461c0cd314c88`; remote S
 | Static checks | PASS | Ruff cho launcher và test đạt; không thay contract hoặc migration. |
 | Cấu hình live hai provider | BLOCKED_CONFIG | Runtime hiện chưa có Gemini key/model và Qwen key/model/region/endpoint. Không tạo key/model/region giả. |
 | Restart preview/provider call | NOT_RUN | Chỉ kiểm thử reader bằng file tổng hợp; chưa restart preview hoặc gọi Gemini/Qwen. Routing comments/media chưa sẵn sàng. |
+
+
+## Media Files boundary — 2026-10-01 20:18 Asia/Ho_Chi_Minh
+
+Code `23c8736de8e82885a2ec2fb96b972a1621f3294b`:64tests fixture PASS/1live opt-in skip; upload destination, journal
+callback, hash/expiry/provenance, video >10MiB, timeout reconciliation/delete
+được kiểm thử bằng HTTPX MockTransport.0live calls. Media pipeline/PG journal/
+worker/budget/download/UI vẫn TODO; preview không đổi.
+[Bằng chứng và việc tiếp theo](research-media-files-verification.md).
