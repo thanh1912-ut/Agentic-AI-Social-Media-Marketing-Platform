@@ -278,6 +278,8 @@ def recover_due_jobs() -> int:
             await _enqueue_due_meta_metrics(db, now)
             from .research_comments import enqueue_comment_batches, purge_expired_comment_quarantine
             await purge_expired_comment_quarantine(db, now)
+            from services.research.comment_analysis import purge_expired_screened_comments
+            await purge_expired_screened_comments(db, now)
             await enqueue_comment_batches(db, now)
             stale = (await db.scalars(select(Job).where(Job.status == "running", Job.lease_until.is_not(None), Job.lease_until < now))).all()
             for job in stale:

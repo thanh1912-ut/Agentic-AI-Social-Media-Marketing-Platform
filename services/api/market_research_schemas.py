@@ -7,6 +7,8 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
+from services.agents.providers.comment_contracts import CommentAnalysis
+
 
 class StrictModel(BaseModel):
     model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
@@ -376,3 +378,80 @@ class CommentCandidatesPage(StrictModel):
     next_cursor: str | None = None
     suppressed_comments_count: int = Field(default=0, ge=0)
     provider_transmission_allowed: Literal[False] = False
+
+
+class ScreenedCommentIn(StrictModel):
+    version_id: str = Field(min_length=36, max_length=36)
+    text: str = Field(min_length=1, max_length=1500)
+
+    @field_validator("text")
+    @classmethod
+    def nonblank_excerpt(cls, value: str) -> str:
+        if not value.strip():
+            raise ValueError("Bản kiểm tra không được để trống")
+        return value
+
+
+class CommentAnalysisIn(StrictModel):
+    request_key: str = Field(min_length=36, max_length=36)
+    decision_id: str = Field(min_length=36, max_length=36)
+    policy_revision_no: int = Field(ge=1)
+    provider_assessment_reference: str = Field(min_length=5, max_length=1000)
+    comments: list[ScreenedCommentIn] = Field(min_length=1, max_length=50)
+
+    @field_validator("comments")
+    @classmethod
+    def unique_versions(cls, value: list[ScreenedCommentIn]) -> list[ScreenedCommentIn]:
+        if len({item.version_id for item in value}) != len(value):
+            raise ValueError("Không chọn trùng phiên bình luận")
+        if sum(len(item.text) for item in value) > 12000:
+            raise ValueError("Tổng bản kiểm tra tối đa 12.000 ký tự mỗi lô")
+        return value
+
+    @field_validator("request_key", "decision_id")
+    @classmethod
+    def uuid_identity(cls, value: str) -> str:
+        from uuid import UUID
+        if str(UUID(value)) != value:
+            raise ValueError("Identity must be a canonical UUID")
+        return value
+
+    @field_validator("provider_assessment_reference")
+    @classmethod
+    def reference_only(cls, value: str) -> str:
+        if not value.strip() or any(ord(c) < 32 or ord(c) == 127 for c in value):
+            raise ValueError("Chỉ nhập tham chiếu đánh giá, không nhập nội dung cá nhân")
+        return value
+
+
+class ScreenedCommentCitationOut(StrictModel):
+    evidence_ref: str
+    version_id: str
+    evidence_id: str
+    observation_id: str
+    evidence_version_id: str
+    text: str
+    content_edited: bool
+    source_content_truncated: bool
+
+
+class CommentAnalysisOut(StrictModel):
+    id: str
+    source_id: str
+    job_id: str | None = None
+    status: str
+    provider: str
+    model: str
+    created_at: datetime
+    expires_at: datetime
+    result: CommentAnalysis | None = None
+    coverage: dict[str, Any] = Field(default_factory=dict)
+    error_code: str | None = None
+    selected_version_ids: list[str] = Field(default_factory=list)
+    citations: list[ScreenedCommentCitationOut] = Field(default_factory=list)
+    legal_basis_verified_by_platform: Literal[False] = False
+
+
+class CommentAnalysesPage(StrictModel):
+    items: list[CommentAnalysisOut]
+    next_cursor: str | None = None

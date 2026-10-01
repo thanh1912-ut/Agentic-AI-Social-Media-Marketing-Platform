@@ -2211,6 +2211,210 @@
         "title": "CollectionSettingsIn",
         "type": "object"
       },
+      "CommentAnalysesPage": {
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/CommentAnalysisOut"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "title": "CommentAnalysesPage",
+        "type": "object"
+      },
+      "CommentAnalysis": {
+        "additionalProperties": false,
+        "properties": {
+          "limitations": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 20,
+            "title": "Limitations",
+            "type": "array"
+          },
+          "topics": {
+            "items": {
+              "$ref": "#/components/schemas/CommentTopic"
+            },
+            "maxItems": 30,
+            "title": "Topics",
+            "type": "array"
+          }
+        },
+        "required": [
+          "topics",
+          "limitations"
+        ],
+        "title": "CommentAnalysis",
+        "type": "object"
+      },
+      "CommentAnalysisIn": {
+        "additionalProperties": false,
+        "properties": {
+          "comments": {
+            "items": {
+              "$ref": "#/components/schemas/ScreenedCommentIn"
+            },
+            "maxItems": 50,
+            "minItems": 1,
+            "title": "Comments",
+            "type": "array"
+          },
+          "decision_id": {
+            "maxLength": 36,
+            "minLength": 36,
+            "title": "Decision Id",
+            "type": "string"
+          },
+          "policy_revision_no": {
+            "minimum": 1.0,
+            "title": "Policy Revision No",
+            "type": "integer"
+          },
+          "provider_assessment_reference": {
+            "maxLength": 1000,
+            "minLength": 5,
+            "title": "Provider Assessment Reference",
+            "type": "string"
+          },
+          "request_key": {
+            "maxLength": 36,
+            "minLength": 36,
+            "title": "Request Key",
+            "type": "string"
+          }
+        },
+        "required": [
+          "request_key",
+          "decision_id",
+          "policy_revision_no",
+          "provider_assessment_reference",
+          "comments"
+        ],
+        "title": "CommentAnalysisIn",
+        "type": "object"
+      },
+      "CommentAnalysisOut": {
+        "additionalProperties": false,
+        "properties": {
+          "citations": {
+            "items": {
+              "$ref": "#/components/schemas/ScreenedCommentCitationOut"
+            },
+            "title": "Citations",
+            "type": "array"
+          },
+          "coverage": {
+            "additionalProperties": true,
+            "title": "Coverage",
+            "type": "object"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "error_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Code"
+          },
+          "expires_at": {
+            "format": "date-time",
+            "title": "Expires At",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "job_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Job Id"
+          },
+          "legal_basis_verified_by_platform": {
+            "const": false,
+            "default": false,
+            "title": "Legal Basis Verified By Platform",
+            "type": "boolean"
+          },
+          "model": {
+            "title": "Model",
+            "type": "string"
+          },
+          "provider": {
+            "title": "Provider",
+            "type": "string"
+          },
+          "result": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CommentAnalysis"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "selected_version_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Selected Version Ids",
+            "type": "array"
+          },
+          "source_id": {
+            "title": "Source Id",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "source_id",
+          "status",
+          "provider",
+          "model",
+          "created_at",
+          "expires_at"
+        ],
+        "title": "CommentAnalysisOut",
+        "type": "object"
+      },
       "CommentCandidateOut": {
         "additionalProperties": false,
         "properties": {
@@ -2749,6 +2953,50 @@
           "reply_edges_stopped"
         ],
         "title": "CommentSuppressionOut",
+        "type": "object"
+      },
+      "CommentTopic": {
+        "additionalProperties": false,
+        "properties": {
+          "category": {
+            "enum": [
+              "question",
+              "need",
+              "feedback",
+              "other"
+            ],
+            "title": "Category",
+            "type": "string"
+          },
+          "evidence_refs": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 100,
+            "minItems": 1,
+            "title": "Evidence Refs",
+            "type": "array"
+          },
+          "summary": {
+            "maxLength": 1000,
+            "minLength": 1,
+            "title": "Summary",
+            "type": "string"
+          },
+          "topic": {
+            "maxLength": 160,
+            "minLength": 1,
+            "title": "Topic",
+            "type": "string"
+          }
+        },
+        "required": [
+          "category",
+          "topic",
+          "summary",
+          "evidence_refs"
+        ],
+        "title": "CommentTopic",
         "type": "object"
       },
       "CompetitorPostOut": {
@@ -8048,6 +8296,78 @@
           "created_at"
         ],
         "title": "ScheduledMetaPublicationOut",
+        "type": "object"
+      },
+      "ScreenedCommentCitationOut": {
+        "additionalProperties": false,
+        "properties": {
+          "content_edited": {
+            "title": "Content Edited",
+            "type": "boolean"
+          },
+          "evidence_id": {
+            "title": "Evidence Id",
+            "type": "string"
+          },
+          "evidence_ref": {
+            "title": "Evidence Ref",
+            "type": "string"
+          },
+          "evidence_version_id": {
+            "title": "Evidence Version Id",
+            "type": "string"
+          },
+          "observation_id": {
+            "title": "Observation Id",
+            "type": "string"
+          },
+          "source_content_truncated": {
+            "title": "Source Content Truncated",
+            "type": "boolean"
+          },
+          "text": {
+            "title": "Text",
+            "type": "string"
+          },
+          "version_id": {
+            "title": "Version Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "evidence_ref",
+          "version_id",
+          "evidence_id",
+          "observation_id",
+          "evidence_version_id",
+          "text",
+          "content_edited",
+          "source_content_truncated"
+        ],
+        "title": "ScreenedCommentCitationOut",
+        "type": "object"
+      },
+      "ScreenedCommentIn": {
+        "additionalProperties": false,
+        "properties": {
+          "text": {
+            "maxLength": 1500,
+            "minLength": 1,
+            "title": "Text",
+            "type": "string"
+          },
+          "version_id": {
+            "maxLength": 36,
+            "minLength": 36,
+            "title": "Version Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "version_id",
+          "text"
+        ],
+        "title": "ScreenedCommentIn",
         "type": "object"
       },
       "SelectWorkspaceRequest": {
@@ -14123,6 +14443,266 @@
           }
         },
         "summary": "Update Collection Settings",
+        "tags": [
+          "market-research"
+        ]
+      }
+    },
+    "/api/v1/workspaces/{company_id}/market-research/sources/{source_id}/comment-analyses": {
+      "get": {
+        "operationId": "list_comment_analyses_api_v1_workspaces__company_id__market_research_sources__source_id__comment_analyses_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "company_id",
+            "required": true,
+            "schema": {
+              "title": "Company Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "source_id",
+            "required": true,
+            "schema": {
+              "title": "Source Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 25,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "evidence_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Evidence Id"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommentAnalysesPage"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Comment Analyses",
+        "tags": [
+          "market-research"
+        ]
+      },
+      "post": {
+        "operationId": "create_comment_analysis_api_v1_workspaces__company_id__market_research_sources__source_id__comment_analyses_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "company_id",
+            "required": true,
+            "schema": {
+              "title": "Company Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "source_id",
+            "required": true,
+            "schema": {
+              "title": "Source Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CommentAnalysisIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AcceptedResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Comment Analysis",
+        "tags": [
+          "market-research"
+        ]
+      }
+    },
+    "/api/v1/workspaces/{company_id}/market-research/sources/{source_id}/comment-analyses/{batch_id}": {
+      "get": {
+        "operationId": "get_comment_analysis_api_v1_workspaces__company_id__market_research_sources__source_id__comment_analyses__batch_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "company_id",
+            "required": true,
+            "schema": {
+              "title": "Company Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "source_id",
+            "required": true,
+            "schema": {
+              "title": "Source Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "batch_id",
+            "required": true,
+            "schema": {
+              "title": "Batch Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommentAnalysisOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Comment Analysis",
         "tags": [
           "market-research"
         ]

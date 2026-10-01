@@ -1092,6 +1092,7 @@ class ResearchCommentVersion(Base, IdMixin):
 
     __tablename__ = "research_comment_versions"
     __table_args__ = (
+        UniqueConstraint("company_id", "source_id", "id", name="uq_comment_version_tenant_source_id"),
         UniqueConstraint("company_id", "observation_id", "external_comment_id", "content_hash",
                          name="uq_comment_version_observation_content"),
         ForeignKeyConstraint(
@@ -1146,6 +1147,73 @@ class ResearchCommentVersion(Base, IdMixin):
     reply_count: Mapped[int | None] = mapped_column(Integer)
     captured_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
+class ResearchCommentAnalysisBatch(Base, IdMixin):
+    """An immutable, Owner-screened selection; no blanket release of quarantine.
+
+    Assessment references document the operator's decision, not platform
+    certification of consent or lawful international transfer. Result bodies
+    are erased with any selected source version and after 90 days.
+    """
+    __tablename__ = "research_comment_analysis_batches"
+    __table_args__ = (
+        UniqueConstraint("company_id", "source_id", "id", name="uq_comment_analysis_tenant_source_id"),
+        UniqueConstraint("company_id", "source_id", "request_key", name="uq_comment_analysis_request"),
+        ForeignKeyConstraint(["company_id", "source_id", "decision_id"],
+            ["research_comment_processing_decisions.company_id", "research_comment_processing_decisions.source_id",
+             "research_comment_processing_decisions.id"], name="fk_comment_analysis_decision", ondelete="CASCADE"),
+        ForeignKeyConstraint(["company_id", "source_id", "policy_revision_id"],
+            ["research_privacy_policy_revisions.company_id", "research_privacy_policy_revisions.source_id",
+             "research_privacy_policy_revisions.id"], name="fk_comment_analysis_policy", ondelete="CASCADE"),
+        CheckConstraint("status IN ('queued','running','completed','deferred_budget','failed','expired','suppressed')",
+                        name="ck_comment_analysis_status"),
+        CheckConstraint("provider = 'gemini' AND model = 'gemini-3.8-flash'", name="ck_comment_analysis_provider"),
+        CheckConstraint("provider_valid_until > created_at AND expires_at > created_at", name="ck_comment_analysis_expiry"),
+        CheckConstraint("expires_at <= created_at + INTERVAL '90 days'", name="ck_comment_analysis_max_age").ddl_if(dialect="postgresql"),
+        Index("ix_comment_analysis_source_created", "company_id", "source_id", "created_at"),
+        Index("ix_comment_analysis_expiry", "expires_at", "status"),
+    )
+    company_id: Mapped[str] = mapped_column(String(36), nullable=False)
+    source_id: Mapped[str] = mapped_column(String(36), nullable=False)
+    decision_id: Mapped[str] = mapped_column(String(36), nullable=False)
+    policy_revision_id: Mapped[str] = mapped_column(String(36), nullable=False)
+    request_key: Mapped[str] = mapped_column(String(36), nullable=False)
+    input_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    assessment_reference: Mapped[str] = mapped_column(Text, nullable=False)
+    assessed_by: Mapped[str] = mapped_column(ForeignKey("users.id"), nullable=False)
+    provider: Mapped[str] = mapped_column(String(24), nullable=False, default="gemini", server_default="gemini")
+    model: Mapped[str] = mapped_column(String(80), nullable=False, default="gemini-3.8-flash", server_default="gemini-3.8-flash")
+    status: Mapped[str] = mapped_column(String(24), nullable=False, default="queued", server_default="queued")
+    result_json: Mapped[dict[str, Any] | None] = mapped_column(JSON)
+    error_code: Mapped[str | None] = mapped_column(String(80))
+    coverage_json: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    provider_valid_until: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
+class ResearchScreenedComment(Base, IdMixin):
+    """Encrypted reviewed excerpt pinned to the exact quarantined source version."""
+    __tablename__ = "research_screened_comments"
+    __table_args__ = (
+        UniqueConstraint("company_id", "batch_id", "version_id", name="uq_screened_comment_batch_version"),
+        ForeignKeyConstraint(["company_id", "source_id", "batch_id"],
+            ["research_comment_analysis_batches.company_id", "research_comment_analysis_batches.source_id",
+             "research_comment_analysis_batches.id"], name="fk_screened_comment_batch", ondelete="CASCADE"),
+        ForeignKeyConstraint(["company_id", "source_id", "version_id"],
+            ["research_comment_versions.company_id", "research_comment_versions.source_id", "research_comment_versions.id"],
+            name="fk_screened_comment_version", ondelete="CASCADE"),
+    )
+    company_id: Mapped[str] = mapped_column(String(36), nullable=False)
+    source_id: Mapped[str] = mapped_column(String(36), nullable=False)
+    batch_id: Mapped[str] = mapped_column(String(36), nullable=False)
+    version_id: Mapped[str] = mapped_column(String(36), nullable=False)
+    excerpt_ciphertext: Mapped[str | None] = mapped_column(Text)
+    excerpt_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    source_content_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    content_edited: Mapped[bool] = mapped_column(Boolean, nullable=False)
 
 
 class ResearchCommentSuppression(Base, IdMixin):

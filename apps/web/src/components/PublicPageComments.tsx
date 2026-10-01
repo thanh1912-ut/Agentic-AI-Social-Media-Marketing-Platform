@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { useJob } from '@/lib/hooks';
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Button } from './ui';
+import { ScreenedCommentAnalysis } from './ScreenedCommentAnalysis';
 import { marketResearchApi, marketResearchKeys, type CommentSuppressionRequest } from '@/lib/api/market-research';
 import { ApiError } from '@/lib/api/client';
 
@@ -55,7 +56,7 @@ export function PublicCommentSettings({ workspaceId, sourceId, canManage, collec
     <p className="text-sm text-slate-600">{collector === 'meta_api' ? 'Meta API đọc bình luận và replies theo cursor của các bài đã lưu; không lấy danh tính người viết. Like là số lượt thích của từng bình luận, không phải toàn bộ reactions.' : 'Đọc bình luận từ permalink bằng facebook-cli Tier 0. Số like và reactions thuộc từng bình luận; không thống kê hành vi của một người trên nhiều Page.'}</p>
     {state.isLoading ? <p role="status">Đang tải phạm vi xử lý…</p> : null}
     {state.data ? <p className="text-sm">{state.data.collection_allowed ? collector === 'meta_api' ? 'Đã cấu hình phạm vi local: có thể đọc các lô bình luận của bài đã lưu.' : 'Đã cấu hình: lần Crawl ngay tiếp theo sẽ đọc bình luận công khai mà nguồn trả về.' : 'Chưa mở xử lý bình luận cho nguồn này.'} {state.data.quarantined_candidate_versions_count} bản ghi đang chờ kiểm tra.</p> : null}
-    <p className="text-xs text-slate-500">Dữ liệu được che thông tin liên hệ, thay tên theo từng bài, mã hóa và giữ tối đa 24 giờ cho Owner kiểm tra. Chưa gửi bình luận sang AI. Đây không phải chứng nhận căn cứ pháp lý hoặc sự đồng ý của người bình luận.</p>
+    <p className="text-xs text-slate-500">Dữ liệu được che thông tin liên hệ, thay tên theo từng bài, mã hóa và giữ tối đa 24 giờ cho Owner kiểm tra. Bản chờ kiểm tra chưa được gửi sang AI; phân tích chỉ nhận bản Owner đã kiểm tra và chọn riêng. Đây không phải chứng nhận căn cứ pháp lý hoặc sự đồng ý của người bình luận.</p>
     {collector === 'meta_api' ? <div className="space-y-2">
       <p className="text-xs text-slate-600">Còn {state.data?.pending_edges ?? '—'} luồng phân trang/replies chưa hoàn tất. Hết cursor chỉ phản ánh dữ liệu Meta cho phép đọc; không chứng minh có cả bình luận ẩn/xóa.</p>
       {canManage ? <Button size="sm" variant="secondary" loading={collect.isPending} disabled={!state.data?.collection_allowed || !state.data.pending_edges || collecting}
@@ -151,6 +152,7 @@ export function PublicPostComments({ workspaceId, sourceId, evidenceId, canRevie
         <p className="mt-1 text-xs text-slate-500">{c.published_at ? 'Đăng ' + new Date(c.published_at).toLocaleString('vi-VN') : 'Không có thời điểm đăng từ nguồn'}</p>
         <SuppressCommentControl workspaceId={workspaceId} sourceId={sourceId} commentId={c.id} />
       </article>) : null}
+      <ScreenedCommentAnalysis workspaceId={workspaceId} sourceId={sourceId} evidenceId={evidenceId} comments={comments} />
       {query.hasNextPage ? <Button variant="secondary" size="sm" loading={query.isFetchingNextPage} onClick={() => void query.fetchNextPage()}>Xem thêm bình luận đã lưu</Button> : null}
     </div> : null}
   </div>;

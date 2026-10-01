@@ -1097,6 +1097,41 @@ export interface paths {
         readonly patch: operations["update_collection_settings_api_v1_workspaces__company_id__market_research_sources__source_id__collection_settings_patch"];
         readonly trace?: never;
     };
+    readonly "/api/v1/workspaces/{company_id}/market-research/sources/{source_id}/comment-analyses": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /** List Comment Analyses */
+        readonly get: operations["list_comment_analyses_api_v1_workspaces__company_id__market_research_sources__source_id__comment_analyses_get"];
+        readonly put?: never;
+        /** Create Comment Analysis */
+        readonly post: operations["create_comment_analysis_api_v1_workspaces__company_id__market_research_sources__source_id__comment_analyses_post"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/v1/workspaces/{company_id}/market-research/sources/{source_id}/comment-analyses/{batch_id}": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /** Get Comment Analysis */
+        readonly get: operations["get_comment_analysis_api_v1_workspaces__company_id__market_research_sources__source_id__comment_analyses__batch_id__get"];
+        readonly put?: never;
+        readonly post?: never;
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
     readonly "/api/v1/workspaces/{company_id}/market-research/sources/{source_id}/comment-processing": {
         readonly parameters: {
             readonly query?: never;
@@ -2572,6 +2607,75 @@ export interface components {
              */
             readonly schedule_enabled: boolean;
         };
+        /** CommentAnalysesPage */
+        readonly CommentAnalysesPage: {
+            /** Items */
+            readonly items: readonly components["schemas"]["CommentAnalysisOut"][];
+            /** Next Cursor */
+            readonly next_cursor?: string | null;
+        };
+        /** CommentAnalysis */
+        readonly CommentAnalysis: {
+            /** Limitations */
+            readonly limitations: readonly string[];
+            /** Topics */
+            readonly topics: readonly components["schemas"]["CommentTopic"][];
+        };
+        /** CommentAnalysisIn */
+        readonly CommentAnalysisIn: {
+            /** Comments */
+            readonly comments: readonly components["schemas"]["ScreenedCommentIn"][];
+            /** Decision Id */
+            readonly decision_id: string;
+            /** Policy Revision No */
+            readonly policy_revision_no: number;
+            /** Provider Assessment Reference */
+            readonly provider_assessment_reference: string;
+            /** Request Key */
+            readonly request_key: string;
+        };
+        /** CommentAnalysisOut */
+        readonly CommentAnalysisOut: {
+            /** Citations */
+            readonly citations?: readonly components["schemas"]["ScreenedCommentCitationOut"][];
+            /** Coverage */
+            readonly coverage?: {
+                readonly [key: string]: unknown;
+            };
+            /**
+             * Created At
+             * Format: date-time
+             */
+            readonly created_at: string;
+            /** Error Code */
+            readonly error_code?: string | null;
+            /**
+             * Expires At
+             * Format: date-time
+             */
+            readonly expires_at: string;
+            /** Id */
+            readonly id: string;
+            /** Job Id */
+            readonly job_id?: string | null;
+            /**
+             * Legal Basis Verified By Platform
+             * @default false
+             * @constant
+             */
+            readonly legal_basis_verified_by_platform: false;
+            /** Model */
+            readonly model: string;
+            /** Provider */
+            readonly provider: string;
+            readonly result?: components["schemas"]["CommentAnalysis"] | null;
+            /** Selected Version Ids */
+            readonly selected_version_ids?: readonly string[];
+            /** Source Id */
+            readonly source_id: string;
+            /** Status */
+            readonly status: string;
+        };
         /** CommentCandidateOut */
         readonly CommentCandidateOut: {
             /**
@@ -2797,6 +2901,20 @@ export interface components {
             readonly suppression_id: string;
             /** Versions Erased */
             readonly versions_erased: number;
+        };
+        /** CommentTopic */
+        readonly CommentTopic: {
+            /**
+             * Category
+             * @enum {string}
+             */
+            readonly category: "question" | "need" | "feedback" | "other";
+            /** Evidence Refs */
+            readonly evidence_refs: readonly string[];
+            /** Summary */
+            readonly summary: string;
+            /** Topic */
+            readonly topic: string;
         };
         /** CompetitorPostOut */
         readonly CompetitorPostOut: {
@@ -4599,6 +4717,32 @@ export interface components {
              */
             readonly status: "scheduled" | "queued" | "cancelled" | "missed" | "published" | "failed" | "outcome_unknown";
         };
+        /** ScreenedCommentCitationOut */
+        readonly ScreenedCommentCitationOut: {
+            /** Content Edited */
+            readonly content_edited: boolean;
+            /** Evidence Id */
+            readonly evidence_id: string;
+            /** Evidence Ref */
+            readonly evidence_ref: string;
+            /** Evidence Version Id */
+            readonly evidence_version_id: string;
+            /** Observation Id */
+            readonly observation_id: string;
+            /** Source Content Truncated */
+            readonly source_content_truncated: boolean;
+            /** Text */
+            readonly text: string;
+            /** Version Id */
+            readonly version_id: string;
+        };
+        /** ScreenedCommentIn */
+        readonly ScreenedCommentIn: {
+            /** Text */
+            readonly text: string;
+            /** Version Id */
+            readonly version_id: string;
+        };
         /** SelectWorkspaceRequest */
         readonly SelectWorkspaceRequest: {
             /** Workspace Id */
@@ -4914,6 +5058,10 @@ export type SchemaCampaignUpdateRequest = components['schemas']['CampaignUpdateR
 export type SchemaCancelScheduledPublicationOut = components['schemas']['CancelScheduledPublicationOut'];
 export type SchemaCollectionRunOut = components['schemas']['CollectionRunOut'];
 export type SchemaCollectionSettingsIn = components['schemas']['CollectionSettingsIn'];
+export type SchemaCommentAnalysesPage = components['schemas']['CommentAnalysesPage'];
+export type SchemaCommentAnalysis = components['schemas']['CommentAnalysis'];
+export type SchemaCommentAnalysisIn = components['schemas']['CommentAnalysisIn'];
+export type SchemaCommentAnalysisOut = components['schemas']['CommentAnalysisOut'];
 export type SchemaCommentCandidateOut = components['schemas']['CommentCandidateOut'];
 export type SchemaCommentCandidatesPage = components['schemas']['CommentCandidatesPage'];
 export type SchemaCommentProcessingIn = components['schemas']['CommentProcessingIn'];
@@ -4921,6 +5069,7 @@ export type SchemaCommentProcessingOut = components['schemas']['CommentProcessin
 export type SchemaCommentProcessingRevokeIn = components['schemas']['CommentProcessingRevokeIn'];
 export type SchemaCommentSuppressionIn = components['schemas']['CommentSuppressionIn'];
 export type SchemaCommentSuppressionOut = components['schemas']['CommentSuppressionOut'];
+export type SchemaCommentTopic = components['schemas']['CommentTopic'];
 export type SchemaCompetitorPostOut = components['schemas']['CompetitorPostOut'];
 export type SchemaCompetitorPostsPage = components['schemas']['CompetitorPostsPage'];
 export type SchemaConfirmBrandProfileRequest = components['schemas']['ConfirmBrandProfileRequest'];
@@ -5014,6 +5163,8 @@ export type SchemaResetPasswordResponse = components['schemas']['ResetPasswordRe
 export type SchemaReviseWithAiRequest = components['schemas']['ReviseWithAiRequest'];
 export type SchemaSaveRecommendationRequest = components['schemas']['SaveRecommendationRequest'];
 export type SchemaScheduledMetaPublicationOut = components['schemas']['ScheduledMetaPublicationOut'];
+export type SchemaScreenedCommentCitationOut = components['schemas']['ScreenedCommentCitationOut'];
+export type SchemaScreenedCommentIn = components['schemas']['ScreenedCommentIn'];
 export type SchemaSelectWorkspaceRequest = components['schemas']['SelectWorkspaceRequest'];
 export type SchemaSessionResponse = components['schemas']['SessionResponse'];
 export type SchemaSubmitApprovalRequest = components['schemas']['SubmitApprovalRequest'];
@@ -7813,6 +7964,117 @@ export interface operations {
                 };
                 content: {
                     readonly "application/json": components["schemas"]["ResearchSourceOut"];
+                };
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    readonly list_comment_analyses_api_v1_workspaces__company_id__market_research_sources__source_id__comment_analyses_get: {
+        readonly parameters: {
+            readonly query?: {
+                readonly cursor?: string | null;
+                readonly limit?: number;
+                readonly evidence_id?: string | null;
+            };
+            readonly header?: {
+                readonly authorization?: string | null;
+            };
+            readonly path: {
+                readonly company_id: string;
+                readonly source_id: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["CommentAnalysesPage"];
+                };
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    readonly create_comment_analysis_api_v1_workspaces__company_id__market_research_sources__source_id__comment_analyses_post: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: {
+                readonly authorization?: string | null;
+            };
+            readonly path: {
+                readonly company_id: string;
+                readonly source_id: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": components["schemas"]["CommentAnalysisIn"];
+            };
+        };
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 202: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["AcceptedResponse"];
+                };
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    readonly get_comment_analysis_api_v1_workspaces__company_id__market_research_sources__source_id__comment_analyses__batch_id__get: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: {
+                readonly authorization?: string | null;
+            };
+            readonly path: {
+                readonly company_id: string;
+                readonly source_id: string;
+                readonly batch_id: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["CommentAnalysisOut"];
                 };
             };
             /** @description Validation Error */

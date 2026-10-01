@@ -19,7 +19,7 @@ from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 from . import analytics, auth, brand_profiles, campaign_workflows, content_reviews, documents, jobs, mailguard_tracking, market_research, media, meta, workspaces
 from .config import settings
-from . import comment_processing
+from . import comment_processing, comment_analysis
 from .db import create_schema, engine
 from .errors import ApiProblem, api_problem_handler, error_body
 from .request_limits import RequestBodyLimitMiddleware
@@ -114,6 +114,7 @@ app.include_router(jobs.router, prefix="/api/v1")
 app.include_router(meta.router, prefix="/api/v1")
 app.include_router(market_research.router, prefix="/api/v1")
 app.include_router(comment_processing.router, prefix="/api/v1")
+app.include_router(comment_analysis.router, prefix="/api/v1")
 
 
 @app.get("/healthz", tags=["health"])

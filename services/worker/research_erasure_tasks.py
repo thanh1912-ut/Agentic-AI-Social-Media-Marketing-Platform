@@ -445,6 +445,11 @@ async def _finish_purge(job_id: str, claim_token: str) -> None:
             ResearchSourceMetricSnapshot.company_id == job.company_id,
             ResearchSourceMetricSnapshot.source_id == source.id,
         ))
+        from database.models import ResearchCommentAnalysisBatch, ResearchScreenedComment
+        await db.execute(delete(ResearchScreenedComment).where(
+            ResearchScreenedComment.company_id == job.company_id, ResearchScreenedComment.source_id == source.id))
+        await db.execute(delete(ResearchCommentAnalysisBatch).where(
+            ResearchCommentAnalysisBatch.company_id == job.company_id, ResearchCommentAnalysisBatch.source_id == source.id))
         comment_checkpoints = select(ResearchCommentCheckpoint.id).where(
             ResearchCommentCheckpoint.company_id == job.company_id, ResearchCommentCheckpoint.source_id == source.id,
         )

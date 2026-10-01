@@ -4,6 +4,10 @@ import { apiRequest } from './client';
 import type { ApiAcceptedResponse } from './types';
 import type { components } from './schema';
 
+export type CommentAnalysisRequest = components['schemas']['CommentAnalysisIn'];
+export type CommentAnalysesPage = components['schemas']['CommentAnalysesPage'];
+export type CommentAnalysisRecord = components['schemas']['CommentAnalysisOut'];
+
 export type CommentProcessing = components['schemas']['CommentProcessingOut'];
 export type CommentProcessingRequest = components['schemas']['CommentProcessingIn'];
 export type CommentCandidatesPage = components['schemas']['CommentCandidatesPage'];
@@ -332,6 +336,13 @@ export const marketResearchKeys = {
 };
 
 export const marketResearchApi = {
+  analyzeComments: (workspaceId: string, sourceId: string, body: CommentAnalysisRequest) => apiRequest<ApiAcceptedResponse>(
+    path(workspaceId) + '/sources/' + encodeURIComponent(sourceId) + '/comment-analyses', { method: 'POST', body },
+  ),
+  commentAnalyses: (workspaceId: string, sourceId: string, evidenceId: string, cursor?: string) => apiRequest<CommentAnalysesPage>(
+    path(workspaceId) + '/sources/' + encodeURIComponent(sourceId) + '/comment-analyses',
+    { query: { limit: 25, evidence_id: evidenceId, cursor } },
+  ),
   aiBudget: (workspaceId: string) =>
     apiRequest<ResearchAIBudget>(path(workspaceId) + '/ai-budget'),
   groups: (workspaceId: string) =>

@@ -11,7 +11,7 @@ import hashlib
 
 from sqlalchemy import select, update
 
-from database.models import MarketEvidence, ResearchCommentCheckpoint, ResearchCommentSuppression, ResearchCommentVersion, new_id, utcnow
+from database.models import MarketEvidence, ResearchCommentCheckpoint, ResearchCommentSuppression, ResearchCommentVersion, ResearchScreenedComment, new_id, utcnow
 
 
 @dataclass(frozen=True)
@@ -88,4 +88,15 @@ async def suppress_comment_tree(db, *, version: ResearchCommentVersion, actor_id
         ResearchCommentCheckpoint.parent_key.in_(select(tree.c.comment_id)),
         ResearchCommentCheckpoint.status != "suppressed",
     ).values(status="suppressed", cursor_after=None, stop_reason="comment_suppressed"))
+    # Only batches actually using the erased identities are invalidated.
+    # Topics can paraphrase any selected excerpt: remove the affected result
+    # as a whole, rather than attempt unreliable substring redaction.
+    batch_ids = (await db.scalars(select(ResearchScreenedComment.batch_id).where(
+        ResearchScreenedComment.company_id == version.company_id,
+        ResearchScreenedComment.source_id == version.source_id,
+        ResearchScreenedComment.version_id.in_(select(ResearchCommentVersion.id).where(
+            *scope, ResearchCommentVersion.external_comment_id.in_(select(tree.c.comment_id)))),
+    ))).all()
+    from .comment_analysis import erase_batches
+    await erase_batches(db, company_id=version.company_id, source_id=version.source_id, batch_ids=batch_ids)
     return SuppressionResult(known[version.external_comment_id], len(identities), erased.rowcount, stopped.rowcount)
