@@ -121,7 +121,7 @@ class GeminiMediaAnalyzer:
         if max_input_chars <= 0 or max_output_tokens <= 0 or max_asset_bytes <= 0:
             raise ProviderConfigurationError("Gemini size and token limits must be positive")
         if not 1 <= max_inline_request_bytes <= MAX_INLINE_REQUEST_BYTES:
-            raise ProviderConfigurationError("GEMINI_MAX_INLINE_REQUEST_BYTES cannot exceed Google's 20 MiB limit")
+            raise ProviderConfigurationError("GEMINI_MAX_INLINE_REQUEST_BYTES cannot exceed the application's 20 MiB inline bound")
         self.model_name = model.strip()
         self.timeout_seconds = _positive_float(str(timeout_seconds), "AI_REQUEST_TIMEOUT_SECONDS", 60)
         self.max_output_tokens = max_output_tokens
