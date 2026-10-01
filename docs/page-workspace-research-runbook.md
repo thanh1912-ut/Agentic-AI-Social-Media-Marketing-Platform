@@ -1,5 +1,8 @@
 # Runbook Page workspace và Nghiên cứu
 
+Bổ sung xóa bình luận: [comment-deletion-runbook.md](comment-deletion-runbook.md). Bản0029 đang chuẩn bị rollout; bảng trạng thái trong verification là nguồn mới nhất. Không restore/revert worker bỏ qua suppression ledger.
+
+
 ## Cấu hình hiện hành — Gemini cho mọi tác vụ AI
 
 Quyết định Owner ngày 2026-09-30 thay toàn bộ tác vụ LLM sang Gemini `gemini-3.8-flash`.

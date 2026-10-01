@@ -1,5 +1,10 @@
 # Public Page comments — progress
 
+## 2026-10-01 14:43 Asia/Ho_Chi_Minh — Bổ sung quyền xóa bình luận
+
+Migration0029 và Owner suppression đã code/test; pipeline tổng hợp qua PG/Redis/browser đạt, rollout đang chuẩn bị. Không có Tier nào bảo đảm đọc hết Facebook; Tier0 không đổi. Chi tiết kết quả mới nhất trong [verification toàn nhiệm vụ](page-workspace-research-verification.md) và [runbook xóa](comment-deletion-runbook.md). Các kết quả9197847 bên dưới là lịch sử trước bản xóa.
+
+
 Updated: 2026-10-01 04:48 Asia/Ho_Chi_Minh.
 Branch: `codex/page-workspaces-research`.
 Baseline: `1b29ab4c99872246fa44565a70345f9762039af3`.

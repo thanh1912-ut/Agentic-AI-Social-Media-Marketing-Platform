@@ -4,6 +4,19 @@ Ngày bắt đầu: 2026-09-30 (Asia/Ho_Chi_Minh)
 Nhánh: `codex/page-workspaces-research`
 Base đã kiểm tra: `codex/creative-studio-ui` @ `b769097bfdb3568889d974c6def95bb944559113`
 
+## 2026-10-01 14:43 Asia/Ho_Chi_Minh — Xóa bình luận và ngăn nhập lại
+
+- DONE: Owner có thao tác xóa bình luận và mọi phiên bản/replies đã biết. Xóa ciphertext, metadata nội dung/tương tác; ledger hạn chế giữ tenant/source, hash permalink và ID bình luận để ngăn nhập lại. Không xóa bình luận trên Facebook hoặc lập danh sách người tương tác.
+- DONE: Collector public và Meta kiểm tra ledger trong transaction commit dưới source lock/fencing. Lượt mới hoặc nội dung nguồn thay đổi không phục hồi bình luận đã loại. Frontier replies bị dừng; API xóa vẫn dùng được khi Page cần reconnect.
+- DONE: Migration bổ sung `0029_comment_suppression`, tenant FK/unique guards, receipt suppressed count riêng. Không sửa migration đã phát hành. Downgrade cố ý chặn để không bỏ ledger và tái nhập dữ liệu.
+- PASS: 85 backend tests; 57 frontend tests/6 files; Ruff, lint/typecheck, OpenAPI export/check và generation TypeScript. PostgreSQL18.3/Redis8.6.3 disposable: 10 integration tests, không skip; so sánh fresh/upgrade constraint/index/type và restore thật bằng pg_dump/pg_restore.
+- PASS: Browser riêng web13108/API18011 → Redis/Celery → PostgreSQL → xóa → reload → crawl lại. Hai bình luận tổng hợp trước xóa, còn một sau xóa; không nhập lại bình luận bị loại. Test1 passed/5.2s; không gọi provider/Facebook live.
+- PASS: CLI export ledger ra file0600 rồi apply lại có inserted0/versions_erased0. Export bị xóa sau kiểm tra. Ledger cần lưu riêng và áp vào database restore trước khi phục vụ; chưa có tích hợp tự động với lịch backup.
+- PASS: Production build real API8001/mocks0; code đã commit `c221b01cd38b129f29650fe5edd8608cf8dde0d6`.
+- IN_PROGRESS: Rollout sau backup/drain/migration. Preview vẫn0028/implementation9197847 tại thời điểm ghi mục này; chưa tuyên bố deploy mới.
+- NOT_RUN: Bình luận Fanpage thật, Gemini analysis, media, tự động xóa dữ liệu provider. Comment candidates tiếp tục privacy_hold/tối đa24giờ. Không thay cấu hình lịch, token, model hoặc quyền người dùng.
+- TODO toàn goal: Review/release comment sang Gemini, media pipeline, retention/erasure toàn luồng, owned comment UI, provider live và Research→hướng viết→brief có comment/media citations. Các mục lịch sử phía dưới không thay thế trạng thái này.
+
 ## 2026-10-01 02:18 — Giới hạn response Meta và tên worker riêng
 
 - DONE: Code `96a88b29af6c2844936e9830faa567c0eb52cb8b` sửa transport Meta và launcher, không đổi HTTP schema/migration/frontend. Response Graph đọc stream tối đa2 MiB cả wire và sau giải nén; gzip/deflate giải nén có bound, encoding khác bị từ chối. Giữ không redirect/proxy môi trường; deadline toàn request30 giây và read timeout15 giây.

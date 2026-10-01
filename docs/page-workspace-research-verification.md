@@ -1,5 +1,23 @@
 # Kiểm chứng Page workspace và Nghiên cứu
 
+## Kết quả mới nhất — 2026-10-01 14:43 Asia/Ho_Chi_Minh
+
+Code kiểm thử: `c221b01cd38b129f29650fe5edd8608cf8dde0d6`. Migration mới0029; baseline `0f71f21`. Chưa rollout khi ghi bảng này; trạng thái triển khai sẽ được cập nhật sau health checks.
+
+| Kiểm tra | Trạng thái | Bằng chứng và giới hạn |
+|---|---|---|
+| Xóa phiên bản và known replies | PASS unit + PostgreSQL | Ciphertext, redaction metadata, likes/reply count/date bị xóa; root/reply checkpoint dừng. Restricted source IDs/hash còn trong ledger, không được gọi là dữ liệu vô danh. |
+| Replay/race/tenant | PASS PostgreSQL | Suppression chạy cùng persist và duplicate request; một ledger identity, worker không tái ghi body, SQL tenant FK ngăn source khác workspace. |
+| Quyền/CSRF/reconnect | PASS API fixture | Owner-only, CSRF, source/version isolation; erasure không bị gate token hết hạn chặn. |
+| Fresh/upgrade | PASS PostgreSQL18.3 | Head0029; ba bảng thay đổi so sánh type/default/nullability/check/FK/unique/index. Bộ comment checkpoint/quarantine cũ cũng chạy lại. |
+| Restore backup cũ | PASS pg_dump/pg_restore | Backup trước yêu cầu xóa khôi phục riêng, áp ledger mới nhất rồi không còn ciphertext; crawl observation mới không nhập lại; replay apply không đổi dữ liệu. |
+| Browser→queue→database | PASS collector synthetic | Job7e2c9c83-5ade-4d03-b2ab-12164e0c6fa7; suppression0f47f109-b89c-4dcb-98e9-62f980b6dd87; recrawl775820af-3ed8-4210-a386-d631bb6ea671. Hai bình luận→một sau xóa/reload/recrawl. Không phải Facebook live. |
+| Chất lượng | PASS | Backend85 tests; frontend57 tests/6files; PostgreSQL/Redis10tests; Playwright1test; Ruff, lint/typecheck, OpenAPI check/generation. Build fixtureAPI18011 và production realAPI8001/mocks0 đều đạt; chưa dùng fixture build để release. |
+| CLI export/apply | PASS disposable PostgreSQL | Export1record,0600; apply ledger1/inserted0/versions_erased0. Không in restricted records; file đã xóa. |
+| Live comments/AI/media | NOT_RUN / INCOMPLETE | Không có provider call, không crawl Facebook live hoặc publish. Comments còn privacy_hold, media worker/release-to-Gemini chưa triển khai. |
+
+Chi tiết vận hành và giới hạn: [comment-deletion-runbook.md](comment-deletion-runbook.md). Full goal còn active; phần media/privacy/provider và end-to-end hướng viết chưa được nghiệm thu.
+
 ## Kết quả mới nhất — 2026-10-01 02:18 Asia/Ho_Chi_Minh
 
 Code kiểm thử/deploy: `96a88b29af6c2844936e9830faa567c0eb52cb8b`; schema0028 và frontend release trước giữ nguyên.

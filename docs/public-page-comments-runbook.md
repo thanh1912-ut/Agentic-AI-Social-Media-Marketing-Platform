@@ -35,7 +35,7 @@ Upstream pin: facebook-cli v0.3.0, commit `8e251abf0bc6fd28acca9b9fa1cafbd07ccae
 
 Limits: 20 actual HTTP requests, 2-second pacing, 5-minute source budget; up to 100 embedded comments per post and 500 per batch. There is no Tier 0 continuation to read all replies. Stored comment review pages default to 25 and max 100. Comments are truncated at 20,000 characters with an explicit flag.
 
-No migration is added. Existing `0028_comment_quarantine` is required. Page activation, active source/current policy, Owner membership, processing decision and job fencing are rechecked at persistence.
+The public-comment implementation9197847 used existing0028 tables. The erasure update requires additive `0029_comment_suppression`; use [the deletion runbook](comment-deletion-runbook.md) before restore or rollback. Page activation, active source/current policy, Owner membership, processing decision and job fencing are rechecked at persistence.
 
 ## Checks
 

@@ -1,5 +1,8 @@
 # Public Page comments — verification
 
+Kết quả bổ sung 2026-10-01 14:43 Asia/Ho_Chi_Minh: suppression/restore/browser đã đạt trên dữ liệu tổng hợp. Xem [verification mới nhất](page-workspace-research-verification.md) cho test IDs và phạm vi; rollout migration0029 chưa chạy tại thời điểm ghi.
+
+
 Timestamp: 2026-10-01 04:48 Asia/Ho_Chi_Minh.
 Branch: `codex/page-workspaces-research`; baseline `1b29ab4c99872246fa44565a70345f9762039af3`.
 Tested implementation and deployed code: `9197847d7915ec2520feca417c8d33fb30b659b1`. Remote implementation SHA verified after push.
