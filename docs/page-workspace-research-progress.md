@@ -706,3 +706,13 @@ Các mục theo timestamp phía dưới là lịch sử kiểm tra, không thay 
 - PASS: `tests/test_local_preview_runtime.py` — **8 passed**; test rewrite/reload file loại bỏ key cũ, kiểm tra mọi process mode và file sai quyền. Ruff đạt. Không gọi provider hoặc restart preview.
 - BLOCKED_CONFIG: Kiểm tra chỉ có/thiếu cho thấy runtime chưa có key/model Gemini hoặc key/model/region/endpoint Qwen. Không in hoặc sao chép secret; đã yêu cầu model IDs/region, key cần điền trực tiếp trong secret store local.
 - IN_PROGRESS: Owned Page comments/replies và media worker chưa nối; privacy hold giữ nguyên. Đây chưa phải nghiệm thu ba provider.
+
+### 2026-10-01 18:27 Asia/Ho_Chi_Minh — Phân tích lô bình luận đã kiểm tra
+
+- DONE: Code `752af5d8345e8110f24593e2e984113ac4251476` thêm schema0030, selection mã hóa/pinned, API Owner và durable Gemini job/budget/fencing; UI không tự gọi AI khi mở/reload.
+- PASS: Backend100 passed,6 SQLite variants PG-only skipped; các case durable chạy trên PostgreSQL thật. Fresh/upgrade schema khớp, frontend11tests/lint/typecheck/real build, Ruff/OpenAPI/staged diff/secret scan đạt.
+- PASS: Browser real HTTP→Redis/Celery→PostgreSQL→reload, Meta/Gemini tổng hợp, native Gemini MockTransport1call/1excerpt/0author fields; không gọi provider live.
+- DONE: Suppression chỉ xóa analysis batches có version đã xóa; TTL90 ngày riêng, không dùng quarantine24h để xóa các kết quả còn hợp lệ.
+- IN_PROGRESS: Rollout0030/preview; report/hướng viết và media còn trong scope. [Bằng chứng chi tiết](screened-comment-analysis-verification.md).
+
+- DONE 2026-10-01 18:28: Rollout0030/real release752af5d đạt, backup DB/storage có checksum;65 bảng giữ counts, secret/Page/lịch giữ nguyên,0live model calls. Report/hướng viết và media vẫn IN_PROGRESS.

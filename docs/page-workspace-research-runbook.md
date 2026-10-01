@@ -1,6 +1,35 @@
 # Runbook Page workspace và Nghiên cứu
 
-Bổ sung xóa bình luận: [comment-deletion-runbook.md](comment-deletion-runbook.md). Schema0029 đã rollout; bảng trạng thái trong verification là nguồn mới nhất. Không restore/revert worker bỏ qua suppression ledger.
+Cấu hình hiện hành: tất cả vai trò AI dùng Gemini `gemini-3.8-flash` theo lựa
+chọn mới của người dùng. Các đoạn DeepSeek/Qwen bên dưới là ghi chép lịch sử,
+không phải hướng dẫn bật provider/fallback cho preview hiện tại.
+
+## Phân tích bình luận đã kiểm tra (schema0030)
+
+Trong Nghiên cứu→Bài viết & bình luận, Owner mở các candidate còn hạn24h, chọn
+**Rà soát để phân tích bằng Gemini**. Chọn/sửa đoạn để loại dữ liệu cá nhân còn
+sót; ghi tham chiếu hồ sơ đánh giá xử lý/gửi provider phù hợp; bấm phân tích.
+Không coi một ô tham chiếu là sự đồng ý của người bình luận hay chứng nhận pháp lý.
+Giới hạn50đoạn,1500ký tự/đoạn,12000ký tự tổng. Bản kiểm tra/kết quả tối đa90ngày;
+nguồn raw vẫn24h. Chỉ Owner xem citations đã kiểm tra; không có identity trường
+tác giả trong provider input. Mở/reload không tự gọi AI.
+
+Worker agent nhận `research_comment_analysis`; API/worker đọc Gemini key từ
+runtime secret store hiện có, model cố định `gemini-3.8-flash`. Ngân sách2USD/ngày
+dùng ledger tự động chung. `deferred_budget` chờ ngày Việt Nam kế tiếp, không mất
+lựa chọn; `provider_outcome_unknown` cần đối soát trước retry, không gửi lại vô hạn.
+Thiếu model/key/pricing trả lỗi riêng; không thay provider.
+
+Xóa bình luận vô hiệu các lô đã dùng phiên đó, không xóa lô không liên quan. Beat
+purge lô quá90ngày. Xóa nguồn xóa lô và đoạn kiểm tra. Tạm thời chưa đưa lô này vào
+report/hướng viết, tránh dùng ngầm latest. Migration0030 forward-only; rollback
+bằng tắt đường phân tích/frontend, giữ worker đọc suppression/retention/schema.
+Không downgrade hoặc quay về code bỏ qua deletion ledger. Không bật live analysis
+chỉ từ việc có API key; operator vẫn phải xác định điều kiện xử lý và gửi dữ liệu.
+Xem [bằng chứng và giới hạn](screened-comment-analysis-verification.md).
+
+
+Bổ sung xóa bình luận: [comment-deletion-runbook.md](comment-deletion-runbook.md). Schema0030 đã rollout; bảng trạng thái trong verification là nguồn mới nhất. Không restore/revert worker bỏ qua suppression ledger.
 
 
 ## Bình luận Page công ty qua giao diện
@@ -73,7 +102,7 @@ Không tạo lại key khi có token đã lưu. Backup key riêng với database
 
 Checkout: `/Users/lethanh/.codex/worktrees/page-workspaces-research/agent`.
 Frontend real: `http://127.0.0.1:13104`; API/readiness: `http://127.0.0.1:8001/readyz`.
-Schema preview đã nâng lên `0029_comment_suppression`. PostgreSQL15432, queue16379/4,
+Schema preview đã nâng lên `0030_screened_comment_analysis`. PostgreSQL15432, queue16379/4,
 cache16380/4 và storage bền vững của preview giữ nguyên.
 
 Launcher API/worker trong LaunchAgent dùng Python tại

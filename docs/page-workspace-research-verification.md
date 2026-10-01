@@ -1,5 +1,15 @@
 # Kiểm chứng Page workspace và Nghiên cứu
 
+## Kết quả mới nhất — 2026-10-01 18:27 Asia/Ho_Chi_Minh
+
+Code `752af5d8345e8110f24593e2e984113ac4251476` bổ sung phân tích các đoạn bình luận Owner đã kiểm tra bằng Gemini3.8.
+[Ma trận và job IDs](screened-comment-analysis-verification.md): backend100 passed/6
+SQLite PG-only skips; các worker cases đã chạy trên PG; fresh/upgrade0030 schema
+khớp; frontend11tests/lint/typecheck/real build; browser Redis/Celery/PG/reload đạt
+với native Gemini MockTransport. Provider live0calls, Facebook live NOT_RUN.
+Report/hướng viết và media vẫn IN_PROGRESS. Rollout0030 và real release13104 PASS; [backup/health chi tiết](screened-comment-analysis-verification.md#rollout--2026-10-01-1828-asiaho_chi_minh).
+
+
 ## Kết quả mới nhất — 2026-10-01 17:27 Asia/Ho_Chi_Minh
 
 Code `e27f9f996856ffc391fdca3a645eff946c1d3f8d` nối Page công ty với API/UI bình luận; không đổi schema0029.
