@@ -1,5 +1,16 @@
 # Kiểm chứng Page workspace và Nghiên cứu
 
+## Kết quả mới nhất — 2026-10-01 17:27 Asia/Ho_Chi_Minh
+
+Code `e27f9f996856ffc391fdca3a645eff946c1d3f8d` nối Page công ty với API/UI bình luận; không đổi schema0029.
+93 backend checks,6 PostgreSQL/Redis checks,60 frontend tests/6files, Ruff/lint/typecheck/OpenAPI
+và hai builds đạt. Browser dùng Meta adapter tổng hợp:2root+1reply qua Redis/Celery/PG,
+reload giữ đúng kết quả;0 provider calls. Job `c9998b30-9b28-4696-888c-950b2cb2d409`.
+Chi tiết, commands và phạm vi: [owned-page-comments-verification.md](owned-page-comments-verification.md).
+
+Không dùng kết quả này làm live Meta/public Page PASS; media/comment AI release vẫn chưa triển khai.
+Rollout 2026-10-01 17:33 Asia/Ho_Chi_Minh PASS: frontend `codex-page-workspaces-research-e27f9f996856-20261001T102353Z` tại13104/API8001; schema0029,2worker đúng queue,0queued/running,0active comment decisions,Page active/owned schedule off. Key/model Gemini vẫn nạp; không thêm quyền thu thập bình luận live. Browser login/register0script errors và không chứa fixture origin18011. Cleanup fixture process/database/private credentials và PG/Redis test DONE. Smoke harness ban đầu dùng sai accessible button names và đọc response sau navigation, đã sửa theo DOM/source rồi kiểm tra lại; không phải backend refused connection. Các phần dưới đây là kết quả lịch sử có timestamp.
+
 ## Kết quả mới nhất — 2026-10-01 14:43 Asia/Ho_Chi_Minh
 
 Code kiểm thử: `c221b01cd38b129f29650fe5edd8608cf8dde0d6`. Migration mới0029; baseline `0f71f21`. Đã rollout14:48: backend/docs HEAD `b96e785ffe5d35e149b8597d62c4cb41c9cc640c`, frontend `codex-page-workspaces-research-b96e785ffe5d-20261001T074846Z`. Docs-only commits sau đó không đổi implementation.

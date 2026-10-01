@@ -4,6 +4,18 @@ Ngày bắt đầu: 2026-09-30 (Asia/Ho_Chi_Minh)
 Nhánh: `codex/page-workspaces-research`
 Base đã kiểm tra: `codex/creative-studio-ui` @ `b769097bfdb3568889d974c6def95bb944559113`
 
+## 2026-10-01 17:27 Asia/Ho_Chi_Minh — Nối UI/API bình luận Page công ty
+
+- DONE: Owned posts và candidates dùng chung API đọc với public Page; shared validator giữ Page/token/Owner/policy/decision/cipher guards. Public collector có public_only boundary sau khi reread source.
+- DONE: Nút thu thập bình luận/replies tạo durable job theo nguồn; commit trước Redis, bấm lặp không tạo job mới, job cũ không đổi decision. Giữ dữ liệu qua reload; replies liên kết version UUID, không trả author/external IDs.
+- DONE: Latest-before-availability, cursor phiên đã thay đổi trả409. Số root comments và replies tách riêng, không dùng like_count như tổng reactions.
+- PASS: Code `e27f9f996856ffc391fdca3a645eff946c1d3f8d`,93 backend tests (14 owned API trên PostgreSQL),6 PG/Redis recovery/schema/suppression tests,60 frontend tests/6files, lint/typecheck/Ruff/OpenAPI và hai production builds. Browser synthetic Meta → Redis/Celery → PostgreSQL → reload: job `c9998b30-9b28-4696-888c-950b2cb2d409`,2root+1reply,2receipts,dispatch1/attempt1;0 provider calls.
+- PASS rollout 2026-10-01 17:33 Asia/Ho_Chi_Minh: API8001/new route ready,2workers đúng queue, schema0029 giữ nguyên, Page active/owned schedule off, Gemini key/model vẫn nạp. Frontend release `codex-page-workspaces-research-e27f9f996856-20261001T102353Z` tại13104; browser login/register0script errors,compiled origin8001,không có18011. Hai lỗi locator và lỗi đọc response sau navigation thuộc smoke harness, đã sửa selector/read timing rồi kiểm tra lại; không sửa/reset phiên người dùng.
+- DONE cleanup: Dừng đúng fixtureAPI/web/worker, drop database `page_owned_comment_ui_20261001`, xóa private credentials/test-env và dừng PG15559/Redis16481/16482. Result/screenshot tổng hợp giữ private, không còn fixture chạy.
+- NOT_RUN: Owned/public comments live trong slice này, Gemini/media. Comment candidates vẫn local privacy_hold24h; chưa có AI release/media pipeline/90-day retention và full brief provenance.
+- Chi tiết: [owned-page-comments-verification.md](owned-page-comments-verification.md). Full goal giữ nguyên và còn active.
+
+
 ## 2026-10-01 14:43 Asia/Ho_Chi_Minh — Xóa bình luận và ngăn nhập lại
 
 - DONE: Owner có thao tác xóa bình luận và mọi phiên bản/replies đã biết. Xóa ciphertext, metadata nội dung/tương tác; ledger hạn chế giữ tenant/source, hash permalink và ID bình luận để ngăn nhập lại. Không xóa bình luận trên Facebook hoặc lập danh sách người tương tác.

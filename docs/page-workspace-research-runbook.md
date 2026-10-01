@@ -3,6 +3,27 @@
 Bổ sung xóa bình luận: [comment-deletion-runbook.md](comment-deletion-runbook.md). Schema0029 đã rollout; bảng trạng thái trong verification là nguồn mới nhất. Không restore/revert worker bỏ qua suppression ledger.
 
 
+## Bình luận Page công ty qua giao diện
+
+Vào Nghiên cứu → Thu thập → nguồn Fanpage công ty → **Bài viết & bình luận**.
+Crawl bài viết trước để có frontier. Owner lưu mục đích/căn cứ trong Chính sách dữ liệu
+và ghi nhận đánh giá phạm vi local hiện hành; đây không phải sự đồng ý của người bình luận.
+Cấu hình không được tự bật khi deploy và không hỏi lại mỗi lượt.
+
+**Thu thập bình luận và replies** tạo job qua queue agent. Đang chạy thì dùng job hiện có;
+reload đọc lại job từ API. Chưa có frontier/đã đổi decision thì xử lý lỗi tương ứng, không bấm
+lặp để tạo thêm job. Meta đọc hết cursor/replies có thể truy cập; bình luận ẩn/xóa vẫn có thể thiếu.
+Public Page tiếp tục lấy bình luận trong Crawl ngay Tier0, không dùng nút phân trang Meta này.
+
+Owner mở **Xem bình luận và tương tác** để xem candidate còn thời hạn24h và replies.
+Like là like_count từng bình luận, không phải tổng reactions hay lịch sử tương tác của một người.
+Không rõ tác giả phải giữ unknown, không suy hai comment cùng người. Tổng comment/replies
+không so trực tiếp với root-edge count. Loại dữ liệu theo runbook suppression hiện có.
+Thiếu/reconnect Page không cho đọc/thu thập candidate mới; xóa dữ liệu vẫn dùng được.
+
+Chi tiết kiểm thử: [owned-page-comments-verification.md](owned-page-comments-verification.md).
+Chưa gửi candidates này sang Gemini và chưa phân tích ảnh/video.
+
 ## Cấu hình hiện hành — Gemini cho mọi tác vụ AI
 
 Quyết định Owner ngày 2026-09-30 thay toàn bộ tác vụ LLM sang Gemini `gemini-3.8-flash`.
