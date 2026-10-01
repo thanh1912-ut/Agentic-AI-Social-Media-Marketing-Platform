@@ -89,5 +89,6 @@ Release trước còn để rollback.0provider calls trong rollout.
 
 PASS: browser release13104 login/register200,0script errors, không chứa fixture
 origin18011. FixtureAPI/worker/web đã dừng theo PID/cwd/port xác minh; credentials
-và runtime test-env đã xóa. TestPG/Redis riêng giữ tạm cho chặng report tiếp theo,
-không chứa dữ liệu người dùng/secret provider.
+và runtime test-env đã xóa. PostgreSQL15559/Redis16481/16482 test riêng đã dừng sau kiểm tra ownership và
+không còn client. DB fixture/verification giữ offline để đối chiếu, không chứa
+dữ liệu người dùng/secret provider.
