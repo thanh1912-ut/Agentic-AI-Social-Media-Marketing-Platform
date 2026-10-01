@@ -322,6 +322,9 @@ export const marketResearchKeys = {
     ['workspaces', workspaceId, 'market-research', 'competitor-runs', sourceId] as const,
   privacyPolicy: (workspaceId: string, sourceId: string) =>
     ['workspaces', workspaceId, 'market-research', 'privacy-policy', sourceId] as const,
+  crawlComments: (workspaceId: string, sourceId: string) => apiRequest<ApiAcceptedResponse>(
+    path(workspaceId) + '/sources/' + encodeURIComponent(sourceId) + '/comments/crawl', { method: 'POST' },
+  ),
   commentProcessing: (workspaceId: string, sourceId: string) =>
     ['workspaces', workspaceId, 'market-research', 'comment-processing', sourceId] as const,
   commentCandidates: (workspaceId: string, sourceId: string) =>
@@ -394,6 +397,9 @@ export const marketResearchApi = {
     apiRequest<CompetitorCollectionRun[]>(
       path(workspaceId) + '/sources/' + encodeURIComponent(sourceId) + '/collection-runs',
     ),
+  crawlComments: (workspaceId: string, sourceId: string) => apiRequest<ApiAcceptedResponse>(
+    path(workspaceId) + '/sources/' + encodeURIComponent(sourceId) + '/comments/crawl', { method: 'POST' },
+  ),
   commentProcessing: (workspaceId: string, sourceId: string) => apiRequest<CommentProcessing>(
     path(workspaceId) + '/sources/' + encodeURIComponent(sourceId) + '/comment-processing',
   ),

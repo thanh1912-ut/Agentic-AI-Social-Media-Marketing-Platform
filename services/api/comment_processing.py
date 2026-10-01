@@ -22,11 +22,14 @@ from database.models import (
 )
 from services.research.comment_quarantine import CommentQuarantineUnavailable, decrypt_candidate, encrypt_candidate
 from services.research.facebook_cli_collector import safe_comment_coverage, safe_reaction_breakdown
-from services.research.public_comments import active_public_comment_decision
+from services.research.comment_decisions import active_local_comment_decision
 from services.research.comment_suppression import suppressed_ids, suppress_comment_tree
 from .db import get_db
 from .dependencies import current_user, membership_for, require_csrf, require_permission
 from .errors import ApiProblem
+from .rate_limits import rate_limit
+from .schemas import AcceptedResponse
+from . import job_service
 from .market_research_schemas import CommentProcessingIn, CommentProcessingOut, CommentProcessingRevokeIn, CommentCandidatesPage, CommentCandidateOut, CommentSuppressionIn, CommentSuppressionOut
 
 
@@ -261,25 +264,34 @@ async def comment_candidates(company_id: str, source_id: str, evidence_id: str, 
     ).order_by(MarketObservation.observed_at.desc(), MarketObservation.id.desc()).limit(1))
     metrics = observation.metrics_json if observation else {}
     coverage = safe_comment_coverage(metrics.get("comment_coverage"))
+    if source.source_type == "owned_facebook_page" and observation is not None:
+        from services.worker.research_comments import comment_frontier_coverage
+        coverage = await comment_frontier_coverage(db, company_id=company_id, observation_id=observation.id)
     response.headers["Cache-Control"] = "no-store, private"
     response.headers["Pragma"] = "no-cache"
     blocked = await suppressed_ids(db, company_id=company_id, source_id=source_id, evidence_id=evidence_id)
-    decision = await active_public_comment_decision(db, source, lock=True)
+    decision = await active_local_comment_decision(db, source, lock=True)
     if decision is None or observation is None:
         return CommentCandidatesPage(source_id=source_id, evidence_id=evidence_id,
             observation_id=observation.id if observation else None, status="processing_required", coverage=coverage, suppressed_comments_count=len(blocked))
     now = utcnow()
-    query = select(ResearchCommentVersion).where(
-        ResearchCommentVersion.company_id == company_id, ResearchCommentVersion.source_id == source_id,
-        ResearchCommentVersion.observation_id == observation.id, ResearchCommentVersion.decision_id == decision.id,
-        ResearchCommentVersion.status == "privacy_hold", ResearchCommentVersion.expires_at > now,
-        ResearchCommentVersion.candidate_ciphertext.is_not(None),
+    scope = (ResearchCommentVersion.company_id == company_id, ResearchCommentVersion.source_id == source_id,
+             ResearchCommentVersion.observation_id == observation.id, ResearchCommentVersion.decision_id == decision.id)
+    # Pick the latest version before filtering its availability. An expired or
+    # deleted latest version must not fall back to an older editable body.
+    ranked = select(ResearchCommentVersion.id, func.row_number().over(
+        partition_by=ResearchCommentVersion.external_comment_id,
+        order_by=(ResearchCommentVersion.captured_at.desc(), ResearchCommentVersion.id.desc()),
+    ).label("rank")).where(*scope).subquery()
+    query = select(ResearchCommentVersion).join(ranked, ranked.c.id == ResearchCommentVersion.id).where(
+        ranked.c.rank == 1, ResearchCommentVersion.status == "privacy_hold",
+        ResearchCommentVersion.expires_at > now, ResearchCommentVersion.candidate_ciphertext.is_not(None),
     )
+    all_available = query
     if cursor:
         seen_at, version_id = _decode_web_cursor(cursor)
-        anchor = await db.scalar(select(ResearchCommentVersion.id).where(
-            ResearchCommentVersion.id == version_id, ResearchCommentVersion.company_id == company_id,
-            ResearchCommentVersion.observation_id == observation.id,
+        anchor = await db.scalar(query.with_only_columns(ResearchCommentVersion.id).where(
+            ResearchCommentVersion.id == version_id, ResearchCommentVersion.captured_at == seen_at,
         ))
         if anchor is None:
             raise ApiProblem(409, "comment_observation_changed", "Lượt quan sát đã thay đổi; tải lại danh sách bình luận.")
@@ -289,6 +301,13 @@ async def comment_candidates(company_id: str, source_id: str, evidence_id: str, 
                             .limit(limit + 1))).all()
     has_more = len(rows) > limit
     rows = rows[:limit]
+    parent_keys = {row.parent_key for row in rows if row.parent_key != "root"}
+    parents = (await db.scalars(all_available.where(
+        ResearchCommentVersion.external_comment_id.in_(parent_keys),
+    ))).all() if parent_keys else []
+    parent_ids = {}
+    for parent in parents:
+        parent_ids.setdefault(parent.external_comment_id, parent.id)
     result = []
     for row in rows:
         binding = {"company_id": company_id, "source_id": source_id,
@@ -302,6 +321,7 @@ async def comment_candidates(company_id: str, source_id: str, evidence_id: str, 
         precision = metadata.get("reactions_precision")
         alias = metadata.get("author_alias")
         result.append(CommentCandidateOut(id=row.id, author_alias=alias, text=candidate,
+            is_reply=row.parent_key != "root", parent_version_id=parent_ids.get(row.parent_key),
             author_identity_known=metadata.get("author_identity_known") is True,
             likes=row.likes, reactions=reactions if type(reactions) is int and reactions >= 0 else None,
             reactions_raw=metadata.get("reactions_raw"),
@@ -345,3 +365,34 @@ async def suppress_comment(company_id: str, source_id: str, version_id: str, req
     return CommentSuppressionOut(suppression_id=result.suppression_id,
         identities_suppressed=result.identities_suppressed, versions_erased=result.versions_erased,
         reply_edges_stopped=result.reply_edges_stopped)
+
+
+@router.post("/sources/{source_id}/comments/crawl", response_model=AcceptedResponse, status_code=202,
+             dependencies=[Depends(require_csrf), Depends(rate_limit("research_comments_crawl", max_requests=6, window_seconds=3600))])
+async def crawl_owned_comments(company_id: str, source_id: str, user: CurrentUser, owner: Owner, db: DB):
+    from services.worker.research_comments import enqueue_comment_batches
+    company, source = await _source(db, company_id, source_id, lock=True)
+    await _locked_owner(db, company_id, user.id)
+    if source.source_type != "owned_facebook_page":
+        raise ApiProblem(409, "comment_collector_unsupported", "Page công khai đọc bình luận trong lượt Crawl ngay bằng Tier 0; không có phân trang Meta cho nguồn này.")
+    decision = await active_local_comment_decision(db, source, lock=True)
+    if decision is None:
+        raise ApiProblem(409, "comment_processing_required", "Owner cần kết nối Page và ghi nhận phạm vi xử lý hiện hành trước khi đọc bình luận.")
+    active = select(Job).where(Job.company_id == company_id, Job.kind == "research_comments",
+        Job.status.in_(["queued", "running"]), Job.result["source_id"].as_string() == source_id)
+    job = await db.scalar(active.order_by(Job.created_at.desc()).limit(1))
+    if job is not None:
+        if (job.result or {}).get("decision_id") != decision.id:
+            raise ApiProblem(409, "comment_job_context_changed", "Phạm vi đã đổi; hủy hoặc chờ job bình luận cũ kết thúc trước khi chạy lại.")
+        return await job_service.accepted_response(db, job)
+    await enqueue_comment_batches(db, utcnow(), company_id=company_id, source_id=source_id)
+    job = await db.scalar(active.order_by(Job.created_at.desc()).limit(1))
+    if job is None:
+        raise ApiProblem(409, "comment_frontier_unavailable", "Chưa có lô bình luận để đọc. Crawl bài viết trước, hoặc xem trạng thái job đã lỗi để thử lại đúng lô.")
+    db.add(AuditEvent(company_id=company_id, actor_user_id=user.id, action="research.comments.crawl_request",
+        entity_type="research_source", entity_id=source_id,
+        metadata_json={"job_id": job.id, "content_status": "privacy_hold", "provider_transmission_allowed": False}))
+    await db.commit()  # Durable before broker delivery, even if Redis is down.
+    sent = await job_service.dispatch_research_comments_job(job.id)
+    await job_service._record_dispatch(db, job.id, sent)
+    return await job_service.accepted_response(db, job)

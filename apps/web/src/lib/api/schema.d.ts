@@ -1132,6 +1132,23 @@ export interface paths {
         readonly patch?: never;
         readonly trace?: never;
     };
+    readonly "/api/v1/workspaces/{company_id}/market-research/sources/{source_id}/comments/crawl": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get?: never;
+        readonly put?: never;
+        /** Crawl Owned Comments */
+        readonly post: operations["crawl_owned_comments_api_v1_workspaces__company_id__market_research_sources__source_id__comments_crawl_post"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
     readonly "/api/v1/workspaces/{company_id}/market-research/sources/{source_id}/comments/{version_id}/suppress": {
         readonly parameters: {
             readonly query?: never;
@@ -2585,6 +2602,11 @@ export interface components {
             readonly expires_at: string;
             /** Id */
             readonly id: string;
+            /**
+             * Is Reply
+             * @default false
+             */
+            readonly is_reply: boolean;
             /** Likes */
             readonly likes: number | null;
             /**
@@ -2592,6 +2614,8 @@ export interface components {
              * Format: date-time
              */
             readonly observed_at: string;
+            /** Parent Version Id */
+            readonly parent_version_id?: string | null;
             /** Published At */
             readonly published_at: string | null;
             /** Reaction Breakdown */
@@ -7899,6 +7923,40 @@ export interface operations {
                 };
                 content: {
                     readonly "application/json": components["schemas"]["CommentProcessingOut"];
+                };
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    readonly crawl_owned_comments_api_v1_workspaces__company_id__market_research_sources__source_id__comments_crawl_post: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: {
+                readonly authorization?: string | null;
+            };
+            readonly path: {
+                readonly company_id: string;
+                readonly source_id: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 202: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["AcceptedResponse"];
                 };
             };
             /** @description Validation Error */

@@ -462,10 +462,10 @@ async def list_competitor_posts(
     await membership_for(company_id, user, db)
     source = await db.scalar(select(ResearchSource).where(
         ResearchSource.company_id == company_id, ResearchSource.id == source_id,
-        ResearchSource.source_type == "competitor_facebook_page",
+        ResearchSource.source_type.in_(["competitor_facebook_page", "owned_facebook_page"]),
     ))
     if source is None:
-        raise ApiProblem(404, "not_found", "Không tìm thấy Fanpage đối thủ.")
+        raise ApiProblem(404, "not_found", "Không tìm thấy nguồn Fanpage.")
     if not 1 <= limit <= 100:
         raise ApiProblem(422, "invalid_limit", "Giới hạn cần nằm trong khoảng 1 đến 100.")
     statement = select(MarketEvidence).where(

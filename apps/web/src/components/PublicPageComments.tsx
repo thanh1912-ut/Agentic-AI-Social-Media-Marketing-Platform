@@ -1,6 +1,8 @@
 'use client';
 
-import { useState, type FormEvent } from 'react';
+import { useEffect, useRef, useState, type FormEvent } from 'react';
+import Link from 'next/link';
+import { useJob } from '@/lib/hooks';
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Button } from './ui';
 import { marketResearchApi, marketResearchKeys, type CommentSuppressionRequest } from '@/lib/api/market-research';
@@ -11,13 +13,26 @@ const commentKey = marketResearchKeys.commentCandidates;
 const count = (value: number | null) => value == null ? 'Chưa có dữ liệu' : new Intl.NumberFormat('vi-VN').format(value);
 const errorText = (error: unknown) => error instanceof ApiError ? error.message : 'Không tải hoặc lưu được dữ liệu. Thử lại.';
 
-export function PublicCommentSettings({ workspaceId, sourceId, canManage }: {
-  workspaceId: string; sourceId: string; canManage: boolean;
+export function PublicCommentSettings({ workspaceId, sourceId, canManage, collector = 'public_web' }: {
+  workspaceId: string; sourceId: string; canManage: boolean; collector?: 'public_web' | 'meta_api';
 }) {
   const queryClient = useQueryClient();
   const [reference, setReference] = useState('');
+  const [submittedJobId, setSubmittedJobId] = useState<string | null>(null);
+  const handledJob = useRef<string | null>(null);
   const state = useQuery({ queryKey: key(workspaceId, sourceId),
     queryFn: () => marketResearchApi.commentProcessing(workspaceId, sourceId), refetchInterval: 15_000 });
+  const job = useJob(collector === 'meta_api' ? (submittedJobId ?? state.data?.job_id) : null);
+  const collecting = job.data?.status === 'queued' || job.data?.status === 'running'
+    || Boolean(state.data?.job_id && !job.data);
+  useEffect(() => {
+    if (!job.data || !['succeeded', 'failed', 'cancelled'].includes(job.data.status) || handledJob.current === job.data.id) return;
+    handledJob.current = job.data.id;
+    void queryClient.invalidateQueries({ queryKey: key(workspaceId, sourceId) });
+    void queryClient.invalidateQueries({ queryKey: commentKey(workspaceId, sourceId) });
+  }, [job.data, queryClient, workspaceId, sourceId]);
+  const collect = useMutation({ mutationFn: () => marketResearchApi.crawlComments(workspaceId, sourceId),
+    onSuccess: async (result) => { setSubmittedJobId(result.job_id); await queryClient.invalidateQueries({ queryKey: key(workspaceId, sourceId) }); } });
   const policy = useQuery({ queryKey: marketResearchKeys.privacyPolicy(workspaceId, sourceId),
     queryFn: () => marketResearchApi.privacyPolicy(workspaceId, sourceId), enabled: canManage });
   async function refresh() {
@@ -35,12 +50,21 @@ export function PublicCommentSettings({ workspaceId, sourceId, canManage }: {
     await refresh();
   } });
   function submit(event: FormEvent<HTMLFormElement>) { event.preventDefault(); save.mutate(); }
-  return <section className="space-y-3 border-b border-slate-200 pb-4" aria-label="Phạm vi bình luận công khai">
-    <h4 className="font-medium">Bình luận công khai</h4>
-    <p className="text-sm text-slate-600">Đọc bình luận từ permalink bằng facebook-cli Tier 0. Số like và reactions thuộc từng bình luận; không thống kê hành vi của một người trên nhiều Page.</p>
+  return <section className="space-y-3 border-b border-slate-200 pb-4" aria-label="Phạm vi xử lý bình luận">
+    <h4 className="font-medium">{collector === 'meta_api' ? 'Bình luận Fanpage công ty' : 'Bình luận công khai'}</h4>
+    <p className="text-sm text-slate-600">{collector === 'meta_api' ? 'Meta API đọc bình luận và replies theo cursor của các bài đã lưu; không lấy danh tính người viết. Like là số lượt thích của từng bình luận, không phải toàn bộ reactions.' : 'Đọc bình luận từ permalink bằng facebook-cli Tier 0. Số like và reactions thuộc từng bình luận; không thống kê hành vi của một người trên nhiều Page.'}</p>
     {state.isLoading ? <p role="status">Đang tải phạm vi xử lý…</p> : null}
-    {state.data ? <p className="text-sm">{state.data.collection_allowed ? 'Đã cấu hình: lần Crawl ngay tiếp theo sẽ đọc bình luận công khai mà nguồn trả về.' : 'Chưa mở xử lý bình luận cho nguồn này.'} {state.data.quarantined_candidate_versions_count} bản ghi đang chờ kiểm tra.</p> : null}
+    {state.data ? <p className="text-sm">{state.data.collection_allowed ? collector === 'meta_api' ? 'Đã cấu hình phạm vi local: có thể đọc các lô bình luận của bài đã lưu.' : 'Đã cấu hình: lần Crawl ngay tiếp theo sẽ đọc bình luận công khai mà nguồn trả về.' : 'Chưa mở xử lý bình luận cho nguồn này.'} {state.data.quarantined_candidate_versions_count} bản ghi đang chờ kiểm tra.</p> : null}
     <p className="text-xs text-slate-500">Dữ liệu được che thông tin liên hệ, thay tên theo từng bài, mã hóa và giữ tối đa 24 giờ cho Owner kiểm tra. Chưa gửi bình luận sang AI. Đây không phải chứng nhận căn cứ pháp lý hoặc sự đồng ý của người bình luận.</p>
+    {collector === 'meta_api' ? <div className="space-y-2">
+      <p className="text-xs text-slate-600">Còn {state.data?.pending_edges ?? '—'} luồng phân trang/replies chưa hoàn tất. Hết cursor chỉ phản ánh dữ liệu Meta cho phép đọc; không chứng minh có cả bình luận ẩn/xóa.</p>
+      {canManage ? <Button size="sm" variant="secondary" loading={collect.isPending} disabled={!state.data?.collection_allowed || !state.data.pending_edges || collecting}
+        disabledReason={collecting ? 'Job bình luận đang chờ hoặc xử lý.' : 'Cần phạm vi hiện hành và bài đã Crawl có bình luận chưa xử lý.'}
+        onClick={() => collect.mutate()}>Thu thập bình luận và replies</Button> : null}
+      {(submittedJobId ?? state.data?.job_id) ? <p className="text-xs" role="status">Job bình luận: {job.data?.status ?? 'đang kiểm tra'} · <Link className="underline" href={'/w/' + workspaceId + '/jobs/' + (submittedJobId ?? state.data?.job_id)}>Theo dõi tiến độ</Link></p> : null}
+      {collect.error || job.error ? <p role="alert" className="text-sm text-rose-800">{errorText(collect.error || job.error)}</p> : null}
+      {job.data?.error ? <p role="alert" className="text-sm text-rose-800">{job.data.error.message}</p> : null}
+    </div> : null}
     {canManage ? <details><summary className="cursor-pointer text-sm font-medium">Cấu hình hoặc thu hồi phạm vi xử lý</summary>
       <form className="mt-3 space-y-3" onSubmit={submit}>
         <label className="block text-sm" htmlFor={'comment-assessment-' + sourceId}>Tham chiếu đánh giá phạm vi xử lý của đơn vị vận hành</label>
@@ -85,8 +109,8 @@ function SuppressCommentControl({ workspaceId, sourceId, commentId }: {
   </div>;
 }
 
-export function PublicPostComments({ workspaceId, sourceId, evidenceId, canReview }: {
-  workspaceId: string; sourceId: string; evidenceId: string; canReview: boolean;
+export function PublicPostComments({ workspaceId, sourceId, evidenceId, canReview, collector = 'public_web' }: {
+  workspaceId: string; sourceId: string; evidenceId: string; canReview: boolean; collector?: 'public_web' | 'meta_api';
 }) {
   const queryClient = useQueryClient();
   const [open, setOpen] = useState(false);
@@ -115,11 +139,12 @@ export function PublicPostComments({ workspaceId, sourceId, evidenceId, canRevie
       <p className="text-xs text-amber-800">Bình luận đã che thông tin phổ biến, đang chờ kiểm tra. Mã người viết chỉ có ý nghĩa trong bài/lượt này; chưa phải dữ liệu đã vô danh.</p>
       {query.isLoading ? <p role="status">Đang đọc bình luận đã lưu…</p> : null}
       {query.error ? <p role="alert">{errorText(query.error)} <Button size="sm" variant="secondary" onClick={() => void query.refetch()}>Thử lại</Button></p> : null}
-      {!query.isError && first ? <p className="text-xs text-slate-500">Đã nhận {String(first.coverage?.returned_count ?? 0)} bình luận{typeof first.coverage?.provider_reported_count === 'number' ? ' / nguồn công bố ' + first.coverage?.provider_reported_count : ''}. Chưa xác minh đầy đủ lịch sử; replies chưa được đọc trong Tier 0.</p> : null}
+      {!query.isError && first ? <p className="text-xs text-slate-500">{collector === 'meta_api' ? 'Đã nhận ' + String(first.coverage?.returned_count ?? 0) + ' bình luận và replies; ' + String(first.coverage?.received_root_comments ?? 0) + ' bình luận gốc' : 'Đã nhận ' + String(first.coverage?.returned_count ?? 0) + ' bình luận'}{typeof first.coverage?.provider_reported_count === 'number' ? ' / nguồn công bố ' + first.coverage?.provider_reported_count + (collector === 'meta_api' ? ' ở luồng bình luận gốc' : '') : ''}{collector === 'meta_api' ? ' · Còn ' + String(first.coverage?.pending_edges ?? 0) + ' luồng chưa hoàn tất. Chưa xác minh đầy đủ lịch sử; bình luận ẩn/xóa có thể không được Meta trả về.' : '. Chưa xác minh đầy đủ lịch sử; replies chưa được đọc trong Tier 0.'}</p> : null}
       {!query.isError && (first?.suppressed_comments_count ?? 0) > 0 ? <p className="text-xs text-slate-500">Đã loại {first!.suppressed_comments_count} bình luận và ngăn nhập lại theo mã nguồn.</p> : null}
       {!query.isError && first?.status === 'processing_required' ? <p className="text-sm">Owner cần ghi nhận phạm vi xử lý, sau đó Crawl ngay để đọc bình luận.</p> : null}
       {!query.isError && first?.status === 'no_candidates' ? <p className="text-sm">Không có bình luận còn trong thời hạn kiểm tra. Nguồn có thể không trả bình luận hoặc bản chờ đã hết hạn.</p> : null}
-      {!query.isError ? comments.map((c) => <article key={c.id} className="border-l-2 border-slate-200 pl-3">
+      {!query.isError ? comments.map((c) => <article key={c.id} id={'comment-' + c.id} className="border-l-2 border-slate-200 pl-3">
+        {c.is_reply ? <p className="text-xs text-slate-500">{c.parent_version_id && comments.some((parent) => parent.id === c.parent_version_id) ? <a className="underline" href={'#comment-' + c.parent_version_id}>Phản hồi cho bình luận đã lưu</a> : 'Phản hồi; bình luận cha không nằm trong phần đang xem.'}</p> : null}
         <div className="flex flex-wrap items-center gap-3 text-xs text-slate-600"><strong>{c.author_alias ?? 'Bình luận chưa rõ tác giả'}{c.author_identity_known ? '' : ' · chưa xác định tác giả'}</strong><span>Like: {count(c.likes)}</span><span>Reactions: {c.reactions_precision === 'approximate' ? '≈ ' : c.reactions_precision === 'lower_bound' ? '≥ ' : ''}{count(c.reactions)}{c.reactions_raw ? ' (nguồn: ' + c.reactions_raw + ')' : ''}</span><span>Phản hồi: {count(c.reply_count)}</span></div>
         <p className="mt-1 whitespace-pre-wrap break-words text-sm">{c.text || '(Không có chữ được trả về)'}</p>
         {c.content_truncated ? <p className="text-xs text-amber-800">Nội dung vượt giới hạn và đã được cắt; không phải toàn bộ bình luận.</p> : null}

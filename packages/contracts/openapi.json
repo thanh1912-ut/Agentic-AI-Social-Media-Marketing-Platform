@@ -2255,6 +2255,11 @@
             "title": "Id",
             "type": "string"
           },
+          "is_reply": {
+            "default": false,
+            "title": "Is Reply",
+            "type": "boolean"
+          },
           "likes": {
             "anyOf": [
               {
@@ -2270,6 +2275,17 @@
             "format": "date-time",
             "title": "Observed At",
             "type": "string"
+          },
+          "parent_version_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Parent Version Id"
           },
           "published_at": {
             "anyOf": [
@@ -14326,6 +14342,73 @@
           }
         },
         "summary": "Revoke Comment Processing",
+        "tags": [
+          "market-research"
+        ]
+      }
+    },
+    "/api/v1/workspaces/{company_id}/market-research/sources/{source_id}/comments/crawl": {
+      "post": {
+        "operationId": "crawl_owned_comments_api_v1_workspaces__company_id__market_research_sources__source_id__comments_crawl_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "company_id",
+            "required": true,
+            "schema": {
+              "title": "Company Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "source_id",
+            "required": true,
+            "schema": {
+              "title": "Source Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AcceptedResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Crawl Owned Comments",
         "tags": [
           "market-research"
         ]

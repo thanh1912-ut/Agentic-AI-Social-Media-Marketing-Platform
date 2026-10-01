@@ -12,12 +12,12 @@ from datetime import timezone
 from sqlalchemy import select
 
 from database.models import (
-    Company, Membership, ResearchCommentCheckpoint, ResearchCommentPageReceipt,
-    ResearchCommentProcessingDecision, ResearchCommentVersion, ResearchPrivacyPolicyRevision, ResearchSource, new_id, utcnow,
+    ResearchCommentCheckpoint, ResearchCommentPageReceipt, ResearchCommentVersion, new_id, utcnow,
 )
 from services.research.comment_suppression import suppressed_ids
+from services.research.comment_decisions import active_local_comment_decision
 from services.research.comment_quarantine import (
-    COMMENT_REDACTOR_VERSION, CommentQuarantineUnavailable, encrypt_candidate, screen_comment_candidate,
+    COMMENT_REDACTOR_VERSION, encrypt_candidate, screen_comment_candidate,
 )
 from services.research.facebook_cli_collector import ENGINE_VERSION, safe_comment_coverage, safe_reaction_breakdown
 from services.research.privacy import raw_quarantine_expiry
@@ -28,40 +28,11 @@ def aware(value):
 
 
 async def active_public_comment_decision(db, source, *, expected_id=None, lock=False):
-    current_source = await db.scalar(select(ResearchSource).where(
-        ResearchSource.company_id == source.company_id, ResearchSource.id == source.id))
-    if current_source is None:
+    # Keep the collector's strict public boundary; the shared validator also
+    # supports owned Page review, but must not expand this collector's scope.
+    if source.source_type != "competitor_facebook_page" or source.collection_mode != "public_web":
         return None
-    source = current_source
-    company = await db.scalar(select(Company).where(Company.id == source.company_id))
-    if (company is None or not company.page_id or company.page_connection_state != "active" or not source.active
-            or source.source_type != "competitor_facebook_page" or source.collection_mode != "public_web"):
-        return None
-    q = select(ResearchCommentProcessingDecision).where(
-        ResearchCommentProcessingDecision.company_id == source.company_id,
-        ResearchCommentProcessingDecision.source_id == source.id,
-    ).order_by(ResearchCommentProcessingDecision.created_at.desc(), ResearchCommentProcessingDecision.id.desc()).limit(1)
-    decision = await db.scalar(q.with_for_update() if lock else q)
-    policy = await db.scalar(select(ResearchPrivacyPolicyRevision).where(
-        ResearchPrivacyPolicyRevision.company_id == source.company_id,
-        ResearchPrivacyPolicyRevision.source_id == source.id,
-    ).order_by(ResearchPrivacyPolicyRevision.revision_no.desc()).limit(1))
-    if (decision is None or (expected_id is not None and decision.id != expected_id)
-            or decision.status != "active" or decision.scope != "local_comment_quarantine_v1"
-            or not decision.assessment_reference.strip() or aware(decision.valid_until) <= utcnow()
-            or policy is None or decision.policy_revision_id != policy.id
-            or not policy.purpose.strip() or not policy.processing_basis_reference.strip()):
-        return None
-    owner = select(Membership.id).where(Membership.company_id == source.company_id,
-                                      Membership.user_id == decision.assessed_by,
-                                      Membership.is_active.is_(True), Membership.role == "owner")
-    if not await db.scalar(owner.with_for_update() if lock else owner):
-        return None
-    try:
-        encrypt_candidate("", binding={"scope": "configuration-validation"})
-    except CommentQuarantineUnavailable:
-        return None
-    return decision
+    return await active_local_comment_decision(db, source, expected_id=expected_id, lock=lock, public_only=True)
 
 
 async def persist_public_comment_candidates(db, *, source, evidence, observation, post, decision_id):

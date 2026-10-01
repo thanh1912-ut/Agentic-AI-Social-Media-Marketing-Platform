@@ -320,9 +320,12 @@ async def comment_frontier_coverage(db, *, company_id: str, observation_id: str)
         ResearchCommentCheckpoint.company_id == company_id,
         ResearchCommentCheckpoint.observation_id == observation_id,
     ))).all()
-    versions = await db.scalar(select(func.count(func.distinct(ResearchCommentVersion.external_comment_id))).where(
-        ResearchCommentVersion.company_id == company_id, ResearchCommentVersion.observation_id == observation_id,
-    ))
+    versions, roots = (await db.execute(select(
+        func.count(func.distinct(ResearchCommentVersion.external_comment_id)),
+        func.count(func.distinct(ResearchCommentVersion.external_comment_id)).filter(
+            ResearchCommentVersion.parent_key == "root"),
+    ).where(ResearchCommentVersion.company_id == company_id,
+            ResearchCommentVersion.observation_id == observation_id))).one()
     receipts = select(ResearchCommentPageReceipt).join(ResearchCommentCheckpoint, (
         ResearchCommentCheckpoint.company_id == ResearchCommentPageReceipt.company_id
     ) & (ResearchCommentCheckpoint.id == ResearchCommentPageReceipt.checkpoint_id)).where(
@@ -332,7 +335,12 @@ async def comment_frontier_coverage(db, *, company_id: str, observation_id: str)
     receipt_rows = (await db.scalars(receipts)).all()
     withheld = sum(row.withheld_private_count for row in receipt_rows)
     suppressed = sum(row.suppressed_count for row in receipt_rows)
+    root = next((row for row in rows if row.parent_key == "root"), None)
     return {
+        "mode": "meta_api_accessible_edges", "returned_count": int(versions or 0),
+        "provider_reported_count": root.provider_reported_count if root else None,
+        "provider_reported_count_scope": "root_edge",
+        "received_root_comments": int(roots or 0), "received_replies": int(versions or 0) - int(roots or 0),
         "received_unique_comments": int(versions or 0), "edge_count": len(rows),
         "pending_edges": sum(not row.pagination_exhausted and row.status not in {"suppressed", "error"} for row in rows),
         "accessible_edges_exhausted": bool(rows) and all(row.pagination_exhausted for row in rows),
@@ -341,17 +349,23 @@ async def comment_frontier_coverage(db, *, company_id: str, observation_id: str)
     }
 
 
-async def enqueue_comment_batches(db, now: datetime) -> int:
+async def enqueue_comment_batches(db, now: datetime, *, company_id: str | None = None, source_id: str | None = None) -> int:
     """Recover configured work without dispatching or granting processing rights.
 
     No active decisions are created on deploy or from policy notes. The source
     lock serializes concurrent schedulers; PostgreSQL idempotency is the second
     guard. This workflow does not toggle the source's 12-hour schedule intent.
     """
-    sources = (await db.scalars(select(ResearchSource).join(Company, Company.id == ResearchSource.company_id).where(
+    query = select(ResearchSource).join(Company, Company.id == ResearchSource.company_id).where(
         ResearchSource.source_type == "owned_facebook_page", ResearchSource.active.is_(True),
         Company.page_connection_state == "active",
-    ).order_by(ResearchSource.id).limit(100).with_for_update(of=ResearchSource, skip_locked=True))).all()
+    )
+    if company_id is not None or source_id is not None:
+        if company_id is None or source_id is None:
+            raise ValueError("Both tenant and source are required for scoped comment dispatch")
+        query = query.where(ResearchSource.company_id == company_id, ResearchSource.id == source_id)
+    sources = (await db.scalars(query.order_by(ResearchSource.id).limit(100)
+                               .with_for_update(of=ResearchSource, skip_locked=True))).all()
     count = 0
     for source in sources:
         decision = await db.scalar(select(ResearchCommentProcessingDecision).where(

@@ -335,6 +335,8 @@ class DraftFromReportIn(StrictModel):
 
 class CommentCandidateOut(StrictModel):
     id: str
+    is_reply: bool = False
+    parent_version_id: str | None = None
     author_alias: str | None
     author_identity_known: bool = False
     text: str
