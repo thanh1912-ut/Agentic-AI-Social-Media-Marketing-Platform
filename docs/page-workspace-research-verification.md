@@ -2,7 +2,7 @@
 
 ## Kết quả mới nhất — 2026-10-01 14:43 Asia/Ho_Chi_Minh
 
-Code kiểm thử: `c221b01cd38b129f29650fe5edd8608cf8dde0d6`. Migration mới0029; baseline `0f71f21`. Chưa rollout khi ghi bảng này; trạng thái triển khai sẽ được cập nhật sau health checks.
+Code kiểm thử: `c221b01cd38b129f29650fe5edd8608cf8dde0d6`. Migration mới0029; baseline `0f71f21`. Đã rollout14:48: backend/docs HEAD `b96e785ffe5d35e149b8597d62c4cb41c9cc640c`, frontend `codex-page-workspaces-research-b96e785ffe5d-20261001T074846Z`. Docs-only commits sau đó không đổi implementation.
 
 | Kiểm tra | Trạng thái | Bằng chứng và giới hạn |
 |---|---|---|
@@ -14,6 +14,9 @@ Code kiểm thử: `c221b01cd38b129f29650fe5edd8608cf8dde0d6`. Migration mới00
 | Browser→queue→database | PASS collector synthetic | Job7e2c9c83-5ade-4d03-b2ab-12164e0c6fa7; suppression0f47f109-b89c-4dcb-98e9-62f980b6dd87; recrawl775820af-3ed8-4210-a386-d631bb6ea671. Hai bình luận→một sau xóa/reload/recrawl. Không phải Facebook live. |
 | Chất lượng | PASS | Backend85 tests; frontend57 tests/6files; PostgreSQL/Redis10tests; Playwright1test; Ruff, lint/typecheck, OpenAPI check/generation. Build fixtureAPI18011 và production realAPI8001/mocks0 đều đạt; chưa dùng fixture build để release. |
 | CLI export/apply | PASS disposable PostgreSQL | Export1record,0600; apply ledger1/inserted0/versions_erased0. Không in restricted records; file đã xóa. |
+| Preview rollout | PASS | Backup `page-comment-suppression-maintenance-20261001T074755Z`; schema0028→0029 giữ counts64 bảng. Page active, owned schedule off, secret files hash unchanged,2worker đúng queue. Release real13104/API8001; login/register/readiness/routes và browser0script errors. |
+| Restore maintenance bundle | PASS có giới hạn | Khôi phục database/storage riêng, head0029,64 bảng lịch sử cùng counts và53 file checksum khớp. Không mở/login ứng dụng restored. |
+| Cleanup | DONE | Dừng đúng fixtureAPI/web/worker (Next PID xác minh bằng cwd/cổng13108), xóa tenant/credentials và DB/storage restore; PG15559/Redis16481/16482 dừng. Sanitized IDs/screenshot giữ private. |
 | Live comments/AI/media | NOT_RUN / INCOMPLETE | Không có provider call, không crawl Facebook live hoặc publish. Comments còn privacy_hold, media worker/release-to-Gemini chưa triển khai. |
 
 Chi tiết vận hành và giới hạn: [comment-deletion-runbook.md](comment-deletion-runbook.md). Full goal còn active; phần media/privacy/provider và end-to-end hướng viết chưa được nghiệm thu.

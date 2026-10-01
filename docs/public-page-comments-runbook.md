@@ -80,7 +80,13 @@ Frontend rollback: `creative-studio-preview.py rollback` restores the prior web 
 
 Operational pseudonymization/redaction is not a guarantee of complete anonymity or a legal compliance certification. Retention/processing obligations require the operator's verified source-specific assessment.
 
-## Active release
+## Active erasure release
+
+Code `c221b01cd38b129f29650fe5edd8608cf8dde0d6`, runtime/frontend build HEAD `b96e785ffe5d35e149b8597d62c4cb41c9cc640c`, release `codex-page-workspaces-research-b96e785ffe5d-20261001T074846Z`. Preview schema0029, real13104/API8001; previous frontend release retained. Maintenance backup `page-comment-suppression-maintenance-20261001T074755Z` outsideGit/private permissions. API and two worker nodes are ready. No live comments decision or AI call was created.
+
+See [comment-deletion-runbook.md](comment-deletion-runbook.md) before backend rollback/restore. Preserve ledger enforcement; downgrade0029 is blocked. The old binary backup below concerns the public-comment extraction release, not permission to roll back suppression guards.
+
+## Previous public-comment release — history
 
 Implementation `9197847d7915ec2520feca417c8d33fb30b659b1` is deployed. Runner backup: `/Users/lethanh/.local/share/agentic-marketing/auth-preview/bin/facebook-cli-runner-before-public-comments-9197847`. Frontend release `codex-page-workspaces-research-9197847d7915-20260930T214102Z`; the existing frontend rollout state retains the prior plist/release for rollback.
 

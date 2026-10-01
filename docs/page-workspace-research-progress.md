@@ -13,7 +13,10 @@ Base đã kiểm tra: `codex/creative-studio-ui` @ `b769097bfdb3568889d974c6def9
 - PASS: Browser riêng web13108/API18011 → Redis/Celery → PostgreSQL → xóa → reload → crawl lại. Hai bình luận tổng hợp trước xóa, còn một sau xóa; không nhập lại bình luận bị loại. Test1 passed/5.2s; không gọi provider/Facebook live.
 - PASS: CLI export ledger ra file0600 rồi apply lại có inserted0/versions_erased0. Export bị xóa sau kiểm tra. Ledger cần lưu riêng và áp vào database restore trước khi phục vụ; chưa có tích hợp tự động với lịch backup.
 - PASS: Production build real API8001/mocks0; code đã commit `c221b01cd38b129f29650fe5edd8608cf8dde0d6`.
-- IN_PROGRESS: Rollout sau backup/drain/migration. Preview vẫn0028/implementation9197847 tại thời điểm ghi mục này; chưa tuyên bố deploy mới.
+- DONE rollout 14:48: Backup `page-comment-suppression-maintenance-20261001T074755Z`, drain0 queued/running, upgrade0028→0029, counts64 bảng lịch sử giữ nguyên. API/worker/ingestion/Beat phục hồi; Page active/lịch owned tắt/key Gemini và encryption giữ nguyên. Frontend real `codex-page-workspaces-research-b96e785ffe5d-20261001T074846Z`, API8001, compiled fixture origin18011 không có trong release.
+- PASS: Browser context mới đọc login/register/OpenAPI/readiness, không lỗi script, không đăng nhập hoặc đổi phiên người dùng.
+- PASS restore: Backup maintenance mới khôi phục DB/storage riêng, schema0029; checksum bundle, counts64 bảng và hash53 file khớp. Browser login restored NOT_RUN.
+- DONE cleanup: Process/tenant/credential fixture và DB/storage restore đã xóa; PG15559/Redis16481/16482 đã dừng. Preview người dùng giữ chạy.
 - NOT_RUN: Bình luận Fanpage thật, Gemini analysis, media, tự động xóa dữ liệu provider. Comment candidates tiếp tục privacy_hold/tối đa24giờ. Không thay cấu hình lịch, token, model hoặc quyền người dùng.
 - TODO toàn goal: Review/release comment sang Gemini, media pipeline, retention/erasure toàn luồng, owned comment UI, provider live và Research→hướng viết→brief có comment/media citations. Các mục lịch sử phía dưới không thay thế trạng thái này.
 

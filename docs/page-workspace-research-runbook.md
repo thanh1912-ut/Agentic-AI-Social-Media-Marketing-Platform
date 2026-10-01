@@ -1,6 +1,6 @@
 # Runbook Page workspace và Nghiên cứu
 
-Bổ sung xóa bình luận: [comment-deletion-runbook.md](comment-deletion-runbook.md). Bản0029 đang chuẩn bị rollout; bảng trạng thái trong verification là nguồn mới nhất. Không restore/revert worker bỏ qua suppression ledger.
+Bổ sung xóa bình luận: [comment-deletion-runbook.md](comment-deletion-runbook.md). Schema0029 đã rollout; bảng trạng thái trong verification là nguồn mới nhất. Không restore/revert worker bỏ qua suppression ledger.
 
 
 ## Cấu hình hiện hành — Gemini cho mọi tác vụ AI
@@ -52,7 +52,7 @@ Không tạo lại key khi có token đã lưu. Backup key riêng với database
 
 Checkout: `/Users/lethanh/.codex/worktrees/page-workspaces-research/agent`.
 Frontend real: `http://127.0.0.1:13104`; API/readiness: `http://127.0.0.1:8001/readyz`.
-Schema preview đã nâng lên `0028_comment_quarantine`. PostgreSQL15432, queue16379/4,
+Schema preview đã nâng lên `0029_comment_suppression`. PostgreSQL15432, queue16379/4,
 cache16380/4 và storage bền vững của preview giữ nguyên.
 
 Launcher API/worker trong LaunchAgent dùng Python tại

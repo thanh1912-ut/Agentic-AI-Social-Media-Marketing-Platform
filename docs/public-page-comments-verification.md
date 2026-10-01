@@ -1,6 +1,6 @@
 # Public Page comments — verification
 
-Kết quả bổ sung 2026-10-01 14:43 Asia/Ho_Chi_Minh: suppression/restore/browser đã đạt trên dữ liệu tổng hợp. Xem [verification mới nhất](page-workspace-research-verification.md) cho test IDs và phạm vi; rollout migration0029 chưa chạy tại thời điểm ghi.
+Kết quả bổ sung 2026-10-01 14:43 Asia/Ho_Chi_Minh: suppression/restore/browser đã đạt trên dữ liệu tổng hợp. Xem [verification mới nhất](page-workspace-research-verification.md) cho test IDs và phạm vi; rollout migration0029 đã đạt, code `c221b01cd38b129f29650fe5edd8608cf8dde0d6`/release `codex-page-workspaces-research-b96e785ffe5d-20261001T074846Z`.
 
 
 Timestamp: 2026-10-01 04:48 Asia/Ho_Chi_Minh.

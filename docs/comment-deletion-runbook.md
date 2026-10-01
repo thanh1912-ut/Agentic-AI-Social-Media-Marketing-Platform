@@ -52,3 +52,9 @@ Browser test `tests/e2e/public-page-comments.real.spec.ts` dùng server/collecto
 ## Giới hạn còn lại
 
 Comment candidates vẫn privacy_hold, encrypted, tối đa24giờ và Owner-only. Suppression không cấp quyền gửi AI. Chưa có released comment90ngày, media/Gemini worker, auto provider deletion hoặc erasure lan tới report có comment/media. Không tuyên bố tuân thủ đầy đủ luật hoặc lấy hết lịch sử. Thêm Tier1 không bảo đảm đầy đủ và chưa nằm trong chế độ được chọn.
+
+## Bản đang chạy
+
+Code `c221b01cd38b129f29650fe5edd8608cf8dde0d6`, schema0029, frontend `codex-page-workspaces-research-b96e785ffe5d-20261001T074846Z` tại http://127.0.0.1:13104, API8001. Backup maintenance `page-comment-suppression-maintenance-20261001T074755Z` giữ database/storage trước migration, quyền hạn chế; secrets được giữ riêng. Previous frontend release có thể rollback trong khi backend mới tiếp tục enforce ledger.
+
+Disposable pipeline/restore infrastructure đã dừng sau nghiệm thu. Xem verification để phân biệt dữ liệu tổng hợp với live Facebook; không có lời gọi AI hoặc bài đăng thử.
