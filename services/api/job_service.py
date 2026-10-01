@@ -205,6 +205,19 @@ async def dispatch_comment_analysis_job(job_id: str) -> bool:
         return False
 
 
+async def dispatch_comment_report_job(job_id: str) -> bool:
+    if settings.inline_jobs:
+        from services.worker.comment_report_tasks import comment_report_task_async
+        await comment_report_task_async(job_id)
+        return True
+    try:
+        from services.worker.celery_app import celery_app
+        celery_app.send_task("services.worker.comment_report_tasks.comment_report_task", args=[job_id], queue="agent")
+        return True
+    except Exception:
+        return False
+
+
 async def _record_dispatch(db: AsyncSession, job_id: str, sent: bool) -> None:
     job = await db.get(Job, job_id)
     if job is None:
@@ -235,6 +248,7 @@ async def dispatch_queued_jobs(db: AsyncSession) -> int:
     erasure_dispatch: list[str] = []
     comment_dispatch: list[str] = []
     analysis_dispatch: list[str] = []
+    comment_report_dispatch: list[str] = []
     for job in jobs:
         if job.kind in {"content_generation", "content_revise"} and job.result and job.result.get("campaign_id"):
             if job.attempts >= settings.max_job_attempts:
@@ -302,6 +316,14 @@ async def dispatch_queued_jobs(db: AsyncSession) -> int:
         elif job.kind == "research_source_erasure":
             job.lease_until = now + timedelta(minutes=settings.job_lease_minutes)
             erasure_dispatch.append(job.id)
+        elif job.kind == "research_comment_report":
+            if job.attempts >= settings.max_job_attempts:
+                job.status = "failed"
+                job.finished_at = now
+                job.error = {"code": "comment_report_retry_limit", "message": "Báo cáo cần kiểm tra lại.", "retryable": False}
+                continue
+            job.lease_until = now + timedelta(minutes=settings.job_lease_minutes)
+            comment_report_dispatch.append(job.id)
         elif job.kind == "research_comment_analysis":
             if job.attempts >= settings.max_job_attempts:
                 job.status = "failed"
@@ -356,6 +378,10 @@ async def dispatch_queued_jobs(db: AsyncSession) -> int:
         count += int(sent)
     for job_id in analysis_dispatch:
         sent = await dispatch_comment_analysis_job(job_id)
+        await _record_dispatch(db, job_id, sent)
+        count += int(sent)
+    for job_id in comment_report_dispatch:
+        sent = await dispatch_comment_report_job(job_id)
         await _record_dispatch(db, job_id, sent)
         count += int(sent)
     return count

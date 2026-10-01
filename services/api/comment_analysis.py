@@ -48,7 +48,11 @@ async def _out(db, row):
             source_content_truncated=version.content_truncated))
     job_id = await db.scalar(select(Job.id).where(Job.company_id == row.company_id,
         Job.idempotency_key == f"comment-analysis:{row.id}"))
+    report_job = await db.scalar(select(Job).where(Job.company_id == row.company_id,
+        Job.idempotency_key == "comment-report:" + row.id))
     return CommentAnalysisOut(id=row.id, source_id=row.source_id, job_id=job_id,
+        report_job_id=report_job.id if report_job else None,
+        report_id=(report_job.result or {}).get("report_id") if report_job and available else None,
         status=row.status if available or row.status == "suppressed" else "expired",
         provider=row.provider, model=row.model, created_at=row.created_at, expires_at=row.expires_at,
         result=row.result_json if available else None, coverage=row.coverage_json,

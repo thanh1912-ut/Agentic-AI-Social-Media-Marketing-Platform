@@ -1355,6 +1355,32 @@ class MarketReportEvidence(Base, IdMixin):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
 
 
+class MarketReportCommentAnalysis(Base, IdMixin):
+    """Exact completed analysis used by a report; never a latest-source pointer."""
+    __tablename__ = "market_report_comment_analyses"
+    __table_args__ = (
+        UniqueConstraint("company_id", "report_id", "batch_id", name="uq_report_comment_analysis"),
+        ForeignKeyConstraint(["company_id", "group_id", "report_id"],
+            ["market_reports.company_id", "market_reports.group_id", "market_reports.id"],
+            name="fk_report_comment_report_tenant", ondelete="CASCADE"),
+        ForeignKeyConstraint(["company_id", "source_id", "batch_id"],
+            ["research_comment_analysis_batches.company_id", "research_comment_analysis_batches.source_id",
+             "research_comment_analysis_batches.id"], name="fk_report_comment_batch_tenant", ondelete="CASCADE"),
+        ForeignKeyConstraint(["company_id", "group_id", "source_id"],
+            ["research_sources.company_id", "research_sources.group_id", "research_sources.id"],
+            name="fk_report_comment_source_group", ondelete="CASCADE"),
+        Index("ix_report_comment_batch", "company_id", "source_id", "batch_id"),
+    )
+    company_id: Mapped[str] = mapped_column(String(36), nullable=False)
+    group_id: Mapped[str] = mapped_column(String(36), nullable=False)
+    report_id: Mapped[str] = mapped_column(String(36), nullable=False)
+    source_id: Mapped[str] = mapped_column(String(36), nullable=False)
+    batch_id: Mapped[str] = mapped_column(String(36), nullable=False)
+    input_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    result_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
+
+
 class MarketReportWebSnapshot(Base, IdMixin):
     """Pins normalized website entity snapshots cited by one report."""
 

@@ -1517,7 +1517,15 @@ async def list_reports(
     key = cache_key("market-reports", company_id,
                     f"{group_id}|{count}|{latest.isoformat() if latest else 'none'}")
     cache = getattr(request.app.state, "response_cache", None)
-    cached = await get_json_cache(cache, key)
+    from database.models import MarketReportCommentAnalysis, ResearchCommentAnalysisBatch
+    from services.research.comment_analysis import aware
+    from services.research.comment_reports import result_hash
+    # Reviewed-comment reports must reflect erasure/expiry immediately. Never
+    # duplicate their derived text into the optional Redis response cache.
+    has_comment_reports = bool(await db.scalar(select(MarketReportCommentAnalysis.id).where(
+        MarketReportCommentAnalysis.company_id == company_id,
+        MarketReportCommentAnalysis.group_id == group_id).limit(1)))
+    cached = None if has_comment_reports else await get_json_cache(cache, key)
     if isinstance(cached, list):
         try:
             return [ResearchReportOut.model_validate(item) for item in cached]
@@ -1561,6 +1569,27 @@ async def list_reports(
             else "legacy_unverifiable" if row.evidence_ids_json
             else "no_evidence"
         )
+        comment_refs = report_json.get("comment_analysis_refs", [])
+        if isinstance(comment_refs, list) and comment_refs:
+            linked_comments = (await db.execute(select(MarketReportCommentAnalysis, ResearchCommentAnalysisBatch)
+                .join(ResearchCommentAnalysisBatch,
+                    (ResearchCommentAnalysisBatch.company_id == MarketReportCommentAnalysis.company_id)
+                    & (ResearchCommentAnalysisBatch.source_id == MarketReportCommentAnalysis.source_id)
+                    & (ResearchCommentAnalysisBatch.id == MarketReportCommentAnalysis.batch_id))
+                .where(MarketReportCommentAnalysis.company_id == company_id,
+                    MarketReportCommentAnalysis.report_id == row.id))).all()
+            refs_by_batch = {ref.get("batch_id"): ref for ref in comment_refs if isinstance(ref, dict)}
+            coverage["comment_provenance_status"] = "verified" if len(linked_comments) == len(comment_refs) and all(
+                batch.status == "completed" and batch.result_json is not None
+                and aware(batch.expires_at) > utcnow()
+                and link.input_hash == batch.input_hash
+                and link.result_hash == result_hash(batch.result_json)
+                and refs_by_batch.get(batch.id, {}).get("input_hash") == link.input_hash
+                and refs_by_batch.get(batch.id, {}).get("result_hash") == link.result_hash
+                for link, batch in linked_comments
+            ) else "unavailable"
+            if coverage["provenance_status"] == "no_evidence":
+                coverage["provenance_status"] = coverage["comment_provenance_status"]
         output.append(ResearchReportOut(
             id=row.id, group_id=row.group_id, window_start=row.window_start,
             window_end=row.window_end, report=report_json,
@@ -1569,7 +1598,8 @@ async def list_reports(
             evidence_refs=evidence_refs,
             source_audience=report_json.get("source_audience", []),
         ))
-    await set_json_cache(cache, key, [item.model_dump(mode="json") for item in output], 300)
+    if not has_comment_reports:
+        await set_json_cache(cache, key, [item.model_dump(mode="json") for item in output], 300)
     return output
 
 
@@ -1581,6 +1611,7 @@ async def create_draft_from_report(
 ):
     # The campaign workflow owns campaign DTO validation and drafting. Keep this
     # action explicit: a report never creates or publishes content by itself.
+    await db.scalar(select(Company).where(Company.id == company_id).with_for_update())
     report = await db.scalar(select(MarketReport).where(
         MarketReport.company_id == company_id, MarketReport.id == report_id,
     ))
@@ -1671,6 +1702,24 @@ async def create_draft_from_report(
         ))).all())
         if linked_web_ids != set(selected_web_ids):
             raise ApiProblem(409, "report_snapshot_unavailable", "Một snapshot website trong đề xuất không còn thuộc báo cáo này.")
+    raw_analysis_ids = suggestion.get("comment_analysis_ids", [])
+    if not isinstance(raw_analysis_ids, list) or any(not isinstance(item, str) for item in raw_analysis_ids):
+        raise ApiProblem(422, "suggestion_invalid", "Danh sách phân tích bình luận không hợp lệ.")
+    selected_analysis_ids = list(dict.fromkeys(raw_analysis_ids))
+    refs = report_json.get("comment_analysis_refs", [])
+    refs_by_batch = {item.get("batch_id"): item for item in refs if isinstance(item, dict)} if isinstance(refs, list) else {}
+    if any(item not in refs_by_batch for item in selected_analysis_ids):
+        raise ApiProblem(409, "report_comment_analysis_unavailable", "Phân tích bình luận không thuộc báo cáo đã chọn.")
+    selected_analysis_refs = [refs_by_batch[item] for item in selected_analysis_ids]
+    if len(selected_ids) + len(selected_web_ids) + len(selected_analysis_ids) > 10:
+        raise ApiProblem(422, "suggestion_invalid", "Hướng viết có quá 10 nguồn; hãy thu hẹp lựa chọn.")
+    from services.research.comment_reports import pinned_analysis
+    from services.research.comment_analysis import CommentAnalysisHeld
+    try:
+        await pinned_analysis(db, company_id=company_id, group_id=report.group_id,
+            report_id=report.id, references=selected_analysis_refs)
+    except CommentAnalysisHeld:
+        raise ApiProblem(409, "report_comment_analysis_unavailable", "Bản phân tích đã hết hạn, thay đổi hoặc bị xóa. Chọn lại hướng viết.") from None
     group = await _tenant_group(db, company_id, report.group_id)
     today = utcnow().date()
     slot_date = today + timedelta(days=1)
@@ -1701,6 +1750,7 @@ async def create_draft_from_report(
         "market_research_context": {
             "report_id": report.id, "group_id": group.id, "suggestion": suggestion,
             "evidence": sources, "web_snapshot_ids": selected_web_ids,
+            "comment_analysis_refs": selected_analysis_refs,
             "business_profile_context": (
                 report_json.get("business_profile_context")
                 if isinstance(report_json.get("business_profile_context"), dict)
@@ -1729,7 +1779,7 @@ async def create_draft_from_report(
                                      "evidence_ids": selected_ids,
                                      "evidence_version_ids": [item["evidence_version_id"] for item in sources],
                                      "observation_ids": [item["observation_id"] for item in sources],
-                                     "web_snapshot_ids": selected_web_ids, "group_id": group.id}))
+                                     "web_snapshot_ids": selected_web_ids, "comment_analysis_ids": selected_analysis_ids, "group_id": group.id}))
     await db.commit()
     return {
         "campaign_id": campaign.id, "group_id": campaign.group_id, "report_id": report.id,

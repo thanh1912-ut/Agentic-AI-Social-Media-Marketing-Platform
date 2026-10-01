@@ -182,6 +182,8 @@ async def erase_batches(db, *, company_id, source_id, batch_ids=None, status="su
         row.status = status
         row.error_code = "comment_data_erased" if status == "suppressed" else "comment_retention_expired"
     if ids:
+        from .comment_reports import invalidate_reports
+        await invalidate_reports(db, company_id=company_id, source_id=source_id, batch_ids=ids)
         await db.execute(update(ResearchScreenedComment).where(ResearchScreenedComment.company_id == company_id,
             ResearchScreenedComment.batch_id.in_(ids)).values(excerpt_ciphertext=None))
     return len(ids)

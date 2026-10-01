@@ -22,6 +22,7 @@ import {
 import { ApiError } from '@/lib/api';
 import { hasPermission, permissionDeniedReason } from '@/lib/permissions';
 import { pageConnectionDisabledReason, pageConnectionReady } from '@/lib/page-connection';
+import { CampaignResearchOrigin } from '@/components/CampaignResearchOrigin';
 import { useSession } from '@/components/session-gate';
 import {
   Button,
@@ -239,6 +240,7 @@ export default function CampaignDetailPage() {
         ) : <p className="text-sm text-slate-600">Chưa có tài liệu nào sẵn sàng. Bạn vẫn có thể tạo bài từ hồ sơ thương hiệu và brief. <Link href={`/w/${workspaceId}/documents`} className="font-medium underline">Mở mục Tài liệu</Link></p>}
       </Card>
 
+      <CampaignResearchOrigin workspaceId={workspaceId} brief={data.brief} />
       <Card title="Brief chiến dịch" description="Mục tiêu, khán giả và thông điệp làm nền cho nội dung của chiến dịch.">
         {editingBrief ? (
           <form onSubmit={submitBrief} className="space-y-4">

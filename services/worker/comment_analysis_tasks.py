@@ -89,6 +89,14 @@ async def _finish(job_id, *, code=None, deferred=False):
         if batch and batch.status not in {"suppressed", "expired", "completed"}:
             batch.status = "deferred_budget" if deferred else "failed" if code else "completed"
             batch.error_code = code
+        # Create/flush the followup while the parent is still running. A flush
+        # after setting a terminal state would correctly fail its next fence check.
+        report_job_id = None
+        if code is None and not deferred and batch is not None and batch.status == "completed":
+            from services.research.comment_reports import enqueue_report
+            report_job_id = await enqueue_report(db, batch)
+            if report_job_id:
+                job.result = {**job.result, "report_job_id": report_job_id}
         job.status = "queued" if deferred else "failed" if code else "succeeded"
         job.error = {"code": code, "message": "Phân tích bình luận chưa hoàn tất; dữ liệu thu thập được giữ riêng.",
                      "retryable": deferred} if code else None
@@ -103,6 +111,7 @@ async def _finish(job_id, *, code=None, deferred=False):
             job.result = {key: value for key, value in job.result.items() if key != "retry_not_before"}
         job.claim_token = new_id()
         await db.commit()
+        return report_job_id
 
 
 async def _call_with_heartbeat(model, data):
@@ -143,6 +152,18 @@ async def _store_result(company_id, source_id, batch_id, data, parsed):
 
 
 @isolated_job_fence
+async def _dispatch_report(job_id):
+    # The parent finished (and rotated its fence). Only broker metadata is
+    # written in this separate dispatch context, never parent/provider results.
+    if job_id is None:
+        return
+    from services.api.job_service import dispatch_comment_report_job, _record_dispatch
+    sent = await dispatch_comment_report_job(job_id)
+    async with SessionLocal() as db:
+        await _record_dispatch(db, job_id, sent)
+
+
+@isolated_job_fence
 async def comment_analysis_task_async(job_id):
     context = await _claim(job_id)
     if context is None:
@@ -153,7 +174,7 @@ async def comment_analysis_task_async(job_id):
     try:
         data, completed = await _input(*context)
         if completed:
-            await _finish(job_id)
+            await _dispatch_report(await _finish(job_id))
             return
         model = configured_structured_model()
         if getattr(model, "provider_name", None) != "gemini" or model.model_name != "gemini-3.8-flash":
@@ -179,7 +200,7 @@ async def comment_analysis_task_async(job_id):
             provider="gemini", model=getattr(metadata, "model", None) or model.model_name,
             input_tokens=getattr(metadata, "input_tokens", None), output_tokens=getattr(metadata, "output_tokens", None),
             result_json={"comment_analysis_batch_id": batch_id})
-        await _finish(job_id)
+        await _dispatch_report(await _finish(job_id))
     except JobLeaseLost:
         # A reservation is retained for reconciliation; a stale delivery cannot
         # settle or write result bodies through a new worker's lease.

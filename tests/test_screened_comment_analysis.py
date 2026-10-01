@@ -44,6 +44,9 @@ def screened(owned_api, monkeypatch):
         return False  # Commit/queue recovery tested without sending live work.
     monkeypatch.setattr(job_service, "dispatch_comment_analysis_job", dispatch)
     monkeypatch.setattr(comment_analysis_tasks, "SessionLocal", sessions)
+    async def hold_report_dispatch(job_id):
+        return False  # Tests explicitly execute followup; never dispatch to shared Redis.
+    monkeypatch.setattr(job_service, "dispatch_comment_report_job", hold_report_dispatch)
     from services.api import db as api_db
     monkeypatch.setattr(api_db, "SessionLocal", sessions)
     body = request_for(client, seed, headers, base, evidence)

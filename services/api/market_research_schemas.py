@@ -439,6 +439,8 @@ class CommentAnalysisOut(StrictModel):
     id: str
     source_id: str
     job_id: str | None = None
+    report_job_id: str | None = None
+    report_id: str | None = None
     status: str
     provider: str
     model: str

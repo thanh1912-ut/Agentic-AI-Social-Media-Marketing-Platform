@@ -88,6 +88,8 @@ function SuppressCommentControl({ workspaceId, sourceId, commentId }: {
   const remove = useMutation({
     mutationFn: () => marketResearchApi.suppressComment(workspaceId, sourceId, commentId, { reason }),
     onSuccess: async () => {
+      await queryClient.invalidateQueries({ predicate: (query) => query.queryKey[0] === 'workspaces'
+        && query.queryKey[1] === workspaceId && query.queryKey.includes('reports') });
       // Remove every cached candidate in this source before fetching again:
       // known descendants may appear on other pages of the same post.
       const queryKey = commentKey(workspaceId, sourceId);

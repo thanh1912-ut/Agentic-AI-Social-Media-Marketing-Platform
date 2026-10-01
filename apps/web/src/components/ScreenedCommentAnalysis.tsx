@@ -1,6 +1,7 @@
 'use client';
 
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import Link from 'next/link';
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useJob } from '@/lib/hooks';
 import { ApiError } from '@/lib/api/client';
@@ -10,6 +11,29 @@ import { Button } from './ui';
 type Candidate = NonNullable<CommentCandidatesPage['comments']>[number];
 const labels: Record<string, string> = { question: 'Câu hỏi', need: 'Nhu cầu', feedback: 'Phản hồi', other: 'Chủ đề khác' };
 const errorText = (error: unknown) => error instanceof ApiError ? error.message : 'Không lưu được lô kiểm tra. Thử lại giữ nguyên nội dung để tránh gửi trùng.';
+
+function CommentReportProgress({ workspaceId, jobId, reportId }: {
+  workspaceId: string; jobId?: string | null; reportId?: string | null;
+}) {
+  const client = useQueryClient();
+  const job = useJob(reportId ? null : jobId);
+  const resultId = typeof job.data?.result?.report_id === 'string' ? job.data.result.report_id : null;
+  useEffect(() => {
+    if (job.data?.status === 'succeeded') {
+      void client.invalidateQueries({ predicate: (query) => query.queryKey[0] === 'workspaces'
+        && query.queryKey[1] === workspaceId && query.queryKey.includes('reports') });
+    }
+  }, [client, workspaceId, job.data?.status]);
+  if (reportId || resultId) return <Link className="text-sm font-medium underline" href={'/w/' + workspaceId + '/research?tab=reports'}>Xem báo cáo và chọn hướng viết</Link>;
+  if (!jobId) return null;
+  return <div className="text-sm" role="status">
+    {job.data?.status === 'failed' || job.data?.status === 'cancelled'
+      ? 'Chưa tạo được báo cáo hướng viết; phân tích bình luận đã lưu vẫn còn.'
+      : job.data?.error?.code === 'deferred_budget' ? 'Báo cáo hướng viết đang chờ ngân sách ngày tiếp theo.'
+        : 'Đang tạo báo cáo và hướng viết từ phần tổng hợp đã kiểm tra…'}
+    <Link className="ml-2 underline" href={'/w/' + workspaceId + '/jobs/' + jobId}>Theo dõi job báo cáo</Link>
+  </div>;
+}
 
 /** Mounted only inside an Owner's bounded review view; never auto-submits. */
 export function ScreenedCommentAnalysis({ workspaceId, sourceId, evidenceId, comments }: {
@@ -82,7 +106,7 @@ export function ScreenedCommentAnalysis({ workspaceId, sourceId, evidenceId, com
           onChange={(event) => { requestKey.current = null; setReference(event.target.value); }}
           className="mt-1 w-full rounded-md border border-slate-300 p-2" placeholder="Mã hoặc tham chiếu hồ sơ đánh giá đã có; không nhập dữ liệu cá nhân" />
       </label>
-      <p className="text-xs text-slate-600">{selected.length}/50 đoạn · {characters}/12.000 ký tự. Phân tích dùng ngân sách AI tự động 2 USD/workspace/ngày.</p>
+      <p className="text-xs text-slate-600">{selected.length}/50 đoạn · {characters}/12.000 ký tự. Phân tích và báo cáo hướng viết dùng chung ngân sách AI tự động 2 USD/workspace/ngày.</p>
       <Button size="sm" loading={send.isPending} disabled={!valid || reference.trim().length < 5 || !state.data?.collection_allowed || processing}
         disabledReason="Chọn bản kiểm tra hợp lệ, ghi tham chiếu đánh giá và bảo đảm phạm vi nguồn đang hoạt động." onClick={() => send.mutate()}>Phân tích bản đã kiểm tra</Button>
       {send.error ? <p role="alert" className="text-sm text-rose-800">{errorText(send.error)}</p> : null}
@@ -91,6 +115,7 @@ export function ScreenedCommentAnalysis({ workspaceId, sourceId, evidenceId, com
       {records.map((record) => <article key={record.id} className="space-y-2 border-l-2 border-slate-200 pl-3">
         <p className="text-sm font-medium">{new Date(record.created_at).toLocaleString('vi-VN')} · {record.status === 'completed' ? 'Đã phân tích' : record.status === 'suppressed' ? 'Đã xóa dữ liệu liên quan' : record.status === 'expired' ? 'Hết thời hạn lưu' : record.status === 'deferred_budget' ? 'Chờ ngân sách' : record.status === 'failed' ? 'Chưa phân tích được' : 'Đang chờ/xử lý'}</p>
         <p className="text-xs text-slate-500">{record.model} · {record.selected_version_ids?.length ?? 0} đoạn được chọn; không đại diện toàn bộ Page.</p>
+        {record.status === 'completed' ? <CommentReportProgress workspaceId={workspaceId} jobId={record.report_job_id} reportId={record.report_id} /> : null}
         {record.error_code ? <details className="text-xs"><summary>Chi tiết trạng thái</summary>{record.error_code}</details> : null}
         {record.result?.topics.map((topic, index) => <div key={index}>
           <p className="text-sm font-medium">{labels[topic.category] ?? topic.category}: {topic.topic}</p><p className="text-sm">{topic.summary}</p>

@@ -110,6 +110,7 @@ class TrendResult(BaseModel):
     explanation: str = Field(min_length=1, max_length=1200)
     evidence_ids: list[str] = Field(default_factory=list, max_length=10)
     web_snapshot_ids: list[str] = Field(default_factory=list, max_length=10)
+    comment_analysis_ids: list[str] = Field(default_factory=list, max_length=10)
     confidence: float = Field(ge=0, le=1)
 
 
@@ -121,6 +122,7 @@ class ContentSuggestion(BaseModel):
     format: str = Field(min_length=1, max_length=40)
     evidence_ids: list[str] = Field(default_factory=list, max_length=10)
     web_snapshot_ids: list[str] = Field(default_factory=list, max_length=10)
+    comment_analysis_ids: list[str] = Field(default_factory=list, max_length=10)
 
 
 class MarketAnalysis(BaseModel):
@@ -1712,44 +1714,47 @@ def _trim_evidence_ids(
 async def _active_owner_brand_context(company_id: str) -> tuple[dict[str, Any] | None, dict[str, Any]]:
     """Return only the exact currently applied, owner-authored prose revision."""
     async with SessionLocal() as db:
-        brand = await db.scalar(select(Brand).where(Brand.company_id == company_id))
-        profile = brand.profile if brand is not None and isinstance(brand.profile, dict) else {}
-        if (
-            brand is None
-            or profile.get("profile_mode") != "manual_text_v1"
-            or not isinstance(profile.get("profile_text"), str)
-            or not profile["profile_text"].strip()
-            or not profile.get("confirmed_at")
-            or not profile.get("confirmed_by")
-        ):
-            return None, {"status": "not_configured"}
-        revision = await db.scalar(select(BrandProfileRevision).where(
-            BrandProfileRevision.company_id == company_id,
-            BrandProfileRevision.brand_id == brand.id,
-            BrandProfileRevision.revision == brand.version,
-            BrandProfileRevision.confirmed_at.is_not(None),
-        ))
-        revision_profile = revision.profile_json if revision and isinstance(revision.profile_json, dict) else {}
-        if (
-            revision is None
-            or revision_profile.get("profile_mode") != "manual_text_v1"
-            or revision_profile.get("profile_text") != profile["profile_text"]
-            or revision.confirmed_by != profile.get("confirmed_by")
-        ):
-            return None, {"status": "revision_unavailable"}
-        return {
-            "source": "owner_authored",
-            "brand_id": brand.id,
-            "revision_id": revision.id,
-            "revision": revision.revision,
-            "profile_text": profile["profile_text"],
-        }, {
-            "status": "applied",
-            "brand_id": brand.id,
-            "revision_id": revision.id,
-            "revision": revision.revision,
-        }
+        return await _owner_brand_context_from_db(db, company_id)
 
+
+async def _owner_brand_context_from_db(db, company_id):
+    brand = await db.scalar(select(Brand).where(Brand.company_id == company_id))
+    profile = brand.profile if brand is not None and isinstance(brand.profile, dict) else {}
+    if (
+        brand is None
+        or profile.get("profile_mode") != "manual_text_v1"
+        or not isinstance(profile.get("profile_text"), str)
+        or not profile["profile_text"].strip()
+        or not profile.get("confirmed_at")
+        or not profile.get("confirmed_by")
+    ):
+        return None, {"status": "not_configured"}
+    revision = await db.scalar(select(BrandProfileRevision).where(
+        BrandProfileRevision.company_id == company_id,
+        BrandProfileRevision.brand_id == brand.id,
+        BrandProfileRevision.revision == brand.version,
+        BrandProfileRevision.confirmed_at.is_not(None),
+    ))
+    revision_profile = revision.profile_json if revision and isinstance(revision.profile_json, dict) else {}
+    if (
+        revision is None
+        or revision_profile.get("profile_mode") != "manual_text_v1"
+        or revision_profile.get("profile_text") != profile["profile_text"]
+        or revision.confirmed_by != profile.get("confirmed_by")
+    ):
+        return None, {"status": "revision_unavailable"}
+    return {
+        "source": "owner_authored",
+        "brand_id": brand.id,
+        "revision_id": revision.id,
+        "revision": revision.revision,
+        "profile_text": profile["profile_text"],
+    }, {
+        "status": "applied",
+        "brand_id": brand.id,
+        "revision_id": revision.id,
+        "revision": revision.revision,
+    }
 
 def _explicit_market_scope(group: MetaPageGroup) -> dict[str, Any]:
     """Exclude internal placeholder values; only preserve explicitly provided scope."""
@@ -1779,8 +1784,10 @@ async def _make_report(
     evidence_rows: list[dict[str, Any]],
     audience_rows: list[dict[str, Any]],
     web_snapshot_rows: list[dict[str, Any]] | None = None,
+    comment_analysis_rows: list[dict[str, Any]] | None = None,
 ) -> tuple[dict[str, Any], str | None, str]:
-    if not evidence_rows and not web_snapshot_rows:
+    comment_analysis_rows = comment_analysis_rows or []
+    if not evidence_rows and not web_snapshot_rows and not comment_analysis_rows:
         return {
             "headline": "Chưa có dữ liệu thị trường trong kỳ này",
             "summary": "Chưa thu thập được nội dung để phân tích. Kiểm tra quyền truy cập nguồn hoặc nhập dữ liệu thủ công.",
@@ -1806,11 +1813,12 @@ async def _make_report(
         "facebook_post_text_sent": sum(
             1 for item in evidence_rows if item.get("content_processing_status") == "approved_for_provider"
         ),
-        "comments_content_status": "privacy_hold",
+        "comments_content_status": "screened_summaries" if comment_analysis_rows else "privacy_hold",
+        "screened_analysis_count": len(comment_analysis_rows),
         "media_content_status": "privacy_hold",
         "facebook_evidence_fingerprint": facebook_evidence_fingerprint,
     }
-    if privacy_coverage["facebook_post_text_withheld"] and not web_snapshot_rows and all(
+    if privacy_coverage["facebook_post_text_withheld"] and not web_snapshot_rows and not comment_analysis_rows and all(
         item.get("content_processing_status") == "privacy_review_required" for item in evidence_rows
     ):
         return {
@@ -1856,6 +1864,7 @@ async def _make_report(
         "source_audience": audience_rows,
         "evidence": evidence_rows[:MAX_REPORT_EVIDENCE],
         "web_entity_snapshots": (web_snapshot_rows or [])[:MAX_REPORT_WEB_SNAPSHOTS],
+        "screened_comment_analyses": comment_analysis_rows,
     }
     prompt = (
         "Phân tích dữ liệu nghiên cứu thị trường cho một doanh nghiệp marketing. "
@@ -1871,11 +1880,17 @@ async def _make_report(
         "Chỉ trích giá, tiền tệ, tình trạng và số bán từ web_entity_snapshots. "
         "Giữ nguyên cờ xấp xỉ/cận dưới và nêu rõ các số này do website tự công bố; không quy đổi tiền hoặc suy doanh thu. "
         "Evidence có content_processing_status=privacy_review_required chỉ chứa số liệu; không suy luận chủ đề từ nội dung bị giữ. "
+        "screened_comment_analyses là tổng hợp AI từ các đoạn Owner chọn, không phải toàn bộ bình luận hay nghiên cứu đại diện. "
+        "Viện dẫn comment_analysis_ids đúng batch_id; không suy danh tính người viết hoặc tỷ lệ toàn bộ Page. "
         "Đề xuất tối đa 5 góc nội dung để con người xem xét; không tự đăng bài."
     )
     request_key = f"research-report:{cycle_id}"
     configured_model = str(getattr(model, "model_name", settings.llm_default_model))
     configured_provider = str(getattr(model, "provider_name", settings.llm_provider))
+    if comment_analysis_rows and (configured_provider != "gemini" or configured_model != "gemini-3.8-flash"):
+        return report_with_context({"headline": "Nhà cung cấp báo cáo chưa đúng cấu hình đã chọn",
+            "summary": "Phân tích bình luận chỉ được gửi tới Gemini3.8; không chuyển provider tự động.",
+            "trends": [], "suggestions": [], "analysis_status": "provider_not_configured"}), configured_model, "provider_not_configured"
     try:
         reservation = await reserve_automatic_request(
             company_id=company_id, request_key=request_key, provider=configured_provider,
@@ -1896,6 +1911,10 @@ async def _make_report(
         }, status="not_used", reason="deferred_budget"), configured_model, "deferred_budget"
     if reservation.status in {"cached", "cached_unknown"} and reservation.cached_result:
         cached = reservation.cached_result
+        if comment_analysis_rows:
+            return report_with_context({"headline": "Kết quả báo cáo cần đối soát",
+                "summary": "Lời gọi trước đã chạy nhưng chưa xác nhận được báo cáo đã lưu; không gửi lại.",
+                "trends": [], "suggestions": [], "analysis_status": "provider_outcome_unknown"}), configured_model, "provider_outcome_unknown"
         report = dict(cached.get("report") or {})
         cached_privacy = report.get("privacy_coverage")
         privacy_cache_matches = (
@@ -1943,6 +1962,26 @@ async def _make_report(
         valid_ids = {str(item["id"]) for item in evidence_rows}
         valid_snapshot_ids = {str(item["snapshot_id"]) for item in (web_snapshot_rows or [])}
         report = _trim_evidence_ids(report, valid_ids, valid_snapshot_ids)
+        valid_analysis_ids = {item["batch_id"] for item in comment_analysis_rows}
+        for item in report.get("trends", []) + report.get("suggestions", []):
+            if any(value not in valid_analysis_ids for value in item.get("comment_analysis_ids", [])):
+                from services.agents.providers.errors import ProviderOutputError
+                raise ProviderOutputError("Comment analysis citation outside report input")
+            if comment_analysis_rows and not (item.get("evidence_ids") or item.get("web_snapshot_ids") or item.get("comment_analysis_ids")):
+                from services.agents.providers.errors import ProviderOutputError
+                raise ProviderOutputError("Report item has no supplied evidence")
+            if comment_analysis_rows:
+                from services.research.comment_analysis import validate_screened_text
+                for key in ("title", "explanation", "angle", "hook"):
+                    if item.get(key):
+                        validate_screened_text(item[key])
+        if comment_analysis_rows:
+            from services.research.comment_analysis import validate_screened_text
+            validate_screened_text(report["headline"])
+            from services.research.comment_quarantine import screen_comment_candidate
+            if screen_comment_candidate(report["summary"]).text != report["summary"]:
+                from services.agents.providers.errors import ProviderOutputError
+                raise ProviderOutputError("Report summary needs redaction")
         report["analysis_status"] = "completed"
         report_with_context(report)
         actual_model = metadata.model if metadata else configured_model
@@ -1951,7 +1990,8 @@ async def _make_report(
             provider=configured_provider, model=actual_model,
             input_tokens=getattr(metadata, "input_tokens", None),
             output_tokens=getattr(metadata, "output_tokens", None),
-            result_json={"report": report, "model_name": actual_model},
+            result_json=({"comment_report_cycle_id": cycle_id} if comment_analysis_rows
+                         else {"report": report, "model_name": actual_model}),
         )
         report["analysis_budget_status"] = settlement
         return report, actual_model, "completed"

@@ -1,5 +1,6 @@
 'use client';
 
+import { useSearchParams } from 'next/navigation';
 import { useCallback, useEffect, useRef, useState, type KeyboardEvent } from 'react';
 
 const EMPTY_HASHES: Readonly<Record<string, never>> = Object.freeze({});
@@ -11,6 +12,7 @@ export function useUrlTab<const T extends string>(
   hashes: Readonly<Record<string, T>> = EMPTY_HASHES,
 ): readonly [T, (next: T) => void] {
   const [active, setActive] = useState<T>(initial);
+  const search = useSearchParams().toString();
 
   useEffect(() => {
     const sync = () => {
@@ -21,8 +23,12 @@ export function useUrlTab<const T extends string>(
     };
     sync();
     window.addEventListener('popstate', sync);
-    return () => window.removeEventListener('popstate', sync);
-  }, [hashes, initial, key, values]);
+    window.addEventListener('hashchange', sync);
+    return () => {
+      window.removeEventListener('popstate', sync);
+      window.removeEventListener('hashchange', sync);
+    };
+  }, [hashes, initial, key, values, search]);
 
   const select = useCallback((next: T) => {
     if (!values.includes(next)) return;

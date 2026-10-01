@@ -71,7 +71,7 @@ describe('screened comment analysis (synthetic API fixture)', () => {
   it('shows stored results and the exact screened citation without raw author identity', async () => {
     mount();
     vi.mocked(marketResearchApi.commentAnalyses).mockResolvedValue({ items: [{
-      id: 'batch-a', source_id: 'source-a', job_id: 'job-a', status: 'completed', provider: 'gemini', model: 'gemini-3.8-flash',
+      id: 'batch-a', source_id: 'source-a', job_id: 'job-a', report_job_id: 'report-job-a', report_id: 'report-a', status: 'completed', provider: 'gemini', model: 'gemini-3.8-flash',
       created_at: now, expires_at: future, coverage: {}, selected_version_ids: [comments[0]!.id],
       legal_basis_verified_by_platform: false,
       result: { topics: [{ category: 'question', topic: 'Cách dùng', summary: 'Người đọc muốn biết cách dùng.', evidence_refs: ['comment_item-a'] }], limitations: ['Synthetic coverage only'] },
@@ -82,5 +82,6 @@ describe('screened comment analysis (synthetic API fixture)', () => {
     await userEvent.click(screen.getByText('Đoạn đã dùng'));
     expect(screen.getByText(/Reviewed evidence/)).toBeInTheDocument();
     expect(screen.queryByText('user_name01')).not.toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Xem báo cáo và chọn hướng viết' })).toHaveAttribute('href', '/w/workspace-a/research?tab=reports');
   });
 });

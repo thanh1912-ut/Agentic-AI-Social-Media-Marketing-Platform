@@ -2668,6 +2668,10 @@ export interface components {
             readonly model: string;
             /** Provider */
             readonly provider: string;
+            /** Report Id */
+            readonly report_id?: string | null;
+            /** Report Job Id */
+            readonly report_job_id?: string | null;
             readonly result?: components["schemas"]["CommentAnalysis"] | null;
             /** Selected Version Ids */
             readonly selected_version_ids?: readonly string[];

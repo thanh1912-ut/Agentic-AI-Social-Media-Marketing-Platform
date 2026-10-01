@@ -211,6 +211,7 @@ export interface MarketReport {
       explanation: string;
       evidence_ids: string[];
       web_snapshot_ids?: string[];
+      comment_analysis_ids?: string[];
       confidence: number;
     }>;
     suggestions?: Array<{
@@ -220,7 +221,9 @@ export interface MarketReport {
       format: string;
       evidence_ids: string[];
       web_snapshot_ids?: string[];
+      comment_analysis_ids?: string[];
     }>;
+    comment_analysis_refs?: Array<{ batch_id: string; source_id: string; input_hash: string; result_hash: string; coverage?: { selected_comments?: number } }>;
     evidence_refs?: Array<{
       id: string;
       title: string;

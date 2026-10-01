@@ -504,9 +504,23 @@ async def update_campaign(
             next_slot["generated_post_id"] = previous_slot["generated_post_id"]
         if previous_slot.get("generation_job_id"):
             next_slot["generation_job_id"] = previous_slot["generation_job_id"]
+    previous_brief = row.brief_json if isinstance(row.brief_json, dict) else {}
+    # A brief edit is not a new research selection. Preserve exact server-pinned
+    # evidence (and erasure tombstones) even when older clients omit these keys.
+    updated_brief = request.brief.model_dump(mode="json")
+    pinned_context = previous_brief.get("market_research_context")
+    if pinned_context is not None:
+        if ("market_research_context" in request.brief.model_fields_set
+                and updated_brief.get("market_research_context") != pinned_context):
+            raise ApiProblem(409, "research_context_pinned", "Nguồn nghiên cứu đã ghim; hãy chọn lại hướng viết từ báo cáo thay vì thay nguồn khi sửa brief.")
+        if "group_id" in request.model_fields_set and request.group_id != row.group_id:
+            raise ApiProblem(409, "research_context_pinned", "Không thể đổi nhóm của chiến dịch đang gắn báo cáo nghiên cứu.")
+        updated_brief["market_research_context"] = pinned_context
+    if previous_brief.get("market_research_context_invalidated"):
+        updated_brief["market_research_context_invalidated"] = previous_brief["market_research_context_invalidated"]
     previous_version = row.version
     row.name = request.name
-    row.brief_json = request.brief.model_dump(mode="json")
+    row.brief_json = updated_brief
     if "group_id" in request.model_fields_set:
         row.group_id = request.group_id
     row.content_plan_json = updated_plan

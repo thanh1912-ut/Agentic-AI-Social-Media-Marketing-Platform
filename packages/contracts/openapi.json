@@ -2377,6 +2377,28 @@
             "title": "Provider",
             "type": "string"
           },
+          "report_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Report Id"
+          },
+          "report_job_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Report Job Id"
+          },
           "result": {
             "anyOf": [
               {

@@ -445,7 +445,11 @@ async def _finish_purge(job_id: str, claim_token: str) -> None:
             ResearchSourceMetricSnapshot.company_id == job.company_id,
             ResearchSourceMetricSnapshot.source_id == source.id,
         ))
-        from database.models import ResearchCommentAnalysisBatch, ResearchScreenedComment
+        from services.research.comment_analysis import erase_batches
+        await erase_batches(db, company_id=job.company_id, source_id=source.id)
+        from database.models import ResearchCommentAnalysisBatch, ResearchScreenedComment, MarketReportCommentAnalysis
+        await db.execute(delete(MarketReportCommentAnalysis).where(
+            MarketReportCommentAnalysis.company_id == job.company_id, MarketReportCommentAnalysis.source_id == source.id))
         await db.execute(delete(ResearchScreenedComment).where(
             ResearchScreenedComment.company_id == job.company_id, ResearchScreenedComment.source_id == source.id))
         await db.execute(delete(ResearchCommentAnalysisBatch).where(
