@@ -23,10 +23,11 @@ from database.models import (
 from services.research.comment_quarantine import CommentQuarantineUnavailable, decrypt_candidate, encrypt_candidate
 from services.research.facebook_cli_collector import safe_comment_coverage, safe_reaction_breakdown
 from services.research.public_comments import active_public_comment_decision
+from services.research.comment_suppression import suppressed_ids, suppress_comment_tree
 from .db import get_db
 from .dependencies import current_user, membership_for, require_csrf, require_permission
 from .errors import ApiProblem
-from .market_research_schemas import CommentProcessingIn, CommentProcessingOut, CommentProcessingRevokeIn, CommentCandidatesPage, CommentCandidateOut
+from .market_research_schemas import CommentProcessingIn, CommentProcessingOut, CommentProcessingRevokeIn, CommentCandidatesPage, CommentCandidateOut, CommentSuppressionIn, CommentSuppressionOut
 
 
 router = APIRouter(prefix="/workspaces/{company_id}/market-research", tags=["market-research"])
@@ -262,10 +263,11 @@ async def comment_candidates(company_id: str, source_id: str, evidence_id: str, 
     coverage = safe_comment_coverage(metrics.get("comment_coverage"))
     response.headers["Cache-Control"] = "no-store, private"
     response.headers["Pragma"] = "no-cache"
+    blocked = await suppressed_ids(db, company_id=company_id, source_id=source_id, evidence_id=evidence_id)
     decision = await active_public_comment_decision(db, source, lock=True)
     if decision is None or observation is None:
         return CommentCandidatesPage(source_id=source_id, evidence_id=evidence_id,
-            observation_id=observation.id if observation else None, status="processing_required", coverage=coverage)
+            observation_id=observation.id if observation else None, status="processing_required", coverage=coverage, suppressed_comments_count=len(blocked))
     now = utcnow()
     query = select(ResearchCommentVersion).where(
         ResearchCommentVersion.company_id == company_id, ResearchCommentVersion.source_id == source_id,
@@ -313,4 +315,33 @@ async def comment_candidates(company_id: str, source_id: str, evidence_id: str, 
     await db.commit()
     return CommentCandidatesPage(source_id=source_id, evidence_id=evidence_id, observation_id=observation.id,
         status="privacy_hold" if result else "no_candidates", comments=result, coverage=coverage,
+        suppressed_comments_count=len(blocked),
         next_cursor=_encode_web_cursor(rows[-1].captured_at, rows[-1].id) if has_more and rows else None)
+
+
+@router.post("/sources/{source_id}/comments/{version_id}/suppress", response_model=CommentSuppressionOut,
+             dependencies=[Depends(require_csrf)])
+async def suppress_comment(company_id: str, source_id: str, version_id: str, request: CommentSuppressionIn,
+                           response: Response, user: CurrentUser, owner: Owner, db: DB):
+    # Erasure remains available when Page credentials expire or the source is
+    # inactive. It never sends a request to Facebook or to an AI provider.
+    _, source = await _source(db, company_id, source_id, lock=True)
+    await _locked_owner(db, company_id, user.id)
+    version = await db.scalar(select(ResearchCommentVersion).where(
+        ResearchCommentVersion.company_id == company_id, ResearchCommentVersion.source_id == source.id,
+        ResearchCommentVersion.id == version_id,
+    ).with_for_update())
+    if version is None:
+        raise ApiProblem(404, "not_found", "Không tìm thấy bản bình luận của nguồn này.")
+    result = await suppress_comment_tree(db, version=version, actor_id=user.id, reason=request.reason)
+    if result.versions_erased or result.reply_edges_stopped:
+        db.add(AuditEvent(company_id=company_id, actor_user_id=user.id, action="research.comments.suppress",
+            entity_type="research_comment_suppression", entity_id=result.suppression_id,
+            metadata_json={"reason": request.reason, "identities_suppressed": result.identities_suppressed,
+                "versions_erased": result.versions_erased, "reply_edges_stopped": result.reply_edges_stopped,
+                "scope": "local_candidate_versions_and_known_replies", "provider_transmission_allowed": False}))
+    await db.commit()
+    response.headers["Cache-Control"] = "no-store, private"
+    return CommentSuppressionOut(suppression_id=result.suppression_id,
+        identities_suppressed=result.identities_suppressed, versions_erased=result.versions_erased,
+        reply_edges_stopped=result.reply_edges_stopped)

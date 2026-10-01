@@ -36,7 +36,7 @@ def test_postgres_comment_checkpoint_isolation_replay_version_and_stale_worker(m
         fence_context = _current_job_fence.set(None)
         try:
             async with engine.connect() as conn:
-                assert (await conn.exec_driver_sql("SELECT version_num FROM alembic_version")).scalar_one() == "0028_comment_quarantine"
+                assert (await conn.exec_driver_sql("SELECT version_num FROM alembic_version")).scalar_one() == "0029_comment_suppression"
 
                 def check_schema(sync_conn):
                     inspector = inspect(sync_conn)
@@ -148,7 +148,7 @@ def test_comment_frontier_fresh_and_upgrade_schema_match():
         engine = create_async_engine(url)
         try:
             async with engine.connect() as conn:
-                assert (await conn.exec_driver_sql("SELECT version_num FROM alembic_version")).scalar_one() == "0028_comment_quarantine"
+                assert (await conn.exec_driver_sql("SELECT version_num FROM alembic_version")).scalar_one() == "0029_comment_suppression"
 
                 def fingerprint(sync_conn):
                     inspector = inspect(sync_conn)

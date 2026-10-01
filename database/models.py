@@ -1117,7 +1117,7 @@ class ResearchCommentVersion(Base, IdMixin):
              "research_comment_processing_decisions.source_id", "research_comment_processing_decisions.id"],
             name="fk_comment_version_decision_tenant", ondelete="CASCADE",
         ),
-        CheckConstraint("status IN ('privacy_hold','expired')", name="ck_comment_version_status"),
+        CheckConstraint("status IN ('privacy_hold','expired','suppressed')", name="ck_comment_version_status"),
         CheckConstraint("expires_at > captured_at", name="ck_comment_version_expiry"),
         CheckConstraint("expires_at <= captured_at + INTERVAL '24 hours'",
                         name="ck_comment_version_quarantine_max_age").ddl_if(dialect="postgresql"),
@@ -1148,6 +1148,37 @@ class ResearchCommentVersion(Base, IdMixin):
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
 
 
+class ResearchCommentSuppression(Base, IdMixin):
+    """Restricted deletion ledger; source identity never appears in API output.
+
+    One entry per comment/post/source prevents re-import across observations.
+    Operational identities remain personal-data-adjacent and are not anonymous.
+    """
+
+    __tablename__ = "research_comment_suppressions"
+    __table_args__ = (
+        UniqueConstraint("company_id", "source_id", "post_key_hash", "external_comment_id",
+                         name="uq_comment_suppression_identity"),
+        ForeignKeyConstraint(
+            ["company_id", "source_id"],
+            ["research_sources.company_id", "research_sources.id"],
+            name="fk_comment_suppression_source_tenant", ondelete="CASCADE",
+        ),
+        CheckConstraint("reason IN ('subject_request','out_of_scope','privacy_risk')",
+                        name="ck_comment_suppression_reason"),
+        Index("ix_comment_suppression_post", "company_id", "source_id", "post_key_hash"),
+    )
+
+    company_id: Mapped[str] = mapped_column(ForeignKey("companies.id", ondelete="CASCADE"), nullable=False)
+    source_id: Mapped[str] = mapped_column(String(36), nullable=False)
+    post_key_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    external_comment_id: Mapped[str] = mapped_column(String(100), nullable=False)
+    reason: Mapped[str] = mapped_column(String(24), nullable=False)
+    created_by: Mapped[str] = mapped_column(ForeignKey("users.id"), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow,
+                                              server_default=func.now(), nullable=False)
+
+
 class ResearchCommentPageReceipt(Base, IdMixin):
     """Atomic delivery receipt for one cursor; no body or Graph URL is retained."""
 
@@ -1159,7 +1190,8 @@ class ResearchCommentPageReceipt(Base, IdMixin):
             ["research_comment_checkpoints.company_id", "research_comment_checkpoints.id"],
             name="fk_comment_page_checkpoint_tenant", ondelete="CASCADE",
         ),
-        CheckConstraint("received_count >= 0 AND withheld_private_count >= 0", name="ck_comment_page_receipt_counts"),
+        CheckConstraint("received_count >= 0 AND withheld_private_count >= 0 AND suppressed_count >= 0",
+                        name="ck_comment_page_receipt_counts"),
     )
 
     company_id: Mapped[str] = mapped_column(String(36), nullable=False)
@@ -1167,6 +1199,7 @@ class ResearchCommentPageReceipt(Base, IdMixin):
     request_cursor_hash: Mapped[str] = mapped_column(String(64), nullable=False)
     received_count: Mapped[int] = mapped_column(Integer, nullable=False)
     withheld_private_count: Mapped[int] = mapped_column(Integer, nullable=False)
+    suppressed_count: Mapped[int] = mapped_column(Integer, default=0, server_default="0", nullable=False)
     captured_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
 
 

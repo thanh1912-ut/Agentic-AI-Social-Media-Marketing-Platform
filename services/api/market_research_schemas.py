@@ -352,6 +352,18 @@ class CommentCandidateOut(StrictModel):
     alias_scope: Literal["post_read_only"] = "post_read_only"
 
 
+class CommentSuppressionIn(StrictModel):
+    reason: Literal["subject_request", "out_of_scope", "privacy_risk"]
+
+
+class CommentSuppressionOut(StrictModel):
+    suppression_id: str
+    identities_suppressed: int = Field(ge=1)
+    versions_erased: int = Field(ge=0)
+    reply_edges_stopped: int = Field(ge=0)
+    provider_transmission_allowed: Literal[False] = False
+
+
 class CommentCandidatesPage(StrictModel):
     source_id: str
     evidence_id: str
@@ -360,4 +372,5 @@ class CommentCandidatesPage(StrictModel):
     comments: list[CommentCandidateOut] = Field(default_factory=list)
     coverage: dict[str, Any] = Field(default_factory=dict)
     next_cursor: str | None = None
+    suppressed_comments_count: int = Field(default=0, ge=0)
     provider_transmission_allowed: Literal[False] = False

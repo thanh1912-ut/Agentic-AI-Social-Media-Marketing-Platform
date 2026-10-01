@@ -29,6 +29,7 @@ from services.api.meta_client import (
     MetaCommentsPage, MetaGraphClient, MetaGraphReadError, MetaGraphRejected, MetaGraphTokenExpired,
 )
 from services.api.meta_tokens import TokenEncryptionUnavailable, decrypt_page_token
+from services.research.comment_suppression import suppressed_ids
 from services.research.comment_quarantine import (
     COMMENT_REDACTOR_VERSION, CommentQuarantineUnavailable, encrypt_candidate, screen_comment_candidate,
 )
@@ -206,8 +207,14 @@ async def commit_comment_page(work: CommentPageWork, page: MetaCommentsPage) -> 
         if checkpoint.external_post_id != work.post_id or checkpoint.parent_key != work.parent_key:
             raise CommentCollectionHeld("comment_page_identity_mismatch")
         expires_at = min(raw_quarantine_expiry(now), _aware(decision.valid_until))
+        blocked = await suppressed_ids(db, company_id=work.company_id, source_id=checkpoint.source_id,
+                                       evidence_id=checkpoint.evidence_id)
         new_identities = 0
+        suppressed = 0
         for comment in page.comments:
+            if comment.external_id in blocked:
+                suppressed += 1
+                continue
             candidate = screen_comment_candidate(comment.message or "")
             fingerprint = hashlib.sha256(json.dumps({
                 "text": candidate.text, "truncated": comment.content_truncated,
@@ -253,7 +260,7 @@ async def commit_comment_page(work: CommentPageWork, page: MetaCommentsPage) -> 
         db.add(ResearchCommentPageReceipt(
             company_id=work.company_id, checkpoint_id=checkpoint.id,
             request_cursor_hash=_cursor_hash(work.cursor), received_count=len(page.comments),
-            withheld_private_count=page.withheld_private_count, captured_at=now,
+            withheld_private_count=page.withheld_private_count, suppressed_count=suppressed, captured_at=now,
         ))
         checkpoint.received_count += new_identities
         checkpoint.pages_processed += 1
@@ -322,12 +329,14 @@ async def comment_frontier_coverage(db, *, company_id: str, observation_id: str)
         ResearchCommentCheckpoint.company_id == company_id,
         ResearchCommentCheckpoint.observation_id == observation_id,
     )
-    withheld = sum(row.withheld_private_count for row in (await db.scalars(receipts)).all())
+    receipt_rows = (await db.scalars(receipts)).all()
+    withheld = sum(row.withheld_private_count for row in receipt_rows)
+    suppressed = sum(row.suppressed_count for row in receipt_rows)
     return {
         "received_unique_comments": int(versions or 0), "edge_count": len(rows),
-        "pending_edges": sum(not row.pagination_exhausted for row in rows),
+        "pending_edges": sum(not row.pagination_exhausted and row.status not in {"suppressed", "error"} for row in rows),
         "accessible_edges_exhausted": bool(rows) and all(row.pagination_exhausted for row in rows),
-        "withheld_private_count": withheld, "history_complete": False,
+        "withheld_private_count": withheld, "suppressed_delivery_count": suppressed, "history_complete": False,
         "content_status": "privacy_hold", "coverage_scope": "provider_accessible_edges_only",
     }
 

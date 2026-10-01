@@ -1132,6 +1132,23 @@ export interface paths {
         readonly patch?: never;
         readonly trace?: never;
     };
+    readonly "/api/v1/workspaces/{company_id}/market-research/sources/{source_id}/comments/{version_id}/suppress": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get?: never;
+        readonly put?: never;
+        /** Suppress Comment */
+        readonly post: operations["suppress_comment_api_v1_workspaces__company_id__market_research_sources__source_id__comments__version_id__suppress_post"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
     readonly "/api/v1/workspaces/{company_id}/market-research/sources/{source_id}/crawl": {
         readonly parameters: {
             readonly query?: never;
@@ -2623,6 +2640,11 @@ export interface components {
              * @enum {string}
              */
             readonly status: "privacy_hold" | "no_candidates" | "processing_required";
+            /**
+             * Suppressed Comments Count
+             * @default 0
+             */
+            readonly suppressed_comments_count: number;
         };
         /** CommentProcessingIn */
         readonly CommentProcessingIn: {
@@ -2726,6 +2748,31 @@ export interface components {
         readonly CommentProcessingRevokeIn: {
             /** Expected Decision Id */
             readonly expected_decision_id: string;
+        };
+        /** CommentSuppressionIn */
+        readonly CommentSuppressionIn: {
+            /**
+             * Reason
+             * @enum {string}
+             */
+            readonly reason: "subject_request" | "out_of_scope" | "privacy_risk";
+        };
+        /** CommentSuppressionOut */
+        readonly CommentSuppressionOut: {
+            /** Identities Suppressed */
+            readonly identities_suppressed: number;
+            /**
+             * Provider Transmission Allowed
+             * @default false
+             * @constant
+             */
+            readonly provider_transmission_allowed: false;
+            /** Reply Edges Stopped */
+            readonly reply_edges_stopped: number;
+            /** Suppression Id */
+            readonly suppression_id: string;
+            /** Versions Erased */
+            readonly versions_erased: number;
         };
         /** CompetitorPostOut */
         readonly CompetitorPostOut: {
@@ -4848,6 +4895,8 @@ export type SchemaCommentCandidatesPage = components['schemas']['CommentCandidat
 export type SchemaCommentProcessingIn = components['schemas']['CommentProcessingIn'];
 export type SchemaCommentProcessingOut = components['schemas']['CommentProcessingOut'];
 export type SchemaCommentProcessingRevokeIn = components['schemas']['CommentProcessingRevokeIn'];
+export type SchemaCommentSuppressionIn = components['schemas']['CommentSuppressionIn'];
+export type SchemaCommentSuppressionOut = components['schemas']['CommentSuppressionOut'];
 export type SchemaCompetitorPostOut = components['schemas']['CompetitorPostOut'];
 export type SchemaCompetitorPostsPage = components['schemas']['CompetitorPostsPage'];
 export type SchemaConfirmBrandProfileRequest = components['schemas']['ConfirmBrandProfileRequest'];
@@ -7850,6 +7899,45 @@ export interface operations {
                 };
                 content: {
                     readonly "application/json": components["schemas"]["CommentProcessingOut"];
+                };
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    readonly suppress_comment_api_v1_workspaces__company_id__market_research_sources__source_id__comments__version_id__suppress_post: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: {
+                readonly authorization?: string | null;
+            };
+            readonly path: {
+                readonly company_id: string;
+                readonly source_id: string;
+                readonly version_id: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": components["schemas"]["CommentSuppressionIn"];
+            };
+        };
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["CommentSuppressionOut"];
                 };
             };
             /** @description Validation Error */

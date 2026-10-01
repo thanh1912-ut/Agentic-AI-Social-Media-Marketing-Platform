@@ -15,6 +15,7 @@ from database.models import (
     Company, Membership, ResearchCommentCheckpoint, ResearchCommentPageReceipt,
     ResearchCommentProcessingDecision, ResearchCommentVersion, ResearchPrivacyPolicyRevision, ResearchSource, new_id, utcnow,
 )
+from services.research.comment_suppression import suppressed_ids
 from services.research.comment_quarantine import (
     COMMENT_REDACTOR_VERSION, CommentQuarantineUnavailable, encrypt_candidate, screen_comment_candidate,
 )
@@ -96,11 +97,16 @@ async def persist_public_comment_candidates(db, *, source, evidence, observation
         return
     now = utcnow()
     comments = post.get("comment_records", [])
+    blocked = await suppressed_ids(db, company_id=source.company_id, source_id=source.id, evidence_id=evidence.id)
     identities = set()
+    suppressed = 0
     for c in comments:
         if c["id"] in identities:
             continue
         identities.add(c["id"])
+        if c["id"] in blocked:
+            suppressed += 1
+            continue
         candidate = screen_comment_candidate(c["text"])
         fingerprint = hashlib.sha256(json.dumps({"text": candidate.text, "redactor": COMMENT_REDACTOR_VERSION,
             "truncated": c["text_truncated"], "likes": c["likes"], "reactions": c["reactions"],
@@ -129,5 +135,6 @@ async def persist_public_comment_candidates(db, *, source, evidence, observation
     checkpoint.pages_processed = 1
     db.add(ResearchCommentPageReceipt(
         id=new_id(), company_id=source.company_id, checkpoint_id=checkpoint.id,
-        request_cursor_hash=receipt_key, received_count=len(identities), withheld_private_count=0, captured_at=now,
+        request_cursor_hash=receipt_key, received_count=len(identities), withheld_private_count=0,
+        suppressed_count=suppressed, captured_at=now,
     ))

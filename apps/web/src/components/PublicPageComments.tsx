@@ -3,7 +3,7 @@
 import { useState, type FormEvent } from 'react';
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Button } from './ui';
-import { marketResearchApi, marketResearchKeys } from '@/lib/api/market-research';
+import { marketResearchApi, marketResearchKeys, type CommentSuppressionRequest } from '@/lib/api/market-research';
 import { ApiError } from '@/lib/api/client';
 
 const key = marketResearchKeys.commentProcessing;
@@ -54,6 +54,37 @@ export function PublicCommentSettings({ workspaceId, sourceId, canManage }: {
   </section>;
 }
 
+function SuppressCommentControl({ workspaceId, sourceId, commentId }: {
+  workspaceId: string; sourceId: string; commentId: string;
+}) {
+  const queryClient = useQueryClient();
+  const [confirming, setConfirming] = useState(false);
+  const [reason, setReason] = useState<CommentSuppressionRequest['reason']>('privacy_risk');
+  const remove = useMutation({
+    mutationFn: () => marketResearchApi.suppressComment(workspaceId, sourceId, commentId, { reason }),
+    onSuccess: async () => {
+      // Remove every cached candidate in this source before fetching again:
+      // known descendants may appear on other pages of the same post.
+      const queryKey = commentKey(workspaceId, sourceId);
+      await queryClient.cancelQueries({ queryKey });
+      await queryClient.resetQueries({ queryKey });
+      await queryClient.invalidateQueries({ queryKey: key(workspaceId, sourceId) });
+    },
+  });
+  if (!confirming) return <Button size="sm" variant="secondary" onClick={() => setConfirming(true)}>Loại bình luận khỏi nghiên cứu</Button>;
+  return <div className="mt-2 space-y-2" role="group" aria-label="Xác nhận loại bình luận">
+    <p className="text-xs text-slate-600">Xóa nội dung và số liệu của bình luận này cùng các replies đã lưu. Lượt crawl sau sẽ bỏ qua mã nguồn này. Đây là xóa dữ liệu trong ứng dụng, không xóa bình luận trên Facebook.</p>
+    <label className="block text-xs" htmlFor={'suppression-reason-' + commentId}>Lý do loại dữ liệu</label>
+    <select id={'suppression-reason-' + commentId} value={reason} onChange={(event) => setReason(event.currentTarget.value as CommentSuppressionRequest['reason'])} disabled={remove.isPending} className="rounded-md border border-slate-300 p-2 text-sm">
+      <option value="privacy_risk">Có thông tin cá nhân cần loại</option>
+      <option value="subject_request">Có yêu cầu xóa dữ liệu</option>
+      <option value="out_of_scope">Ngoài phạm vi nghiên cứu</option>
+    </select>
+    <div className="flex flex-wrap gap-2"><Button size="sm" loading={remove.isPending} onClick={() => remove.mutate()}>Xóa và ngăn nhập lại</Button><Button size="sm" variant="secondary" disabled={remove.isPending} onClick={() => setConfirming(false)}>Giữ lại</Button></div>
+    {remove.error ? <p role="alert" className="text-xs text-rose-800">{errorText(remove.error)}</p> : null}
+  </div>;
+}
+
 export function PublicPostComments({ workspaceId, sourceId, evidenceId, canReview }: {
   workspaceId: string; sourceId: string; evidenceId: string; canReview: boolean;
 }) {
@@ -85,6 +116,7 @@ export function PublicPostComments({ workspaceId, sourceId, evidenceId, canRevie
       {query.isLoading ? <p role="status">Đang đọc bình luận đã lưu…</p> : null}
       {query.error ? <p role="alert">{errorText(query.error)} <Button size="sm" variant="secondary" onClick={() => void query.refetch()}>Thử lại</Button></p> : null}
       {!query.isError && first ? <p className="text-xs text-slate-500">Đã nhận {String(first.coverage?.returned_count ?? 0)} bình luận{typeof first.coverage?.provider_reported_count === 'number' ? ' / nguồn công bố ' + first.coverage?.provider_reported_count : ''}. Chưa xác minh đầy đủ lịch sử; replies chưa được đọc trong Tier 0.</p> : null}
+      {!query.isError && (first?.suppressed_comments_count ?? 0) > 0 ? <p className="text-xs text-slate-500">Đã loại {first!.suppressed_comments_count} bình luận và ngăn nhập lại theo mã nguồn.</p> : null}
       {!query.isError && first?.status === 'processing_required' ? <p className="text-sm">Owner cần ghi nhận phạm vi xử lý, sau đó Crawl ngay để đọc bình luận.</p> : null}
       {!query.isError && first?.status === 'no_candidates' ? <p className="text-sm">Không có bình luận còn trong thời hạn kiểm tra. Nguồn có thể không trả bình luận hoặc bản chờ đã hết hạn.</p> : null}
       {!query.isError ? comments.map((c) => <article key={c.id} className="border-l-2 border-slate-200 pl-3">
@@ -92,6 +124,7 @@ export function PublicPostComments({ workspaceId, sourceId, evidenceId, canRevie
         <p className="mt-1 whitespace-pre-wrap break-words text-sm">{c.text || '(Không có chữ được trả về)'}</p>
         {c.content_truncated ? <p className="text-xs text-amber-800">Nội dung vượt giới hạn và đã được cắt; không phải toàn bộ bình luận.</p> : null}
         <p className="mt-1 text-xs text-slate-500">{c.published_at ? 'Đăng ' + new Date(c.published_at).toLocaleString('vi-VN') : 'Không có thời điểm đăng từ nguồn'}</p>
+        <SuppressCommentControl workspaceId={workspaceId} sourceId={sourceId} commentId={c.id} />
       </article>) : null}
       {query.hasNextPage ? <Button variant="secondary" size="sm" loading={query.isFetchingNextPage} onClick={() => void query.fetchNextPage()}>Xem thêm bình luận đã lưu</Button> : null}
     </div> : null}

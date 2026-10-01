@@ -7,6 +7,8 @@ import type { components } from './schema';
 export type CommentProcessing = components['schemas']['CommentProcessingOut'];
 export type CommentProcessingRequest = components['schemas']['CommentProcessingIn'];
 export type CommentCandidatesPage = components['schemas']['CommentCandidatesPage'];
+export type CommentSuppressionRequest = components['schemas']['CommentSuppressionIn'];
+export type CommentSuppressionResult = components['schemas']['CommentSuppressionOut'];
 
 export interface MarketGroup {
   id: string;
@@ -405,6 +407,10 @@ export const marketResearchApi = {
   commentCandidates: (workspaceId: string, sourceId: string, evidenceId: string, cursor?: string) => apiRequest<CommentCandidatesPage>(
     path(workspaceId) + '/sources/' + encodeURIComponent(sourceId) + '/posts/' + encodeURIComponent(evidenceId) + '/comments',
     { query: { limit: 25, cursor } },
+  ),
+  suppressComment: (workspaceId: string, sourceId: string, versionId: string, body: CommentSuppressionRequest) => apiRequest<CommentSuppressionResult>(
+    path(workspaceId) + '/sources/' + encodeURIComponent(sourceId) + '/comments/' + encodeURIComponent(versionId) + '/suppress',
+    { method: 'POST', body },
   ),
   competitorPosts: (workspaceId: string, sourceId: string, cursor?: string) =>
     apiRequest<CompetitorPostsPage>(

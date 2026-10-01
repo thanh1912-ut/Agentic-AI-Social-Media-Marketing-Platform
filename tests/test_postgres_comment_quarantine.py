@@ -129,7 +129,7 @@ def test_comment_quarantine_fresh_and_upgrade_definitions_match():
         engine = create_async_engine(url)
         try:
             async with engine.connect() as connection:
-                assert (await connection.exec_driver_sql("SELECT version_num FROM alembic_version")).scalar_one() == "0028_comment_quarantine"
+                assert (await connection.exec_driver_sql("SELECT version_num FROM alembic_version")).scalar_one() == "0029_comment_suppression"
                 def fingerprint(sync):
                     inspector = inspect(sync)
                     result = {}

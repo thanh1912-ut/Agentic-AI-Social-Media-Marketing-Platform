@@ -2413,6 +2413,12 @@
             ],
             "title": "Status",
             "type": "string"
+          },
+          "suppressed_comments_count": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Suppressed Comments Count",
+            "type": "integer"
           }
         },
         "required": [
@@ -2670,6 +2676,63 @@
           "expected_decision_id"
         ],
         "title": "CommentProcessingRevokeIn",
+        "type": "object"
+      },
+      "CommentSuppressionIn": {
+        "additionalProperties": false,
+        "properties": {
+          "reason": {
+            "enum": [
+              "subject_request",
+              "out_of_scope",
+              "privacy_risk"
+            ],
+            "title": "Reason",
+            "type": "string"
+          }
+        },
+        "required": [
+          "reason"
+        ],
+        "title": "CommentSuppressionIn",
+        "type": "object"
+      },
+      "CommentSuppressionOut": {
+        "additionalProperties": false,
+        "properties": {
+          "identities_suppressed": {
+            "minimum": 1.0,
+            "title": "Identities Suppressed",
+            "type": "integer"
+          },
+          "provider_transmission_allowed": {
+            "const": false,
+            "default": false,
+            "title": "Provider Transmission Allowed",
+            "type": "boolean"
+          },
+          "reply_edges_stopped": {
+            "minimum": 0.0,
+            "title": "Reply Edges Stopped",
+            "type": "integer"
+          },
+          "suppression_id": {
+            "title": "Suppression Id",
+            "type": "string"
+          },
+          "versions_erased": {
+            "minimum": 0.0,
+            "title": "Versions Erased",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "suppression_id",
+          "identities_suppressed",
+          "versions_erased",
+          "reply_edges_stopped"
+        ],
+        "title": "CommentSuppressionOut",
         "type": "object"
       },
       "CompetitorPostOut": {
@@ -14263,6 +14326,92 @@
           }
         },
         "summary": "Revoke Comment Processing",
+        "tags": [
+          "market-research"
+        ]
+      }
+    },
+    "/api/v1/workspaces/{company_id}/market-research/sources/{source_id}/comments/{version_id}/suppress": {
+      "post": {
+        "operationId": "suppress_comment_api_v1_workspaces__company_id__market_research_sources__source_id__comments__version_id__suppress_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "company_id",
+            "required": true,
+            "schema": {
+              "title": "Company Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "source_id",
+            "required": true,
+            "schema": {
+              "title": "Source Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "version_id",
+            "required": true,
+            "schema": {
+              "title": "Version Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CommentSuppressionIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommentSuppressionOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Suppress Comment",
         "tags": [
           "market-research"
         ]

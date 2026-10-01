@@ -15,7 +15,7 @@ const state: CommentProcessing = {
   provider_transmission_allowed: false, quarantine_max_hours: 24, scope: 'local_comment_quarantine_v1',
 };
 const page: CommentCandidatesPage = {
-  source_id: 'source-a', evidence_id: 'post-a', observation_id: 'observation-a', status: 'privacy_hold',
+  source_id: 'source-a', evidence_id: 'post-a', observation_id: 'observation-a', status: 'privacy_hold', suppressed_comments_count: 0,
   coverage: { returned_count: 2, provider_reported_count: 20, history_complete: false },
   provider_transmission_allowed: false,
   comments: [{ id: 'comment-a', author_alias: 'user_name01', author_identity_known: true,
@@ -73,6 +73,28 @@ describe('Public Page comment review (synthetic API fixtures)', () => {
     expect(screen.queryByText('Expired synthetic text')).not.toBeInTheDocument();
     expect(screen.getByText('Like: 0')).toBeInTheDocument();
     expect(screen.getByText('Phản hồi: Chưa có dữ liệu')).toBeInTheDocument();
+  });
+
+  it('requires a deliberate erasure action and discards stale source content after confirmation', async () => {
+    const after = { ...page, comments: [page.comments![1]!], suppressed_comments_count: 1 };
+    vi.spyOn(marketResearchApi, 'commentCandidates').mockResolvedValueOnce(page).mockResolvedValue(after);
+    const erase = vi.spyOn(marketResearchApi, 'suppressComment').mockResolvedValue({
+      suppression_id: 'suppression-a', identities_suppressed: 1, versions_erased: 1,
+      reply_edges_stopped: 0, provider_transmission_allowed: false,
+    });
+    const client = mount(<PublicPostComments workspaceId="workspace-a" sourceId="source-a" evidenceId="post-a" canReview />);
+    client.setQueryData(marketResearchKeys.commentCandidates('workspace-other', 'source-a'), 'unrelated fixture cache');
+    await userEvent.click(screen.getByRole('button', { name: 'Xem bình luận và tương tác' }));
+    const article = (await screen.findByText('Synthetic question')).closest('article')!;
+    await userEvent.click(within(article).getByRole('button', { name: 'Loại bình luận khỏi nghiên cứu' }));
+    expect(erase).not.toHaveBeenCalled();
+    await userEvent.selectOptions(within(article).getByLabelText('Lý do loại dữ liệu'), 'subject_request');
+    await userEvent.click(within(article).getByRole('button', { name: 'Xóa và ngăn nhập lại' }));
+    await waitFor(() => expect(erase).toHaveBeenCalledWith('workspace-a', 'source-a', 'comment-a', { reason: 'subject_request' }));
+    await waitFor(() => expect(screen.queryByText('Synthetic question')).not.toBeInTheDocument());
+    expect(await screen.findByText('Synthetic second question')).toBeInTheDocument();
+    expect(screen.getByText('Đã loại 1 bình luận và ngăn nhập lại theo mã nguồn.')).toBeInTheDocument();
+    expect(client.getQueryData(marketResearchKeys.commentCandidates('workspace-other', 'source-a'))).toBe('unrelated fixture cache');
   });
 
   it('uses the same workspace policy cache as the source editor and saves its current revision', async () => {

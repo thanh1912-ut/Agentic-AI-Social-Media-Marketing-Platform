@@ -364,6 +364,7 @@ def test_source_purge_removes_collected_rows_raw_object_and_tombstones_report(ma
         MarketObservation,
         MarketReportEvidence,
         ResearchCycle,
+        ResearchCommentSuppression,
     )
     from services.worker import research_erasure_tasks
 
@@ -414,6 +415,10 @@ def test_source_purge_removes_collected_rows_raw_object_and_tombstones_report(ma
             )
             db.add(evidence)
             await db.flush()
+            import hashlib
+            db.add(ResearchCommentSuppression(company_id=workspace_id, source_id=source_id,
+                post_key_hash=hashlib.sha256(evidence.canonical_url.encode()).hexdigest(),
+                external_comment_id="synthetic-suppressed-identity", reason="subject_request", created_by=user.id))
             version = MarketEvidenceVersion(
                 id=new_id(), company_id=workspace_id, evidence_id=evidence.id,
                 content_hash="a" * 64, parser_version="fixture-v1", title=evidence.title,
@@ -523,6 +528,10 @@ def test_source_purge_removes_collected_rows_raw_object_and_tombstones_report(ma
             assert source is not None and job is not None and report is not None and cycle is not None
             assert campaign is not None and draft is not None
             assert erasure is not None
+            assert await db.scalar(select(ResearchCommentSuppression.id).where(
+                ResearchCommentSuppression.company_id == workspace_id,
+                ResearchCommentSuppression.source_id == source_id,
+            )) is not None  # Keep the restricted deletion ledger after evidence purge.
             assert await db.get(MarketEvidence, evidence_id) is None
             assert await db.get(MarketEvidenceVersion, version_id) is None
             assert await db.get(MarketObservation, observation_id) is None
